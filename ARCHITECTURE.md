@@ -1758,14 +1758,25 @@ PostDee uses RevenueCat as the main mobile paid subscription provider.
 
 The 49 THB post/caption add-on is a distinct consumable, never a perpetual
 Starter/Pro entitlement. Its server-owned grant is 100 post units plus 50 caption
-generations, usable only with an effective paid tier and only within the UTC
-calendar month of purchase. Valid purchases increase that month's limits;
-existing post/caption usage records remain the source of consumption. No
-cross-month wallet or independent editing-minute allowance is introduced.
-Atomic quota operations read grants in the same database transaction as usage.
-Initial add-on checkout is Android only, with Play Store/Test Store purchase
-grants. iPhone add-on checkout and App Store purchase grants are disabled for
-this expiring-credit product; existing iOS subscription billing is unchanged.
+generations, usable only with an effective paid tier. Purchased credits never
+expire and share the same policy on native Android and iPhone. Included UTC
+monthly quota is consumed first; purchased credits pay only the remainder.
+The purchase ledger supplies lifetime non-refunded grant totals. Each post
+persists its exact purchased portion in `addonPostUnits`; each caption
+reservation persists `usesAddonCredit`. Monthly usage excludes those purchased
+allocations, while lifetime purchased usage is subtracted from lifetime grants.
+There is no independently mutable wallet counter or editing-minute allowance.
+
+Post multi-platform allocation, caption reservation, grant/refund updates and
+account deletion share the active-owner transaction fence. Quota reads and the
+usage write occur in the same Serializable transaction. Memory adapters do not
+await between their final quota check and write. A post can split between
+included and purchased units; rollback/release restores its original allocation
+after month rollover too. Plan changes do not reallocate earlier usage. Refunds
+retain spent allocations, including an internal deficit, instead of minting
+credits by clamping history. Only displayed availability is clamped to zero.
+Basic retains balances but cannot use purchased credits; turning off new sales
+does not disable credits already bought by paid members.
 
 The purchase ledger deduplicates store/environment/transaction identity across
 webhooks and authenticated confirmation. Immutable ownership and sticky refund
@@ -1774,8 +1785,24 @@ Consumable events do not advance the subscription lifecycle cursor or activate
 a subscription. Mobile uses the shared RevenueCat owner-bound SDK queue and
 checks the specific transaction with the server before reporting fulfillment;
 a pending confirmation retries that purchase without another checkout.
-Rollout starts disabled and requires the additive migration, API, matching
-consumable product and separate sandbox/production environment configuration.
+The immediate store result and SDK history may use different transaction ID
+namespaces. Durable receipt recovery explicitly preserves `STORE` or
+`REVENUECAT`; confirmation resolves only that namespace using trusted provider
+data while preserving canonical ledger identity. Internal IDs never take a
+canonical-ledger shortcut. Missing canonical IDs remain pending; matching
+timestamps or balances cannot safely prove identity under eventual consistency.
+An exact trusted internal-to-store mapping can settle restart recovery without
+creating a second grant alongside its store webhook. Missing-mapping recovery
+remains a native acceptance/release gate, with new sales default-off.
+Catalog and confirmation identify non-expiring policy version 2. The app blocks
+checkout against an incompatible/old monthly policy before any store payment.
+Rollout starts disabled and requires the purchase-ledger and usage-allocation
+migrations, API, matching consumable products and separate sandbox/production
+environment configuration. The monthly prototype never received live purchases;
+default-zero allocation columns are not a safe backfill if an environment has
+historical spent add-on credits. Such an environment needs explicit migration
+reconciliation before switching policy. See
+`docs/superpowers/plans/2026-10-21-nonexpiring-post-caption-credits.md`.
 
 ```mermaid
 sequenceDiagram

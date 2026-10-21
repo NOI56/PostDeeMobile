@@ -156,19 +156,23 @@ Pro should be the plan for serious sellers, creators, and shops that want to gro
 - Post/caption add-on (2026-10-21): a repeatable, one-time 49 THB purchase adds
   100 post units and 50 real-clip AI caption generations for effective Starter
   and Pro members. It does not change the subscription or unlock another tier.
-- Credits expire with the existing UTC calendar-month quota, not one month
-  after purchase or at the store subscription renewal date. They do not carry
-  over. One video sent to two destinations costs two post units.
+- Purchased credits never expire. Included UTC calendar-month quota is consumed
+  first, then the purchased balance. One video sent to two destinations costs
+  two post units. A Basic downgrade preserves purchased credits until paid
+  membership resumes; no purchase or bank spending is available to Basic.
 - Starter keeps audio-only captions; Pro keeps audio with frames. Monthly
-  limits increase by verified, non-refunded purchases in that purchase month.
-  A refund reduces the available limit without deleting prior usage/posts.
+  included limits remain separate from purchased balances. Refunds revoke the
+  grant without deleting usage/posts or forgiving purchased credits already
+  spent. Release/rollback returns the original allocation across month resets.
 - Store products, RevenueCat routing, a database migration and backend rollout
   must be ready before enabling purchases. The initial server gate is off;
   native store acceptance remains a separate release check. See
-  `2026-10-21-post-caption-addon.md` for delivery status.
-- Initial add-on sales are Android only. Keep iPhone checkout and App Store
-  purchase grants disabled: Apple does not permit purchased credits to expire.
-  Existing iOS subscription purchases remain supported by their existing path.
+  `2026-10-21-nonexpiring-post-caption-credits.md` for delivery status. Disabling
+  new sales preserves use of existing credits for effective paid members.
+- Android and iPhone share this non-expiring policy, superseding the original
+  unshipped monthly-expiry prototype. Both native purchase/refund paths require
+  store configuration and acceptance checks before sale. Existing subscription
+  purchases remain supported by their existing path.
 
 ## Paused / Removed From Package Marketing
 

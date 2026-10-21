@@ -7,6 +7,7 @@ describe('createPrismaPostRepository', () => {
   it('reads addon grants inside the quota transaction and rechecks a refunded grant after a conflict', async () => {
     const transactionGrants = { findMany: vi.fn().mockResolvedValueOnce([{ id: 'grant' }]).mockResolvedValue([]) };
     const post = { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]),
+      aggregate: vi.fn().mockResolvedValue({ _sum: { addonPostUnits: 0 } }),
       create: vi.fn().mockRejectedValue(Object.assign(new Error('serialization conflict'), { code: 'P2034' })) };
     const rootGrants = { findMany: vi.fn() };
     const prisma = withPostRepositoryFixture({ post, monthlyAddonPurchase: rootGrants,
@@ -18,8 +19,7 @@ describe('createPrismaPostRepository', () => {
       monthlyPostUnitLimit: 0, includeMonthlyAddons: true, now: '2026-10-21T00:00:00.000Z' }))
       .toEqual({ ok: false });
     expect(transactionGrants.findMany).toHaveBeenCalledTimes(2);
-    expect(transactionGrants.findMany).toHaveBeenCalledWith({ where: { userId: 'addon-refund', revoked: false,
-      purchasedAt: { gte: new Date('2026-10-01T00:00:00.000Z'), lt: new Date('2026-11-01T00:00:00.000Z') } },
+    expect(transactionGrants.findMany).toHaveBeenCalledWith({ where: { userId: 'addon-refund', revoked: false },
       select: { id: true } });
     expect(rootGrants.findMany).not.toHaveBeenCalled();
     expect(post.create).toHaveBeenCalledTimes(1);
@@ -98,7 +98,7 @@ describe('createPrismaPostRepository', () => {
           lt: new Date('2026-07-01T00:00:00.000Z')
         }
       },
-      select: { createdAt: true, selectedPlatforms: true }
+      select: { createdAt: true, selectedPlatforms: true, addonPostUnits: true }
     });
   });
 
@@ -360,7 +360,7 @@ describe('createPrismaPostRepository', () => {
           lt: new Date('2026-07-01T00:00:00.000Z')
         }
       },
-      select: { createdAt: true, selectedPlatforms: true }
+      select: { createdAt: true, selectedPlatforms: true, addonPostUnits: true }
     });
   });
 

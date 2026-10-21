@@ -11,14 +11,6 @@ import 'store_addon_service.dart';
 
 typedef PaywallSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 
-String _addonExpiryLabel(DateTime expiresAt) {
-  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  final local = expiresAt.toLocal();
-  return '${local.day} ${months[local.month - 1]} ${local.year + 543} เวลา '
-      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')} น.';
-}
-
 class _PlanFeature {
   const _PlanFeature(this.text, {this.included = true});
 
@@ -146,10 +138,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
       if (!_canUpdateScreen) return;
       widget.onAddonPurchased?.call();
       if (!_canUpdateScreen) return;
-      final expiry = _addonExpiryLabel(result.expiresAt!);
       _showOwnedDialog((context) => AlertDialog(
         title: const Text('เติมเครดิตสำเร็จ'),
-        content: Text('เพิ่มโพสต์ 100 หน่วย และ AI แคปชั่น 50 ครั้ง ใช้ได้ก่อน $expiry ตามเวลาเครื่อง'),
+        content: const Text('เพิ่มเครดิตโพสต์ 100 หน่วย และ AI แคปชั่น 50 ครั้งแล้ว เครดิตซื้อเพิ่มไม่หมดอายุ และใช้โควตารายเดือนก่อน'),
         actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('ตกลง'))],
       ));
       unawaited(_loadAddon());
@@ -626,7 +617,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 const SizedBox(height: 12),
               ],
               Text(
-                'ราคาจริงจะแสดงตามร้านค้าของแต่ละประเทศ · ยกเลิกได้ทุกเมื่อ',
+                'ราคาจริงจะแสดงตามร้านค้าของแต่ละประเทศ · แพ็กเกจรายเดือนยกเลิกได้ทุกเมื่อ',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11,
@@ -667,13 +658,16 @@ class _PaywallScreenState extends State<PaywallScreen> {
         Text('ราคาไทย 49 บาท · ชำระตามราคาที่ร้านค้าแสดง', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         const SizedBox(height: 8),
         Text(message, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-        if (catalog != null) ...[
+        if (catalog != null && (catalog.addonPostUnits > 0 || catalog.addonAiCaptions > 0)) ...[
           const SizedBox(height: 6),
-          Text('ใช้ได้ก่อน ${_addonExpiryLabel(catalog.expiresAt)} ตามเวลาเครื่อง',
+          Text('เครดิตคงเหลือ: โพสต์ ${catalog.addonPostUnits} หน่วย · AI ${catalog.addonAiCaptions} ครั้ง',
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
         ],
         const SizedBox(height: 6),
-        Text('1 ช่องทางใช้ 1 หน่วย · หมดอายุพร้อมโควตารายเดือน ไม่ยกยอด · ไม่ต่ออายุอัตโนมัติ',
+        Text('เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน · ไม่ต่ออายุอัตโนมัติ',
+          style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+        const SizedBox(height: 6),
+        Text('1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่',
           style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
         if (pending) ...[
           const SizedBox(height: 12),

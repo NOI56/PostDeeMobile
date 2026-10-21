@@ -7,6 +7,28 @@ import {
 } from './postStore.js';
 
 describe('createPostStore', () => {
+  it('uses included monthly units first and keeps bank allocations across rollover and plan upgrades', async () => {
+    const store = createPostStore({ monthlyAddonStore: {
+      readCredits: async () => ({ postUnits: 100, aiCaptions: 50 })
+    } });
+    const input: CreatePostWithinMonthlyLimitInput = { userId: 'persistent-bank', caption: 'Bank allocation',
+      videoS3Key: 'uploads/persistent-bank/video.mp4', platforms: ['TIKTOK'],
+      monthlyPostUnitLimit: 1, includeMonthlyAddons: true, now: '2026-10-31T23:59:59.000Z' };
+    await store.createWithinMonthlyLimit(input);
+    const mixed = await store.createWithinMonthlyLimit({ ...input,
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS'] });
+    expect(mixed.ok).toBe(true);
+    expect(await store.countMonthlyPostUnits(input)).toBe(1);
+    expect(await store.countAddonPostUnits(input)).toBe(3);
+    await store.createWithinMonthlyLimit({ ...input, now: '2026-11-01T00:00:00.000Z' });
+    expect(await store.countAddonPostUnits(input)).toBe(3);
+    await store.createWithinMonthlyLimit({ ...input, monthlyPostUnitLimit: 250 });
+    expect(await store.countAddonPostUnits(input)).toBe(3);
+    if (!mixed.ok) throw new Error('Expected queued post');
+    await store.remove({ userId: input.userId, postId: mixed.post.id });
+    expect(await store.countAddonPostUnits(input)).toBe(0);
+  });
+
   it('keeps concurrent addon submissions with the same client request id idempotent across the credit read', async () => {
     const store = createPostStore({ monthlyAddonStore: {
       readCredits: async () => ({ postUnits: 100, aiCaptions: 50 })
@@ -19,12 +41,13 @@ describe('createPostStore', () => {
     const results = await Promise.all(Array.from({ length: 10 }, () => store.createWithinMonthlyLimit(input)));
     expect(results.filter(result => result.ok && result.created)).toHaveLength(1);
     expect(results.filter(result => result.ok && !result.created)).toHaveLength(9);
-    expect(await store.countMonthlyPostUnits(input)).toBe(1);
+    expect(await store.countMonthlyPostUnits(input)).toBe(0);
+    expect(await store.countAddonPostUnits(input)).toBe(1);
   });
 
-  it('uses monthly addon units once under concurrent reservations and preserves replay after expiry', async () => {
+  it('uses bank units once under concurrent reservations and preserves replay after month rollover', async () => {
     const store = createPostStore({ monthlyAddonStore: {
-      readCredits: async ({ now }) => ({ postUnits: now.startsWith('2026-10') ? 100 : 0, aiCaptions: 50 })
+      readCredits: async () => ({ postUnits: 100, aiCaptions: 50 })
     } });
     const input: CreatePostWithinMonthlyLimitInput = {
       userId: 'addon-owner', caption: 'Addon post', videoS3Key: 'uploads/addon-owner/video.mp4',
@@ -34,7 +57,8 @@ describe('createPostStore', () => {
     const results = await Promise.all(Array.from({ length: 102 }, (_, index) =>
       store.createWithinMonthlyLimit({ ...input, clientRequestId: `addon-${index}` })));
     expect(results.filter((result) => result.ok)).toHaveLength(100);
-    expect(await store.countMonthlyPostUnits(input)).toBe(100);
+    expect(await store.countMonthlyPostUnits(input)).toBe(0);
+    expect(await store.countAddonPostUnits(input)).toBe(100);
     expect(await store.createWithinMonthlyLimit({ ...input, clientRequestId: 'addon-0',
       now: '2026-11-01T00:00:00.000Z' })).toMatchObject({ ok: true, created: false });
     expect(await store.createWithinMonthlyLimit({ ...input, clientRequestId: 'new-month',

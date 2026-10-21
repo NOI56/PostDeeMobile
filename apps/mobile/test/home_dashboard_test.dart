@@ -81,14 +81,29 @@ void main() {
       .signIn(const AuthSession(userId: 'home-owner', idToken: 'test-token')));
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
-  testWidgets('monthly quota includes verified add-on units without showing 350 over 250', (tester) async {
+  testWidgets('monthly quota and nonexpiring credit balance stay separate', (tester) async {
     await tester.pumpWidget(_app(_home(plan: () async => const SubscriptionStatusResult(
-      userId: 'home-owner', plan: 'PRO', status: 'ACTIVE', monthlyPostLimit: 350,
-      baseMonthlyPostLimit: 250, remainingPostsThisMonth: 348, addonPostUnits: 100,
+      userId: 'home-owner', plan: 'PRO', status: 'ACTIVE', monthlyPostLimit: 250,
+      baseMonthlyPostLimit: 250, remainingPostsThisMonth: 248, addonPostUnits: 100,
+      availablePostUnits: 348,
       addonAiCaptions: 50, canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true))));
     await tester.pumpAndSettle();
-    expect(find.text('เหลือ 348/350 หน่วย · รวมซื้อเพิ่ม 100'), findsOneWidget);
+    expect(find.text('เหลือ 248/250 หน่วย'), findsOneWidget);
+    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    expect(find.text('โพสต์ได้รวม 348 หน่วย'), findsOneWidget);
     expect(find.textContaining('348/250'), findsNothing);
+  });
+
+  testWidgets('Basic keeps the purchased balance visible while credit spending is locked', (tester) async {
+    await tester.pumpWidget(_app(_home(plan: () async => const SubscriptionStatusResult(
+      userId: 'home-owner', plan: 'BASIC', status: 'INACTIVE', monthlyPostLimit: 3,
+      remainingPostsThisMonth: 3, addonPostUnits: 100, addonAiCaptions: 50,
+      availablePostUnits: 3, canSchedule: false, canUseAiCaptions: false, canUseAnalytics: false))));
+    await tester.pumpAndSettle();
+    expect(find.text('เหลือ 3/3 หน่วย'), findsOneWidget);
+    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    expect(find.text('เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'), findsOneWidget);
+    expect(find.textContaining('โพสต์ได้รวม'), findsNothing);
   });
 
   testWidgets('notification button exposes one enabled accessibility tap',

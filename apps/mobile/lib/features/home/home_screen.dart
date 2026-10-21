@@ -1106,12 +1106,9 @@ class _PlanSummaryCard extends StatelessWidget {
       return isThai ? 'ยังไม่ทราบหน่วยคงเหลือ' : 'Remaining units unavailable';
     }
     final includedUnits = _planIncludedUnits();
-    final addonUnits = subscription?.addonPostUnits ?? 0;
-    final addonSuffix = addonUnits > 0
-        ? (isThai ? ' · รวมซื้อเพิ่ม $addonUnits' : ' · includes $addonUnits added') : '';
     return isThai
-        ? 'เหลือ $remainingPosts/$includedUnits หน่วย$addonSuffix'
-        : '$remainingPosts/$includedUnits units left$addonSuffix';
+        ? 'เหลือ $remainingPosts/$includedUnits หน่วย'
+        : '$remainingPosts/$includedUnits units left';
   }
 
   @override
@@ -1120,6 +1117,12 @@ class _PlanSummaryCard extends StatelessWidget {
     final title = _planTitle(l10n);
     final subtitle = _planSubtitle(l10n);
     final isPro = subscription?.plan.toUpperCase() == 'PRO';
+    final canSpendCredits = isPro || subscription?.plan.toUpperCase() == 'STARTER';
+    final bankPosts = subscription?.addonPostUnits ?? 0;
+    final bankCaptions = subscription?.addonAiCaptions ?? 0;
+    final hasBank = bankPosts > 0 || bankCaptions > 0;
+    final availablePosts = subscription?.availablePostUnits;
+    final isThai = l10n.locale.languageCode == 'th';
     final showUpgrade =
         !isLoading && errorMessage == null && subscription != null && !isPro;
 
@@ -1157,6 +1160,18 @@ class _PlanSummaryCard extends StatelessWidget {
                           key: const ValueKey('home-plan-subtitle'),
                           style: TextStyle(
                               fontSize: 12, color: AppTheme.textSecondary)),
+                    if (hasBank) Text(isThai
+                        ? 'เครดิตเติมคงเหลือ: โพสต์ $bankPosts หน่วย · AI $bankCaptions ครั้ง'
+                        : 'Purchased balance: $bankPosts post units · $bankCaptions AI captions',
+                      key: const ValueKey('home-addon-balance'),
+                      style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                    if (hasBank && canSpendCredits && availablePosts != null)
+                      Text(isThai ? 'โพสต์ได้รวม $availablePosts หน่วย' : '$availablePosts post units available',
+                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                    if (hasBank && !canSpendCredits)
+                      Text(isThai ? 'เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'
+                          : 'Credits remain available after subscribing to Starter or Pro',
+                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                   ],
                 ),
               ),

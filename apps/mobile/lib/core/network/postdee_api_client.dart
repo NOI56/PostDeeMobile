@@ -1743,12 +1743,16 @@ class RealClipCaptionQuota {
     required this.usedThisMonth,
     required this.remainingThisMonth,
     this.charged = true,
+    this.addonRemaining = 0,
+    this.availableGenerations,
   });
 
   final int limit;
   final int usedThisMonth;
   final int remainingThisMonth;
   final bool charged;
+  final int addonRemaining;
+  final int? availableGenerations;
 
   factory RealClipCaptionQuota.fromJson(Map<String, Object?> json) =>
       RealClipCaptionQuota(
@@ -1756,6 +1760,8 @@ class RealClipCaptionQuota {
         usedThisMonth: json['usedThisMonth'] as int,
         remainingThisMonth: json['remainingThisMonth'] as int,
         charged: json['charged'] as bool? ?? true,
+        addonRemaining: json['addonRemaining'] as int? ?? 0,
+        availableGenerations: json['availableGenerations'] as int?,
       );
 }
 
@@ -2145,6 +2151,8 @@ class SubscriptionStatusResult {
     this.addonPostUnits = 0,
     this.addonAiCaptions = 0,
     this.addonExpiresAt,
+    this.addonCreditsExpire = false,
+    this.availablePostUnits,
     required this.canSchedule,
     required this.canUseAiCaptions,
     required this.canUseAnalytics,
@@ -2167,6 +2175,8 @@ class SubscriptionStatusResult {
   final int addonPostUnits;
   final int addonAiCaptions;
   final DateTime? addonExpiresAt;
+  final bool addonCreditsExpire;
+  final int? availablePostUnits;
   final bool canSchedule;
   final bool canUseAiCaptions;
   final bool canUseAnalytics;
@@ -2192,6 +2202,8 @@ class SubscriptionStatusResult {
         addonPostUnits: json['addonPostUnits'] as int? ?? 0,
         addonAiCaptions: json['addonAiCaptions'] as int? ?? 0,
         addonExpiresAt: DateTime.tryParse(json['addonExpiresAt'] as String? ?? ''),
+        addonCreditsExpire: json['addonCreditsExpire'] as bool? ?? (json['addonExpiresAt'] != null),
+        availablePostUnits: json['availablePostUnits'] as int?,
         phoneVerified: json['phoneVerified'] as bool? ?? false,
         requiresPhoneVerification:
             json['requiresPhoneVerification'] as bool? ?? false,
@@ -2207,61 +2219,77 @@ class SubscriptionStatusResult {
 class AddonCatalogResult {
   const AddonCatalogResult({required this.enabled, required this.eligible,
     required this.productId, required this.postUnits, required this.aiCaptions,
-    required this.priceThb, required this.monthKey, required this.expiresAt,
-    required this.purchasedPacks});
+    required this.priceThb, required this.policyVersion, required this.creditsExpire,
+    this.expiresAt, required this.purchasedPacks,
+    this.addonPostUnits = 0, this.addonAiCaptions = 0});
   final bool enabled;
   final bool eligible;
   final String productId;
   final int postUnits;
   final int aiCaptions;
   final int priceThb;
-  final String monthKey;
-  final DateTime expiresAt;
+  final int policyVersion;
+  final bool creditsExpire;
+  final DateTime? expiresAt;
   final int purchasedPacks;
+  final int addonPostUnits;
+  final int addonAiCaptions;
+  bool get hasNonExpiringPolicy => policyVersion == 2 && !creditsExpire && expiresAt == null;
 
   factory AddonCatalogResult.fromJson(Map<String, Object?> json) {
-    final expiresAt = DateTime.tryParse(json['expiresAt'] as String? ?? '');
     if (json['status'] != 'ok' || json['enabled'] is! bool ||
         json['eligible'] is! bool || json['productId'] is! String ||
         json['postUnits'] is! int || json['aiCaptions'] is! int ||
-        json['priceThb'] is! int || json['monthKey'] is! String ||
-        json['purchasedPacks'] is! int || expiresAt == null) {
+        json['priceThb'] is! int || json['policyVersion'] != 2 ||
+        json['creditsExpire'] != false || !json.containsKey('expiresAt') || json['expiresAt'] != null ||
+        json['addonPostUnits'] is! int || json['addonAiCaptions'] is! int ||
+        (json['addonPostUnits'] as int) < 0 || (json['addonAiCaptions'] as int) < 0 ||
+        json['purchasedPacks'] is! int) {
       throw const ApiException('Invalid add-on catalog response');
     }
     return AddonCatalogResult(enabled: json['enabled'] as bool,
       eligible: json['eligible'] as bool, productId: json['productId'] as String,
       postUnits: json['postUnits'] as int, aiCaptions: json['aiCaptions'] as int,
-      priceThb: json['priceThb'] as int, monthKey: json['monthKey'] as String,
-      expiresAt: expiresAt.toUtc(), purchasedPacks: json['purchasedPacks'] as int);
+      priceThb: json['priceThb'] as int, policyVersion: 2, creditsExpire: false,
+      expiresAt: null, purchasedPacks: json['purchasedPacks'] as int,
+      addonPostUnits: json['addonPostUnits'] as int, addonAiCaptions: json['addonAiCaptions'] as int);
   }
 }
 
 class AddonConfirmationResult {
   const AddonConfirmationResult({required this.confirmed,
-    required this.transactionId, this.postUnits = 0, this.aiCaptions = 0,
-    this.expiresAt});
+    required this.transactionId, this.transactionIdKind = 'STORE', this.postUnits = 0, this.aiCaptions = 0,
+    required this.policyVersion, required this.creditsExpire, this.expiresAt});
   final bool confirmed;
   final String transactionId;
+  final String transactionIdKind;
   final int postUnits;
   final int aiCaptions;
   final DateTime? expiresAt;
+  final int policyVersion;
+  final bool creditsExpire;
+  bool get hasNonExpiringPolicy => policyVersion == 2 && !creditsExpire && expiresAt == null;
 
   factory AddonConfirmationResult.fromJson(Map<String, Object?> json) {
+    final transactionIdKind = json.containsKey('transactionIdKind') ? json['transactionIdKind'] : 'STORE';
     if (json['status'] != 'ok' || json['confirmed'] is! bool ||
         json['transactionId'] is! String ||
-        (json['transactionId'] as String).isEmpty) {
+        (json['transactionId'] as String).isEmpty || json['policyVersion'] != 2 ||
+        json['creditsExpire'] != false || !json.containsKey('expiresAt') || json['expiresAt'] != null ||
+        (transactionIdKind != 'STORE' && transactionIdKind != 'REVENUECAT')) {
       throw const ApiException('Invalid add-on confirmation response');
     }
     final confirmed = json['confirmed'] as bool;
-    final expiresAt = DateTime.tryParse(json['expiresAt'] as String? ?? '');
     if (confirmed && (json['postUnits'] is! int ||
-        json['aiCaptions'] is! int || expiresAt == null)) {
+        json['aiCaptions'] is! int)) {
       throw const ApiException('Add-on confirmation is missing verified credits');
     }
     return AddonConfirmationResult(confirmed: confirmed,
       transactionId: json['transactionId'] as String,
+      transactionIdKind: transactionIdKind as String,
       postUnits: json['postUnits'] as int? ?? 0,
-      aiCaptions: json['aiCaptions'] as int? ?? 0, expiresAt: expiresAt?.toUtc());
+      aiCaptions: json['aiCaptions'] as int? ?? 0,
+      policyVersion: 2, creditsExpire: false, expiresAt: null);
   }
 }
 
@@ -3610,10 +3638,14 @@ class PostDeeApiClient {
       AddonCatalogResult.fromJson(await _getJson('/billing/addons'));
 
   Future<AddonConfirmationResult> confirmAddonPurchase(
-    String productId, String transactionId,
-  ) async => AddonConfirmationResult.fromJson(await _postJson(
-    '/billing/addons/confirm', {'productId': productId, 'transactionId': transactionId},
-  ));
+    String productId, String transactionId, {String transactionIdKind = 'STORE'}
+  ) async {
+    if (transactionIdKind != 'STORE' && transactionIdKind != 'REVENUECAT') {
+      throw const ApiException('Unsupported add-on transaction identifier namespace');
+    }
+    return AddonConfirmationResult.fromJson(await _postJson('/billing/addons/confirm',
+      {'productId': productId, 'transactionId': transactionId, 'transactionIdKind': transactionIdKind}));
+  }
 
   Future<String> resyncRevenueCatSubscription() async {
     return _resyncRevenueCatPlan(purchasedOnly: false);

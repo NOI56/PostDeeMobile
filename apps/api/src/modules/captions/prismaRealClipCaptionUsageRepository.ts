@@ -5,37 +5,42 @@ import type {
 } from './captionUsageStore.js';
 import { readCurrentRealClipCaptionMonthKey } from './captionUsageStore.js';
 import { readPrismaMonthlyAddonCredits, type PrismaMonthlyAddonReadTransaction } from '../billing/prismaMonthlyAddonRepository.js';
+import { lockActiveOwner, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
 
 type PrismaRealClipCaptionUsage = {
   id?: string;
   userId: string;
   monthKey: string;
   createdAt: Date;
+  usesAddonCredit?: boolean;
 };
 
 type RealClipCaptionUsageDelegate = {
   count: (args: {
     where: {
       userId: string;
-      monthKey: string;
+      monthKey?: string;
+      usesAddonCredit?: boolean;
     };
   }) => Promise<number>;
   create: (args: {
     data: {
       userId: string;
       monthKey: string;
+      usesAddonCredit?: boolean;
     };
     select: {
       id: true;
       userId: true;
       monthKey: true;
       createdAt: true;
+      usesAddonCredit?: true;
     };
   }) => Promise<PrismaRealClipCaptionUsage>;
   deleteMany?: (args: { where: { id: string; userId: string; monthKey: string } }) => Promise<{ count: number }>;
 };
 
-type CaptionUsageTransaction = Partial<PrismaMonthlyAddonReadTransaction> & {
+type CaptionUsageTransaction = Partial<PrismaMonthlyAddonReadTransaction> & Partial<PrismaOwnerLifecycleTransaction> & {
   realClipCaptionUsage: RealClipCaptionUsageDelegate;
 };
 
@@ -52,7 +57,8 @@ const mapUsageRecord = (
   ...(record.id ? { id: record.id } : {}),
   userId: record.userId,
   monthKey: record.monthKey,
-  createdAt: record.createdAt.toISOString()
+  createdAt: record.createdAt.toISOString(),
+  ...(record.usesAddonCredit ? { usesAddonCredit: true } : {})
 });
 
 export const createPrismaRealClipCaptionUsageRepository = ({
@@ -64,7 +70,8 @@ export const createPrismaRealClipCaptionUsageRepository = ({
     id: true,
     userId: true,
     monthKey: true,
-    createdAt: true
+    createdAt: true,
+    usesAddonCredit: true
   } as const;
   const reserveWithClient = async (
     client: CaptionUsageTransaction,
@@ -85,6 +92,8 @@ export const createPrismaRealClipCaptionUsageRepository = ({
     let addonAiCaptions = 0;
     if (includeMonthlyAddons) {
       if (!client.monthlyAddonPurchase) throw new Error('Monthly addon transaction delegate is required');
+      if (!client.managedUploadOwner) throw new Error('Caption addon owner transaction delegate is required');
+      await lockActiveOwner({ managedUploadOwner: client.managedUploadOwner }, userId);
       const creditNow = now ?? new Date().toISOString();
       if (readCurrentRealClipCaptionMonthKey(new Date(creditNow)) !== monthKey) {
         throw new Error('Caption reservation month does not match addon window');
@@ -96,11 +105,16 @@ export const createPrismaRealClipCaptionUsageRepository = ({
     const usedThisMonth = await client.realClipCaptionUsage.count({
       where: {
         userId,
-        monthKey
+        monthKey,
+        usesAddonCredit: false
       }
     });
 
-    if (usedThisMonth >= limit + addonAiCaptions) {
+    const usesAddonCredit = usedThisMonth >= limit;
+    const usedAddon = includeMonthlyAddons ? await client.realClipCaptionUsage.count({
+      where: { userId, usesAddonCredit: true }
+    }) : 0;
+    if (usesAddonCredit && usedAddon >= addonAiCaptions) {
       return {
         ok: false,
         usedThisMonth
@@ -110,14 +124,15 @@ export const createPrismaRealClipCaptionUsageRepository = ({
     const record = await client.realClipCaptionUsage.create({
       data: {
         userId,
-        monthKey
+        monthKey,
+        ...(usesAddonCredit ? { usesAddonCredit: true } : {})
       },
       select: usageSelect
     });
 
     return {
       ok: true,
-      usedThisMonth: usedThisMonth + 1,
+      usedThisMonth: usedThisMonth + (usesAddonCredit ? 0 : 1),
       record: mapUsageRecord(record)
     };
   };
@@ -127,9 +142,11 @@ export const createPrismaRealClipCaptionUsageRepository = ({
       prisma.realClipCaptionUsage.count({
         where: {
           userId,
-          monthKey
+          monthKey,
+          usesAddonCredit: false
         }
       }),
+    countAddonUsages: async ({ userId }) => prisma.realClipCaptionUsage.count({ where: { userId, usesAddonCredit: true } }),
     record: async ({ userId, monthKey }) => {
       const record = await prisma.realClipCaptionUsage.create({
         data: {

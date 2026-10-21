@@ -1,9 +1,16 @@
 import { allowMonthlyAddonStore, type MonthlyAddonPurchase } from './monthlyAddonStore.js';
 
-export type RevenueCatAddonPurchaseClient = { findPurchase: (input: { userId: string; productId: string; transactionId: string }) =>
-  Promise<(MonthlyAddonPurchase & { revoked?: boolean }) | null> };
+export type AddonTransactionIdKind = 'STORE' | 'REVENUECAT';
+export type VerifiedRevenueCatAddonPurchase = Omit<MonthlyAddonPurchase, 'transactionId'> & {
+  transactionId?: string; verifiedSelector?: string; revoked?: boolean;
+};
+export type RevenueCatAddonPurchaseClient = { findPurchase: (input: { userId: string; productId: string; transactionId: string;
+  transactionIdKind?: AddonTransactionIdKind }) => Promise<VerifiedRevenueCatAddonPurchase | null> };
 export class RevenueCatAddonLookupError extends Error {
   constructor() { super('RevenueCat add-on purchase could not be verified'); }
+}
+export class RevenueCatAddonAmbiguousSelectorError extends RevenueCatAddonLookupError {
+  constructor() { super(); this.message = 'RevenueCat add-on transaction selector is ambiguous'; }
 }
 const record = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -32,23 +39,30 @@ export const createRevenueCatAddonPurchaseClient = ({ apiKey, fetchImpl = fetch,
       const rows = purchases?.[input.productId];
       if (!rows) return null;
       if (!Array.isArray(rows)) throw new RevenueCatAddonLookupError();
-      for (const raw of rows) {
-        const row = record(raw);
-        // Customer Info `id` is RevenueCat's internal purchase id. It must
-        // never produce a second grant alongside the webhook's store id.
-        if (!row || row.store_transaction_id !== input.transactionId) continue;
-        const store = normalizeRevenueCatAddonStore(row.store);
-        if (store && !allowMonthlyAddonStore(store)) return null;
-        const date = typeof row.purchase_date === 'string' ? new Date(row.purchase_date) : undefined;
-        if (!store || typeof row.is_sandbox !== 'boolean' || !date || !Number.isFinite(date.getTime())) throw new RevenueCatAddonLookupError();
-        const transactionId = row.store_transaction_id;
-        if (typeof transactionId !== 'string' || !transactionId) throw new RevenueCatAddonLookupError();
-        return { userId: input.userId, productId: input.productId, transactionId, store,
-          environment: row.is_sandbox ? 'SANDBOX' : 'PRODUCTION', purchasedAt: date.toISOString(),
-          ...(row.refunded_at || row.refund_date ? { revoked: true } : {}) };
-      }
-      return null;
-    } catch { throw new RevenueCatAddonLookupError(); }
+      const revenueCatSelector = input.transactionIdKind === 'REVENUECAT';
+      const selectorField = revenueCatSelector ? 'id' : 'store_transaction_id';
+      const candidates = rows.map(record).filter((row): row is Record<string, unknown> =>
+        Boolean(row && row[selectorField] === input.transactionId));
+      if (candidates.length === 0) return null;
+      if (candidates.length !== 1) throw new RevenueCatAddonAmbiguousSelectorError();
+      const row = candidates[0];
+      const store = normalizeRevenueCatAddonStore(row.store);
+      if (store && !allowMonthlyAddonStore(store)) return null;
+      const date = typeof row.purchase_date === 'string' ? new Date(row.purchase_date) : undefined;
+      if (!store || typeof row.is_sandbox !== 'boolean' || !date || !Number.isFinite(date.getTime())) throw new RevenueCatAddonLookupError();
+      const transactionId = typeof row.store_transaction_id === 'string' && row.store_transaction_id.trim() === row.store_transaction_id &&
+        row.store_transaction_id.length > 0 ? row.store_transaction_id : undefined;
+      // Customer Info `id` can select an exact RC history row, but only its
+      // explicit canonical store id is a grant key. Date/amount similarity
+      // cannot prove identity when the two systems observe events out of order.
+      return { userId: input.userId, productId: input.productId, ...(transactionId ? { transactionId } : {}), store,
+        environment: row.is_sandbox ? 'SANDBOX' : 'PRODUCTION', purchasedAt: date.toISOString(),
+        ...(revenueCatSelector ? { verifiedSelector: input.transactionId } : {}),
+        ...(row.refunded_at || row.refund_date ? { revoked: true } : {}) };
+    } catch (error) {
+      if (error instanceof RevenueCatAddonLookupError) throw error;
+      throw new RevenueCatAddonLookupError();
+    }
     finally { clearTimeout(timeout); }
   }
 });

@@ -1005,14 +1005,14 @@ Core items:
 - Firebase Auth (Google Sign-In, Phone Auth) and Firebase Cloud Messaging (FCM) for Push Notifications.
 - RevenueCat for cross-platform subscription management (Apple App Store / Google Play).
 - Post/caption consumable add-on: target 49 THB once for 100 post units and 50
-  caption generations, Starter/Pro only, expiring at the existing UTC monthly
-  quota reset. This is separate from retired editing-minute top-ups. The
+  caption generations, Starter/Pro only, with non-expiring purchased balances
+  and included monthly quota consumed first. This is separate from retired editing-minute top-ups. The
   server gate starts disabled; migration, store/RevenueCat configuration and
   native purchase/refund acceptance are required before selling it. Delivery
-  checks are tracked in `docs/superpowers/plans/2026-10-21-post-caption-addon.md`.
-  Initial checkout is Android only; iPhone stays disabled because Apple's
-  In-App Purchase rules do not permit purchased credits to expire. Any future
-  iPhone add-on requires a separately reviewed product/expiry design.
+  checks are tracked in `docs/superpowers/plans/2026-10-21-nonexpiring-post-caption-credits.md`.
+  Android and iPhone share the same policy. A Basic downgrade retains the
+  balance until membership is active again. Native purchase/refund acceptance
+  on both stores remains pending; no live store availability is implied.
 - Sentry for error tracking and performance monitoring.
 - Universal uploader for one 9:16 video.
 - Scheduling through Upstash Redis and BullMQ.

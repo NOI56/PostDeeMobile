@@ -7,10 +7,10 @@ const input = { userId: 'owner/one', productId: 'postdee_post100_caption50', tra
 const payload = (rows: unknown[]) => ({ subscriber: { original_app_user_id: 'owner/one', non_subscriptions: { postdee_post100_caption50: rows } } });
 
 describe('RevenueCat verified add-on lookup', () => {
-  it('does not grant expiring monthly credits from an App Store purchase', async () => {
+  it('verifies nonexpiring credits from an App Store purchase', async () => {
     const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
       json: async () => payload([{ ...row, store: 'app_store' }]) }) });
-    expect(await client.findPurchase(input)).toBeNull();
+    expect(await client.findPurchase(input)).toMatchObject({ store: 'APP_STORE', transactionId: input.transactionId });
   });
   it.each(['another-owner', '$RCAnonymousID:fixture', undefined])('keeps original owner %s pending rather than granting alias history', async originalOwner => {
     const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
@@ -28,10 +28,33 @@ describe('RevenueCat verified add-on lookup', () => {
     const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => payload([row]) }) });
     expect(await client.findPurchase({ ...input, transactionId: 'client-forged' })).toBeNull();
   });
-  it('never treats the internal RevenueCat id as the canonical store transaction', async () => {
+  it('returns only verified details for a RevenueCat selector without a canonical store transaction', async () => {
     const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
       json: async () => payload([{ ...row, store_transaction_id: undefined }]) }) });
-    expect(await client.findPurchase({ ...input, transactionId: row.id })).toBeNull();
+    expect(await client.findPurchase({ ...input, transactionId: row.id, transactionIdKind: 'REVENUECAT' })).toMatchObject({ verifiedSelector: row.id,
+      purchasedAt: row.purchase_date, store: 'PLAY_STORE' });
+    expect((await client.findPurchase({ ...input, transactionId: row.id, transactionIdKind: 'REVENUECAT' }))?.transactionId).toBeUndefined();
+  });
+  it('resolves a history selector to its verified canonical store transaction', async () => {
+    const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
+      json: async () => payload([row]) }) });
+    expect(await client.findPurchase({ ...input, transactionId: row.id, transactionIdKind: 'REVENUECAT' })).toMatchObject({ transactionId: 'store-txn', verifiedSelector: row.id });
+  });
+  it('keeps store and RevenueCat selector namespaces separate even when their values collide', async () => {
+    const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
+      json: async () => payload([row, { ...row, id: 'other-rc-id', store_transaction_id: row.id }]) }) });
+    expect(await client.findPurchase({ ...input, transactionId: row.id, transactionIdKind: 'STORE' })).toMatchObject({ transactionId: row.id });
+    expect(await client.findPurchase({ ...input, transactionId: row.id, transactionIdKind: 'REVENUECAT' })).toMatchObject({ transactionId: 'store-txn', verifiedSelector: row.id });
+  });
+  it('fails closed when duplicate rows share the same RevenueCat selector', async () => {
+    const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
+      json: async () => payload([row, { ...row, store_transaction_id: 'different-store-txn' }]) }) });
+    await expect(client.findPurchase({ ...input, transactionId: row.id, transactionIdKind: 'REVENUECAT' })).rejects.toThrow('ambiguous');
+  });
+  it('does not invent a canonical id from matching purchase metadata', async () => {
+    const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
+      json: async () => payload([{ ...row, store_transaction_id: undefined }, { ...row, id: 'second-rc-id', store_transaction_id: undefined }]) }) });
+    expect((await client.findPurchase({ ...input, transactionId: row.id, transactionIdKind: 'REVENUECAT' }))?.transactionId).toBeUndefined();
   });
   it.each([{ ...row, purchase_date: 'bad-date' }, { ...row, is_sandbox: undefined }, { ...row, store: 'unknown-store' }])('rejects unverifiable store metadata %#', async (value) => {
     const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => payload([value]) }) });

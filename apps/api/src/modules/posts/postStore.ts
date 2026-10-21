@@ -45,6 +45,8 @@ export type QueuedPost = {
   status: PostStatus;
   publishedAt?: string;
   createdAt: string;
+  // Internal allocation, fixed when accepted; never reallocated after a plan change.
+  addonPostUnits?: number;
 };
 
 export type CreatePostInput = {
@@ -153,6 +155,7 @@ export type PostStore = {
   // It deliberately returns no post, owner, caption, or media details.
   countPublishBacklog: () => Promise<number>;
   countMonthlyPostUnits: (input: { userId: string; now: string }) => Promise<number>;
+  countAddonPostUnits: (input: { userId: string }) => Promise<number>;
   create: (input: CreatePostInput) => Promise<QueuedPost>;
   findIdempotent: (input: FindIdempotentPostInput) => Promise<QueuedPost | undefined>;
   // Checks current-month platform units and inserts as one store operation so
@@ -190,10 +193,12 @@ export const createPostStore = ({
   const createPost = (
     input: CreatePostInput,
     createdAt = new Date().toISOString(),
-    id: string = randomUUID()
+    id: string = randomUUID(),
+    addonPostUnits = 0
   ) => {
     const post: QueuedPost = {
       id,
+      ...(addonPostUnits > 0 ? { addonPostUnits } : {}),
       userId: input.userId,
       caption: input.caption,
       videoS3Key: input.videoS3Key,
@@ -264,6 +269,8 @@ export const createPostStore = ({
         posts.filter((post) => post.userId === userId),
         new Date(now)
       ),
+    countAddonPostUnits: async ({ userId }) => posts.filter(post => post.userId === userId)
+      .reduce((total, post) => total + (post.addonPostUnits ?? 0), 0),
     create: (input) => runWithActiveOwner(input.userId, async () => createPost(input)),
     findIdempotent: async (input) => findIdempotent(input),
     createWithinMonthlyLimit: (input) => runWithActiveOwner(input.userId, async () => {
@@ -272,8 +279,7 @@ export const createPostStore = ({
 
       let addonPostUnits = 0;
       if (input.includeMonthlyAddons) {
-        if (!monthlyAddonStore) throw new Error('Monthly addon store is required');
-        addonPostUnits = (await monthlyAddonStore.readCredits({ userId: input.userId, now: input.now })).postUnits;
+        addonPostUnits = (await monthlyAddonStore?.readCredits({ userId: input.userId, now: input.now }))?.postUnits ?? 0;
         const concurrentReplay = readIdempotentReplay(input);
         if (concurrentReplay) return concurrentReplay;
       }
@@ -284,7 +290,10 @@ export const createPostStore = ({
         new Date(input.now)
       );
 
-      if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit + addonPostUnits) {
+      const addonUsed = posts.filter(post => post.userId === input.userId)
+        .reduce((total, post) => total + (post.addonPostUnits ?? 0), 0);
+      const neededAddonUnits = Math.max(0, input.platforms.length - Math.max(0, input.monthlyPostUnitLimit - usedPostUnits));
+      if (neededAddonUnits > Math.max(0, addonPostUnits - addonUsed)) {
         return { ok: false };
       }
 
@@ -298,7 +307,8 @@ export const createPostStore = ({
                 userId: input.userId,
                 clientRequestId: input.clientRequestId
               })
-            : randomUUID()
+            : randomUUID(),
+          neededAddonUnits
         ),
         created: true
       };

@@ -24,12 +24,15 @@ class AddonPendingRecord {
       {required this.productId,
       required this.intentId,
       this.transactionId,
+      this.transactionIdKind = 'STORE',
       List<String>? baselineTransactionIds})
       : baselineTransactionIds = baselineTransactionIds == null
             ? null
             : List<String>.unmodifiable(baselineTransactionIds) {
     if (!_validId(productId, 256) ||
         !_validId(intentId, 128) ||
+        (transactionIdKind != 'STORE' && transactionIdKind != 'REVENUECAT') ||
+        (transactionId == null && transactionIdKind != 'STORE') ||
         (transactionId != null && !_validId(transactionId!, 512)) ||
         (this.baselineTransactionIds != null &&
             (this.baselineTransactionIds!.length > 10000 ||
@@ -43,6 +46,7 @@ class AddonPendingRecord {
   final String productId;
   final String intentId;
   final String? transactionId;
+  final String transactionIdKind;
   final List<String>? baselineTransactionIds;
   static bool _validId(String value, int length) =>
       value.isNotEmpty && value.length <= length && value.trim() == value;
@@ -52,6 +56,7 @@ class AddonPendingRecord {
         'productId': productId,
         'intentId': intentId,
         if (transactionId != null) 'transactionId': transactionId,
+        if (transactionId != null) 'transactionIdKind': transactionIdKind,
         if (baselineTransactionIds != null)
           'baselineTransactionIds': baselineTransactionIds,
       };
@@ -62,6 +67,7 @@ class AddonPendingRecord {
       'productId',
       'intentId',
       'transactionId',
+      'transactionIdKind',
       'baselineTransactionIds'
     };
     final baseline = json['baselineTransactionIds'];
@@ -71,6 +77,8 @@ class AddonPendingRecord {
         json['intentId'] is! String ||
         (json.containsKey('transactionId') &&
             json['transactionId'] is! String) ||
+        (json.containsKey('transactionIdKind') &&
+            json['transactionIdKind'] is! String) ||
         (json.containsKey('baselineTransactionIds') &&
             (baseline is! List || baseline.any((value) => value is! String)))) {
       throw const AddonPendingDataException();
@@ -79,6 +87,7 @@ class AddonPendingRecord {
         productId: json['productId'] as String,
         intentId: json['intentId'] as String,
         transactionId: json['transactionId'] as String?,
+        transactionIdKind: json['transactionIdKind'] as String? ?? 'STORE',
         baselineTransactionIds:
             baseline == null ? null : List<String>.from(baseline as List));
   }
@@ -95,7 +104,8 @@ void _assertSameIntent(AddonPendingRecord? current, AddonPendingRecord next) {
       (current.intentId != next.intentId ||
           current.productId != next.productId ||
           (current.transactionId != null &&
-              current.transactionId != next.transactionId))) {
+              (current.transactionId != next.transactionId ||
+                  current.transactionIdKind != next.transactionIdKind)))) {
     throw const AddonPendingConflictException();
   }
 }

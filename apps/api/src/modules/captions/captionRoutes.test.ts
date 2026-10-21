@@ -68,6 +68,7 @@ describe('caption routes', () => {
     const events: string[] = [];
     const createdAt = new Date('2026-08-13T00:00:00.000Z');
     const usageStore = {
+      countAddonUsages: vi.fn(async () => 0),
       countForMonth: vi.fn(async () => 0),
       record: vi.fn(),
       reserve: vi.fn(async ({ userId, monthKey }: { userId: string; monthKey: string }) => {
@@ -81,6 +82,7 @@ describe('caption routes', () => {
     };
     const appWithPrismaUser = createApp({
       prisma: withOwnerLifecycleFixture({
+        monthlyAddonPurchase: { findMany: vi.fn(async () => []) },
         user: {
           findUnique: vi.fn(),
           upsert: vi.fn(async () => {
@@ -189,6 +191,7 @@ describe('caption routes', () => {
       affiliateLinkPlaceholder: '[link]'
     }));
     const usageStore = {
+      countAddonUsages: vi.fn(async () => 0),
       countForMonth: vi.fn(async () => 0),
       record: vi.fn(async () => ({
         userId,
@@ -221,12 +224,16 @@ describe('caption routes', () => {
     expect(usageStore.reserve).toHaveBeenCalledWith({
       userId,
       monthKey: expect.any(String),
-      limit: 50
+      limit: 50,
+      includeMonthlyAddons: true,
+      now: expect.any(String)
     });
     expect(response.body.quota).toEqual({
       limit: 50,
       usedThisMonth: 1,
-      remainingThisMonth: 49
+      remainingThisMonth: 49,
+      addonRemaining: 0,
+      availableGenerations: 49
     });
   });
 
@@ -239,6 +246,7 @@ describe('caption routes', () => {
       affiliateLinkPlaceholder: '[link]'
     }));
     const usageStore = {
+      countAddonUsages: vi.fn(async () => 0),
       countForMonth: vi.fn(async () => 50),
       record: vi.fn(async () => ({
         userId,
@@ -613,6 +621,7 @@ describe('caption routes', () => {
     const userId = 'seller-quota-race';
     const generate = vi.fn(async (input) => fakeRealClipCaption(input));
     const usageStore = {
+      countAddonUsages: vi.fn(async () => 0),
       countForMonth: vi.fn(async () => 49),
       record: vi.fn(async () => ({
         userId,
@@ -649,7 +658,9 @@ describe('caption routes', () => {
     expect(usageStore.reserve).toHaveBeenCalledWith({
       userId,
       monthKey: expect.any(String),
-      limit: 50
+      limit: 50,
+      includeMonthlyAddons: true,
+      now: expect.any(String)
     });
     expect(generate).not.toHaveBeenCalled();
     expect(usageStore.record).not.toHaveBeenCalled();
@@ -918,7 +929,9 @@ describe('caption routes', () => {
       quota: {
         limit: 50,
         usedThisMonth: 50,
-        remainingThisMonth: 0
+        remainingThisMonth: 0,
+        addonRemaining: 0,
+        availableGenerations: 0
       }
     });
   });

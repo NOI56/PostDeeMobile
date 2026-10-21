@@ -246,7 +246,8 @@ const platformTargetUnavailableResponse = {
   message: 'A selected connected account is no longer available. Review the post again.'
 } as const;
 
-const toPublicPost = ({ platformTargets: _platformTargets, mediaContentFingerprint: _mediaContentFingerprint, ...post }: QueuedPost) => post;
+const toPublicPost = ({ platformTargets: _platformTargets, mediaContentFingerprint: _mediaContentFingerprint,
+  addonPostUnits: _addonPostUnits, ...post }: QueuedPost) => post;
 const toPublicPlatformResult = ({
   providerPostId: _providerPostId,
   ...result
@@ -943,7 +944,7 @@ export const registerPostRoutes = (
       ...(platformTargets ? { platformTargets } : {}),
       scheduledAt,
       monthlyPostUnitLimit: monthlyPostLimit,
-      ...(options.billingAddonsEnabled && subscriptionPlan !== 'BASIC'
+      ...(subscriptionPlan !== 'BASIC'
         ? { includeMonthlyAddons: true } : {}),
       now: requestNow.toISOString()
     };
@@ -1070,7 +1071,7 @@ export const registerPostRoutes = (
             }
             monthlyPostLimit = monthlyPostUnitLimits[subscriptionPlan];
             idempotentInput.monthlyPostUnitLimit = monthlyPostLimit;
-            idempotentInput.includeMonthlyAddons = options.billingAddonsEnabled;
+            idempotentInput.includeMonthlyAddons = true;
           }
         }
 
@@ -1100,14 +1101,12 @@ export const registerPostRoutes = (
         }
 
         if (!createResult.ok) {
-          const addonCredits = idempotentInput.includeMonthlyAddons
-            ? await options.monthlyAddonStore?.readCredits({ userId: user.id, now: now().toISOString() })
-            : undefined;
-          const effectiveMonthlyPostLimit = monthlyPostLimit + (addonCredits?.postUnits ?? 0);
           response.status(402).json({
             status: 'error',
             code: 'POST_LIMIT_REACHED',
-            message: `${readPlanLabel(subscriptionPlan)} plan is limited to ${effectiveMonthlyPostLimit} post units per month`
+            message: subscriptionPlan === 'BASIC'
+              ? `${readPlanLabel(subscriptionPlan)} plan is limited to ${monthlyPostLimit} post units per month`
+              : `${readPlanLabel(subscriptionPlan)} included monthly post units and available purchased credits are exhausted`
           });
           return;
         }

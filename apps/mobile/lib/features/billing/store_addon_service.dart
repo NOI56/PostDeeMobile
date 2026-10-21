@@ -93,13 +93,14 @@ class StoreAddonService {
   var _pendingLoadFailed = false;
   bool get isCurrent => _binding.isCurrent;
   bool get supportsPlatform =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
   String get platformUnavailableMessage =>
-      defaultTargetPlatform == TargetPlatform.iOS
-          ? 'แพ็กเติมนี้ยังไม่รองรับบน iPhone'
-          : 'แพ็กเติมนี้รองรับบน Android เท่านั้น';
+      'แพ็กเติมนี้รองรับบน Android และ iPhone เท่านั้น';
   bool get hasPendingPurchase =>
-      supportsPlatform && isCurrent &&
+      supportsPlatform &&
+      isCurrent &&
       (_operation != null ||
           _receipt != null ||
           _unknownStoreResult ||
@@ -116,21 +117,19 @@ class StoreAddonService {
     return result;
   }
 
-  bool _isThisMonth(AddonCatalogResult catalog) {
-    final now = _now().toUtc();
-    final month = '${now.year}-${now.month.toString().padLeft(2, '0')}';
-    return catalog.monthKey == month &&
-        catalog.expiresAt.isAfter(now) &&
-        catalog.expiresAt.toUtc() == DateTime.utc(now.year, now.month + 1);
-  }
+  bool _hasExpectedPack(AddonCatalogResult catalog) =>
+      catalog.hasNonExpiringPolicy &&
+      catalog.productId == AppConfig.storePostCaptionAddonProductId &&
+      catalog.postUnits == 100 &&
+      catalog.aiCaptions == 50 &&
+      catalog.priceThb == 49;
 
   Future<StoreProductInfo?> loadProduct(AddonCatalogResult catalog) async {
     _binding.ensureCurrent();
     if (!supportsPlatform) return null;
     if (!catalog.enabled ||
         !catalog.eligible ||
-        !_isThisMonth(catalog) ||
-        catalog.productId != AppConfig.storePostCaptionAddonProductId ||
+        !_hasExpectedPack(catalog) ||
         _gateway == null) {
       return null;
     }
@@ -164,12 +163,7 @@ class StoreAddonService {
     await _restorePending();
     if (_pendingRecord != null) throw const StoreAddonPendingException();
     final catalog = await loadCatalog();
-    if (!catalog.enabled ||
-        !catalog.eligible ||
-        !_isThisMonth(catalog) ||
-        catalog.postUnits != 100 ||
-        catalog.aiCaptions != 50 ||
-        catalog.priceThb != 49) {
+    if (!catalog.enabled || !catalog.eligible || !_hasExpectedPack(catalog)) {
       throw const StoreAddonException(
           'แพ็กเติมยังไม่พร้อมซื้อสำหรับบัญชีนี้ กรุณาตรวจสอบแพ็กเกจอีกครั้ง');
     }
@@ -179,16 +173,16 @@ class StoreAddonService {
       throw const StoreAddonException(
           'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้ กรุณาลองใหม่');
     }
-    if (!_isThisMonth(catalog)) {
-      throw const StoreAddonException(
-          'เริ่มเดือนใหม่แล้ว กรุณาโหลดแพ็กเติมอีกครั้ง');
-    }
     await (_preparePurchase ?? _api.prepareSubscriptionPurchase)()
         .timeout(requestTimeout);
     _binding.ensureCurrent();
-    if (!_isThisMonth(catalog)) {
+    final preparedCatalog = await loadCatalog();
+    if (!preparedCatalog.enabled ||
+        !preparedCatalog.eligible ||
+        !_hasExpectedPack(preparedCatalog) ||
+        preparedCatalog.productId != product.id) {
       throw const StoreAddonException(
-          'เริ่มเดือนใหม่แล้ว กรุณาโหลดแพ็กเติมอีกครั้ง');
+          'ระบบซื้อเครดิตยังไม่พร้อม กรุณาโหลดแพ็กเติมใหม่');
     }
     late final StoreAddonTransaction receipt;
     final intent = AddonPendingRecord(
@@ -211,7 +205,7 @@ class StoreAddonService {
         receipt = await (gateway as DurableAddonPurchaseGateway)
             .buyAddonWithSnapshot(product.id, (baseline) async {
           await _writePending(baseline: baseline.toList());
-          if (!_isThisMonth(catalog)) {
+          if (!_hasExpectedPack(preparedCatalog)) {
             throw const StoreAddonPurchaseNotStartedException();
           }
         });
@@ -236,7 +230,9 @@ class StoreAddonService {
       throw const StoreAddonPendingException();
     }
     _receipt = receipt;
-    await _writePending(transactionId: receipt.transactionId);
+    await _writePending(
+        transactionId: receipt.transactionId,
+        transactionIdKind: receipt.transactionIdKind);
     return _confirmReceipt();
   }
 
@@ -264,8 +260,12 @@ class StoreAddonService {
     final receipt = _receipt!;
     late final AddonConfirmationResult result;
     try {
-      result = await (_confirmPurchase ?? _api.confirmAddonPurchase)(
-              receipt.productId, receipt.transactionId)
+      final confirm = _confirmPurchase;
+      result = await (confirm != null
+              ? confirm(receipt.productId, receipt.transactionId)
+              : _api.confirmAddonPurchase(
+                  receipt.productId, receipt.transactionId,
+                  transactionIdKind: receipt.transactionIdKind))
           .timeout(requestTimeout);
     } on ApiException catch (error) {
       _binding.ensureCurrent();
@@ -279,9 +279,10 @@ class StoreAddonService {
     _binding.ensureCurrent();
     if (!result.confirmed ||
         result.transactionId != receipt.transactionId ||
+        result.transactionIdKind != receipt.transactionIdKind ||
         result.postUnits != 100 ||
         result.aiCaptions != 50 ||
-        result.expiresAt == null) {
+        !result.hasNonExpiringPolicy) {
       throw const StoreAddonPendingException();
     }
     return result;
@@ -313,7 +314,9 @@ class StoreAddonService {
     }
     _receipt = receipt;
     _unknownStoreResult = false;
-    await _writePending(transactionId: receipt.transactionId);
+    await _writePending(
+        transactionId: receipt.transactionId,
+        transactionIdKind: receipt.transactionIdKind);
     return _confirmReceipt();
   }
 
@@ -346,7 +349,8 @@ class StoreAddonService {
         if (record.transactionId != null) {
           _receipt = StoreAddonTransaction(
               productId: record.productId,
-              transactionId: record.transactionId!);
+              transactionId: record.transactionId!,
+              transactionIdKind: record.transactionIdKind);
         } else {
           _unknownStoreResult = true;
         }
@@ -359,13 +363,16 @@ class StoreAddonService {
   }
 
   Future<void> _writePending(
-      {String? transactionId, List<String>? baseline}) async {
+      {String? transactionId,
+      String? transactionIdKind,
+      List<String>? baseline}) async {
     _binding.ensureCurrent();
     final previous = _pendingRecord!;
     final record = AddonPendingRecord(
         productId: previous.productId,
         intentId: previous.intentId,
         transactionId: transactionId ?? previous.transactionId,
+        transactionIdKind: transactionIdKind ?? previous.transactionIdKind,
         baselineTransactionIds: baseline ?? previous.baselineTransactionIds);
     await _pendingStore.save(record);
     _binding.ensureCurrent();

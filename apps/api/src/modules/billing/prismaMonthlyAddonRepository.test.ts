@@ -14,15 +14,28 @@ const fixture = () => {
   return { tx, $transaction, store: createPrismaMonthlyAddonRepository({ prisma }) };
 };
 describe('Prisma monthly add-on ledger', () => {
-  it('reads valid grants from the same supplied transaction and UTC month', async () => {
+  it('retries an exhausted inner serialization race at the bounded purchase-ledger boundary', async () => {
+    const { store, tx, $transaction } = fixture();
+    $transaction.mockRejectedValueOnce({ code: 'P2034' }).mockRejectedValueOnce({ code: 'P2034' })
+      .mockRejectedValueOnce({ code: 'P2034' });
+    await expect(store.applyPurchase(input)).resolves.toMatchObject({ applied: true });
+    expect($transaction).toHaveBeenCalledTimes(4);
+    expect(tx.monthlyAddonPurchase.create).toHaveBeenCalledTimes(1);
+  });
+  it('keeps persistent serialization failures bounded without granting any credit', async () => {
+    const { store, tx, $transaction } = fixture(); $transaction.mockRejectedValue({ code: 'P2034' });
+    await expect(store.applyPurchase(input)).rejects.toMatchObject({ code: 'P2034' });
+    expect($transaction).toHaveBeenCalledTimes(9);
+    expect(tx.monthlyAddonPurchase.create).not.toHaveBeenCalled();
+  });
+  it('reads all-time valid grants from the same supplied transaction', async () => {
     const { tx } = fixture();
     expect(await readPrismaMonthlyAddonCredits(tx, 'owner', input.purchasedAt)).toEqual({ postUnits: 200, aiCaptions: 100 });
-    expect(tx.monthlyAddonPurchase.findMany).toHaveBeenCalledWith({ where: { userId: 'owner', revoked: false,
-      purchasedAt: { gte: new Date('2026-10-01T00:00:00.000Z'), lt: new Date('2026-11-01T00:00:00.000Z') } }, select: { id: true } });
+    expect(tx.monthlyAddonPurchase.findMany).toHaveBeenCalledWith({ where: { userId: 'owner', revoked: false }, select: { id: true } });
   });
   it('holds the durable owner lock in the same serializable transaction as granting', async () => {
     const { store, tx, $transaction } = fixture();
-    await expect(store.applyPurchase(input)).resolves.toMatchObject({ applied: true, expiresAt: '2026-11-01T00:00:00.000Z' });
+    await expect(store.applyPurchase(input)).resolves.toMatchObject({ applied: true, expiresAt: null });
     expect($transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable', maxWait: 5000, timeout: 10000 });
     expect(tx.managedUploadOwner.updateMany.mock.invocationCallOrder[0]).toBeLessThan(tx.monthlyAddonPurchase.create.mock.invocationCallOrder[0]!);
     expect(tx.monthlyAddonPurchase.create).toHaveBeenCalledWith({ data: { ...input, id: monthlyAddonPurchaseKey(input),

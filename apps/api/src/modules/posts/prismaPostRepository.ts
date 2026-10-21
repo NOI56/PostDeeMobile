@@ -44,9 +44,12 @@ type PrismaPost = {
   status: PrismaPostStatus;
   publishedAt: Date | null;
   createdAt: Date;
+  addonPostUnits?: number;
 };
 
 type PostDelegate = {
+  aggregate?: (args: { where: { userId: string }; _sum: { addonPostUnits: true } }) =>
+    Promise<{ _sum: { addonPostUnits: number | null } }>;
   count: (args: {
     where: { status: { in: PrismaPostStatus[] } };
   }) => Promise<number>;
@@ -59,7 +62,7 @@ type PostDelegate = {
       OR?: Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>;
     };
     orderBy?: { createdAt: 'desc' } | { scheduledAt: 'asc' };
-    select?: { createdAt: true; selectedPlatforms: true } | { id: true; selectedPlatforms: true };
+    select?: { createdAt: true; selectedPlatforms: true; addonPostUnits?: true } | { id: true; selectedPlatforms: true };
   }) => Promise<PrismaPost[]>;
   create: (args: {
     data: {
@@ -75,6 +78,7 @@ type PostDelegate = {
       platformTargets?: unknown;
       scheduledAt?: Date;
       status: 'QUEUED';
+      addonPostUnits?: number;
     };
   }) => Promise<PrismaPost>;
   update: (args: {
@@ -141,14 +145,16 @@ const mapPost = (post: PrismaPost): QueuedPost => {
     scheduledAt: post.scheduledAt?.toISOString(),
     status: toPostStatus(post.status),
     publishedAt: post.publishedAt?.toISOString(),
-    createdAt: post.createdAt.toISOString()
+    createdAt: post.createdAt.toISOString(),
+    ...(post.addonPostUnits ? { addonPostUnits: post.addonPostUnits } : {})
   };
 };
 
 const createPost = async (
   postDelegate: PostDelegate,
   input: CreatePostInput,
-  id?: string
+  id?: string,
+  addonPostUnits = 0
 ) => {
   const post = await postDelegate.create({
     data: {
@@ -181,7 +187,8 @@ const createPost = async (
           }
         : {}),
       scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
-      status: 'QUEUED' as const
+      status: 'QUEUED' as const,
+      ...(addonPostUnits > 0 ? { addonPostUnits } : {})
     }
   });
 
@@ -204,15 +211,21 @@ const countMonthlyUnits = async (
   const { start, end } = readUtcMonthBounds(new Date(now));
   const posts = await postDelegate.findMany({
     where: { userId, createdAt: { gte: start, lt: end } },
-    select: { createdAt: true, selectedPlatforms: true }
+    select: { createdAt: true, selectedPlatforms: true, addonPostUnits: true }
   });
   return countCurrentMonthPostUnits(
     posts.map((post) => ({
       createdAt: post.createdAt.toISOString(),
-      platforms: post.selectedPlatforms
+      platforms: post.selectedPlatforms,
+      addonPostUnits: post.addonPostUnits ?? 0
     })),
     new Date(now)
   );
+};
+
+const countAddonUnits = async (post: PostDelegate, userId: string) => {
+  if (!post.aggregate) throw new Error('Post addon allocation aggregate is required');
+  return (await post.aggregate({ where: { userId }, _sum: { addonPostUnits: true } }))._sum.addonPostUnits ?? 0;
 };
 
 const createWithinMonthlyLimit = async (
@@ -259,8 +272,9 @@ const createWithinMonthlyLimit = async (
             )).postUnits;
           }
           const usedPostUnits = await countMonthlyUnits(transaction.post, input);
-
-          if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit + addonPostUnits) {
+          const usedAddonUnits = input.includeMonthlyAddons ? await countAddonUnits(transaction.post, input.userId) : 0;
+          const neededAddonUnits = Math.max(0, input.platforms.length - Math.max(0, input.monthlyPostUnitLimit - usedPostUnits));
+          if (neededAddonUnits > Math.max(0, addonPostUnits - usedAddonUnits)) {
             return { ok: false as const };
           }
 
@@ -274,7 +288,8 @@ const createWithinMonthlyLimit = async (
                     userId: input.userId,
                     clientRequestId: input.clientRequestId
                   })
-                : undefined
+                : undefined,
+              neededAddonUnits
             ),
             created: true
           };
@@ -321,6 +336,7 @@ export const createPrismaPostRepository = ({
       }
     }),
   countMonthlyPostUnits: async (input) => countMonthlyUnits(prisma.post, input),
+  countAddonPostUnits: async ({ userId }) => countAddonUnits(prisma.post, userId),
   list: async (filter) => {
     const scheduledOnly = filter?.scheduledOnly ?? false;
     const posts = await prisma.post.findMany({

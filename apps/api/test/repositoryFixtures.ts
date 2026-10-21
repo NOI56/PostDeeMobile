@@ -4,6 +4,7 @@ import type { createApp } from '../src/app.js';
 import type { PrismaPostClient } from '../src/modules/posts/prismaPostRepository.js';
 import type { PrismaSubscriptionClient } from '../src/modules/subscriptions/prismaSubscriptionRepository.js';
 import { withOwnerLifecycleFixture } from './ownerLifecycleFixture.js';
+import type { PrismaMonthlyAddonReadTransaction } from '../src/modules/billing/prismaMonthlyAddonRepository.js';
 
 const unexpectedDelegateCall = async (method: string): Promise<never> => {
   throw new Error(`Unexpected repository fixture call: ${method}`);
@@ -49,12 +50,14 @@ export const withAppPrismaFixture = <T extends {
   post: Partial<AppPrismaClient['post']>;
   user: Partial<AppPrismaClient['user']>;
   template: Partial<AppPrismaClient['template']>;
+  monthlyAddonPurchase?: Partial<PrismaMonthlyAddonReadTransaction['monthlyAddonPurchase']>;
 }>(prisma: T) => {
   const fail = () => unexpectedDelegateCall('unarranged app delegate');
   return withOwnerLifecycleFixture({
     ...prisma,
     post: {
       count: vi.fn<AppPrismaClient['post']['count']>(fail),
+      aggregate: vi.fn<NonNullable<AppPrismaClient['post']['aggregate']>>().mockResolvedValue({ _sum: { addonPostUnits: 0 } }),
       findMany: vi.fn<AppPrismaClient['post']['findMany']>(fail),
       create: vi.fn<AppPrismaClient['post']['create']>(fail),
       update: vi.fn<AppPrismaClient['post']['update']>(fail),
@@ -83,8 +86,15 @@ export const withAppPrismaFixture = <T extends {
     },
     platformPublish: { findMany: vi.fn<AppPrismaClient['platformPublish']['findMany']>(fail) },
     realClipCaptionUsage: {
-      count: vi.fn<AppPrismaClient['realClipCaptionUsage']['count']>(fail),
+      count: vi.fn<AppPrismaClient['realClipCaptionUsage']['count']>(async args =>
+        args.where.usesAddonCredit === true ? 0 : fail()),
       create: vi.fn<AppPrismaClient['realClipCaptionUsage']['create']>(fail)
+    },
+    monthlyAddonPurchase: {
+      // Existing fixtures have no purchased credits unless a test supplies its
+      // own ledger. All other unarranged repository operations stay strict.
+      findMany: vi.fn().mockResolvedValue([]),
+      ...prisma.monthlyAddonPurchase
     },
     aiEditUsage: {
       aggregate: vi.fn<AppPrismaClient['aiEditUsage']['aggregate']>(fail),

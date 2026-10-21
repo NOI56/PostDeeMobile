@@ -2958,45 +2958,87 @@ An unsupported range returns `400 INVALID_ANALYTICS_RANGE`.
 
 ## Billing And Subscriptions
 
-### Monthly post/caption add-on
+### Non-expiring post/caption credits
 
 The catalog product `postdee_post100_caption50` represents one repeatable
 consumable purchase at a target price of 49 THB: 100 post units and 50 real-clip
 caption generations. Quantities come from the server catalog, never the client.
 Only effective Starter/Pro members can buy/use it; no subscription or tier
-feature is changed. Credits expire at the next UTC calendar-month boundary,
-matching existing quota resets. One video sent to two destinations uses two
-units. Refunds revoke that transaction's grant without removing existing posts
-or usage records.
+feature is changed. Purchased credits never expire. Included monthly quota is
+consumed first; only the excess is allocated to purchased credits. One video
+sent to two destinations uses two units and may split its allocation between
+monthly quota and purchased credits. Basic retains purchased balances but
+cannot spend them until Starter/Pro becomes effective again. Refunds revoke
+that transaction's grant without removing existing posts or usage records.
+Previously spent purchased credits remain charged internally after a refund;
+future purchases cover any resulting deficit before more purchased credits
+become available. Monthly included quota remains usable during that deficit.
 
-This expiring-credit add-on is initially Android only. Purchase grants accept
-Play Store and the isolated RevenueCat Test Store, with the configured
-environment restriction. iPhone checkout and App Store purchase grants stay
-disabled; existing Apple Starter/Pro subscription paths are unchanged.
+Native Android and iPhone use the same policy. Purchase grants accept Play
+Store, App Store and the isolated RevenueCat Test Store, restricted to the
+configured environment. Existing Starter/Pro subscription paths are unchanged.
 
 Authenticated `GET /billing/addons` returns the catalog and readiness fields:
 `enabled`, `eligible`, `productId`, `postUnits`, `aiCaptions`, `priceThb`,
-`monthKey`, `expiresAt`, and `purchasedPacks`. Mobile must obtain compatible
-readiness and a matching non-subscription store product before checkout.
-`BILLING_ADDONS_ENABLED` defaults to false.
+`policyVersion: 2`, `creditsExpire: false`, `expiresAt: null`, `purchasedPacks`,
+`addonPostUnits` and `addonAiCaptions`. Pack quantities remain 100/50;
+`purchasedPacks` counts valid lifetime grants, while the two `addon*` fields
+report unspent purchased balances, clamped to zero for display. There is no
+purchase-month binding. Mobile requires policy version 2, explicit non-expiry,
+canonical purchase readiness and a matching non-subscription store product
+before checkout. `BILLING_ADDONS_ENABLED` defaults to false and controls new
+sales only; balances remain available to effective paid members when it is off.
 
 Authenticated `POST /billing/addons/confirm` accepts only the intended
 `productId` and `transactionId` as purchase selectors. The server derives the
 owner from authentication, verifies the exact transaction using RevenueCat,
 and grants idempotently. HTTP 200 with `confirmed: true` confirms fulfillment;
-HTTP 202 with `confirmed: false` remains pending. A pending response is not a
+HTTP 202 with `confirmed: false` remains pending. Both responses identify
+`policyVersion: 2`, `creditsExpire: false` and `expiresAt: null`. A pending response is not a
 new purchase instruction. Webhook retries and confirmation cannot double grant.
 Consumable purchase/refund events are handled separately from Starter/Pro
 subscription lifecycle events.
 
-When add-ons are enabled, subscription snapshots add `baseMonthlyPostLimit`,
-`addonPostUnits`, `addonAiCaptions` and `addonExpiresAt`; `monthlyPostLimit`
-includes the valid month's post add-ons. Existing used counts include all
-accepted usage and never reset when a purchase arrives. Caption quota limits
-likewise include valid caption add-ons. Older clients can keep using existing
-fields; the new client blocks add-on checkout on an old/unsupported server.
-Deploy the additive database migration and API before distributing Mobile or
-enabling purchases. See `2026-10-21-post-caption-addon.md` for release limits.
+The optional request `transactionIdKind` is `STORE` (default for legacy callers)
+or `REVENUECAT`. The immediate SDK purchase result uses `STORE`; SDK Customer
+Info history uses `REVENUECAT`, and mobile persists that namespace with a
+recovered receipt. The server resolves only the selected namespace through
+authenticated RevenueCat data. A grant always uses the canonical
+store/environment/transaction ledger identity. `STORE` can read an existing
+canonical ledger confirmation directly; an internal history selector never
+uses that shortcut, even if its text collides with a canonical ID.
+When RevenueCat omits the canonical store ID for a history selector, return
+`202 pending` without creating a grant or guessing a ledger match. Purchase
+timestamps, quantities and balances cannot prove transaction identity; even a
+unique metadata match is unsafe while provider histories are eventually
+consistent. Exact mapped refunds remain revoked. The response echoes the
+requested selector and namespace. Mobile requires both to match the durable
+receipt before clearing it; a legacy missing namespace means `STORE`, so a
+recovered `REVENUECAT` receipt requires an explicit matching acknowledgement.
+The intent can settle when authoritative proof exists, without another checkout. Native history recovery with
+missing canonical IDs is an explicit release gate; keep new sales disabled
+until the exact store/environment supplies and passes this mapping path.
+
+Subscription snapshots keep `monthlyPostLimit`, `usedPostsThisMonth` and
+`remainingPostsThisMonth` scoped to included monthly quota. They also return
+`baseMonthlyPostLimit`, remaining purchased `addonPostUnits`/`addonAiCaptions`,
+`addonExpiresAt: null`, `addonCreditsExpire: false`, and `availablePostUnits`.
+The latter is included monthly remaining plus usable purchased post credits;
+Basic receives only its included remaining in that total. Stored purchased
+balances are reported even for Basic or when new sales are disabled.
+Caption `quota.limit`, `usedThisMonth` and `remainingThisMonth` likewise describe
+included monthly usage; `addonRemaining` and `availableGenerations` expose the
+separate purchased balance and usable total. Atomic reservations persist the
+allocation source so release/rollback restores the correct balance even after
+a monthly reset. Plan changes do not retroactively move earlier allocations.
+
+The former monthly add-on was never released. Its older client rejects the new
+null expiry before checkout; the new client rejects the old monthly policy
+before checkout and retains any pending receipt when confirmation is not
+compatible. Deploy both additive database migrations and the version-2 API
+before distributing Mobile or enabling purchases. See
+`2026-10-21-nonexpiring-post-caption-credits.md` for release limits and historical
+allocation/backfill prerequisites.
 
 ### `POST /billing/purchase-readiness`
 
@@ -3503,7 +3545,7 @@ PostgreSQL.
 | `REVENUECAT_PRO_ENTITLEMENT_ID` | `pro` | RevenueCat entitlement mapped to Pro |
 | `REVENUECAT_STARTER_PRODUCT_ID` | `postdee_starter_monthly` | RevenueCat product mapped to Starter |
 | `REVENUECAT_PRO_PRODUCT_ID` | `postdee_pro_monthly` | RevenueCat product mapped to Pro |
-| `BILLING_ADDONS_ENABLED` | `false` | Explicitly enables the post/caption consumable catalog and quota grants after rollout verification |
+| `BILLING_ADDONS_ENABLED` | `false` | Enables new post/caption consumable sales after rollout verification; existing purchased balances remain usable by paid members |
 | `REVENUECAT_ADDON_PRODUCT_ID` | `postdee_post100_caption50` | Consumable SKU, distinct from all Starter/Pro product identifiers |
 | `REVENUECAT_ADDON_ENVIRONMENT` | `PRODUCTION` | Accept only the configured `PRODUCTION` or isolated `SANDBOX` purchase environment |
 | `STORE_STARTER_MONTHLY_PRODUCT_ID` | `postdee_starter_monthly` | Starter store product id |

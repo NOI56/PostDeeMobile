@@ -1,5 +1,12 @@
 # Post/caption add-on, 2026-10-21
 
+Historical implementation record: the monthly-expiry/Android-only policy below
+was superseded by the user's explicit approval of non-expiring purchased
+credits, monthly quota first, on Android and iPhone. See
+[the replacement design and verification record](2026-10-21-nonexpiring-post-caption-credits.md).
+This original implementation was not merged, deployed or sold; its verification
+results describe APK12032 and do not verify the replacement design.
+
 Status: implementation and local verification complete; real store acceptance
 and rollout remain pending. No live product, payment, environment, hosted
 database, deployment or installed app has been changed. APK12032 is built and

@@ -566,6 +566,7 @@ export const createApp = (options: AppOptions = {}) => {
     createRealClipCaptionUsageStoreFromConfig({
       config,
       monthlyAddonStore,
+      runWithActiveOwner,
       prisma: prismaClient as unknown as PrismaRealClipCaptionUsageClient | undefined
     });
   const videoStorage =
@@ -770,6 +771,7 @@ export const createApp = (options: AppOptions = {}) => {
       config,
       monthlyAddonStore,
       billingAddonsEnabled: config.billingAddonsEnabled,
+      realClipCaptionUsageStore,
       storePurchaseVerifier: options.storePurchaseVerifier,
       now: options.now,
       appleSignedNotificationDecoder: options.appleSignedNotificationDecoder
@@ -798,7 +800,7 @@ export const createApp = (options: AppOptions = {}) => {
     monthlyAddonStore
   });
   registerAddonRoutes({ router, authMiddleware: accountAwareAuthMiddleware, config, userStore,
-    subscriptionStore, monthlyAddonStore, now: options.now,
+    subscriptionStore, monthlyAddonStore, postStore, captionUsageStore: realClipCaptionUsageStore, now: options.now,
     purchaseClient: options.revenueCatAddonPurchaseClient ?? createRevenueCatAddonPurchaseClient({ apiKey: config.revenueCatRestApiV1Key }) });
   const deviceTokenStore = createDeviceTokenStore({
     prisma: prismaClient

@@ -152,9 +152,11 @@ abstract class RevenueCatBillingGateway {
 }
 
 class StoreAddonTransaction {
-  const StoreAddonTransaction({required this.productId, required this.transactionId});
+  const StoreAddonTransaction({required this.productId, required this.transactionId,
+    this.transactionIdKind = 'STORE'});
   final String productId;
   final String transactionId;
+  final String transactionIdKind;
 }
 
 class StoreAddonStorePendingException extends StoreSubscriptionException {
@@ -1130,7 +1132,7 @@ class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsu
   Future<StoreAddonTransaction> purchaseConsumable(purchases.StoreProduct product) async {
     final result = await purchases.Purchases.purchase(purchases.PurchaseParams.storeProduct(product));
     return StoreAddonTransaction(productId: result.storeTransaction.productIdentifier,
-      transactionId: result.storeTransaction.transactionIdentifier);
+      transactionId: result.storeTransaction.transactionIdentifier, transactionIdKind: 'STORE');
   }
 
   @override
@@ -1138,7 +1140,8 @@ class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsu
     await purchases.Purchases.invalidateCustomerInfoCache();
     final customer = await purchases.Purchases.getCustomerInfo();
     return customer.nonSubscriptionTransactions.map((transaction) => StoreAddonTransaction(
-      productId: transaction.productIdentifier, transactionId: transaction.transactionIdentifier)).toList();
+      productId: transaction.productIdentifier, transactionId: transaction.transactionIdentifier,
+      transactionIdKind: 'REVENUECAT')).toList();
   }
 }
 
@@ -1249,9 +1252,8 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway, Sto
   }
 
   void _ensureAddonPlatformSupported() {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      throw StoreAddonPurchaseNotStartedException(defaultTargetPlatform == TargetPlatform.iOS
-        ? 'แพ็กเติมนี้ยังไม่รองรับบน iPhone' : 'แพ็กเติมนี้รองรับบน Android เท่านั้น');
+    if (kIsWeb || (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) {
+      throw const StoreAddonPurchaseNotStartedException('แพ็กเติมนี้รองรับบน Android และ iPhone เท่านั้น');
     }
   }
 

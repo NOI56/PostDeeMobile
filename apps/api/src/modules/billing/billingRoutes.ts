@@ -28,7 +28,8 @@ import {
   registerStoreNotificationRoutes
 } from './storeNotificationRoutes.js';
 import { createStoreNotificationSubscriptionHandler } from './storeNotificationSubscriptionHandler.js';
-import { readMonthlyAddonWindow, type MonthlyAddonStore } from './monthlyAddonStore.js';
+import type { MonthlyAddonStore } from './monthlyAddonStore.js';
+import type { RealClipCaptionUsageStore } from '../captions/captionUsageStore.js';
 
 const buildSubscriptionStatus = ({
   userId,
@@ -41,10 +42,10 @@ const buildSubscriptionStatus = ({
   plan: SubscriptionPlan;
   phoneVerified: boolean;
   usedPostsThisMonth: number;
-  addonCredits?: { postUnits: number; aiCaptions: number; expiresAt?: string };
+  addonCredits: { postUnits: number; aiCaptions: number };
 }) => {
   const baseMonthlyPostLimit = monthlyPostUnitLimits[plan];
-  const monthlyPostLimit = baseMonthlyPostLimit + (addonCredits?.postUnits ?? 0);
+  const monthlyPostLimit = baseMonthlyPostLimit;
   const requiresPhoneVerification = plan === 'BASIC' && !phoneVerified;
   const canUseFreePostQuota = plan === 'BASIC' && phoneVerified;
   const remainingPostsThisMonth =
@@ -57,12 +58,12 @@ const buildSubscriptionStatus = ({
     plan,
     status: plan === 'BASIC' ? 'INACTIVE' : 'ACTIVE',
     monthlyPostLimit,
-    ...(addonCredits ? {
-      baseMonthlyPostLimit,
-      addonPostUnits: addonCredits.postUnits,
-      addonAiCaptions: addonCredits.aiCaptions,
-      ...(addonCredits.expiresAt ? { addonExpiresAt: addonCredits.expiresAt } : {})
-    } : {}),
+    baseMonthlyPostLimit,
+    addonPostUnits: addonCredits.postUnits,
+    addonAiCaptions: addonCredits.aiCaptions,
+    addonExpiresAt: null,
+    addonCreditsExpire: false,
+    availablePostUnits: remainingPostsThisMonth + (plan !== 'BASIC' ? addonCredits.postUnits : 0),
     usedPostsThisMonth,
     remainingPostsThisMonth,
     phoneVerified,
@@ -249,6 +250,7 @@ export const registerBillingRoutes = (
     storePurchaseVerifier?: StorePurchaseVerifier;
     appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
     monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>;
+    realClipCaptionUsageStore?: Pick<RealClipCaptionUsageStore, 'countAddonUsages'>;
     billingAddonsEnabled?: boolean;
     now?: () => Date;
   } = {}
@@ -295,9 +297,11 @@ export const registerBillingRoutes = (
       now
     });
     const purchasedPlan = subscriptionStore.getPurchasedPlan ? await subscriptionStore.getPurchasedPlan(authUser) : plan;
-    const addonCredits = options.billingAddonsEnabled && plan !== 'BASIC'
-      ? await options.monthlyAddonStore?.readCredits({ userId: authUser.id, now })
-      : undefined;
+    const [addonGrants, usedAddonPostUnits, usedAddonAiCaptions] = await Promise.all([
+      options.monthlyAddonStore?.readCredits({ userId: authUser.id, now }),
+      postStore.countAddonPostUnits({ userId: authUser.id }),
+      options.realClipCaptionUsageStore?.countAddonUsages({ userId: authUser.id }) ?? 0
+    ]);
 
     response.json({
       status: 'ok',
@@ -306,12 +310,10 @@ export const registerBillingRoutes = (
         plan,
         phoneVerified: authUser.phoneVerified === true,
         usedPostsThisMonth,
-        ...(options.billingAddonsEnabled ? { addonCredits: {
-          postUnits: addonCredits?.postUnits ?? 0,
-          aiCaptions: addonCredits?.aiCaptions ?? 0,
-          ...(addonCredits && (addonCredits.postUnits > 0 || addonCredits.aiCaptions > 0)
-            ? { expiresAt: readMonthlyAddonWindow(now).expiresAt } : {})
-        } } : {})
+        addonCredits: {
+          postUnits: Math.max(0, (addonGrants?.postUnits ?? 0) - usedAddonPostUnits),
+          aiCaptions: Math.max(0, (addonGrants?.aiCaptions ?? 0) - usedAddonAiCaptions)
+        }
       }), ...(subscriptionStore.getPurchasedPlan ? { purchasedPlan } : {}) }
     });
   });

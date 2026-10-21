@@ -96,7 +96,9 @@ const sendQuotaReachedResponse = ({
     quota: {
       limit,
       usedThisMonth,
-      remainingThisMonth: 0
+      remainingThisMonth: 0,
+      addonRemaining: 0,
+      availableGenerations: 0
     }
   });
 };
@@ -119,7 +121,9 @@ const sendKeywordCaptionQuotaReachedResponse = ({
     quota: {
       limit,
       usedThisMonth,
-      remainingThisMonth: 0
+      remainingThisMonth: 0,
+      addonRemaining: 0,
+      availableGenerations: 0
     }
   });
 };
@@ -160,6 +164,17 @@ export const registerCaptionRoutes = (
   userStore?: UserStore,
   options: { monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>; billingAddonsEnabled?: boolean; now?: () => Date } = {}
 ) => {
+  const readAddonRemaining = async (userId: string, now: string) => {
+    const [grants, used] = await Promise.all([
+      options.monthlyAddonStore?.readCredits({ userId, now }),
+      realClipCaptionUsageStore.countAddonUsages({ userId })
+    ]);
+    return Math.max(0, (grants?.aiCaptions ?? 0) - used);
+  };
+  const readFinalAddonRemaining = async (userId: string, now: string, fallback: number) => {
+    try { return await readAddonRemaining(userId, now); }
+    catch { return Math.max(0, fallback); }
+  };
   router.post('/captions/generate', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
 
@@ -195,10 +210,9 @@ export const registerCaptionRoutes = (
     const now = (options.now?.() ?? new Date()).toISOString();
     const monthKey = readCurrentRealClipCaptionMonthKey(new Date(now));
     const baseLimit = monthlyAiCaptionGenerationLimits[plan];
-    const includeMonthlyAddons = options.billingAddonsEnabled;
-    const addonCredits = includeMonthlyAddons
-      ? await options.monthlyAddonStore?.readCredits({ userId: authUser.id, now }) : undefined;
-    const limit = baseLimit + (addonCredits?.aiCaptions ?? 0);
+    const includeMonthlyAddons = true;
+    const addonRemaining = await readAddonRemaining(authUser.id, now);
+    const limit = baseLimit;
     await userStore?.ensure(authUser);
     const reservation = await realClipCaptionUsageStore.reserve({
       userId: authUser.id,
@@ -240,6 +254,8 @@ export const registerCaptionRoutes = (
 
     const finalUsage = await readUsageAfterFallback(realClipCaptionUsageStore,
       { userId: authUser.id, monthKey }, releasedFallbackUsage, reservation.usedThisMonth);
+    const finalAddonRemaining = await readFinalAddonRemaining(authUser.id, now,
+      addonRemaining - (reservation.record.usesAddonCredit && !releasedFallbackUsage ? 1 : 0));
     response.json({
       status: 'ok',
       ...caption,
@@ -248,6 +264,8 @@ export const registerCaptionRoutes = (
         limit,
         ...finalUsage,
         remainingThisMonth: Math.max(limit - finalUsage.usedThisMonth, 0),
+        addonRemaining: finalAddonRemaining,
+        availableGenerations: Math.max(limit - finalUsage.usedThisMonth, 0) + finalAddonRemaining,
         ...(isFallback ? { charged: !releasedFallbackUsage } : {})
       }
     });
@@ -334,16 +352,15 @@ export const registerCaptionRoutes = (
     const now = (options.now?.() ?? new Date()).toISOString();
     const monthKey = readCurrentRealClipCaptionMonthKey(new Date(now));
     const baseLimit = monthlyAiCaptionGenerationLimits[plan];
-    const includeMonthlyAddons = options.billingAddonsEnabled;
-    const addonCredits = includeMonthlyAddons
-      ? await options.monthlyAddonStore?.readCredits({ userId: authUser.id, now }) : undefined;
-    const limit = baseLimit + (addonCredits?.aiCaptions ?? 0);
+    const includeMonthlyAddons = true;
+    const addonRemaining = await readAddonRemaining(authUser.id, now);
+    const limit = baseLimit;
     const usedThisMonth = await realClipCaptionUsageStore.countForMonth({
       userId: authUser.id,
       monthKey
     });
 
-    if (usedThisMonth >= limit) {
+    if (usedThisMonth >= limit && addonRemaining === 0) {
       await cleanupRequestedMedia();
       sendQuotaReachedResponse({
         response,
@@ -482,6 +499,8 @@ export const registerCaptionRoutes = (
     const finalUsage = await readUsageAfterFallback(realClipCaptionUsageStore,
       { userId: authUser.id, monthKey }, releasedFallbackUsage,
       reservation?.usedThisMonth ?? usedThisMonth);
+    const finalAddonRemaining = await readFinalAddonRemaining(authUser.id, now,
+      addonRemaining - (reservation?.ok && reservation.record.usesAddonCredit && !releasedFallbackUsage ? 1 : 0));
     response.json({
       status: 'ok',
       ...caption,
@@ -490,6 +509,8 @@ export const registerCaptionRoutes = (
         limit,
         ...finalUsage,
         remainingThisMonth: Math.max(limit - finalUsage.usedThisMonth, 0),
+        addonRemaining: finalAddonRemaining,
+        availableGenerations: Math.max(limit - finalUsage.usedThisMonth, 0) + finalAddonRemaining,
         ...(isFallback ? { charged: !releasedFallbackUsage } : {})
       }
     });

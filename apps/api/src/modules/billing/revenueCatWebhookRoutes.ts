@@ -204,8 +204,8 @@ export const registerRevenueCatWebhookRoutes = ({
       // RevenueCat non-subscription cancellations represent refund/revocation,
       // not subscription auto-renewal cancellation. Keep them sticky.
       const isRevoke = event.type === 'CANCELLATION' || event.type === 'REFUND';
-      if ((!config.billingAddonsEnabled && !isRevoke) || !monthlyAddonStore || (!isPurchase && !isRevoke)) {
-        response.status(202).json({ status: 'ok', ignored: true, code: 'BILLING_ADDONS_DISABLED' }); return;
+      if (!monthlyAddonStore || (!isPurchase && !isRevoke)) {
+        response.status(202).json({ status: 'ok', ignored: true, code: 'REVENUECAT_EVENT_NOT_ACTIONABLE' }); return;
       }
       const store = normalizeRevenueCatAddonStore(raw.store);
       const transactionId = readString(raw.transaction_id);

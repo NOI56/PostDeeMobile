@@ -15,16 +15,22 @@ final _now = DateTime.utc(2026, 10, 21);
 AddonCatalogResult _catalog(
         {bool enabled = true,
         bool eligible = true,
-        String month = '2026-10'}) =>
+        int policyVersion = 2,
+        bool creditsExpire = false,
+        DateTime? expiresAt,
+        int postUnits = 100,
+        int aiCaptions = 50,
+        int priceThb = 49}) =>
     AddonCatalogResult(
         enabled: enabled,
         eligible: eligible,
         productId: _sku,
-        postUnits: 100,
-        aiCaptions: 50,
-        priceThb: 49,
-        monthKey: month,
-        expiresAt: DateTime.utc(2026, 11),
+        postUnits: postUnits,
+        aiCaptions: aiCaptions,
+        priceThb: priceThb,
+        policyVersion: policyVersion,
+        creditsExpire: creditsExpire,
+        expiresAt: expiresAt,
         purchasedPacks: 0);
 AddonConfirmationResult _confirmation(String id, {bool confirmed = true}) =>
     AddonConfirmationResult(
@@ -32,7 +38,9 @@ AddonConfirmationResult _confirmation(String id, {bool confirmed = true}) =>
         transactionId: id,
         postUnits: 100,
         aiCaptions: 50,
-        expiresAt: DateTime.utc(2026, 11));
+        policyVersion: 2,
+        creditsExpire: false,
+        expiresAt: null);
 
 void main() {
   late PostDeeAuthSessionStore session;
@@ -56,29 +64,31 @@ void main() {
           pendingStore: InMemoryAddonPendingStore(),
           operationTimeout: timeout);
 
-  test('iPhone cannot start add-on checkout or recover a stored transaction',
+  test(
+      'iPhone supports nonexpiring consumable checkout and confirms the transaction',
       () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final billing = service();
-    expect(billing.supportsPlatform, isFalse);
-    expect(await billing.loadProduct(_catalog()), isNull);
-    await expectLater(billing.purchase(),
-        throwsA(isA<StoreAddonPurchaseNotStartedException>()));
-    await expectLater(billing.retryPendingPurchase(),
-        throwsA(isA<StoreAddonPurchaseNotStartedException>()));
-    expect(gateway.buyCalls, 0);
+    expect(billing.supportsPlatform, isTrue);
+    expect(await billing.loadProduct(_catalog()), isNotNull);
+    expect((await billing.purchase()).transactionId, 'txn-1');
+    expect(gateway.buyCalls, 1);
   });
 
-  test('disabled API, Basic, stale month and missing SKU never charge',
+  test(
+      'disabled API, Basic, incompatible credit policy and missing SKU never charge',
       () async {
     for (final catalog in [
       _catalog(enabled: false),
       _catalog(eligible: false),
-      _catalog(month: '2026-09')
+      _catalog(policyVersion: 1),
+      _catalog(creditsExpire: true),
+      _catalog(expiresAt: DateTime.utc(2026, 11)),
     ]) {
       await expectLater(service(catalog: () async => catalog).purchase(),
           throwsA(isA<StoreAddonException>()));
+      expect(gateway.productQueries, 0);
     }
     gateway.products = [];
     await expectLater(
@@ -165,6 +175,116 @@ void main() {
     await expectLater(
         billing.purchase(), throwsA(isA<StoreAddonPendingException>()));
     expect(billing.hasPendingPurchase, isTrue);
+  });
+
+  test(
+      'a RevenueCat receipt requires an explicit matching confirmation namespace before clearing pending',
+      () async {
+    final pending = InMemoryAddonPendingStore(
+        initialRecord: AddonPendingRecord(
+            productId: _sku,
+            intentId: 'namespace-boundary',
+            transactionId: 'same-id',
+            transactionIdKind: 'REVENUECAT'));
+    var checks = 0;
+    final billing = StoreAddonService(
+        sessionStore: session,
+        gateway: gateway,
+        pendingStore: pending,
+        confirmPurchase: (_, id) async {
+          checks++;
+          if (checks == 1) {
+            return AddonConfirmationResult.fromJson({
+              'status': 'ok',
+              'confirmed': true,
+              'transactionId': id,
+              'postUnits': 100,
+              'aiCaptions': 50,
+              'policyVersion': 2,
+              'creditsExpire': false,
+              'expiresAt': null
+            });
+          }
+          return AddonConfirmationResult(
+              confirmed: true,
+              transactionId: id,
+              transactionIdKind: checks == 2 ? 'STORE' : 'REVENUECAT',
+              postUnits: 100,
+              aiCaptions: 50,
+              policyVersion: 2,
+              creditsExpire: false,
+              expiresAt: null);
+        });
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await expectLater(billing.retryPendingPurchase(),
+          throwsA(isA<StoreAddonPendingException>()));
+      expect(billing.hasPendingPurchase, isTrue);
+      expect((await pending.load())!.transactionIdKind, 'REVENUECAT');
+      await expectLater(
+          billing.purchase(), throwsA(isA<StoreAddonPendingException>()));
+      expect(gateway.buyCalls, 0);
+    }
+    final result = await billing.retryPendingPurchase();
+    expect(result.transactionId, 'same-id');
+    expect(result.transactionIdKind, 'REVENUECAT');
+    expect(await pending.load(), isNull);
+    expect(billing.hasPendingPurchase, isFalse);
+    expect(gateway.buyCalls, 0);
+  });
+
+  test(
+      'an old expiring confirmation retains its receipt until V2 confirms without repurchasing',
+      () async {
+    var attempts = 0;
+    final billing = service(
+        confirm: (_, id) async => ++attempts == 1
+            ? AddonConfirmationResult(
+                confirmed: true,
+                transactionId: id,
+                postUnits: 100,
+                aiCaptions: 50,
+                policyVersion: 1,
+                creditsExpire: true,
+                expiresAt: DateTime.utc(2026, 11))
+            : _confirmation(id));
+    await expectLater(
+        billing.purchase(), throwsA(isA<StoreAddonPendingException>()));
+    expect(billing.hasPendingPurchase, isTrue);
+    expect((await billing.retryPendingPurchase()).hasNonExpiringPolicy, isTrue);
+    expect(gateway.buyCalls, 1);
+  });
+
+  test('nonexpiring credit purchase is not tied to the current month',
+      () async {
+    final billing = StoreAddonService(
+        sessionStore: session,
+        gateway: gateway,
+        now: () => DateTime.utc(2028, 3, 1),
+        pendingStore: InMemoryAddonPendingStore(),
+        loadCatalog: () async => _catalog(),
+        preparePurchase: () async {},
+        confirmPurchase: (_, id) async => _confirmation(id));
+    expect((await billing.purchase()).expiresAt, isNull);
+    expect(gateway.buyCalls, 1);
+  });
+
+  test(
+      'changed quantities or price after owner preparation prevent the store checkout',
+      () async {
+    for (final changed in [
+      _catalog(postUnits: 99),
+      _catalog(aiCaptions: 49),
+      _catalog(priceThb: 50)
+    ]) {
+      var reads = 0;
+      final billing =
+          service(catalog: () async => ++reads == 1 ? _catalog() : changed);
+      await expectLater(
+          billing.purchase(), throwsA(isA<StoreAddonException>()));
+      expect(reads, 2);
+      expect(gateway.buyCalls, 0);
+      expect(billing.hasPendingPurchase, isFalse);
+    }
   });
 
   test(
@@ -358,6 +478,7 @@ class _Gateway
         PendingAddonPurchaseReconciler,
         DurableAddonPurchaseGateway {
   var buyCalls = 0;
+  var productQueries = 0;
   List<StoreProductInfo> products = [_product];
   Future<StoreAddonTransaction>? purchaseResult;
   Object? buyError;
@@ -365,8 +486,11 @@ class _Gateway
   @override
   Future<bool> isAvailable() async => true;
   @override
-  Future<List<StoreProductInfo>> queryAddonProducts(Set<String> ids) async =>
-      products;
+  Future<List<StoreProductInfo>> queryAddonProducts(Set<String> ids) async {
+    productQueries++;
+    return products;
+  }
+
   @override
   Future<StoreAddonTransaction> buyAddon(String id) async {
     buyCalls++;

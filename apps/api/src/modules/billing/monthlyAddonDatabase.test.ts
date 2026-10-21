@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
-import { afterAll, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { createApp } from '../../app.js';
+import { readServerConfig } from '../../config/env.js';
 import { createPrismaMonthlyAddonRepository, type PrismaMonthlyAddonClient } from './prismaMonthlyAddonRepository.js';
 import { monthlyAddonOwnerHash, monthlyAddonPurchaseKey } from './monthlyAddonStore.js';
 
@@ -35,10 +38,32 @@ describe.skipIf(!databaseUrl).sequential('monthly add-on real PostgreSQL transac
   });
   it('grants a concurrent duplicate only once and preserves distinct purchases', async () => {
     const userId = await member(); const one = purchase(userId);
-    const results = await Promise.all(Array.from({ length: 4 }, () => store.applyPurchase(one)));
-    expect(results.filter(result => result.applied)).toHaveLength(1);
+    const results = await Promise.allSettled(Array.from({ length: 4 }, () => store.applyPurchase(one)));
+    expect(results.filter(result => result.status === 'rejected').map(result => {
+      const reason = result.reason as { name?: string; code?: string; message?: string };
+      return { name: reason?.name, code: reason?.code, message: reason?.message?.split('\n').at(-1)?.slice(0, 200) };
+    })).toEqual([]);
+    expect(results.filter(result => result.status === 'fulfilled' && result.value.applied)).toHaveLength(1);
     await store.applyPurchase(purchase(userId));
     expect(await store.readCredits({ userId, now: one.purchasedAt })).toEqual({ postUnits: 200, aiCaptions: 100 });
+  });
+  it('reconciles an RC history selector through its canonical store receipt once, respecting refund and owner fences', async () => {
+    const userId = await member(); const one = purchase(userId); const selector = `rc-history-${randomUUID()}`;
+    const findPurchase = vi.fn().mockImplementation(async (input: { userId: string }) => ({ ...one,
+      userId: input.userId, verifiedSelector: selector }));
+    const app = createApp({ config: readServerConfig({ POST_STORE: 'prisma', DATABASE_URL: databaseUrl,
+      BILLING_PROVIDER: 'revenuecat', REVENUECAT_WEBHOOK_AUTH_TOKEN: 'fixture', REVENUECAT_REST_API_V1_KEY: 'fixture',
+      REVENUECAT_ADDON_ENVIRONMENT: 'SANDBOX' }), prisma: prisma as never, monthlyAddonStore: store,
+      revenueCatAddonPurchaseClient: { findPurchase } });
+    const confirm = (owner: string) => request(app).post('/billing/addons/confirm').set('x-postdee-user-id', owner)
+      .send({ productId: one.productId, transactionId: selector, transactionIdKind: 'REVENUECAT' });
+    await store.applyPurchase(one);
+    await confirm(userId).expect(200); await confirm(userId).expect(200);
+    expect(await prisma.monthlyAddonPurchase.count({ where: { transactionId: one.transactionId } })).toBe(1);
+    expect(await prisma.monthlyAddonPurchase.count({ where: { transactionId: selector } })).toBe(0);
+    const other = await member(); await confirm(other).expect(409);
+    await store.revokePurchase(one); await confirm(userId).expect(409);
+    expect(await store.readCredits({ userId, now: one.purchasedAt })).toEqual({ postUnits: 0, aiCaptions: 0 });
   });
   it('serializes two accounts claiming one transaction without any duplicate balance', async () => {
     const first = await member(), second = await member(); const one = purchase(first);
@@ -47,13 +72,14 @@ describe.skipIf(!databaseUrl).sequential('monthly add-on real PostgreSQL transac
     const balances = await Promise.all([first, second].map(userId => store.readCredits({ userId, now: one.purchasedAt })));
     expect(balances.reduce((sum, item) => sum + item.postUnits, 0)).toBe(100);
   });
-  it('keeps refunds sticky across concurrent redelivery and expires grants at the UTC boundary', async () => {
+  it('keeps refunds sticky across concurrent redelivery while unrevoked grants survive month rollover', async () => {
     const userId = await member(); const one = purchase(userId);
     await store.revokePurchase(one);
-    await Promise.all([store.applyPurchase(one), store.revokePurchase(one)]);
+    const redeliveries = await Promise.allSettled([store.applyPurchase(one), store.revokePurchase(one)]);
+    expect(redeliveries.filter(result => result.status === 'rejected')).toHaveLength(0);
     expect(await store.readCredits({ userId, now: one.purchasedAt })).toEqual({ postUnits: 0, aiCaptions: 0 });
     await store.applyPurchase(purchase(userId));
-    expect(await store.readCredits({ userId, now: '2026-11-01T00:00:00.000Z' })).toEqual({ postUnits: 0, aiCaptions: 0 });
+    expect(await store.readCredits({ userId, now: '2026-11-01T00:00:00.000Z' })).toEqual({ postUnits: 100, aiCaptions: 50 });
   });
   it('retains a transaction tombstone after account deletion without retaining its UID', async () => {
     const userId = await member(); const one = purchase(userId); await store.applyPurchase(one);

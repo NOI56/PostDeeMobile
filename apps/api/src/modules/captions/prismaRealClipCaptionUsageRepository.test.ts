@@ -1,17 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPrismaRealClipCaptionUsageRepository } from './prismaRealClipCaptionUsageRepository.js';
+import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 
 describe('createPrismaRealClipCaptionUsageRepository', () => {
   it('retries caption quota with the latest transactional addon grants after a concurrent refund', async () => {
     const transactionGrants = { findMany: vi.fn().mockResolvedValueOnce([{ id: 'grant' }]).mockResolvedValue([]) };
-    const transactionUsage = { count: vi.fn().mockResolvedValue(50),
+    const transactionUsage = { count: vi.fn(async ({ where }) => where.usesAddonCredit ? 0 : 50),
       create: vi.fn().mockRejectedValue(Object.assign(new Error('serialization conflict'), { code: 'P2034' })) };
     const prisma = { monthlyAddonPurchase: { findMany: vi.fn() },
       realClipCaptionUsage: { count: vi.fn(), create: vi.fn() },
       $transaction: vi.fn(async callback => callback({ realClipCaptionUsage: transactionUsage,
         monthlyAddonPurchase: transactionGrants })) };
-    const repository = createPrismaRealClipCaptionUsageRepository({ prisma });
+    const repository = createPrismaRealClipCaptionUsageRepository({ prisma: withOwnerLifecycleFixture(prisma) });
     expect(await repository.reserve({ userId: 'addon-refund', monthKey: '2026-10', limit: 50,
       includeMonthlyAddons: true, now: '2026-10-21T00:00:00.000Z' }))
       .toEqual({ ok: false, usedThisMonth: 50 });
@@ -59,7 +60,8 @@ describe('createPrismaRealClipCaptionUsageRepository', () => {
     expect(prisma.realClipCaptionUsage.count).toHaveBeenCalledWith({
       where: {
         userId: 'seller-1',
-        monthKey: '2026-06'
+        monthKey: '2026-06',
+        usesAddonCredit: false
       }
     });
   });
@@ -97,7 +99,8 @@ describe('createPrismaRealClipCaptionUsageRepository', () => {
         id: true,
         userId: true,
         monthKey: true,
-        createdAt: true
+        createdAt: true,
+        usesAddonCredit: true
       }
     });
   });
@@ -150,7 +153,8 @@ describe('createPrismaRealClipCaptionUsageRepository', () => {
         id: true,
         userId: true,
         monthKey: true,
-        createdAt: true
+        createdAt: true,
+        usesAddonCredit: true
       }
     });
   });

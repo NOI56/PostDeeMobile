@@ -183,6 +183,7 @@ model Post {
   publishedAt       DateTime?
   status            PostStatus        @default(DRAFT)
   selectedPlatforms Platform[]
+  addonPostUnits    Int               @default(0)
   platformSettings  Json?
   platformTargets   Json?
   user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -191,6 +192,7 @@ model Post {
   updatedAt         DateTime          @updatedAt
 
   @@index([userId, createdAt])
+  @@index([userId, addonPostUnits])
   @@index([scheduledAt, status])
 }
 
@@ -242,10 +244,12 @@ model RealClipCaptionUsage {
   id        String   @id @default(cuid())
   userId    String
   monthKey  String
+  usesAddonCredit Boolean @default(false)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   @@index([userId, monthKey])
+  @@index([userId, usesAddonCredit])
   @@index([createdAt])
 }
 

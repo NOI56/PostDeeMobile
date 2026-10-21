@@ -72,18 +72,35 @@ void main() {
     });
   }
 
-  testWidgets(
-      'iPhone displays its availability message and cannot buy an add-on',
+  testWidgets('closing new checkout keeps the purchased balance visible',
       (tester) async {
-    final addon = _Addon();
+    final addon =
+        _Addon(enabled: false, addonPostUnits: 70, addonAiCaptions: 25);
     await show(tester, addon);
-    expect(find.text('แพ็กเติมนี้ยังไม่รองรับบน iPhone'), findsOneWidget);
+    expect(find.text('เครดิตคงเหลือ: โพสต์ 70 หน่วย · AI 25 ครั้ง'),
+        findsOneWidget);
+    expect(find.textContaining('เครดิตซื้อเพิ่มไม่หมดอายุ'), findsOneWidget);
     expect(
         tester
             .widget<FilledButton>(
                 find.byKey(const ValueKey('paywall-buy-addon')))
             .onPressed,
         isNull);
+    expect(addon.purchaseCalls, 0);
+  });
+
+  testWidgets(
+      'iPhone displays nonexpiring credits and supports the consumable checkout',
+      (tester) async {
+    final addon = _Addon();
+    await show(tester, addon);
+    expect(find.textContaining('เครดิตซื้อเพิ่มไม่หมดอายุ'), findsOneWidget);
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.byKey(const ValueKey('paywall-buy-addon')))
+            .onPressed,
+        isNotNull);
     expect(addon.purchaseCalls, 0);
   }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
@@ -187,7 +204,8 @@ void main() {
                 child: child!),
             home: PaywallScreen(
                 key: UniqueKey(),
-                addonService: _Addon(price: '฿49.00'),
+                addonService: _Addon(
+                    price: '฿49.00', addonPostUnits: 100, addonAiCaptions: 50),
                 service: StoreSubscriptionService(
                     gateway: _Store(), useRevenueCat: false),
                 loadSubscription: () async => const SubscriptionStatusResult(
@@ -232,7 +250,10 @@ class _Addon extends StoreAddonService {
       this.eligible = true,
       this.hasProduct = true,
       this.pending = false,
-      this.price = '€1.49'});
+      this.price = '€1.49',
+      this.addonPostUnits = 0,
+      this.addonAiCaptions = 0});
+  final int addonPostUnits, addonAiCaptions;
   final String price;
   final bool enabled, hasProduct, pending;
   bool eligible;
@@ -248,9 +269,12 @@ class _Addon extends StoreAddonService {
       postUnits: 100,
       aiCaptions: 50,
       priceThb: 49,
-      monthKey: '2026-10',
-      expiresAt: DateTime.utc(2026, 11),
-      purchasedPacks: 0);
+      policyVersion: 2,
+      creditsExpire: false,
+      expiresAt: null,
+      purchasedPacks: 0,
+      addonPostUnits: addonPostUnits,
+      addonAiCaptions: addonAiCaptions);
   @override
   Future<StoreProductInfo?> loadProduct(AddonCatalogResult catalog) async =>
       hasProduct
@@ -272,7 +296,9 @@ class _Addon extends StoreAddonService {
         transactionId: 'txn-1',
         postUnits: 100,
         aiCaptions: 50,
-        expiresAt: DateTime.utc(2026, 11));
+        policyVersion: 2,
+        creditsExpire: false,
+        expiresAt: null);
   }
 }
 

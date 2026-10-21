@@ -59,6 +59,59 @@ void main() {
   });
 
   test(
+      'legacy receipts default to STORE and RevenueCat selectors retain their namespace',
+      () {
+    final legacy = AddonPendingRecord.fromJson({
+      'version': 1,
+      'productId': 'sku',
+      'intentId': 'legacy',
+      'transactionId': 'old-id'
+    });
+    expect(legacy.transactionIdKind, 'STORE');
+    final history = AddonPendingRecord(
+        productId: 'sku',
+        intentId: 'history',
+        transactionId: 'rc-internal-id',
+        transactionIdKind: 'REVENUECAT');
+    expect(AddonPendingRecord.fromJson(history.toJson()).transactionIdKind,
+        'REVENUECAT');
+    for (final invalid in [
+      {...history.toJson(), 'transactionIdKind': 'UNKNOWN'},
+      {...history.toJson(), 'transactionIdKind': 1},
+      {
+        'version': 1,
+        'productId': 'sku',
+        'intentId': 'intent',
+        'transactionIdKind': 'REVENUECAT'
+      },
+    ]) {
+      expect(() => AddonPendingRecord.fromJson(invalid),
+          throwsA(isA<AddonPendingDataException>()));
+    }
+    expect(
+        () => AddonPendingRecord(
+            productId: 'sku',
+            intentId: 'intent',
+            transactionIdKind: 'REVENUECAT'),
+        throwsA(isA<AddonPendingDataException>()));
+  });
+
+  test(
+      'an existing receipt cannot be overwritten with the same ID in another namespace',
+      () async {
+    final pending = store();
+    await pending.save(_record('intent', transaction: 'same-id'));
+    await expectLater(
+        pending.save(AddonPendingRecord(
+            productId: 'postdee_post100_caption50',
+            intentId: 'intent',
+            transactionId: 'same-id',
+            transactionIdKind: 'REVENUECAT')),
+        throwsA(isA<AddonPendingConflictException>()));
+    expect((await pending.load())?.transactionIdKind, 'STORE');
+  });
+
+  test(
       'persists a receipt across store recreation and scopes the exact API and owner',
       () async {
     await store().save(_record('intent-1', transaction: 'store-txn'));

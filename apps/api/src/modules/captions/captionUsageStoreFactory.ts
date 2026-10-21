@@ -1,5 +1,6 @@
 import type { ServerConfig } from '../../config/env.js';
 import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 import {
   createInMemoryRealClipCaptionUsageStore,
   type RealClipCaptionUsageStore
@@ -14,11 +15,13 @@ type CaptionUsageStoreConfig = Pick<ServerConfig, 'captionUsageStore'>;
 export const createRealClipCaptionUsageStoreFromConfig = ({
   config,
   prisma,
-  monthlyAddonStore
+  monthlyAddonStore,
+  runWithActiveOwner
 }: {
   config: CaptionUsageStoreConfig;
   prisma?: PrismaRealClipCaptionUsageClient;
   monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>;
+  runWithActiveOwner?: RunWithActiveOwner;
 }): RealClipCaptionUsageStore => {
   if (config.captionUsageStore === 'prisma') {
     if (!prisma) {
@@ -28,5 +31,5 @@ export const createRealClipCaptionUsageStoreFromConfig = ({
     return createPrismaRealClipCaptionUsageRepository({ prisma });
   }
 
-  return createInMemoryRealClipCaptionUsageStore({ monthlyAddonStore });
+  return createInMemoryRealClipCaptionUsageStore({ monthlyAddonStore, runWithActiveOwner });
 };

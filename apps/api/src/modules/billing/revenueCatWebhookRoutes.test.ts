@@ -61,7 +61,18 @@ const createKnownUser = (app: ReturnType<typeof createRevenueCatApp>, userId: st
     .expect(200);
 
 describe('RevenueCat webhooks', () => {
-  it('ignores a new App Store monthly add-on but still records its refund without upgrading the plan', async () => {
+  it('settles an authenticated receipt while new checkout is disabled', async () => {
+    const { createInMemoryMonthlyAddonStore } = await import('./monthlyAddonStore.js');
+    const store = createInMemoryMonthlyAddonStore();
+    const app = createApp({ config: readServerConfig({ BILLING_PROVIDER: 'revenuecat', BILLING_ADDONS_ENABLED: 'false',
+      REVENUECAT_WEBHOOK_AUTH_TOKEN: revenueCatToken, REVENUECAT_ADDON_ENVIRONMENT: 'SANDBOX' }), monthlyAddonStore: store });
+    await createKnownUser(app, 'checkout-disabled-owner');
+    await postRevenueCatWebhook(app, { event: { type: 'NON_RENEWING_PURCHASE', app_user_id: 'checkout-disabled-owner',
+      product_id: 'postdee_post100_caption50', store: 'PLAY_STORE', environment: 'SANDBOX',
+      transaction_id: 'disabled-checkout-receipt', purchased_at_ms: new Date('2026-10-21T00:00:00.000Z').getTime() } }).expect(200);
+    expect(await store.readCredits({ userId: 'checkout-disabled-owner', now: '2027-01-01T00:00:00.000Z' })).toEqual({ postUnits: 100, aiCaptions: 50 });
+  });
+  it('grants a nonexpiring App Store add-on and records its refund without upgrading the plan', async () => {
     const { createInMemoryMonthlyAddonStore } = await import('./monthlyAddonStore.js');
     const store = createInMemoryMonthlyAddonStore();
     const app = createApp({ config: readServerConfig({ BILLING_PROVIDER: 'revenuecat', BILLING_ADDONS_ENABLED: 'true',
@@ -69,8 +80,8 @@ describe('RevenueCat webhooks', () => {
     await createKnownUser(app, 'apple-addon-owner');
     const event = { app_user_id: 'apple-addon-owner', product_id: 'postdee_post100_caption50', store: 'APP_STORE',
       environment: 'SANDBOX', transaction_id: 'apple-addon-txn', purchased_at_ms: new Date('2026-10-21T00:00:00.000Z').getTime() };
-    await postRevenueCatWebhook(app, { event: { ...event, type: 'NON_RENEWING_PURCHASE' } }).expect(202);
-    expect(await store.readCredits({ userId: 'apple-addon-owner', now: '2026-10-21T00:00:00.000Z' })).toEqual({ postUnits: 0, aiCaptions: 0 });
+    await postRevenueCatWebhook(app, { event: { ...event, type: 'NON_RENEWING_PURCHASE' } }).expect(200);
+    expect(await store.readCredits({ userId: 'apple-addon-owner', now: '2028-10-21T00:00:00.000Z' })).toEqual({ postUnits: 100, aiCaptions: 50 });
     expect((await request(app).get('/billing/subscription').set('x-postdee-user-id', 'apple-addon-owner')).body.subscription.plan).toBe('BASIC');
     await postRevenueCatWebhook(app, { event: { ...event, type: 'CANCELLATION' } }).expect(200);
     expect(await store.findPurchaseConfirmation({ userId: 'apple-addon-owner', productId: event.product_id,

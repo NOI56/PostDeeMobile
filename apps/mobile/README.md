@@ -626,22 +626,28 @@ packaged for release until Android signing is configured. See
 
 The paywall also supports the separate post/caption consumable add-on: target
 49 THB once for 100 post units and 50 real-clip caption generations, usable
-with an effective Starter/Pro tier until the current UTC monthly quota reset.
-Initial add-on checkout is Android only; iPhone is blocked before SKU queries
-or checkout because Apple does not permit purchased credits to expire.
-Existing iOS monthly subscriptions are unchanged.
+with an effective Starter/Pro tier. Purchased credits never expire. Included
+monthly quota is used first; purchased balances carry over and remain stored
+while membership is Basic. Native Android and iPhone use the same consumable
+flow; existing monthly subscriptions are unchanged. Home/Profile show monthly
+quota and remaining purchased balances separately.
 `STORE_POST_CAPTION_ADDON_PRODUCT_ID` defaults to `postdee_post100_caption50`
 and must match the API/RevenueCat consumable product. The actual checkout
 price comes from the store's non-subscription product query; existing monthly
 subscription prices are unchanged.
 
-The new API catalog/readiness must be enabled before checkout. Purchases are
+The API must explicitly acknowledge `policyVersion: 2`, `creditsExpire: false`
+and `expiresAt: null` before querying the SKU or opening checkout. An older
+monthly-expiry API is incompatible; an unsupported confirmation keeps the
+receipt pending instead of inviting another payment. New sales must be enabled
+before checkout, but disabling them does not hide or revoke an existing balance.
+Purchases are
 confirmed by exact transaction on the backend, with an owner/API-scoped local
 pending intent, baseline and receipt for restart recovery. An unknown result
 offers confirmation retry without another purchase. This is separate from
 subscription Restore and never uses an existing Pro/Starter entitlement as
 proof of credit fulfillment. See
-`../../docs/superpowers/plans/2026-10-21-post-caption-addon.md` for checks and
+`../../docs/superpowers/plans/2026-10-21-nonexpiring-post-caption-credits.md` for checks and
 the migration/API/store rollout gates; live store acceptance is not implied.
 
 The Home Starter/Pro CTAs can run in two modes:

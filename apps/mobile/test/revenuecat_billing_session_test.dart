@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
+import 'package:postdee_mobile/features/billing/store_addon_service.dart';
+import 'package:postdee_mobile/features/billing/addon_pending_store.dart';
+import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:purchases_flutter/purchases_flutter.dart' as purchases;
 
 const _product = purchases.StoreProduct(
@@ -28,8 +31,82 @@ PurchasesRevenueCatBillingGateway _gateway(
 );
 
 void main() {
-  test('iOS add-on query checkout and recovery stop before any RevenueCat SDK call', () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+  test('store checkout ID and RevenueCat history selector remain distinct opaque identifiers', () async {
+    final session = _session('account-a');
+    final sdk = _FakePurchasesSdk()..addonPurchaseTransactionId = 'GPA.store-1';
+    sdk.addonTransactions = [const StoreAddonTransaction(
+      productId: 'postdee_post100_caption50', transactionId: 'rc-old')];
+    Set<String>? baseline;
+    final receipt = await _gateway(session, sdk).buyAddonWithSnapshot(
+      _addonProduct.identifier, (ids) async { baseline = ids; });
+    expect(receipt.transactionId, 'GPA.store-1');
+    expect(receipt.transactionIdKind, 'STORE');
+    expect(baseline, {'rc-old'});
+    sdk.addonTransactions.add(const StoreAddonTransaction(
+      productId: 'postdee_post100_caption50', transactionId: 'rc-1'));
+    final recovered = await _gateway(session, sdk).recoverAddonPurchase(
+      _addonProduct.identifier, baseline!);
+    expect(recovered!.transactionId, 'rc-1');
+    expect(recovered.transactionIdKind, 'REVENUECAT');
+    expect(recovered.transactionId, isNot(receipt.transactionId));
+    expect(sdk.purchaseUserIds, ['account-a']);
+  });
+
+  test('history selector persists through pending confirmation and process restart without a second checkout', () async {
+    final session = _session('account-a');
+    final sdk = _FakePurchasesSdk()..addonPurchaseTransactionId = 'GPA.store-1';
+    sdk.addonTransactions = [const StoreAddonTransaction(
+      productId: 'postdee_post100_caption50', transactionId: 'rc-old')];
+    final pending = _ReceiptWriteFailureStore('GPA.store-1');
+    final selectors = <String>[];
+    StoreAddonService restartedService() => StoreAddonService(
+      sessionStore: session, gateway: _gateway(session, sdk), pendingStore: pending,
+      loadCatalog: () async => const AddonCatalogResult(enabled: true, eligible: true,
+        productId: 'postdee_post100_caption50', postUnits: 100, aiCaptions: 50,
+        priceThb: 49, policyVersion: 2, creditsExpire: false, expiresAt: null, purchasedPacks: 0),
+      preparePurchase: () async {},
+      confirmPurchase: (product, selector) async {
+        expect(product, _addonProduct.identifier);
+        expect(selector, 'rc-1');
+        expect((await pending.load())!.transactionIdKind, 'REVENUECAT');
+        selectors.add(selector);
+        // The backend resolves this RevenueCat selector to its trusted store
+        // transaction. Its response echoes the requested selector in both cases.
+        return AddonConfirmationResult(confirmed: selectors.length > 1,
+          transactionId: selector, transactionIdKind: 'REVENUECAT', postUnits: 100, aiCaptions: 50,
+          policyVersion: 2, creditsExpire: false, expiresAt: null);
+      });
+
+    await expectLater(restartedService().purchase(), throwsA(isA<StoreAddonPendingException>()));
+    expect(selectors, isEmpty);
+    final interrupted = await pending.load();
+    expect(interrupted!.transactionId, isNull);
+    expect(interrupted.baselineTransactionIds, ['rc-old']);
+    expect(pending.rejectedTransactionId, 'GPA.store-1');
+
+    // The process dies after the store purchase but before its receipt is saved.
+    // CustomerInfo history exposes RevenueCat's ID rather than the store order ID.
+    sdk.addonTransactions.add(const StoreAddonTransaction(
+      productId: 'postdee_post100_caption50', transactionId: 'rc-1'));
+    final recovering = restartedService();
+    await expectLater(recovering.retryPendingPurchase(), throwsA(isA<StoreAddonPendingException>()));
+    expect(recovering.hasPendingPurchase, isTrue);
+    expect((await pending.load())!.transactionId, 'rc-1');
+    expect((await pending.load())!.transactionIdKind, 'REVENUECAT');
+    expect(selectors, ['rc-1']);
+    expect(sdk.purchaseUserIds, ['account-a']);
+
+    // A second process starts while the API is still waiting for trusted proof.
+    // Rechecking that same persisted selector confirms it without another buy.
+    final confirmed = await restartedService().retryPendingPurchase();
+    expect(confirmed.confirmed, isTrue);
+    expect(confirmed.transactionId, 'rc-1');
+    expect(selectors, ['rc-1', 'rc-1']);
+    expect(await pending.load(), isNull);
+    expect(sdk.purchaseUserIds, ['account-a']);
+  });
+  test('desktop add-on query checkout and recovery stop before any RevenueCat SDK call', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final sdk = _FakePurchasesSdk();
     final gateway = _gateway(_session('account-a'), sdk);
@@ -41,6 +118,17 @@ void main() {
     await expectLater(gateway.reconcilePendingAddonPurchase(), throwsA(isA<StoreAddonPurchaseNotStartedException>()));
     expect(snapshotWrites, 0);
     expect(sdk.calls, isEmpty);
+  });
+
+  test('iOS consumable checkout uses the product transaction and shared recovery path', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final sdk = _FakePurchasesSdk();
+    final gateway = _gateway(_session('account-a'), sdk);
+    expect((await gateway.queryAddonProducts({_addonProduct.identifier})).single.id, _addonProduct.identifier);
+    expect((await gateway.buyAddon(_addonProduct.identifier)).transactionId, 'addon-transaction');
+    expect(await gateway.recoverAddonPurchase(_addonProduct.identifier, {}), isNull);
+    expect(sdk.purchaseUserIds, ['account-a']);
   });
 
   test('iOS monthly subscriptions continue to use the existing RevenueCat purchase path', () async {
@@ -301,6 +389,7 @@ class _FakePurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsumableP
   final loggedInUserIds = <String>[];
   final purchaseUserIds = <String>[];
   final restoreUserIds = <String>[];
+  var addonPurchaseTransactionId = 'addon-transaction';
   List<StoreAddonTransaction> addonTransactions = [];
 
   Future<void> _step(String name) async {
@@ -372,12 +461,36 @@ class _FakePurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsumableP
   Future<StoreAddonTransaction> purchaseConsumable(purchases.StoreProduct product) async {
     purchaseUserIds.add(currentUserId);
     await _step('addonPurchase');
-    return StoreAddonTransaction(productId: product.identifier, transactionId: 'addon-transaction');
+    return StoreAddonTransaction(productId: product.identifier, transactionId: addonPurchaseTransactionId);
   }
 
   @override
   Future<List<StoreAddonTransaction>> getAddonTransactions() async {
     await _step('addonTransactions');
-    return addonTransactions;
+    return addonTransactions.map((transaction) => StoreAddonTransaction(
+      productId: transaction.productId, transactionId: transaction.transactionId,
+      transactionIdKind: 'REVENUECAT')).toList();
   }
+}
+
+class _ReceiptWriteFailureStore implements AddonPendingStore {
+  _ReceiptWriteFailureStore(this.rejectedTransactionId);
+  final String rejectedTransactionId;
+  final _saved = InMemoryAddonPendingStore();
+  var _rejectReceiptOnce = true;
+
+  @override
+  Future<AddonPendingRecord?> load() => _saved.load();
+
+  @override
+  Future<void> save(AddonPendingRecord record) async {
+    if (_rejectReceiptOnce && record.transactionId == rejectedTransactionId) {
+      _rejectReceiptOnce = false;
+      throw const AddonPendingDataException('Simulated process interruption before receipt persistence');
+    }
+    await _saved.save(record);
+  }
+
+  @override
+  Future<void> clear({required String intentId}) => _saved.clear(intentId: intentId);
 }

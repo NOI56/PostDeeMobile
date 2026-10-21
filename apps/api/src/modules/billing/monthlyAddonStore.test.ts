@@ -5,11 +5,11 @@ const purchase = { userId: 'paid-owner', productId: 'postdee_post100_caption50',
   store: 'PLAY_STORE', environment: 'SANDBOX', purchasedAt: '2026-10-21T12:00:00.000Z' };
 
 describe('monthly add-on ledger', () => {
-  it('refuses new App Store monthly credits while retaining refund tombstones', async () => {
+  it('grants the same nonexpiring credits on the App Store and preserves refunds', async () => {
     const store = createInMemoryMonthlyAddonStore();
     const apple = { ...purchase, store: 'APP_STORE' };
-    await expect(store.applyPurchase(apple)).rejects.toThrow('not supported');
-    expect(await store.readCredits({ userId: purchase.userId, now: purchase.purchasedAt })).toEqual({ postUnits: 0, aiCaptions: 0 });
+    expect(await store.applyPurchase(apple)).toMatchObject({ applied: true, expiresAt: null });
+    expect(await store.readCredits({ userId: purchase.userId, now: '2030-01-01T00:00:00.000Z' })).toEqual({ postUnits: 100, aiCaptions: 50 });
     await store.revokePurchase(apple);
     expect(await store.findPurchaseConfirmation(apple)).toMatchObject({ revoked: true });
   });
@@ -18,7 +18,8 @@ describe('monthly add-on ledger', () => {
     await Promise.all(Array.from({ length: 8 }, () => store.applyPurchase(purchase)));
     await store.applyPurchase({ ...purchase, transactionId: 'txn-older', purchasedAt: '2026-10-02T00:00:00.000Z' });
     expect(await store.readCredits({ userId: purchase.userId, now: '2026-10-31T23:59:59.999Z' })).toEqual({ postUnits: 200, aiCaptions: 100 });
-    expect(await store.readCredits({ userId: purchase.userId, now: '2026-11-01T00:00:00.000Z' })).toEqual({ postUnits: 0, aiCaptions: 0 });
+    expect(await store.readCredits({ userId: purchase.userId, now: '2026-11-01T00:00:00.000Z' })).toEqual({ postUnits: 200, aiCaptions: 100 });
+    expect(await store.findPurchaseConfirmation(purchase)).toMatchObject({ expiresAt: null });
     expect(await store.readCredits({ userId: 'other-owner', now: purchase.purchasedAt })).toEqual({ postUnits: 0, aiCaptions: 0 });
   });
   it('never relinks an existing transaction to another owner or product', async () => {

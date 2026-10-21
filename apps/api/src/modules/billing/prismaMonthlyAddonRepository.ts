@@ -1,12 +1,12 @@
 import { runActiveOwnerTransaction, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
 import { MonthlyAddonPurchaseConflictError, MonthlyAddonUnsupportedStoreError, allowMonthlyAddonStore, monthlyAddonOwnerHash, monthlyAddonPurchaseKey,
-  monthlyAddonPostUnits, monthlyAddonAiCaptions, readMonthlyAddonWindow,
+  monthlyAddonPostUnits, monthlyAddonAiCaptions,
   type MonthlyAddonPurchase, type MonthlyAddonStore } from './monthlyAddonStore.js';
 
 type PurchaseRow = { id: string; userId: string | null; ownerHash: string; productId: string;
   purchasedAt: Date; revoked: boolean };
 export type PrismaMonthlyAddonReadTransaction = {
-  monthlyAddonPurchase: { findMany: (input: { where: { userId: string; revoked: false; purchasedAt: { gte: Date; lt: Date } };
+  monthlyAddonPurchase: { findMany: (input: { where: { userId: string; revoked: false };
     select: { id: true } }) => Promise<Array<{ id: string }>> };
 };
 type PurchaseTransaction = PrismaOwnerLifecycleTransaction & PrismaMonthlyAddonReadTransaction & {
@@ -21,10 +21,8 @@ export type PrismaMonthlyAddonClient = PurchaseTransaction & {
   $transaction: <T>(operation: (transaction: PurchaseTransaction) => Promise<T>, options:
     { isolationLevel: 'Serializable'; maxWait: number; timeout: number }) => Promise<T>;
 };
-export const readPrismaMonthlyAddonCredits = async (transaction: PrismaMonthlyAddonReadTransaction, userId: string, now: string) => {
-  const window = readMonthlyAddonWindow(now);
-  const records = await transaction.monthlyAddonPurchase.findMany({ where: { userId, revoked: false,
-    purchasedAt: { gte: new Date(window.startsAt), lt: new Date(window.expiresAt) } }, select: { id: true } });
+export const readPrismaMonthlyAddonCredits = async (transaction: PrismaMonthlyAddonReadTransaction, userId: string, _now: string) => {
+  const records = await transaction.monthlyAddonPurchase.findMany({ where: { userId, revoked: false }, select: { id: true } });
   return { postUnits: records.length * monthlyAddonPostUnits, aiCaptions: records.length * monthlyAddonAiCaptions };
 };
 export const createPrismaMonthlyAddonRepository = ({ prisma }: { prisma: PrismaMonthlyAddonClient }): MonthlyAddonStore => {
@@ -40,17 +38,22 @@ export const createPrismaMonthlyAddonRepository = ({ prisma }: { prisma: PrismaM
           }
           if (existing) {
             if (revoke && !existing.revoked) await transaction.monthlyAddonPurchase.update({ where: { id }, data: { revoked: true } });
-            return { applied: false, revoked: existing.revoked || revoke || existing.userId === null,
-              expiresAt: readMonthlyAddonWindow(existing.purchasedAt.toISOString()).expiresAt };
+            return { applied: false, revoked: existing.revoked || revoke || existing.userId === null, expiresAt: null };
           }
           await transaction.monthlyAddonPurchase.create({ data: { id, userId: input.userId,
             ownerHash: monthlyAddonOwnerHash(input.userId), productId: input.productId, store: input.store,
             environment: input.environment, transactionId: input.transactionId,
             purchasedAt: new Date(input.purchasedAt), revoked: revoke } });
-          return { applied: !revoke, revoked: revoke, expiresAt: readMonthlyAddonWindow(input.purchasedAt).expiresAt };
+          return { applied: !revoke, revoked: revoke, expiresAt: null };
         });
       } catch (error) {
-        if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') || attempt === 2) throw error;
+        const retryable = typeof error === 'object' && error !== null && 'code' in error &&
+          (error.code === 'P2002' || error.code === 'P2034');
+        if (!retryable || attempt === 2) throw error;
+        // Several duplicate deliveries can exhaust the inner owner retry while
+        // another contender commits. Restart the whole ledger operation with
+        // a bounded pause so it observes that immutable transaction receipt.
+        await new Promise(resolve => setTimeout(resolve, 20 * (attempt + 1)));
       }
     }
     throw new Error('Monthly add-on transaction retry exhausted');
@@ -58,8 +61,7 @@ export const createPrismaMonthlyAddonRepository = ({ prisma }: { prisma: PrismaM
   return { readCredits: ({ userId, now }) => readPrismaMonthlyAddonCredits(prisma, userId, now),
     findPurchaseConfirmation: async input => {
       const purchase = await prisma.monthlyAddonPurchase.findFirst({ where: input });
-      return purchase ? { applied: false, revoked: purchase.revoked,
-        expiresAt: readMonthlyAddonWindow(purchase.purchasedAt.toISOString()).expiresAt } : null;
+      return purchase ? { applied: false, revoked: purchase.revoked, expiresAt: null } : null;
     },
     applyPurchase: input => apply(input, false), revokePurchase: async input => { await apply(input, true); } };
 };

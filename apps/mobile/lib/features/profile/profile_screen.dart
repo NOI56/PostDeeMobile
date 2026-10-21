@@ -1187,8 +1187,17 @@ class _CurrentPlanCard extends StatelessWidget {
                 ],
                 if (subscription.addonPostUnits > 0 || subscription.addonAiCaptions > 0) ...[
                   const SizedBox(height: 4),
-                  Text('รวมซื้อเพิ่ม ${subscription.addonPostUnits} หน่วย · AI ${subscription.addonAiCaptions} ครั้ง',
+                  Text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription.addonPostUnits} หน่วย · AI ${subscription.addonAiCaptions} ครั้ง',
                     style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 4),
+                  Text(isPaid ? 'เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน'
+                      : 'เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  if (isPaid && subscription.availablePostUnits != null) ...[
+                    const SizedBox(height: 4),
+                    Text('โพสต์ได้รวม ${subscription.availablePostUnits} หน่วย',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  ],
                 ],
               ],
             ),

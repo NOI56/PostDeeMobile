@@ -2372,7 +2372,7 @@ describe('post routes', () => {
     expect(response.body).toEqual({
       status: 'error',
       code: 'POST_LIMIT_REACHED',
-      message: 'Starter plan is limited to 120 post units per month'
+      message: 'Starter included monthly post units and available purchased credits are exhausted'
     });
   });
 
@@ -2407,7 +2407,7 @@ describe('post routes', () => {
     expect(response.body).toEqual({
       status: 'error',
       code: 'POST_LIMIT_REACHED',
-      message: 'Pro plan is limited to 250 post units per month'
+      message: 'Pro included monthly post units and available purchased credits are exhausted'
     });
   });
 

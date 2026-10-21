@@ -19,16 +19,30 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('account quota uses effective total and labels verified add-on credits', (tester) async {
+  testWidgets('account quota separates monthly allowance from the purchased balance', (tester) async {
     final apiClient = _FakeSocialApiClient(connections: const [],
       subscription: const SubscriptionStatusResult(userId: 'seller', plan: 'PRO', status: 'ACTIVE',
-        monthlyPostLimit: 350, remainingPostsThisMonth: 348, addonPostUnits: 100,
+        monthlyPostLimit: 250, remainingPostsThisMonth: 248, addonPostUnits: 100,
+        availablePostUnits: 348,
         addonAiCaptions: 50, canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true));
     await tester.pumpWidget(_hostProfile(apiClient: apiClient));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('รวมซื้อเพิ่ม 100 หน่วย · AI 50 ครั้ง'), 200);
-    expect(find.text('เหลือโพสต์ 348 / 350 หน่วยเดือนนี้'), findsOneWidget);
-    expect(find.text('รวมซื้อเพิ่ม 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), 200);
+    expect(find.text('เหลือโพสต์ 248 / 250 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    expect(find.text('โพสต์ได้รวม 348 หน่วย'), findsOneWidget);
+  });
+
+  testWidgets('Basic account retains purchased credits without claiming they can be spent', (tester) async {
+    final apiClient = _FakeSocialApiClient(connections: const [],
+      subscription: const SubscriptionStatusResult(userId: 'seller', plan: 'BASIC', status: 'INACTIVE',
+        monthlyPostLimit: 3, remainingPostsThisMonth: 3, addonPostUnits: 100, addonAiCaptions: 50,
+        availablePostUnits: 3, canSchedule: false, canUseAiCaptions: false, canUseAnalytics: false));
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'), 200);
+    expect(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    expect(find.textContaining('โพสต์ได้รวม'), findsNothing);
   });
 
   testWidgets('refreshes an expired plan when returning to the app',

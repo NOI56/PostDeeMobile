@@ -1,6 +1,7 @@
 export type PostUsageInput = {
   createdAt: string;
   platforms?: unknown[];
+  addonPostUnits?: number;
 };
 
 export const isCurrentMonthPost = (post: PostUsageInput, now = new Date()) => {
@@ -19,7 +20,7 @@ export const countCurrentMonthPosts = (posts: PostUsageInput[], now = new Date()
 export const countCurrentMonthPostUnits = (posts: PostUsageInput[], now = new Date()) =>
   posts
     .filter((post) => isCurrentMonthPost(post, now))
-    .reduce((total, post) => total + Math.max(post.platforms?.length ?? 1, 0), 0);
+    .reduce((total, post) => total + Math.max((post.platforms?.length ?? 1) - (post.addonPostUnits ?? 0), 0), 0);
 
 export const readUtcMonthBounds = (now: Date) => ({
   start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),

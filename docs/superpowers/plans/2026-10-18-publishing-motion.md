@@ -1,5 +1,9 @@
 # Publishing activity: shared motion and real channel results
 
+Follow-up: [2026-10-21 usability fixes](2026-10-21-ux-review-fixes.md)
+adds live owned-post reads, stale-state feedback and cancellation reconciliation
+while preserving this motion design. Delivery evidence below is historical.
+
 สถานะ: ANDROID STAGING DELIVERED — release source `5c83b3a` passes CI and builds
 APK 12026 with the existing Test Store settings. APK inspection, local signing,
 guarded update and read-only native smoke pass. The compatible API is Live.

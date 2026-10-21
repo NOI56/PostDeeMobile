@@ -162,7 +162,18 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
   }
 
   Future<void> _policy(String url) async {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    var opened = false;
+    try {
+      opened = await launchUrl(Uri.parse(url),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Reading a policy must never accept it or interrupt the current choices.
+    }
+    if (!opened && mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+          content: Text('เปิดเงื่อนไข TikTok ไม่สำเร็จ '
+              'ลองใหม่หรือเปิดลิงก์นี้ในเบราว์เซอร์: $url')));
+    }
   }
 
   @override

@@ -76,6 +76,31 @@ void main() {
     expect(store.savedRequests, isEmpty);
   });
 
+  testWidgets('schedule choices provide at least 48dp touch targets',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: UploaderScreen(
+      probePublishMedia: probeValidPublishMedia,
+      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
+      now: () => DateTime(2026, 10, 11, 12),
+      draftStore: TestPublishDraftStore(),
+      loadSocialConnections: () async => const [],
+      loadSubscription: () async => _subscription('PRO'),
+    ))));
+    await tester.pumpAndSettle();
+    await _showSchedule(tester);
+    for (final key in ['uploader-schedule-now', 'uploader-schedule-later']) {
+      expect(tester.getSize(find.byKey(ValueKey(key))).height,
+          greaterThanOrEqualTo(48));
+    }
+    await _chooseSchedule(tester);
+    for (final key in ['uploader-schedule-day-custom', 'uploader-schedule-time-custom']) {
+      final choice = find.byKey(ValueKey(key));
+      await tester.ensureVisible(choice);
+      expect(tester.getSize(choice).height, greaterThanOrEqualTo(48));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('calendar suggestion does not enable scheduling on Free',
       (tester) async {
     final store = TestPublishDraftStore();

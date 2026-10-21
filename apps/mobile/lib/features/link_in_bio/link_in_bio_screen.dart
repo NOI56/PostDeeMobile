@@ -102,6 +102,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   int _step = 1;
   Set<String> _enabledLinkIds = {};
   List<LinkInBioCustomLink> _customLinks = [];
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _deleteUndoToast;
+  int _deleteUndoGeneration = 0;
   LinkInBioAppearance _appearance = const LinkInBioAppearance();
   final Map<String, Uint8List> _images = {};
   final _imageRevision = ValueNotifier<int>(0);
@@ -301,6 +303,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   void dispose() {
     _sessionStore.removeListener(_handleSessionChanged);
     _closeOwnedModals();
+    _closeDeleteUndo();
     _storeNameController.dispose();
     _slugController.dispose();
     _descriptionController.dispose();
@@ -353,6 +356,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   void _handleSessionChanged() {
     if (_screenSession.isCurrent || !mounted) return;
     _closeOwnedModals();
+    _closeDeleteUndo();
     _noticeTimer?.cancel();
     setState(() {
       _storeNameController.text = LinkInBioDraft.defaults().storeName;
@@ -905,6 +909,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   void _deleteCustomLink(String id) {
     if (!_canEdit) return;
+    final index = _customLinks.indexWhere((link) => link.id == id);
+    if (index < 0) return;
+    final link = _customLinks[index];
+    final wasEnabled = _enabledLinkIds.contains(id);
+    final wasFeatured = _appearance.featuredLinkId == id;
+    _closeDeleteUndo();
+    final generation = _deleteUndoGeneration;
     setState(() {
       _customLinks = _customLinks.where((link) => link.id != id).toList();
       _enabledLinkIds.remove(id);
@@ -913,6 +924,35 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       }
       _markEdited();
     });
+    final toast = ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('ลบ “${link.title}” จากแบบร่างแล้ว'),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(milliseconds: 4500),
+      action: SnackBarAction(label: 'เลิกทำ', onPressed: () {
+        if (generation != _deleteUndoGeneration) return;
+        _deleteUndoToast = null;
+        if (!_canEdit || _customLinks.any((current) => current.id == id)) return;
+        _deleteUndoGeneration++;
+        setState(() {
+          _customLinks.insert(index.clamp(0, _customLinks.length), link);
+          if (wasEnabled) _enabledLinkIds.add(id);
+          if (wasFeatured && _appearance.featuredLinkId == null) {
+            _appearance = _appearance.copyWith(featuredLinkId: id);
+          }
+          _markEdited();
+        });
+      }),
+    ));
+    _deleteUndoToast = toast;
+    unawaited(toast.closed.then((_) {
+      if (identical(_deleteUndoToast, toast)) _deleteUndoToast = null;
+    }));
+  }
+
+  void _closeDeleteUndo() {
+    _deleteUndoGeneration++;
+    _deleteUndoToast?.close();
+    _deleteUndoToast = null;
   }
 
   void _moveLink(int from, int to) {
@@ -1095,7 +1135,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
               onPressed: _canEdit ? _showAddLinkSheet : null,
               style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
-                  backgroundColor: AppTheme.accent,
+                  backgroundColor: AppTheme.actionBackground,
                   foregroundColor: Colors.white),
               icon: const Icon(Icons.add),
               label: const Text('เพิ่มลิงก์'))),

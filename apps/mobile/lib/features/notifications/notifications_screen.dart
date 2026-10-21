@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../posts/posts_screen.dart';
 import 'push_notification.dart';
 
 class NotificationItem {
@@ -12,6 +13,7 @@ class NotificationItem {
     required this.time,
     this.isUnread = false,
     this.postId,
+    this.sourceNotification,
   });
 
   final IconData icon;
@@ -21,12 +23,18 @@ class NotificationItem {
   final String time;
   final bool isUnread;
   final String? postId;
+  final PostDeeNotification? sourceNotification;
 }
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen(
-      {super.key, this.items, this.center, this.onOpenPost});
+      {super.key,
+      this.items,
+      this.center,
+      this.onOpenPost,
+      this.onOpenAllPosts});
   final ValueChanged<String>? onOpenPost;
+  final VoidCallback? onOpenAllPosts;
 
   /// Explicit list override (used by tests). When null the screen shows the
   /// live notifications from [center].
@@ -88,7 +96,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         time: _relativeTime(notification.receivedAt),
         isUnread: _center.isUnread(notification),
         postId: notification.postId,
+        sourceNotification: notification,
       );
+
+  void _openPost(NotificationItem item) {
+    final source = item.sourceNotification;
+    if (_usesLiveCenter && source != null) _center.markRead(source);
+    widget.onOpenPost?.call(item.postId!);
+  }
+
+  void _openAllPosts() {
+    final callback = widget.onOpenAllPosts;
+    if (callback != null) {
+      callback();
+      return;
+    }
+    Navigator.of(context)
+        .push<void>(MaterialPageRoute(builder: (_) => const PostsScreen()));
+  }
 
   String _relativeTime(DateTime time) {
     final diff = DateTime.now().difference(time.toLocal());
@@ -130,9 +155,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           child: Column(
             children: [
               const _NotificationSessionNotice(),
+              Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: const ValueKey('notifications-open-posts'),
+                    onPressed: _openAllPosts,
+                    icon: const Icon(Icons.video_library_outlined),
+                    label: const Text('ดูโพสต์ทั้งหมด'),
+                  )),
               Expanded(
                 child: data.isEmpty
-                    ? const _NotificationsEmptyState()
+                    ? const SingleChildScrollView(
+                        child: _NotificationsEmptyState())
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
                         itemCount: data.length,
@@ -142,7 +176,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           onTap: data[index].postId == null ||
                                   widget.onOpenPost == null
                               ? null
-                              : () => widget.onOpenPost!(data[index].postId!),
+                              : () => _openPost(data[index]),
                         ),
                       ),
               ),

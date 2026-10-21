@@ -154,7 +154,7 @@ class PublishReviewScreen extends StatelessWidget {
                   isScheduled ? 'ยืนยันตั้งเวลาโพสต์' : 'ยืนยันโพสต์เลย',
                 ),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
+                  backgroundColor: AppTheme.actionBackground,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(

@@ -57,6 +57,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: PostDetailScreen(
+        refreshOnOpen: false,
         post: _post(status: 'PUBLISHING', platforms: const [
           'TIKTOK',
           'YOUTUBE_SHORTS',
@@ -83,8 +84,10 @@ void main() {
     expect(find.text('กำลังส่ง'), findsNWidgets(2));
     expect(find.text('ส่งเป็นร่างแล้ว'), findsOneWidget);
     expect(find.text('ส่งไม่สำเร็จ'), findsOneWidget);
-    expect(find.text('รอผล'), findsOneWidget);
     expect(find.text('TikTok'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Facebook Video'), 180,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('รอผล'), findsOneWidget);
     expect(find.textContaining('%'), findsNothing);
     expect(tester.binding.hasScheduledFrame, isTrue);
     expect(tester.takeException(), isNull);
@@ -525,17 +528,16 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: PostDetailScreen(
             apiClient: api,
-            post: _post(
-                status: 'FAILED',
-                platforms: const ['TIKTOK'],
-                platformResults: const [
-                  PostPlatformResult(
-                      postId: 'post-1',
-                      platform: 'TIKTOK',
-                      status: 'FAILED',
-                      errorMessage:
-                          'TikTok rejected this video because its frame rate validation failed. Export the video again before retrying.')
-                ]))));
+            post: _post(status: 'FAILED', platforms: const [
+              'TIKTOK'
+            ], platformResults: const [
+              PostPlatformResult(
+                  postId: 'post-1',
+                  platform: 'TIKTOK',
+                  status: 'FAILED',
+                  errorMessage:
+                      'TikTok rejected this video because its frame rate validation failed. Export the video again before retrying.')
+            ]))));
     await tester.pumpAndSettle();
     expect(
         find.text(
@@ -552,12 +554,21 @@ void main() {
     'TikTok publishing options could not be checked. No video was sent to TikTok. Review the settings before trying again.':
         'ตรวจสอบสิทธิ์การโพสต์ TikTok ไม่ได้ ยังไม่ได้ส่งคลิปไปยัง TikTok กรุณาทบทวนการตั้งค่าแล้วลองใหม่',
   }.entries) {
-    testWidgets('localizes safe TikTok capability error without retry: ${error.key}', (tester) async {
+    testWidgets(
+        'localizes safe TikTok capability error without retry: ${error.key}',
+        (tester) async {
       final api = _FakePostApiClient();
-      await tester.pumpWidget(MaterialApp(home: PostDetailScreen(
+      await tester.pumpWidget(MaterialApp(
+          home: PostDetailScreen(
         apiClient: api,
-        post: _post(status: 'FAILED', platforms: const ['TIKTOK'], platformResults: [
-          PostPlatformResult(postId: 'post-1', platform: 'TIKTOK', status: 'FAILED', errorMessage: error.key),
+        post: _post(status: 'FAILED', platforms: const [
+          'TIKTOK'
+        ], platformResults: [
+          PostPlatformResult(
+              postId: 'post-1',
+              platform: 'TIKTOK',
+              status: 'FAILED',
+              errorMessage: error.key),
         ]),
       )));
       await tester.pumpAndSettle();
@@ -565,7 +576,8 @@ void main() {
       expect(find.textContaining(error.key), findsNothing);
       expect(api.publishedNowPostIds, isEmpty);
       expect(api.cancelledPostIds, isEmpty);
-      expect(find.byKey(const ValueKey('post-detail-publish-now')), findsNothing);
+      expect(
+          find.byKey(const ValueKey('post-detail-publish-now')), findsNothing);
     });
   }
 
@@ -574,6 +586,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: PostDetailScreen(
+          refreshOnOpen: false,
           post: _post(
             status: 'PARTIAL_PUBLISHED',
             publishedAt: DateTime(2026, 7, 2, 9),
@@ -623,12 +636,12 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      find.text(
-        'สาเหตุ: โพสต์ไปยังช่องทางนี้ไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
-      ),
-      findsOneWidget,
+    final lowerFailure = find.text(
+      'สาเหตุ: โพสต์ไปยังช่องทางนี้ไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
     );
+    await tester.scrollUntilVisible(lowerFailure, 180,
+        scrollable: find.byType(Scrollable).first);
+    expect(lowerFailure, findsOneWidget);
     expect(find.byKey(const ValueKey('post-detail-open-analytics')),
         findsOneWidget);
   });

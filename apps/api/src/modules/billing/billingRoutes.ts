@@ -3,6 +3,7 @@ import type { RequestHandler, Response, Router } from 'express';
 import type { ServerConfig } from '../../config/env.js';
 import { readAuthUser } from '../auth/authTypes.js';
 import type { PostStore } from '../posts/postStore.js';
+import { readUtcMonthBounds } from '../posts/postUsage.js';
 import {
   canSchedulePosts,
   monthlyPostUnitLimits
@@ -314,7 +315,8 @@ export const registerBillingRoutes = (
           postUnits: Math.max(0, (addonGrants?.postUnits ?? 0) - usedAddonPostUnits),
           aiCaptions: Math.max(0, (addonGrants?.aiCaptions ?? 0) - usedAddonAiCaptions)
         }
-      }), ...(subscriptionStore.getPurchasedPlan ? { purchasedPlan } : {}) }
+      }), monthlyQuotaResetsAt: readUtcMonthBounds(new Date(now)).end.toISOString(),
+      ...(subscriptionStore.getPurchasedPlan ? { purchasedPlan } : {}) }
     });
   });
 

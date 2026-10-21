@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/analytics/analytics_screen.dart';
 
@@ -38,6 +39,63 @@ Future<void> _tapTextAfterScrolling(
 }
 
 void main() {
+  for (final transition in ['dispose', 'different-owner', 'fresh-same-owner']) {
+    testWidgets('late Pro preflight does not dispatch analytics after $transition',
+        (tester) async {
+      final sessions = PostDeeAuthSessionStore.instance;
+      sessions.signIn(const AuthSession(userId: 'seller-a', idToken: 'a'));
+      addTearDown(sessions.clear);
+      final preflight = Completer<SubscriptionStatusResult>();
+      var summaryCalls = 0;
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: AnalyticsScreen(
+        loadSubscription: () => preflight.future,
+        loadAnalytics: () async {
+          summaryCalls++;
+          return const AnalyticsSummaryResult(totalViews: 150, totalLikes: 15, platforms: []);
+        },
+      ))));
+      await tester.pump();
+      if (transition == 'dispose') {
+        await tester.pumpWidget(const SizedBox.shrink());
+      } else {
+        sessions.signIn(AuthSession(userId: transition == 'different-owner'
+            ? 'seller-b' : 'seller-a', idToken: 'new-session'));
+      }
+      preflight.complete(const SubscriptionStatusResult(userId: 'seller-a', plan: 'PRO',
+        status: 'ACTIVE', canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true));
+      await tester.pumpAndSettle();
+      expect(summaryCalls, 0);
+      expect(find.text('150'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final alreadyLoaded in [false, true]) {
+    testWidgets('analytics clears old-owner results loaded=$alreadyLoaded',
+        (tester) async {
+      final sessions = PostDeeAuthSessionStore.instance;
+      sessions.signIn(const AuthSession(userId: 'seller-a', idToken: 'a'));
+      addTearDown(sessions.clear);
+      final summary = Completer<AnalyticsSummaryResult>();
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body:
+        AnalyticsScreen(loadAnalytics: () => summary.future))));
+      await tester.pump();
+      if (alreadyLoaded) {
+        summary.complete(const AnalyticsSummaryResult(totalViews: 150, totalLikes: 15, platforms: []));
+        await tester.pumpAndSettle();
+        expect(find.text('150'), findsWidgets);
+      }
+      sessions.signIn(const AuthSession(userId: 'seller-b', idToken: 'b'));
+      if (!alreadyLoaded) {
+        summary.complete(const AnalyticsSummaryResult(totalViews: 150, totalLikes: 15, platforms: []));
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('150'), findsNothing);
+      expect(find.text('บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดหน้าวิเคราะห์ใหม่'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   final analyticsScroll = find.descendant(
     of: find.byKey(const ValueKey('analytics-scroll')),
     matching: find.byWidgetPredicate(

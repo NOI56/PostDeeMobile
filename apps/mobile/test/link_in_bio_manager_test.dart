@@ -84,6 +84,45 @@ void main() {
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
+  for (final ownerChanged in [false, true]) {
+    testWidgets('deleted draft link undo preserves order and owner ($ownerChanged)',
+        (tester) async {
+      final store = _ControlledDraftStore()..saved = const LinkInBioDraft(
+        storeName: 'ร้านมินา', slug: 'mina-shop', autoUpdateFromScheduledPosts: false,
+        enabledLinkIds: {'shop', 'chat'}, customLinks: [
+          _link,
+          LinkInBioCustomLink(id: 'chat', title: 'LINE', url: 'https://line.me/mina'),
+          LinkInBioCustomLink(id: 'last', title: 'เว็บ', url: 'https://example.com'),
+        ], appearance: LinkInBioAppearance(featuredLinkId: 'chat'));
+      var publications = 0;
+      await _mount(tester, LinkInBioScreen(draftStore: store,
+        loadProfile: () async => null,
+        publishProfile: ({required storeName, required slug, required links, appearance}) async {
+          publications++; return _profile();
+        }));
+      await _tap(tester, 'link-in-bio-link-menu-chat');
+      await _tap(tester, 'link-in-bio-delete-chat');
+      expect(store.saved.customLinks.map((link) => link.id), ['shop', 'last']);
+      expect(find.text('เลิกทำ'), findsOneWidget);
+      if (ownerChanged) {
+        PostDeeAuthSessionStore.instance.signIn(
+          const AuthSession(userId: 'seller-b', idToken: 'other'));
+        await tester.pumpAndSettle();
+        expect(find.text('เลิกทำ'), findsNothing);
+      } else {
+        await tester.tap(find.text('เลิกทำ'));
+        await tester.pumpAndSettle();
+      }
+      expect(store.saved.customLinks.map((link) => link.id),
+          ownerChanged ? ['shop', 'last'] : ['shop', 'chat', 'last']);
+      if (!ownerChanged) {
+        expect(store.saved.enabledLinkIds, {'shop', 'chat'});
+        expect(store.saved.appearance.featuredLinkId, 'chat');
+      }
+      expect(publications, 0);
+    });
+  }
+
   testWidgets(
       'automatic draft saves serialize edits and skip queued work after an owner change',
       (tester) async {

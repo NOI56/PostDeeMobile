@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/uploader/post_video_preview_screen.dart';
 // The fake replaces the platform interface already used by video_player.
@@ -156,6 +157,79 @@ void main() {
 
   tearDown(() {
     VideoPlayerPlatform.instance = previousPlatform;
+  });
+
+  testWidgets(
+      'network preview plays a verified URL without autoplay and disposes on exit',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    sessions.signIn(
+        AuthSession.authenticated(userId: 'preview-owner', idToken: 'token'));
+    final url =
+        Uri.parse('https://private-media.test/owned-video?signature=test');
+    await tester.pumpWidget(MaterialApp(
+        home: PostVideoPreviewScreen.network(
+      videoUrl: url,
+      videoName: 'คลิปที่ส่งแล้ว',
+    )));
+    await tester.pumpAndSettle();
+    expect(platform.sources.single.sourceType, DataSourceType.network);
+    expect(platform.sources.single.uri, url.toString());
+    expect(platform.played, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _settleNativeDisposal(tester);
+    expect(platform.disposeCounts[1], 1);
+  });
+
+  for (final rawUrl in [
+    'javascript:alert(1)',
+    'https://user:secret@media.test/video',
+    'file:///private/video.mp4'
+  ]) {
+    testWidgets(
+        'network preview refuses unsafe media without creating a player: $rawUrl',
+        (tester) async {
+      final sessions = PostDeeAuthSessionStore.instance;
+      final original = sessions.session;
+      addTearDown(() => sessions.signIn(original));
+      sessions.signIn(
+          AuthSession.authenticated(userId: 'preview-owner', idToken: 'token'));
+      await tester.pumpWidget(MaterialApp(
+          home: PostVideoPreviewScreen.network(
+        videoUrl: Uri.parse(rawUrl),
+        videoName: 'Owned preview',
+      )));
+      await tester.pumpAndSettle();
+      expect(platform.sources, isEmpty);
+      expect(find.text('ยังเปิดคลิปไม่ได้'), findsOneWidget);
+    });
+  }
+
+  testWidgets(
+      'network preview revokes playback and retry after the owner changes',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    sessions.signIn(
+        AuthSession.authenticated(userId: 'preview-owner', idToken: 'token'));
+    await tester.pumpWidget(MaterialApp(
+        home: PostVideoPreviewScreen.network(
+      videoUrl: Uri.parse('https://media.test/owned?signature=test'),
+      videoName: 'Owned preview',
+    )));
+    await tester.pumpAndSettle();
+    sessions.signIn(AuthSession.authenticated(
+        userId: 'another-owner', idToken: 'other-token'));
+    await tester.pumpAndSettle();
+    await _settleNativeDisposal(tester);
+    expect(
+        find.byKey(const ValueKey('post-video-preview-player')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('post-video-preview-retry')), findsNothing);
+    expect(platform.disposeCounts[1], 1);
   });
 
   for (final mode in ['reduced', 'ticker', 'background']) {

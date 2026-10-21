@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
@@ -10,11 +11,17 @@ import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
 
 class _StatusApiClient extends PostDeeApiClient {
-  _StatusApiClient({required this.list, this.refresh, this.connect});
+  _StatusApiClient({required this.list, this.refresh, this.connect, this.disconnect});
 
   final Future<List<SocialConnectionResult>> Function() list;
   final Future<List<SocialConnectionResult>> Function()? refresh;
   final Future<SocialConnectLinkResult> Function(String? returnTarget)? connect;
+  final Future<void> Function(String platform)? disconnect;
+
+  @override
+  Future<void> disconnectSocialConnection(String platform) async {
+    await disconnect?.call(platform);
+  }
 
   @override
   Future<List<SocialConnectionResult>> listSocialConnections() => list();
@@ -39,6 +46,84 @@ void main() {
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
     PostDeeAuthSessionStore.instance.clear();
+  });
+
+  for (final action in ['cancel', 'confirm', 'owner-change']) {
+    testWidgets('disconnect $action names the account and protects queued work',
+        (tester) async {
+      _signIn('owner-a');
+      var disconnects = 0;
+      await tester.pumpWidget(MaterialApp(home: ConnectionsScreen(
+        apiClient: _StatusApiClient(list: () async => const [
+          SocialConnectionResult(platform: 'TIKTOK', connected: true,
+            displayName: '@mina'),
+        ], disconnect: (_) async { disconnects++; }),
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK')));
+      await tester.pumpAndSettle();
+      expect(disconnects, 0);
+      expect(find.text('ตัดการเชื่อมต่อ TikTok?'), findsOneWidget);
+      expect(find.textContaining('@mina'), findsWidgets);
+      expect(find.textContaining('โพสต์ที่ตั้งเวลาไว้'), findsOneWidget);
+      if (action == 'owner-change') _signIn('owner-b');
+      await tester.tap(find.byKey(ValueKey(action == 'cancel'
+          ? 'disconnect-cancel' : 'disconnect-confirm')));
+      await tester.pumpAndSettle();
+      expect(disconnects, action == 'confirm' ? 1 : 0);
+    });
+  }
+
+  testWidgets('connection actions announce their platform to a screen reader',
+      (tester) async {
+    _signIn('owner-a');
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(MaterialApp(home: ConnectionsScreen(
+        apiClient: _StatusApiClient(list: () async => const [
+          SocialConnectionResult(platform: 'TIKTOK', connected: true, displayName: '@mina'),
+        ]),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('ตัดการเชื่อมต่อ TikTok @mina'), findsOneWidget);
+      expect(find.bySemanticsLabel('เชื่อมต่อ YouTube Shorts'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets('connected account and disconnect action fit 320dp at 2x text',
+      (tester) async {
+    _signIn('owner-a');
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+        child: child!),
+      home: ConnectionsScreen(apiClient: _StatusApiClient(list: () async => const [
+        SocialConnectionResult(platform: 'TIKTOK', connected: true, displayName: '@mina'),
+      ])),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(tester.renderObject<RenderParagraph>(find.text('@mina')).didExceedMaxLines, isFalse);
+    final action = find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK'));
+    await tester.ensureVisible(action);
+    await tester.pumpAndSettle();
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(find.text('ตัดการเชื่อมต่อ TikTok?'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.byKey(const ValueKey('disconnect-confirm'))).height,
+        greaterThanOrEqualTo(48));
+    final cancel = find.byKey(const ValueKey('disconnect-cancel'));
+    expect(tester.getSize(cancel).height, greaterThanOrEqualTo(48));
+    await tester.tap(cancel);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
   });
 
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {

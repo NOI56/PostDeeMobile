@@ -151,6 +151,8 @@ export type PostStore = {
   listPublishing: () => Promise<Array<Pick<QueuedPost, 'id' | 'platforms'>>>;
   finalizeInterruptedPublish: (input: FinalizeInterruptedPublishInput) => Promise<boolean>;
   list: (filter?: { userId?: string; scheduledOnly?: boolean }) => Promise<QueuedPost[]>;
+  // Direct owner-scoped reads must not scan or return another owner's history.
+  findOwned: (input: { postId: string; userId: string }) => Promise<QueuedPost | undefined>;
   // Global aggregate only: used by the opt-in real-publisher activation guard.
   // It deliberately returns no post, owner, caption, or media details.
   countPublishBacklog: () => Promise<number>;
@@ -260,6 +262,7 @@ export const createPostStore = ({
 
           return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
         }),
+    findOwned: async ({ postId, userId }) => posts.find((post) => post.id === postId && post.userId === userId),
     countPublishBacklog: async () =>
       posts.filter(
         (post) => post.status === 'QUEUED' || post.status === 'PUBLISHING'

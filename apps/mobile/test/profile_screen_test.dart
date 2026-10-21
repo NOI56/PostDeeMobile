@@ -19,6 +19,94 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  testWidgets('help explains free quota in platform units', (tester) async {
+    await tester.pumpWidget(_hostProfile());
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('ช่วยเหลือ'), 350);
+    await tester.tap(find.text('ช่วยเหลือ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('3 หน่วยต่อเดือน'), findsOneWidget);
+    expect(find.textContaining('1 คลิปลง 3 ช่องทาง ใช้ 3 หน่วย'), findsOneWidget);
+    expect(find.textContaining('3 ครั้งต่อเดือน'), findsNothing);
+  });
+
+  testWidgets('manage subscription offers both stores instead of guessing purchase origin',
+      (tester) async {
+    Uri? launched;
+    await tester.pumpWidget(_hostProfile(
+      launchSubscriptionManagement: (uri) async { launched = uri; return true; }));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('จัดการสมาชิก'), 300);
+    await tester.ensureVisible(find.text('จัดการสมาชิก'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('จัดการสมาชิก'));
+    await tester.pumpAndSettle();
+    expect(launched, isNull);
+    expect(find.text('เลือกร้านค้าที่สมัคร'), findsOneWidget);
+    expect(find.textContaining('ร้านค้าบนเครื่องนี้'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('manage-subscription-app-store')));
+    await tester.pumpAndSettle();
+    expect(launched.toString(), 'https://apps.apple.com/account/subscriptions');
+  });
+
+  testWidgets('account deletion warns about unused prepaid balances', (tester) async {
+    final api = _FakeSocialApiClient(connections: const [], subscription:
+      const SubscriptionStatusResult(userId: 'seller', plan: 'PRO', status: 'ACTIVE',
+        addonPostUnits: 70, addonAiCaptions: 25,
+        canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true));
+    await tester.pumpWidget(_hostProfile(apiClient: api));
+    await tester.pumpAndSettle();
+    final delete = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    await tester.scrollUntilVisible(delete, 400);
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('โพสต์ 70 หน่วย · AI 25 ครั้ง'), findsWidgets);
+    expect(find.textContaining('หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้'), findsOneWidget);
+    expect(find.textContaining('ไม่คืนเงิน'), findsNothing);
+  });
+
+  testWidgets('a delete confirmation from the previous owner cannot delete the current account',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    sessions.signIn(const AuthSession(userId: 'seller-a', idToken: 'a'));
+    addTearDown(sessions.clear);
+    var deletions = 0;
+    await tester.pumpWidget(_hostProfile(onDeleteAccount: () => deletions++));
+    await tester.pumpAndSettle();
+    final delete = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    await tester.scrollUntilVisible(delete, 400);
+    await tester.tap(delete);
+    await tester.pumpAndSettle();
+    sessions.signIn(const AuthSession(userId: 'seller-b', idToken: 'b'));
+    await tester.pumpAndSettle();
+    final scrollable = find.descendant(
+      of: find.byKey(const ValueKey('delete-account-confirm-sheet')),
+      matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(find.text('ลบบัญชีถาวร'), 200, scrollable: scrollable);
+    await tester.tap(find.text('ลบบัญชีถาวร'));
+    await tester.pumpAndSettle();
+    expect(deletions, 0);
+  });
+
+  testWidgets('account shows the next monthly quota reset separately from credit expiry',
+      (tester) async {
+    final api = _FakeSocialApiClient(connections: const [], subscription:
+      SubscriptionStatusResult.fromJson({
+        'userId': 'seller', 'plan': 'PRO', 'status': 'ACTIVE',
+        'monthlyPostLimit': 250, 'remainingPostsThisMonth': 240,
+        'monthlyQuotaResetsAt': '2026-11-01T00:00:00.000Z',
+        'addonPostUnits': 20, 'addonAiCaptions': 10,
+        'canSchedule': true, 'canUseAiCaptions': true, 'canUseAnalytics': true,
+      }));
+    await tester.pumpWidget(_hostProfile(apiClient: api));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.textContaining('โควตารายเดือนเริ่มรอบใหม่'), 250);
+    final localReset = DateTime.utc(2026, 11, 1).toLocal();
+    expect(find.textContaining('${localReset.day}/${localReset.month}/${localReset.year}'), findsOneWidget);
+    expect(find.textContaining('(เวลาท้องถิ่น)'), findsOneWidget);
+    expect(find.text('เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน'), findsOneWidget);
+  });
+
   testWidgets('account quota separates monthly allowance from the purchased balance', (tester) async {
     final apiClient = _FakeSocialApiClient(connections: const [],
       subscription: const SubscriptionStatusResult(userId: 'seller', plan: 'PRO', status: 'ACTIVE',
@@ -1601,9 +1689,11 @@ Widget _hostProfile({
   PostDeeApiClient? apiClient,
   Future<bool> Function(Uri uri)? launchConnectUrl,
   Future<void> Function()? onManageSubscription,
+  Future<bool> Function(Uri)? launchSubscriptionManagement,
   PostDeeLanguageController? languageController,
   PostDeeThemeController? themeController,
   VoidCallback? onSignOut,
+  VoidCallback? onDeleteAccount,
   TextScaler textScaler = TextScaler.noScaling,
 }) {
   return MaterialApp(
@@ -1626,11 +1716,12 @@ Widget _hostProfile({
             PostDeeLanguageController(initialLocale: locale),
         themeController: themeController ?? PostDeeThemeController(),
         onOpenTemplates: () {},
-        onDeleteAccount: () {},
+        onDeleteAccount: onDeleteAccount ?? () {},
         onSignOut: onSignOut,
         apiClient: apiClient ?? _FakeSocialApiClient(connections: const []),
         launchConnectUrl: launchConnectUrl,
         onManageSubscription: onManageSubscription,
+        launchSubscriptionManagement: launchSubscriptionManagement,
       ),
     ),
   );

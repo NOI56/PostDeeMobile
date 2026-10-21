@@ -82,8 +82,11 @@ void main() {
           String? initialDraftId,
           PublishMediaProbe? probe,
           UploaderPostRecovery? recoverPostSubmission,
+           ValueChanged<String>? onViewPost,
+           GlobalKey<NavigatorState>? navigatorKey,
           UploaderPostCreator? createPost}) =>
       MaterialApp(
+          navigatorKey: navigatorKey,
           home: Scaffold(
               body: UploaderScreen(
         draftStore: store,
@@ -95,6 +98,7 @@ void main() {
         initialVideoHeight: 1280,
         loadSubscription: () async => subscription,
         recoverPostSubmission: recoverPostSubmission,
+         onViewPost: onViewPost,
         loadSocialConnections: () async => [
           SocialConnectionResult(
               platform: 'YOUTUBE_SHORTS',
@@ -139,17 +143,23 @@ void main() {
       {String caption = 'คลิปสินค้า'}) async {
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);
-    await tester.enterText(
-        find.byKey(const ValueKey('uploader-caption-field')), caption);
+    final captionField = find.byKey(const ValueKey('uploader-caption-field'));
+    await tester.scrollUntilVisible(captionField, 120,
+        scrollable: uploaderMainScroll);
+    await tester.pumpAndSettle();
+    await tester.enterText(captionField, caption);
     await goToUploaderStep(tester, 2);
     final channel =
         find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS'));
-    await tester.ensureVisible(channel);
+    await tester.scrollUntilVisible(channel, 120,
+        scrollable: uploaderMainScroll);
+    await tester.pumpAndSettle();
     await tester.tap(channel);
     await tester.pumpAndSettle();
     final settings =
         find.byKey(const ValueKey('uploader-platform-settings-YOUTUBE_SHORTS'));
-    await tester.ensureVisible(settings);
+    await tester.scrollUntilVisible(settings, 120,
+        scrollable: uploaderMainScroll);
     await tester.pumpAndSettle();
     await tester.tap(settings);
     await tester.pumpAndSettle();
@@ -214,6 +224,123 @@ void main() {
     expect(effects, isEmpty);
     expect(find.textContaining('5,000'), findsWidgets);
   });
+
+  testWidgets('caption limits are visible before review and never open progress',
+      (tester) async {
+    await tester.pumpWidget(app());
+    await openSettings(tester, caption: 'ก' * 1700);
+    await finishSettings(tester);
+    await goToUploaderStep(tester, 1);
+    expect(find.byKey(const ValueKey('uploader-caption-limits')), findsOneWidget);
+    expect(find.textContaining('5,100 / 5,000 ไบต์'), findsOneWidget);
+    expect(find.textContaining('คำอธิบาย YouTube ต้องไม่เกิน'), findsWidgets);
+    await goToUploaderStep(tester, 3);
+    expect(tester.widget<FilledButton>(
+        find.byKey(const ValueKey('publish-review-confirm'))).onPressed, isNull);
+    expect(find.byKey(const ValueKey('publish-flow-posting')), findsNothing);
+    expect(posts, isEmpty);
+    expect(effects, isEmpty);
+  });
+
+  testWidgets('invalid channel settings reveal an accessible inline action',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 560);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(app());
+    await openSettings(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-platform-settings-cancel')));
+    await tester.pumpAndSettle();
+    final scroll = tester.state<ScrollableState>(uploaderMainScroll);
+    scroll.position.jumpTo(scroll.position.maxScrollExtent);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('uploader-wizard-next')));
+    await tester.pumpAndSettle();
+    final validation = find.byKey(
+        const ValueKey('uploader-platform-validation-YOUTUBE_SHORTS'));
+    expect(validation.hitTestable(), findsOneWidget);
+    expect(tester.widget<Semantics>(validation).properties.liveRegion, isTrue);
+    expect(find.text('ระบุว่าวิดีโอ YouTube ทำมาเพื่อเด็กหรือไม่'), findsOneWidget);
+    final edit = find.byKey(
+        const ValueKey('uploader-platform-validation-edit-YOUTUBE_SHORTS'));
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-platform-settings-sheet')),
+        findsOneWidget);
+    expect(posts, isEmpty);
+    expect(effects, isEmpty);
+  });
+
+  testWidgets('review explains keeping the app open before confirming',
+      (tester) async {
+    await tester.pumpWidget(app());
+    await openSettings(tester);
+    await finishSettings(tester);
+    await goToUploaderStep(tester, 3);
+    expect(find.byKey(const ValueKey('uploader-send-foreground-notice')),
+        findsOneWidget);
+    expect(posts, isEmpty);
+    expect(effects, isEmpty);
+  });
+
+  for (final status in ['FAILED', 'PARTIAL_PUBLISHED']) {
+    testWidgets('actual uploader $status views original and Back never resubmits',
+        (tester) async {
+      final navigator = GlobalKey<NavigatorState>();
+      final opened = <String>[];
+      await tester.pumpWidget(app(
+          navigatorKey: navigator,
+          onViewPost: (id) {
+            opened.add(id);
+            navigator.currentState!.push(MaterialPageRoute<void>(
+                builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('รายละเอียดรายการเดิม')),
+                    body: Text('original: $id'))));
+          },
+          createPost: (request) async {
+            posts.add(request);
+            return QueuedPostResult(id: 'original-$status', status: status,
+                videoS3Key: request.videoS3Key, platforms: request.platforms,
+                idempotentReplay: true);
+          }));
+      await openSettings(tester);
+      await finishSettings(tester);
+      await submit(tester);
+      expect(find.byKey(const ValueKey('publish-flow-done')), findsOneWidget);
+      final requestId = posts.single.clientRequestId;
+      if (status == 'FAILED') {
+        expect(find.text('ส่งไม่สำเร็จ'), findsOneWidget);
+        expect(store.drafts.values.single.submissionRequestId, requestId);
+        expect(store.drafts.values.single.uploadedMedia, isNotNull);
+      } else {
+        expect(find.text('ส่งสำเร็จบางช่องทาง'), findsOneWidget);
+        expect(store.drafts, isEmpty);
+      }
+      final detail = find.byKey(const ValueKey('publish-flow-view-post'));
+      await tester.ensureVisible(detail);
+      await tester.tap(detail);
+      await tester.pumpAndSettle();
+      expect(opened, ['original-$status']);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('publish-flow-done')), findsOneWidget);
+      expect(posts, hasLength(1));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('publish-flow-done')), findsNothing);
+      expect(tester.widget<FilledButton>(find.byKey(
+          const ValueKey('publish-review-confirm'))).onPressed, isNull);
+      await goToUploaderStep(tester, 1);
+      final captionField = find.byKey(const ValueKey('uploader-caption-field'));
+      await tester.scrollUntilVisible(captionField, 120,
+          scrollable: uploaderMainScroll);
+      expect(tester.widget<TextField>(captionField).controller!.text,
+          status == 'FAILED' ? 'คลิปสินค้า' : '');
+      expect(posts, hasLength(1));
+      expect(effects.where((effect) => effect == 'upload'), hasLength(1));
+    });
+  }
 
   testWidgets('a 181 second YouTube clip stops before remote upload',
       (tester) async {
@@ -337,6 +464,32 @@ void main() {
             videoS3Key: 'uploads/old.mp4')));
   }
 
+  testWidgets('restoring another draft clears the previous inline validation',
+      (tester) async {
+    final draft = await legacyUploadedDraft();
+    await tester.pumpWidget(app());
+    await openSettings(tester);
+    await tester.tap(find.byKey(
+        const ValueKey('uploader-platform-settings-cancel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uploader-wizard-next')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey(
+        'uploader-platform-validation-YOUTUBE_SHORTS')), findsOneWidget);
+    final draftsButton = find.byKey(const ValueKey('uploader-open-drafts'));
+    await tester.ensureVisible(draftsButton);
+    await tester.tap(draftsButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('publish-draft-${draft.id}')));
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 2);
+    expect(find.byKey(const ValueKey(
+        'uploader-platform-validation-YOUTUBE_SHORTS')), findsNothing);
+    expect(store.drafts[draft.id]!.submissionRequestId, draft.submissionRequestId);
+    expect(posts, isEmpty);
+    expect(effects, isEmpty);
+  });
+
   testWidgets(
       'legacy accepted upload recovers its result without new guards or POST',
       (tester) async {
@@ -406,6 +559,58 @@ void main() {
     expect(find.textContaining('ส่งไม่สำเร็จ'), findsWidgets);
     expect(
         store.drafts[draft.id]!.submissionRequestId, draft.submissionRequestId);
+    expect(posts, isEmpty);
+    expect(effects, isEmpty);
+  });
+
+  testWidgets('recovery opens the original post without creating another request',
+      (tester) async {
+    final draft = await legacyUploadedDraft();
+    final opened = <String>[];
+    var recoveries = 0;
+    await tester.pumpWidget(app(
+        initialDraftId: draft.id,
+        onViewPost: opened.add,
+        recoverPostSubmission: (request) async {
+          recoveries++;
+          return QueuedPostResult(
+              id: 'failed-original', status: 'FAILED',
+              videoS3Key: request.videoS3Key, platforms: request.platforms,
+              idempotentReplay: true);
+        }));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uploader-recover-submission')));
+    await tester.pumpAndSettle();
+    final detail = find.byKey(const ValueKey('uploader-view-recovered-post'));
+    await tester.ensureVisible(detail);
+    await tester.tap(detail);
+    await tester.pumpAndSettle();
+    expect(opened, ['failed-original']);
+    expect(recoveries, 1);
+    expect(posts, isEmpty);
+    expect(effects, isEmpty);
+    expect(store.drafts[draft.id]!.submissionRequestId, draft.submissionRequestId);
+  });
+
+  testWidgets('a stale recovery action never opens the previous account post',
+      (tester) async {
+    final draft = await legacyUploadedDraft();
+    final opened = <String>[];
+    await tester.pumpWidget(app(
+        initialDraftId: draft.id, onViewPost: opened.add,
+        recoverPostSubmission: (request) async => QueuedPostResult(
+            id: 'old-owner-post', status: 'QUEUED',
+            videoS3Key: request.videoS3Key, platforms: request.platforms)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uploader-recover-submission')));
+    await tester.pumpAndSettle();
+    final action = tester.widget<TextButton>(find.byKey(
+        const ValueKey('uploader-view-recovered-post'))).onPressed!;
+    PostDeeAuthSessionStore.instance.signIn(
+        const AuthSession(userId: 'replacement-owner'));
+    action();
+    await tester.pumpAndSettle();
+    expect(opened, isEmpty);
     expect(posts, isEmpty);
     expect(effects, isEmpty);
   });

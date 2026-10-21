@@ -1584,8 +1584,8 @@ The 2026-10-18 Mobile publishing-activity follow-up uses these existing reads
 and result fields. Home refreshes recent posts every 30 seconds only while a
 loaded post is `PUBLISHING` and its owner, foreground, active-tab and current-route
 guards allow it. Calendar retains its existing visible `QUEUED`/`PUBLISHING`
-polling. Post detail remains a navigation snapshot; refresh its parent and reopen
-it for new results. No single-post GET, response field, schema, flag, dependency,
+polling. Post detail was a navigation snapshot at that release; the separate
+2026-10-21 candidate below adds a single-post GET. No response field, schema, flag, dependency,
 entitlement or migration is added. Mobile targeted tests pass 145/145, full
 Flutter passes 2,437 with two optional previews skipped, and analysis has no
 issues. Release CI builds APK 12026 with the existing Test Store settings; APK
@@ -1596,6 +1596,29 @@ backward-compatible YouTube-title route fix. No new migrations are required;
 startup reports 20 migrations and none pending, and health/readiness return 200.
 New provider publication and native active-sending/FPS are not claimed. See the
 [publishing-motion plan](docs/superpowers/plans/2026-10-18-publishing-motion.md).
+
+### `GET /posts/:id` (2026-10-21 usability candidate)
+
+Requires the existing Bearer authentication. Returns only the exact post owned
+by that authenticated user, with `Cache-Control: private, no-store`:
+
+```json
+{ "status": "ok", "post": { "id": "post-1", "status": "PUBLISHING", "platformResults": [] } }
+```
+
+The actual `post` retains the existing public post fields. Optional
+`includeMedia=true` adds safe signed `videoUrl` and `coverImageUrl` independently
+when their objects belong to this owner. Signing is best-effort and bounded by
+the same preview helper as the list endpoint. Missing, failed or unsafe preview
+URLs are omitted; the owned post still returns successfully. No provider refresh,
+post creation, queue change or quota consumption occurs.
+
+Missing and foreign IDs both return `404` with
+`{ "status": "error", "code": "POST_NOT_FOUND", "message": "Post not found" }`.
+Mobile treats only that explicit code as an unavailable record. A generic 404
+from an older deployment remains an error, preserving the visible snapshot.
+The existing `GET /posts` contract is unchanged. Deploy this API before the
+updated Mobile detail/recovery/notification navigation. No migration is needed.
 
 ### Account mutation boundary for stateful reads
 
@@ -3057,6 +3080,13 @@ remain separate from a new payment. Install the additive API first, then the
 preparation-aware app; read-only GET is a separate later rollout step.
 
 ### `GET /billing/subscription`
+
+The 2026-10-21 usability candidate adds optional ISO-8601
+`subscription.monthlyQuotaResetsAt`, the start of the next UTC calendar month
+using the same observation time as monthly usage. For example, an observation
+on 2026-10-21 returns `2026-11-01T00:00:00.000Z`. Mobile displays device-local
+time and leaves it unknown when an older API omits the field. This does not
+change subscription renewal, allowance limits or the nonexpiring purchased bank.
 
 Returns the current user's plan and feature flags.
 

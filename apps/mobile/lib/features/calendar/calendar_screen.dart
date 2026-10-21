@@ -38,6 +38,7 @@ class CalendarScreen extends StatefulWidget {
     this.loadCalendarPosts,
     this.reschedulePost,
     this.cancelPost,
+    this.loadPost,
     this.onAddPost,
     this.onAddPostForDate,
     this.ownerUserId,
@@ -54,6 +55,7 @@ class CalendarScreen extends StatefulWidget {
   final CalendarPostsLoader? loadCalendarPosts;
   final ScheduledPostRescheduler? reschedulePost;
   final ScheduledPostCanceller? cancelPost;
+  final Future<PostSummaryResult?> Function(String postId)? loadPost;
   final CalendarTimeConverter? toLocalTime;
   final DateTime Function()? now;
   final CalendarSubscriptionLoader? loadSubscription;
@@ -693,9 +695,60 @@ class _CalendarScreenState extends State<CalendarScreen>
       _postMutationGeneration += 1;
     } catch (_) {
       if (mounted && _loadStillOwned(generation, ownerUserId)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ยกเลิกโพสต์ไม่สำเร็จ ลองใหม่อีกครั้ง')),
-        );
+        // A missing response does not prove that cancellation failed. Read the
+        // same owned row without retrying the mutation or sending any video.
+        String message;
+        try {
+          final latest = await (widget.loadPost?.call(post.id) ??
+              _apiClient.getPostById(post.id));
+          if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
+          if (latest != null && latest.id != post.id) {
+            throw const ApiException('Post id mismatch');
+          }
+          final latestOwner =
+              latest is CalendarPostResult ? latest.userId : null;
+          if (latestOwner != null && latestOwner != _ownerId) {
+            throw const ApiException('Post owner mismatch');
+          }
+          _postMutationGeneration++;
+          setState(() {
+            _posts = [
+              for (final current in _posts)
+                if (current.id != post.id)
+                  current
+                else if (latest != null)
+                  CalendarPostResult(
+                    id: latest.id,
+                    caption: latest.caption,
+                    videoS3Key: latest.videoS3Key,
+                    platforms: latest.platforms,
+                    status: latest.status,
+                    createdAt: latest.createdAt,
+                    scheduledAt: latest.scheduledAt,
+                    publishedAt: latest.publishedAt,
+                    platformResults: latest.platformResults,
+                    userId: post.userId,
+                    videoUrl: latest.videoUrl,
+                    coverImageUrl: latest.coverImageUrl,
+                    coverFrameTimeMs: latest.coverFrameTimeMs,
+                  )
+            ];
+            _lastUpdated = _now();
+          });
+          message = latest == null
+              ? 'ไม่พบโพสต์นี้ในรายการแล้ว อาจถูกยกเลิกหรือถูกนำออก'
+              : latest.status.toUpperCase() == 'PUBLISHING'
+                  ? 'โพสต์เริ่มส่งแล้ว จึงยกเลิกคิวไม่ได้ กรุณาติดตามผลล่าสุด'
+                  : latest.status.toUpperCase() != 'QUEUED'
+                      ? 'สถานะโพสต์เปลี่ยนแล้ว กำลังแสดงผลล่าสุด'
+                      : 'รายการยังรอส่งตามเวลา ยังยืนยันการยกเลิกไม่ได้';
+          _syncQueuedRefresh();
+        } catch (_) {
+          message = 'ยังยืนยันผลการยกเลิกไม่ได้ กรุณารีเฟรชเมื่อเชื่อมต่อได้';
+        }
+        if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(message)));
       }
       return;
     } finally {

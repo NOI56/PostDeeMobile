@@ -2,6 +2,32 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Owned post observation and UX boundaries (2026-10-21, local candidate)
+
+`GET /posts/:id` queries the exact authenticated owner/id pair through the memory
+or Prisma post store, returns public post/outcome fields and never mutates a post,
+subscription, queue or quota. `includeMedia=true` optionally signs that owner's
+clip and cover independently. `404 POST_NOT_FOUND` alone means an unavailable
+owned record; a generic old-server 404 remains a load failure. Legacy list reads
+retain their contract.
+
+Mobile detail keeps its last confirmed snapshot during read failures, offers a
+manual status check and polls pending activity only while the route and app are
+visible. Account/session changes invalidate late results. Cancellation errors
+are reconciled with reads, not additional publish commands. Result and recovery
+navigation uses the original post ID. Remote preview reuses the existing guarded
+player and does not upload or resume playback automatically.
+
+The subscription snapshot optionally carries `monthlyQuotaResetsAt` from the
+same UTC month boundary as included quota. Mobile displays device-local time;
+it is neither the billing renewal date nor purchased-credit expiry. Purchased
+bank rules and checkout gates do not change. Local notification read markers
+remain session-only, with a route to owned post history instead of an implied
+persistent notification service. Hidden analytics is constructed only on entry.
+
+Deploy the API before Mobile. No migration, dependencies or environment changes.
+See the [work record](docs/superpowers/plans/2026-10-21-ux-review-fixes.md).
+
 ## Publishing progress activity (2026-10-20, locally verified and Staging APK installed)
 
 Home's local card-layout follow-up reuses the existing per-post activity scope;
@@ -65,8 +91,8 @@ Home's 30-second silent refresh uses the existing recent-post loader only while
 a loaded post is `PUBLISHING`, the app is resumed, Home is active, its route is
 current and its stable owner is still signed in. Owner changes invalidate late
 results. Calendar keeps its existing visible `QUEUED`/`PUBLISHING` polling.
-Detail receives a snapshot; its parent must refresh and reopen it for a newer
-result because there is no single-post GET. No API, schema, dependency, flag,
+Detail received a snapshot in this release; the 2026-10-21 follow-up above adds
+single-post observation. No API, schema, dependency, flag,
 entitlement or migration changes. Targeted tests pass 145/145; full Flutter
 passes 2,437 with two optional previews skipped, and analysis has no issues.
 The local tooling blocker was resolved for delivery through opt-in CI Test Store

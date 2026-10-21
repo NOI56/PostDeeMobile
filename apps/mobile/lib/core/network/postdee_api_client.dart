@@ -2147,6 +2147,7 @@ class SubscriptionStatusResult {
     this.monthlyPostLimit,
     this.usedPostsThisMonth,
     this.remainingPostsThisMonth,
+    this.monthlyQuotaResetsAt,
     this.baseMonthlyPostLimit,
     this.addonPostUnits = 0,
     this.addonAiCaptions = 0,
@@ -2171,6 +2172,8 @@ class SubscriptionStatusResult {
   final int? monthlyPostLimit;
   final int? usedPostsThisMonth;
   final int? remainingPostsThisMonth;
+  /// Server-owned UTC month boundary, independent of purchased credit lifetime.
+  final DateTime? monthlyQuotaResetsAt;
   final int? baseMonthlyPostLimit;
   final int addonPostUnits;
   final int addonAiCaptions;
@@ -2198,6 +2201,8 @@ class SubscriptionStatusResult {
         monthlyPostLimit: json['monthlyPostLimit'] as int?,
         usedPostsThisMonth: json['usedPostsThisMonth'] as int?,
         remainingPostsThisMonth: json['remainingPostsThisMonth'] as int?,
+        monthlyQuotaResetsAt: DateTime.tryParse(
+            json['monthlyQuotaResetsAt'] as String? ?? '')?.toUtc(),
         baseMonthlyPostLimit: json['baseMonthlyPostLimit'] as int?,
         addonPostUnits: json['addonPostUnits'] as int? ?? 0,
         addonAiCaptions: json['addonAiCaptions'] as int? ?? 0,
@@ -3518,6 +3523,28 @@ class PostDeeApiClient {
         .map((post) =>
             ScheduledPostResult.fromJson(post as Map<String, Object?>))
         .toList();
+  }
+
+  /// Reads one authenticated owner's post without downloading their history.
+  /// A generic route 404 (for example before the API is deployed) is not absence.
+  Future<PostSummaryResult?> getPostById(String postId,
+      {bool includeMedia = false}) async {
+    if (postId.trim().isEmpty) throw const ApiException('Post id is required');
+    Map<String, Object?> response;
+    try {
+      response = await _getJson('/posts/${Uri.encodeComponent(postId)}'
+          '${includeMedia ? '?includeMedia=true' : ''}');
+    } on ApiException catch (error) {
+      if (error.statusCode == 404 && error.code == 'POST_NOT_FOUND') return null;
+      rethrow;
+    }
+    final post = response['post'];
+    if (response['status'] != 'ok' ||
+        post is! Map<String, Object?> ||
+        post['id'] != postId) {
+      throw const ApiException('Post response does not match the requested post');
+    }
+    return PostSummaryResult.fromJson(post);
   }
 
   /// Lists all of the authenticated owner's activity without preview limits.

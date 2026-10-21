@@ -5,6 +5,8 @@ class AppTheme {
   const AppTheme._();
 
   static const accent = Color(0xFF0E9F6E);
+  // White action labels need a deeper green than decorative brand marks.
+  static const actionBackground = Color(0xFF087F5B);
   static const accentCyan = Color(0xFF36D6A0);
   static const accentPink = Color(0xFFF59E0B);
   static const success = Color(0xFF0E9F6E);
@@ -18,9 +20,9 @@ class AppTheme {
   // Deeper "ink" shades of the brand colors used for light mode. The vivid
   // brand hues are tuned for dark surfaces and wash out as text/icons on white,
   // so [accentCyanInk] etc. fade to these in light mode (see the getters below).
-  static const _accentCyanInkLight = Color(0xFF0E9F6E);
+  static const _accentCyanInkLight = Color(0xFF076749);
   static const _accentPinkInkLight = Color(0xFFC2410C);
-  static const _successInkLight = Color(0xFF0E9F6E);
+  static const _successInkLight = Color(0xFF076749);
 
   static const cardRadius = 18.0;
   static const tileRadius = 14.0;
@@ -95,7 +97,7 @@ class AppTheme {
     borderSoft: Color(0xFFEEF2EF),
     textPrimary: Color(0xFF15211A),
     textSecondary: Color(0xFF566A5E),
-    textMuted: Color(0xFF93A099),
+    textMuted: Color(0xFF566A5E),
     navSurface: Color(0xFFFFFFFF),
     navBorder: Color(0xFFE8EDE9),
     navActive: Color(0xFF0E9F6E),
@@ -261,10 +263,12 @@ class AppTheme {
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness:
-              brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-          statusBarBrightness:
-              brightness == Brightness.dark ? Brightness.dark : Brightness.light,
+          statusBarIconBrightness: brightness == Brightness.dark
+              ? Brightness.light
+              : Brightness.dark,
+          statusBarBrightness: brightness == Brightness.dark
+              ? Brightness.dark
+              : Brightness.light,
         ),
       ),
       cardTheme: CardThemeData(
@@ -309,6 +313,12 @@ class AppTheme {
             borderRadius: BorderRadius.circular(cardRadius),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: actionBackground,
+          foregroundColor: Colors.white,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(

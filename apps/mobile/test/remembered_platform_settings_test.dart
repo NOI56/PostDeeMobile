@@ -486,6 +486,9 @@ void main() {
     await tester.pumpWidget(uploader());
     await selectPlatform(tester, 'INSTAGRAM_REELS');
     final next = find.byKey(const ValueKey('uploader-wizard-next'));
+    final scroll = tester.state<ScrollableState>(uploaderMainScroll);
+    scroll.position.jumpTo(scroll.position.maxScrollExtent);
+    await tester.pump();
     await tester.tap(next);
     await tester.pump();
     expect(tester.widget<FilledButton>(next).onPressed, isNull);
@@ -494,9 +497,7 @@ void main() {
     expect(find.byKey(const ValueKey('uploader-step-body-2')), findsOneWidget);
     final notice = find.text(
         'โหลดค่าที่จำไว้ไม่สำเร็จ กรุณาเปิดตั้งค่าช่องทางเพื่อตรวจสอบก่อน');
-    await tester.scrollUntilVisible(notice, -300,
-        scrollable: uploaderMainScroll);
-    expect(notice, findsOneWidget);
+    expect(notice.hitTestable(), findsOneWidget);
     expect(tester.widget<FilledButton>(next).onPressed, isNotNull);
     pending.complete(PlatformPublishDefaults.fromSettings(
         SocialPlatform.instagramReels,

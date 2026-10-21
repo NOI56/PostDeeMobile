@@ -4,20 +4,36 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/theme/app_theme.dart';
 
-/// Plays the selected local clip without changing or uploading the source file.
+/// Plays a local clip or a temporary owned-post URL without uploading media.
 class PostVideoPreviewScreen extends StatefulWidget {
   const PostVideoPreviewScreen({
     super.key,
     required this.videoFile,
     required this.videoName,
     this.controllerFactory,
-  });
+  })  : assert(videoFile != null),
+        videoUrl = null,
+        networkControllerFactory = null;
 
-  final File videoFile;
+  /// The caller obtains this temporary URL through an authenticated owned-post
+  /// read. Network playback is revoked when that sign-in lifetime ends.
+  const PostVideoPreviewScreen.network({
+    super.key,
+    required this.videoUrl,
+    required this.videoName,
+    this.networkControllerFactory,
+  })  : assert(videoUrl != null),
+        videoFile = null,
+        controllerFactory = null;
+
+  final File? videoFile;
+  final Uri? videoUrl;
   final String videoName;
   final VideoPlayerController Function(File)? controllerFactory;
+  final VideoPlayerController Function(Uri)? networkControllerFactory;
 
   @override
   State<PostVideoPreviewScreen> createState() => _PostVideoPreviewScreenState();
@@ -38,6 +54,9 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
   double? _dragPositionMs;
   String? _errorMessage;
   String? _playbackMessage;
+  AuthSessionBinding? _ownerBinding;
+  bool _accessRevoked = false;
+  final _sessions = PostDeeAuthSessionStore.instance;
 
   @override
   void initState() {
@@ -45,16 +64,49 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
     WidgetsBinding.instance.addObserver(this);
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    if (widget.videoUrl != null) {
+      _ownerBinding = _sessions.captureSession();
+      _sessions.addListener(_onSessionChanged);
+      _accessRevoked = !_sessions.session.isSignedIn ||
+          _sessions.session.stableUserId == null;
+    }
     unawaited(_initialize());
   }
 
   @override
   void didUpdateWidget(PostVideoPreviewScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoFile.path != widget.videoFile.path ||
-        oldWidget.controllerFactory != widget.controllerFactory) {
+    if (oldWidget.videoUrl != null && widget.videoUrl == null) {
+      _sessions.removeListener(_onSessionChanged);
+      _ownerBinding = null;
+    }
+    if (oldWidget.videoUrl == null && widget.videoUrl != null) {
+      _ownerBinding = _sessions.captureSession();
+      _sessions.addListener(_onSessionChanged);
+      _accessRevoked = _accessRevoked ||
+          !_sessions.session.isSignedIn ||
+          _sessions.session.stableUserId == null;
+    }
+    if (oldWidget.videoFile?.path != widget.videoFile?.path ||
+        oldWidget.videoUrl != widget.videoUrl ||
+        oldWidget.controllerFactory != widget.controllerFactory ||
+        oldWidget.networkControllerFactory != widget.networkControllerFactory) {
       _restartInitialization();
     }
+  }
+
+  void _onSessionChanged() {
+    if (_ownerBinding?.isCurrent != false || _accessRevoked || !mounted) return;
+    _accessRevoked = true;
+    _initializationVersion++;
+    _cancelInitialization();
+    final controller = _controller;
+    _controller = null;
+    if (controller != null) _releaseController(controller);
+    setState(() {
+      _loading = false;
+      _errorMessage = 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดคลิปใหม่';
+    });
   }
 
   @override
@@ -73,15 +125,35 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
     final version = ++_initializationVersion;
     VideoPlayerController? controller;
     try {
-      controller = widget.controllerFactory?.call(widget.videoFile) ??
-          VideoPlayerController.file(
-            widget.videoFile,
-            // This screen owns lifecycle pausing, so returning to the app
-            // cannot trigger the plugin's automatic playback resume.
-            videoPlayerOptions: VideoPlayerOptions(
-              allowBackgroundPlayback: true,
-            ),
-          );
+      if (_accessRevoked || _ownerBinding?.isCurrent == false) {
+        throw StateError('Preview access ended');
+      }
+      final videoUrl = widget.videoUrl;
+      if (videoUrl != null) {
+        if (!const {'http', 'https'}.contains(videoUrl.scheme) ||
+            videoUrl.host.isEmpty ||
+            videoUrl.userInfo.isNotEmpty) {
+          throw StateError('Preview URL is unavailable');
+        }
+        controller = widget.networkControllerFactory?.call(videoUrl) ??
+            VideoPlayerController.networkUrl(videoUrl,
+                videoPlayerOptions:
+                    VideoPlayerOptions(allowBackgroundPlayback: true));
+      } else {
+        final videoFile = widget.videoFile;
+        if (videoFile == null) {
+          throw StateError('Preview source is unavailable');
+        }
+        controller = widget.controllerFactory?.call(videoFile) ??
+            VideoPlayerController.file(
+              videoFile,
+              // This screen owns lifecycle pausing, so returning to the app
+              // cannot trigger the plugin's automatic playback resume.
+              videoPlayerOptions: VideoPlayerOptions(
+                allowBackgroundPlayback: true,
+              ),
+            );
+      }
       _controller = controller;
       final initializationGate = Completer<void>();
       _initializationGate = initializationGate;
@@ -152,6 +224,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
   }
 
   void _restartInitialization() {
+    if (_accessRevoked || _ownerBinding?.isCurrent == false) return;
     _initializationVersion++;
     _cancelInitialization();
     final previous = _controller;
@@ -267,6 +340,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _sessions.removeListener(_onSessionChanged);
     _initializationVersion++;
     _cancelInitialization();
     final controller = _controller;
@@ -277,6 +351,15 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_accessRevoked) {
+      return Scaffold(
+          appBar: AppBar(title: const Text('ดูคลิป')),
+          body: const Center(
+              child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดคลิปใหม่',
+                      textAlign: TextAlign.center))));
+    }
     final controller = _controller;
     return PopScope<void>(
       onPopInvokedWithResult: (didPop, _) {
@@ -321,17 +404,20 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
               const SizedBox(height: 16),
               Text(_errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 8),
-              const Text(
-                'ลองเปิดอีกครั้ง หรือกลับไปเลือกคลิปอื่น',
+              Text(
+                widget.videoUrl != null
+                    ? 'กลับไปตรวจสถานะเพื่อเปิดตัวอย่างล่าสุด'
+                    : 'ลองเปิดอีกครั้ง หรือกลับไปเลือกคลิปอื่น',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
-                key: const ValueKey('post-video-preview-retry'),
-                onPressed: _restartInitialization,
-                icon: const Icon(Icons.refresh),
-                label: const Text('ลองเปิดคลิปอีกครั้ง'),
-              ),
+              if (!_accessRevoked)
+                OutlinedButton.icon(
+                  key: const ValueKey('post-video-preview-retry'),
+                  onPressed: _restartInitialization,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('ลองเปิดคลิปอีกครั้ง'),
+                ),
             ],
           ),
         ),

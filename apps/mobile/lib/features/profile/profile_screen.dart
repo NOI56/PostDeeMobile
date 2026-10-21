@@ -32,6 +32,7 @@ class ProfileScreen extends StatefulWidget {
     this.apiClient,
     this.launchConnectUrl,
     this.onManageSubscription,
+    this.launchSubscriptionManagement,
     this.isDeletingAccount = false,
     this.profileDraftStore = const SharedPreferencesProfileDraftStore(),
     this.verifyPhone,
@@ -51,6 +52,7 @@ class ProfileScreen extends StatefulWidget {
   final PostDeeApiClient? apiClient;
   final ConnectUrlLauncher? launchConnectUrl;
   final Future<void> Function()? onManageSubscription;
+  final Future<bool> Function(Uri)? launchSubscriptionManagement;
   final bool isDeletingAccount;
   final ProfileDraftStore profileDraftStore;
   final Future<AuthSession?> Function(BuildContext context)? verifyPhone;
@@ -200,20 +202,53 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _openSubscriptionManagement() async {
-    final uri = Uri.parse(
-      Platform.isIOS
-          ? 'https://apps.apple.com/account/subscriptions'
-          : 'https://play.google.com/store/account/subscriptions',
+    final binding = PostDeeAuthSessionStore.instance.captureSession();
+    final platform = Theme.of(context).platform;
+    final store = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: SingleChildScrollView(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('เลือกร้านค้าที่สมัคร', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            const Text('เลือกตามร้านค้าที่เคยชำระเงิน แม้ตอนนี้จะใช้เครื่องคนละระบบ '
+              'คุณตรวจสอบรายการได้ก่อนยกเลิกสมาชิก'),
+            const SizedBox(height: 12),
+            for (final choice in [
+              (id: 'google-play', name: 'Google Play', current: platform == TargetPlatform.android),
+              (id: 'app-store', name: 'App Store', current: platform == TargetPlatform.iOS),
+            ])
+              ListTile(
+                key: ValueKey('manage-subscription-${choice.id}'),
+                title: Text(choice.name),
+                subtitle: choice.current ? const Text('ร้านค้าบนเครื่องนี้') : null,
+                trailing: const Icon(Icons.open_in_new),
+                onTap: () => Navigator.of(sheetContext).pop(choice.id),
+              ),
+            TextButton(onPressed: () => Navigator.of(sheetContext).pop(), child: const Text('กลับไป')),
+          ],
+        )),
+      ),
     );
+    if (!mounted || !binding.isCurrent || store == null) return;
+    final uri = Uri.parse(store == 'app-store'
+        ? 'https://apps.apple.com/account/subscriptions'
+        : 'https://play.google.com/store/account/subscriptions');
     var launched = false;
 
     try {
-      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      launched = await (widget.launchSubscriptionManagement?.call(uri) ??
+          launchUrl(uri, mode: LaunchMode.externalApplication));
     } catch (_) {
       launched = false;
     }
 
-    if (!launched && mounted) {
+    if (!launched && mounted && binding.isCurrent) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -685,6 +720,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                 onManageSubscription:
                     widget.onManageSubscription ?? _openSubscriptionManagement,
                 isDeleting: widget.isDeletingAccount,
+                subscription: _subscriptionLoadError == null && !_isSubscriptionLoading
+                    ? _subscription : null,
               ),
             ],
           ),
@@ -1199,6 +1236,11 @@ class _CurrentPlanCard extends StatelessWidget {
                       style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                   ],
                 ],
+                if (subscription.monthlyQuotaResetsAt case final reset?) ...[
+                  const SizedBox(height: 4),
+                  Text('โควตารายเดือนเริ่มรอบใหม่ ${_quotaResetLabel(reset)} (เวลาท้องถิ่น)',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                ],
               ],
             ),
           ),
@@ -1206,6 +1248,13 @@ class _CurrentPlanCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _quotaResetLabel(DateTime value) {
+  final local = value.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.day}/${local.month}/${local.year} เวลา $hour:$minute';
 }
 
 void _openLegal(BuildContext context, LegalDocument document) {
@@ -1235,7 +1284,8 @@ const _helpInfo = LegalDocument(
       '2. เลือกแพลตฟอร์มที่จะโพสต์\n'
       '3. โพสต์ทันที หรือ ตั้งเวลาไว้ในปฏิทิน\n\n'
       'คำถามที่พบบ่อย\n'
-      '- โพสต์ฟรีได้กี่ครั้ง? แพ็กเกจ Basic โพสต์ฟรีได้ 3 ครั้งต่อเดือนหลังยืนยันเบอร์\n'
+      '- โควตาโพสต์ฟรีคิดอย่างไร? แพ็กเกจ Basic ได้ 3 หน่วยต่อเดือนหลังยืนยันเบอร์\n'
+      '  1 ช่องทางใช้ 1 หน่วย เช่น 1 คลิปลง 3 ช่องทาง ใช้ 3 หน่วย\n'
       '- ตั้งเวลาโพสต์ได้ไหม? Starter ล่วงหน้าได้ 14 วัน และ Pro 30 วัน\n\n'
       'ติดต่อทีมงาน: support@postdee.app',
 );
@@ -1245,13 +1295,16 @@ class _DeleteAccountButton extends StatelessWidget {
     required this.onDeleteAccount,
     required this.onManageSubscription,
     required this.isDeleting,
+    this.subscription,
   });
 
   final VoidCallback onDeleteAccount;
   final Future<void> Function() onManageSubscription;
   final bool isDeleting;
+  final SubscriptionStatusResult? subscription;
 
   Future<void> _confirm(BuildContext context) async {
+    final binding = PostDeeAuthSessionStore.instance.captureSession();
     final originTicker = TickerMode.getValuesNotifier(context);
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
@@ -1319,6 +1372,15 @@ class _DeleteAccountButton extends StatelessWidget {
                       height: 1.55,
                       color: AppTheme.textSecondary,
                     ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    subscription != null && (subscription!.addonPostUnits > 0 || subscription!.addonAiCaptions > 0)
+                        ? 'คุณมีเครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription!.addonPostUnits} หน่วย · AI ${subscription!.addonAiCaptions} ครั้ง '
+                          'หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้ กรุณาตรวจสอบก่อนยืนยัน'
+                        : 'หากมีเครดิตซื้อเพิ่มคงเหลือ หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้ '
+                          'กรุณาตรวจสอบยอดก่อนยืนยัน',
+                    style: TextStyle(fontSize: 13, height: 1.5, color: AppTheme.textPrimary),
                   ),
                   const SizedBox(height: 14),
                   Container(
@@ -1435,7 +1497,7 @@ class _DeleteAccountButton extends StatelessWidget {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed == true && context.mounted && binding.isCurrent) {
       onDeleteAccount();
     }
   }

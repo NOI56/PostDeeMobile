@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/uploader/publish_flow_screen.dart';
@@ -477,6 +478,78 @@ void main() {
     expect(find.text('YouTube Shorts'), findsOneWidget);
     expect(find.text('เสร็จสิ้น'), findsOneWidget);
     expect(find.text('ดูสถิติโพสต์'), findsOneWidget);
+  });
+
+  testWidgets('pending progress explains foreground use before Back is pressed',
+      (tester) async {
+    final operation = Completer<QueuedPostResult?>();
+    await tester.pumpWidget(MaterialApp(home: PublishFlowScreen(
+      platforms: const [SocialPlatform.youtubeShorts], isScheduled: false,
+      publish: (_) => operation.future,
+    )));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('publish-flow-foreground-notice')),
+        findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    operation.complete(null);
+    await tester.pump();
+  });
+
+  for (final status in ['QUEUED', 'FAILED', 'PARTIAL_PUBLISHED']) {
+    testWidgets('done $status opens its original post without publishing again',
+        (tester) async {
+      var publishes = 0;
+      final opened = <String>[];
+      await tester.pumpWidget(MaterialApp(home: PublishFlowScreen(
+        platforms: const [SocialPlatform.youtubeShorts], isScheduled: false,
+        onViewPost: opened.add,
+        publish: (_) async {
+          publishes++;
+          return QueuedPostResult(id: 'original-$status',
+              videoS3Key: 'uploads/original.mp4',
+              platforms: const ['YOUTUBE_SHORTS'], status: status,
+              idempotentReplay: true);
+        },
+      )));
+      await tester.pumpAndSettle();
+      if (status == 'FAILED') {
+        expect(find.text('ส่งไม่สำเร็จ'), findsOneWidget);
+        expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+        expect(find.text('รับรายการแล้ว'), findsNothing);
+      }
+      final detail = find.byKey(const ValueKey('publish-flow-view-post'));
+      await tester.ensureVisible(detail);
+      await tester.tap(detail);
+      await tester.pumpAndSettle();
+      expect(opened, ['original-$status']);
+      expect(publishes, 1);
+      expect(find.byKey(const ValueKey('publish-flow-done')), findsOneWidget);
+    });
+  }
+
+  testWidgets('a completed result cannot open after the sign-in session changes',
+      (tester) async {
+    final previous = PostDeeAuthSessionStore.instance.session;
+    addTearDown(() => PostDeeAuthSessionStore.instance.signIn(previous));
+    PostDeeAuthSessionStore.instance.signIn(
+        const AuthSession(userId: 'original-owner'));
+    final opened = <String>[];
+    await tester.pumpWidget(MaterialApp(home: PublishFlowScreen(
+      platforms: const [SocialPlatform.youtubeShorts], isScheduled: false,
+      onViewPost: opened.add,
+      publish: (_) async => const QueuedPostResult(
+          id: 'original-owner-post', videoS3Key: 'uploads/original.mp4',
+          platforms: ['YOUTUBE_SHORTS'], status: 'QUEUED'),
+    )));
+    await tester.pumpAndSettle();
+    PostDeeAuthSessionStore.instance.signIn(
+        const AuthSession(userId: 'replacement-owner'));
+    final detail = find.byKey(const ValueKey('publish-flow-view-post'));
+    await tester.ensureVisible(detail);
+    await tester.tap(detail);
+    await tester.pumpAndSettle();
+    expect(opened, isEmpty);
+    expect(find.textContaining('บัญชีที่ใช้งานเปลี่ยนแล้ว'), findsOneWidget);
   });
 
   for (final testCase in const [

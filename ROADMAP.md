@@ -2,6 +2,25 @@
 
 Build roadmap for PostDee.
 
+## Usability review follow-up (2026-10-21, local candidate)
+
+- Address the seven priority themes from the 100 synthetic scenarios: detail
+  status freshness, visible validation, safe result/recovery navigation, readable
+  text and small-screen onboarding, explicit disconnect confirmation, consistent
+  quota units/reset time, and searchable history with channel/date context.
+- Retain read-only recovery and independent per-channel outcomes. Reviewing a
+  failure does not automatically resend or copy a successful channel into a new
+  publish request. Existing channels, defaults, explicit consent and purchased
+  credit accounting stay intact.
+- New API contracts are additive: authenticated owned `GET /posts/:id` and an
+  optional monthly reset timestamp. API first, Mobile second; no migration or
+  new purchase/provider integration. Add-on sales stay disabled.
+- Native store/provider acceptance, physical-device performance, full translation,
+  notification history across sessions/devices and server-side history pagination
+  remain separate work. Preserve the approved icon-only center action pending
+  actual-user feedback. Local verification/delivery is recorded in the
+  [work record](docs/superpowers/plans/2026-10-21-ux-review-fixes.md).
+
 ## Staging dependency/runtime release (2026-10-20, delivered)
 
 - Start from verified remote `main` `c2777a8f93048d88efb596fddbaa7244dc0f3595`
@@ -89,8 +108,8 @@ Build roadmap for PostDee.
 - Refresh Home's existing recent-post read every 30 seconds only for loaded
   `PUBLISHING` posts, while resumed, active, on the current route and owned by
   the current signed-in user. Preserve Calendar's existing visible
-  `QUEUED`/`PUBLISHING` polling. Detail stays a snapshot; refresh its parent and
-  reopen for newer results because there is no single-post GET.
+  `QUEUED`/`PUBLISHING` polling. Detail was a snapshot in that release; the
+  2026-10-21 usability candidate adds a single-post GET and detail refresh.
 - Preserve reduced-motion/ticker/lifecycle guards and delivery-outcome truth.
   No API, schema, dependency, flag, entitlement or migration changes. Targeted
   tests pass 145/145; full Flutter passes 2,437 with two optional previews

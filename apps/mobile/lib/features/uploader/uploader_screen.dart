@@ -17,6 +17,7 @@ import '../captions/caption_writing_style_store.dart';
 import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
+import '../posts/posts_screen.dart';
 import '../shared/growth_tool_settings_store.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
@@ -90,6 +91,9 @@ String _channelReadinessLabel(SocialPublishingConnectionReadiness? readiness,
     };
 typedef UploaderTikTokOptionsLoader = Future<TikTokPublishingOptionsResult>
     Function();
+
+String _captionCount(int value) => value.toString().replaceAllMapped(
+    RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},');
 
 String _platformMemoryMessage(SocialPlatform platform) => switch (platform) {
       SocialPlatform.tiktok => 'เมื่อบันทึก จะจำวิธีส่งให้ช่องนี้บนเครื่องนี้ '
@@ -175,6 +179,7 @@ class UploaderScreen extends StatefulWidget {
     this.onScheduledPostCreated,
     this.onPublishFinished,
     this.onViewAnalytics,
+    this.onViewPost,
     this.analytics,
     this.watermarkVideo,
     this.prepareTikTokVideo,
@@ -216,6 +221,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
   final VoidCallback? onViewAnalytics;
+  final ValueChanged<String>? onViewPost;
   final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
   final UploaderTikTokVideoPreparer? prepareTikTokVideo;
@@ -260,6 +266,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   final _captionController = TextEditingController();
   final _captionFocusNode = FocusNode();
   final _captionAnchorKey = GlobalKey();
+  final _platformValidationAnchors = {
+    for (final platform in SocialPlatform.values) platform: GlobalKey(),
+  };
+  SocialPlatform? _platformValidationTarget;
+  ({String postId, String draftId, AuthSessionBinding session})? _recoveredPost;
   final _fileNameController = TextEditingController();
   final _localFilePathController = TextEditingController();
   final _sizeBytesController = TextEditingController();
@@ -371,8 +382,35 @@ class _UploaderScreenState extends State<UploaderScreen>
   PlatformPublishSettings get _resolvedPlatformSettings =>
       _platformSettings.resolvedForCaption(_captionController.text);
 
+  String? get _captionLimitError {
+    final caption = _captionController.text.trim();
+    if (_selectedPlatforms.contains(SocialPlatform.tiktok) &&
+        _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost &&
+        caption.length > 2200) {
+      return 'แคปชั่น TikTok ต้องไม่เกิน 2,200 ตัวอักษร';
+    }
+    return validatePlatformPublishPreflight(
+            selectedPlatforms: _selectedPlatforms, caption: caption)
+        ?.message;
+  }
+
+  List<String> get _captionLimits {
+    final caption = _captionController.text.trim();
+    return [
+      if (_selectedPlatforms.contains(SocialPlatform.tiktok) &&
+          _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost)
+        'TikTok: ${_captionCount(caption.length)} / 2,200 ตัวอักษร',
+      if (_selectedPlatforms.contains(SocialPlatform.youtubeShorts))
+        'YouTube: ${_captionCount(utf8.encode(caption).length)} / 5,000 ไบต์',
+      if (_selectedPlatforms.contains(SocialPlatform.instagramReels))
+        'Instagram: ${_captionCount(caption.length)} / 2,200 ตัวอักษร',
+      if (_selectedPlatforms.contains(SocialPlatform.facebookReels))
+        'Facebook: ${_captionCount(caption.length)} / 63,206 ตัวอักษร',
+    ];
+  }
+
   String? _postTextValidationError() {
-    if (_captionController.text.trim().isNotEmpty) return null;
+    if (_captionController.text.trim().isNotEmpty) return _captionLimitError;
     if (_selectedPlatforms.length == 1 &&
         _selectedPlatforms.contains(SocialPlatform.youtubeShorts)) {
       return _platformSettings.youtubeTitle.trim().isNotEmpty
@@ -784,7 +822,10 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Future<void> _goToStep(int step) async {
     if (_formBusy) return;
-    if (step == 3 && !await _ensurePlatformDefaultsForReview()) return;
+    if (step == 3 && !await _ensurePlatformDefaultsForReview()) {
+      _revealFormError();
+      return;
+    }
     if (!mounted) return;
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
@@ -798,15 +839,21 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Future<void> _nextStep() async {
     if (_formBusy) return;
-    if (_currentStep == 2 && !await _ensurePlatformDefaultsForReview()) return;
+    if (_currentStep == 2 && !await _ensurePlatformDefaultsForReview()) {
+      _revealFormError();
+      return;
+    }
     if (!mounted) return;
     String? error;
+    SocialPlatform? invalidSettings;
     if (_currentStep == 0 && _localFilePathController.text.trim().isEmpty) {
       error = 'เลือกวิดีโอจากเครื่องก่อน';
     } else if (_currentStep == 1 &&
         _captionController.text.trim().isEmpty &&
         !_connectedPlatforms.contains(SocialPlatform.youtubeShorts)) {
       error = 'เพิ่มแคปชั่นก่อนโพสต์';
+    } else if (_currentStep == 1 && _captionLimitError != null) {
+      error = _captionLimitError;
     } else if (_currentStep == 2) {
       if (_isLoadingConnections) {
         error = 'กำลังตรวจสอบช่องทางที่เชื่อมต่อ กรุณารอสักครู่';
@@ -826,17 +873,32 @@ class _UploaderScreenState extends State<UploaderScreen>
         final invalid = _selectedPlatforms
             .where((p) => !_resolvedPlatformSettings.canSubmit(p))
             .firstOrNull;
-        if (invalid != null) error = _platformSettingsError(invalid);
+        if (invalid != null) {
+          invalidSettings = invalid;
+          error = _platformSettingsError(invalid);
+        }
       }
     }
     if (error != null) {
+      if (_currentStep == 2 && error == _captionLimitError) {
+        await _goToStep(1);
+        if (mounted) _captionFocusNode.requestFocus();
+        return;
+      }
       final captionMissing =
           _currentStep == 1 && _captionController.text.trim().isEmpty;
       setState(() {
-        _errorMessage = error;
+        _errorMessage = invalidSettings != null || error == _captionLimitError
+            ? null : error;
         _captionRequired = captionMissing;
+        _platformValidationTarget = invalidSettings;
       });
       if (captionMissing) _focusRequiredCaption();
+      if (invalidSettings != null) {
+        _revealPlatformValidation(invalidSettings);
+      } else {
+        _revealFormError();
+      }
       return;
     }
     final leavingCaption = _currentStep == 1;
@@ -847,6 +909,44 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (leavingCaption && _currentStep == 2) {
       unawaited(_rememberCaptionEdit(caption, source, generation));
     }
+  }
+
+  void _revealPlatformValidation(SocialPlatform platform) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _currentStep != 2 ||
+          _platformValidationTarget != platform) {
+        return;
+      }
+      final anchor = _platformValidationAnchors[platform]?.currentContext;
+      if (anchor == null) return;
+      unawaited(Scrollable.ensureVisible(anchor,
+          alignment: 0.5,
+          duration: _uploaderMotionAllowed(context, _appIsResumed)
+              ? const Duration(milliseconds: 220) : Duration.zero));
+    });
+  }
+
+  void _revealFormError() {
+    if (!mounted || !_formScrollController.hasClients) return;
+    _formScrollController.jumpTo(0);
+  }
+
+  void _openOriginalPost(String postId) {
+    if (!mounted) return;
+    final onViewPost = widget.onViewPost;
+    if (onViewPost != null) {
+      onViewPost(postId);
+    } else {
+      Navigator.of(context).push<void>(MaterialPageRoute(
+          builder: (_) => PostDetailLoaderScreen(
+              postId: postId, apiClient: _apiClient)));
+    }
+  }
+
+  String? get _recoveredPostId {
+    final recovered = _recoveredPost;
+    return recovered != null && recovered.session.isCurrent &&
+        recovered.draftId == _activeDraftId ? recovered.postId : null;
   }
 
   Future<void> _requestExit() async {
@@ -1215,6 +1315,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       _channelReadinessSupported = false;
       _channelReadinessError = null;
       _platformSettings = const PlatformPublishSettings();
+      _platformValidationTarget = null;
+      _recoveredPost = null;
       _platformSettingsFromRestoredDraft = false;
       _savedPlatformSettingsBindings.clear();
       _platformDefaultsLoadGeneration++;
@@ -2753,6 +2855,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     _selectedPlatforms.clear();
     _draftUnavailablePlatforms.clear();
     _platformSettings = const PlatformPublishSettings();
+    _platformValidationTarget = null;
+    _recoveredPost = null;
     _platformSettingsFromRestoredDraft = false;
     _savedPlatformSettingsBindings.clear();
     _platformDefaultsLoadGeneration++;
@@ -2787,6 +2891,8 @@ class _UploaderScreenState extends State<UploaderScreen>
 
     setState(() {
       _activeDraftId = draft.id;
+      _platformValidationTarget = null;
+      _recoveredPost = null;
       _platformSettingsFromRestoredDraft = true;
       _savedPlatformSettingsBindings.clear();
       _activeDraftCreatedAt = draft.createdAt;
@@ -3141,7 +3247,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (textError != null) {
       setState(() {
         _currentStep = 1;
-        _errorMessage = textError;
+        _errorMessage = _captionLimitError != null ? null : textError;
         _successMessage = null;
       });
       return;
@@ -3173,6 +3279,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           platforms: selectedPlatforms,
           isScheduled: _readScheduledAt() != null,
           publish: _createPost,
+          onViewPost: _openOriginalPost,
         ),
       ),
     );
@@ -3218,6 +3325,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final draftId = _activeDraftId;
     if (draftId == null || _activeDraftUploadedMedia == null) return;
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    final recoverySession = PostDeeAuthSessionStore.instance.captureSession();
     final generation = _draftLoadGeneration;
     bool isCurrent() =>
         mounted &&
@@ -3288,6 +3396,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           _ => 'กรุณาตรวจสถานะในรายการโพสต์',
         };
         _blockedSubmissionDraftIds.add(draftId);
+        _recoveredPost = (postId: post.id, draftId: draftId,
+            session: recoverySession);
         _successMessage = 'พบรายการเดิม: ${post.id} · $status · ไม่ได้ส่งซ้ำ '
             'ร่างยังอยู่ในเครื่อง';
       });
@@ -3453,6 +3563,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     final submittedDraftGeneration = _draftLoadGeneration;
     final submittedSessionUserId =
         PostDeeAuthSessionStore.instance.session.stableUserId;
+    final submittedViewSession =
+        PostDeeAuthSessionStore.instance.captureSession();
     final submittedDraftStore = await _resolveDraftStore();
     if (submittedDraftStore == null ||
         _activeDraftId != submittedDraftId ||
@@ -3865,6 +3977,19 @@ class _UploaderScreenState extends State<UploaderScreen>
       );
       ensureSubmissionStillOwned();
       final postStatus = post.status.toUpperCase();
+      if (postStatus == 'FAILED') {
+        // A replay can resolve to an existing failed post. Keep its original
+        // draft/receipt and require an explicit new intent before sending again.
+        setState(() {
+          _blockedSubmissionDraftIds.add(submittedDraftId);
+          _recoveredPost = (postId: post.id, draftId: submittedDraftId,
+              session: submittedViewSession);
+          _successMessage = null;
+          _errorMessage = 'รายการเดิมส่งไม่สำเร็จ '
+              'เปิดรายละเอียดเพื่อตรวจสิ่งที่ต้องแก้ ร่างและข้อมูลอัปโหลดยังอยู่';
+        });
+        return post;
+      }
       const acceptedPostStatuses = {
         'QUEUED',
         'PUBLISHING',
@@ -4257,6 +4382,10 @@ class _UploaderScreenState extends State<UploaderScreen>
       if (next == null || !isCurrent()) return;
       setState(() {
         _platformSettings = next.settings;
+        if (_platformValidationTarget == platform) {
+          _platformValidationTarget = null;
+          _errorMessage = null;
+        }
         _savedPlatformSettingsBindings[platform] = binding;
         _tikTokPublishingOptions = next.options;
         _tikTokConsentedIntent =
@@ -4287,6 +4416,10 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (next == null || !isCurrent()) return;
     setState(() {
       _platformSettings = next;
+      if (_platformValidationTarget == platform) {
+        _platformValidationTarget = null;
+        _errorMessage = null;
+      }
       _savedPlatformSettingsBindings[platform] = binding;
     });
     if (scope != null) {
@@ -4507,11 +4640,12 @@ class _UploaderScreenState extends State<UploaderScreen>
                                     _errorMessage == 'เพิ่มแคปชั่นก่อนโพสต์'))
                               Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
-                                  child: PostDeeNotice(
+                                  child: Semantics(liveRegion: true,
+                                      child: PostDeeNotice(
                                       message: _errorMessage!,
                                       color:
                                           Theme.of(context).colorScheme.error,
-                                      icon: Icons.error_outline)),
+                                      icon: Icons.error_outline))),
                             if (_successMessage != null)
                               Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
@@ -4519,6 +4653,20 @@ class _UploaderScreenState extends State<UploaderScreen>
                                       message: _successMessage!,
                                       color: AppTheme.successInk,
                                       icon: Icons.check_circle_outline)),
+                            if (_recoveredPostId case final postId?)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  key: const ValueKey('uploader-view-recovered-post'),
+                                  onPressed: () {
+                                    if (_recoveredPostId == postId) {
+                                      _openOriginalPost(postId);
+                                    }
+                                  },
+                                  icon: const Icon(Icons.receipt_long_outlined),
+                                  label: const Text('ดูโพสต์นี้'),
+                                ),
+                              ),
                             _UploadStepHeader(
                               key: ValueKey([
                                 'uploader-step-video',
@@ -4660,6 +4808,10 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 animate: _uploaderMotionAllowed(
                                     context, _appIsResumed),
                                 platformSettings: _resolvedPlatformSettings,
+                                validationPlatform: _platformValidationTarget,
+                                validationMessage: _platformValidationTarget == null
+                                    ? null : _platformSettingsError(_platformValidationTarget!),
+                                validationAnchors: _platformValidationAnchors,
                                 onPlatformChanged: _setPlatformSelected,
                                 onOpenPlatformSettings: _openPlatformSettings,
                                 onSelectAll: _selectAllConnectedPlatforms,
@@ -4668,6 +4820,20 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 onRetryConnections: _loadConnections,
                               ),
                             if (_currentStep == 3) ...[
+                              PostDeeNotice(
+                                key: const ValueKey('uploader-send-foreground-notice'),
+                                icon: Icons.info_outline,
+                                color: AppTheme.accentCyanInk,
+                                message: 'ระหว่างเตรียมและส่งข้อมูล กรุณาเปิดแอปหน้านี้ไว้ '
+                                    'ยังยกเลิกไม่ได้จนจบขั้นตอน',
+                              ),
+                              const SizedBox(height: 10),
+                              if (_captionLimitError case final message?)
+                                PostDeeNotice(
+                                  message: message,
+                                  actionLabel: 'แก้แคปชัน',
+                                  onAction: () => _goToStep(1),
+                                ),
                               if (_connectionsErrorMessage != null)
                                 PostDeeNotice(
                                     message: _connectionsErrorMessage!,
@@ -4938,9 +5104,22 @@ class _UploaderScreenState extends State<UploaderScreen>
                       error: _captionRequired
                           ? const Text('เพิ่มแคปชันก่อนไปต่อ',
                               key: ValueKey('uploader-caption-required-notice'))
-                          : null)),
+                          : _captionLimitError == null ? null
+                              : Semantics(liveRegion: true,
+                                  child: Text(_captionLimitError!)))),
             ),
           ),
+          if (_captionLimits.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(_captionLimits.join('\n'),
+                key: const ValueKey('uploader-caption-limits'),
+                style: TextStyle(fontSize: 12, height: 1.5,
+                    color: AppTheme.textSecondary)),
+            if (_selectedPlatforms.contains(SocialPlatform.youtubeShorts))
+              Text('YouTube นับความยาวเป็นไบต์ ภาษาไทยอาจใช้หลายไบต์ต่ออักษร',
+                  style: TextStyle(fontSize: 11.5,
+                      color: AppTheme.textMuted)),
+          ],
           if (_captionNeedsReview) ...[
             const SizedBox(height: 10),
             Row(
@@ -5100,7 +5279,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                     ? _reviewThenPost
                     : _nextStep,
             style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.accent,
+                backgroundColor: AppTheme.actionBackground,
                 minimumSize: const Size.fromHeight(52)),
             child: Text(
               _formBusy
@@ -5154,7 +5333,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                                         : 'เลือกแล้ว ${_selectedPlatforms.length} ช่องทาง')
                                     : (canConfirm
                                         ? '${_readScheduledAt() == null ? 'ส่ง' : 'ตั้งเวลา'} ${_selectedPlatforms.length} ช่องทาง'
-                                        : 'ตรวจปลายทางก่อนส่ง'),
+                                        : _captionLimitError != null
+                                            ? 'แก้แคปชันก่อนส่ง'
+                                            : 'ตรวจปลายทางก่อนส่ง'),
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
@@ -5673,6 +5854,9 @@ class _PlatformSelectorSection extends StatelessWidget {
     required this.onRetryConnections,
     this.connectionDisplayNames = const {},
     this.readinessLabels = const {},
+    this.validationPlatform,
+    this.validationMessage,
+    this.validationAnchors = const {},
     this.animate = true,
   });
 
@@ -5684,6 +5868,9 @@ class _PlatformSelectorSection extends StatelessWidget {
   final PlatformPublishSettings platformSettings;
   final Map<SocialPlatform, String> connectionDisplayNames;
   final Map<SocialPlatform, String> readinessLabels;
+  final SocialPlatform? validationPlatform;
+  final String? validationMessage;
+  final Map<SocialPlatform, GlobalKey> validationAnchors;
   final bool animate;
   final void Function(SocialPlatform platform, bool isSelected)
       onPlatformChanged;
@@ -5912,6 +6099,35 @@ class _PlatformSelectorSection extends StatelessWidget {
                       next,
                     ),
                   ),
+                  if (validationPlatform == visiblePlatforms[index] &&
+                      selectedPlatforms.contains(visiblePlatforms[index]) &&
+                      validationMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                      child: KeyedSubtree(
+                        key: validationAnchors[visiblePlatforms[index]],
+                        child: Semantics(
+                          key: ValueKey('uploader-platform-validation-${visiblePlatforms[index].apiValue}'),
+                          liveRegion: true,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(validationMessage!, style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error)),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  key: ValueKey('uploader-platform-validation-edit-${visiblePlatforms[index].apiValue}'),
+                                  onPressed: () => onOpenPlatformSettings(visiblePlatforms[index]),
+                                  icon: const Icon(Icons.tune_rounded),
+                                  label: const Text('แก้การตั้งค่าช่องทางนี้'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ],
             ),
@@ -7368,7 +7584,9 @@ class _SchedulePickerChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return Semantics(button: true, selected: isSelected, child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+      child: InkWell(
       borderRadius: BorderRadius.circular(AppTheme.pillRadius),
       onTap: onPressed,
       child: DecoratedBox(
@@ -7407,7 +7625,7 @@ class _SchedulePickerChip extends StatelessWidget {
           ),
         ),
       ),
-    );
+    )));
   }
 }
 
@@ -7428,9 +7646,9 @@ class _ScheduleModeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return ConstrainedBox(
       key: testKey,
-      height: 34,
+      constraints: const BoxConstraints(minHeight: 48),
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 15),
@@ -7441,7 +7659,7 @@ class _ScheduleModeButton extends StatelessWidget {
         ),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          minimumSize: Size.zero,
+          minimumSize: const Size(0, 48),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           textStyle: const TextStyle(
             fontSize: 12,

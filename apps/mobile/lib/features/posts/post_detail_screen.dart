@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -5,33 +7,71 @@ import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../analytics/analytics_screen.dart';
+import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/publishing_availability.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_publishing_motion.dart';
+import '../shared/postdee_notice.dart';
+import '../uploader/post_video_preview_screen.dart';
+
+typedef PostDetailReader = Future<PostSummaryResult?> Function(String postId);
 
 /// Post detail (design screen #12). Shows the caption, channels, and honest
 /// status-driven actions: scheduled posts can be published immediately through
 /// the dedicated backend command or cancelled; published posts link to analytics.
 /// Per-post stat tiles from the design are omitted until the API exposes them.
 class PostDetailScreen extends StatefulWidget {
-  const PostDetailScreen({super.key, required this.post, this.apiClient});
+  const PostDetailScreen(
+      {super.key,
+      required this.post,
+      this.apiClient,
+      this.loadPost,
+      this.refreshOnOpen = true});
 
   final PostSummaryResult post;
   final PostDeeApiClient? apiClient;
+  final PostDetailReader? loadPost;
+  final bool refreshOnOpen;
 
   @override
   State<PostDetailScreen> createState() => _PostDetailScreenState();
 }
 
-class _PostDetailScreenState extends State<PostDetailScreen> {
+class _PostDetailScreenState extends State<PostDetailScreen>
+    with WidgetsBindingObserver {
   late final PostDeeApiClient _apiClient =
       widget.apiClient ?? PostDeeApiClient();
   final _sessions = PostDeeAuthSessionStore.instance;
   late final String? _ownerUserId;
   bool _ownerChanged = false;
   bool _isWorking = false;
+  bool _confirming = false;
+  late PostSummaryResult _post;
+  Uri? _previewVideoUrl;
+  Uri? _previewCoverUrl;
+  Timer? _refreshTimer;
+  Future<bool>? _readOperation;
+  int _readGeneration = 0;
+  bool _foreground = true;
+  bool _routeVisible = true;
+  bool _hasRouteVisibility = false;
+  bool _postUnavailable = false;
+  String? _readError;
+  DateTime? _lastChecked;
+
+  bool get _hasPendingPost =>
+      const {'QUEUED', 'PUBLISHING'}.contains(_post.status.toUpperCase());
+  bool get _canReadVisible {
+    if (!_ownerStillCurrent || !_foreground) return false;
+    // A dialog's future can complete before didChangeDependencies rebuilds the
+    // underlying route. Read the navigator's current state for reconciliation.
+    // initState uses the initial value before inherited dependencies are legal.
+    return _hasRouteVisibility
+        ? (ModalRoute.of(context)?.isCurrent ?? true)
+        : _routeVisible;
+  }
 
   bool get _ownerStillCurrent =>
       mounted &&
@@ -41,12 +81,108 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _post = widget.post;
+    _previewVideoUrl = _post.videoUrl;
+    _previewCoverUrl = _post.coverImageUrl;
     _ownerUserId = _sessions.session.stableUserId;
     _sessions.addListener(_onSessionChanged);
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    if (widget.refreshOnOpen) unawaited(_refresh(includeMedia: true));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = ModalRoute.of(context)?.isCurrent ?? true;
+    final returned = _hasRouteVisibility && !_routeVisible && visible;
+    _routeVisible = visible;
+    _hasRouteVisibility = true;
+    if (returned && _canReadVisible && !_confirming && !_isWorking) {
+      unawaited(_refresh());
+    }
+    _syncRefreshTimer();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_canReadVisible) unawaited(_refresh());
+    _syncRefreshTimer();
+  }
+
+  void _syncRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+    if (!_canReadVisible ||
+        !_hasPendingPost ||
+        _postUnavailable ||
+        _isWorking ||
+        _confirming ||
+        _readOperation != null) {
+      return;
+    }
+    _refreshTimer = Timer(const Duration(seconds: 30), () {
+      _refreshTimer = null;
+      if (_canReadVisible) unawaited(_refresh());
+    });
+  }
+
+  Future<bool> _refresh({bool includeMedia = false}) async {
+    if (!_canReadVisible) return false;
+    final pending = _readOperation;
+    if (pending != null) return pending;
+    // A fresh read already reconciles this route's return. Do not issue a second
+    // read when the inherited route visibility update reaches the next frame.
+    _routeVisible = true;
+    final generation = _readGeneration;
+    final operation = _performRefresh(generation, includeMedia: includeMedia);
+    _readOperation = operation;
+    _refreshTimer?.cancel();
+    try {
+      return await operation;
+    } finally {
+      if (identical(_readOperation, operation)) {
+        _readOperation = null;
+        if (_ownerStillCurrent) setState(() {});
+        _syncRefreshTimer();
+      }
+    }
+  }
+
+  Future<bool> _performRefresh(int generation,
+      {required bool includeMedia}) async {
+    try {
+      final latest = await (widget.loadPost?.call(_post.id) ??
+          _apiClient.getPostById(_post.id, includeMedia: includeMedia));
+      if (!_ownerStillCurrent || generation != _readGeneration) return false;
+      if (latest != null && latest.id != _post.id) {
+        throw const ApiException('Post id mismatch');
+      }
+      setState(() {
+        if (latest != null) _post = latest;
+        _postUnavailable = latest == null;
+        _readError = null;
+        _lastChecked = DateTime.now();
+        if (includeMedia || latest == null) {
+          _previewVideoUrl = latest?.videoUrl;
+          _previewCoverUrl = latest?.coverImageUrl;
+        }
+      });
+      return true;
+    } catch (_) {
+      if (_ownerStillCurrent && generation == _readGeneration) {
+        setState(() => _readError = 'อัปเดตไม่สำเร็จ กำลังแสดงข้อมูลเดิม');
+      }
+      return false;
+    }
   }
 
   void _onSessionChanged() {
     if (!_ownerChanged && _sessions.session.stableUserId != _ownerUserId) {
+      _readGeneration++;
+      _refreshTimer?.cancel();
       setState(() => _ownerChanged = true);
     }
   }
@@ -54,27 +190,28 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   @override
   void dispose() {
     _sessions.removeListener(_onSessionChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
+    _readGeneration++;
     super.dispose();
   }
 
   bool get _isScheduled =>
-      widget.post.status.toUpperCase() == 'QUEUED' &&
-      widget.post.scheduledAt != null;
+      _post.status.toUpperCase() == 'QUEUED' && _post.scheduledAt != null;
 
-  bool get _isPublished => widget.post.status.toUpperCase() == 'PUBLISHED';
+  bool get _isPublished => _post.status.toUpperCase() == 'PUBLISHED';
 
   bool get _isSending =>
-      widget.post.status.toUpperCase() == 'PUBLISHING' &&
-      !_hasUnconfirmedOutcome;
+      _post.status.toUpperCase() == 'PUBLISHING' && !_hasUnconfirmedOutcome;
 
   String? get _deliveryLabel =>
-      aggregatePostDeliveryOutcomeLabel(widget.post.platformResults);
+      aggregatePostDeliveryOutcomeLabel(_post.platformResults);
 
   bool get _hasUnconfirmedOutcome =>
-      hasUnconfirmedDeliveryOutcome(widget.post.platformResults);
+      hasUnconfirmedDeliveryOutcome(_post.platformResults);
 
   bool get _hasPublishedChannel {
-    final resultsWithOutcome = widget.post.platformResults
+    final resultsWithOutcome = _post.platformResults
         .where((result) => result.deliveryOutcome != null)
         .toList();
     if (resultsWithOutcome.isNotEmpty) {
@@ -85,7 +222,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       );
     }
     return _isPublished ||
-        widget.post.platformResults.any(
+        _post.platformResults.any(
           (result) => result.status.toUpperCase() == 'PUBLISHED',
         );
   }
@@ -99,14 +236,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ink: const Color(0xFF778276),
       );
     }
-    return switch (widget.post.status.toUpperCase()) {
+    return switch (_post.status.toUpperCase()) {
       'PUBLISHED' => (
           label: _deliveryLabel ?? 'เผยแพร่แล้ว',
           icon: Icons.check_circle,
           bg: const Color(0xFFE2F3EA),
           ink: const Color(0xFF0E9F6E),
         ),
-      'QUEUED' when widget.post.scheduledAt != null => (
+      'QUEUED' when _post.scheduledAt != null => (
           label: 'รอส่งตามเวลา',
           icon: Icons.schedule,
           bg: const Color(0xFFFBEFD7),
@@ -140,7 +277,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   String get _dateLabel {
-    final post = widget.post;
+    final post = _post;
     if (_isPublished && post.publishedAt != null) {
       final deliveryLabel = _deliveryLabel;
       if (deliveryLabel != null) {
@@ -158,13 +295,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     return 'สร้างเมื่อ ${_formatThaiDateTime(post.createdAt)}';
   }
 
-  List<SocialPlatform> get _platforms => widget.post.platforms
-      .map(_platformFor)
-      .whereType<SocialPlatform>()
-      .toList();
+  List<SocialPlatform> get _platforms =>
+      _post.platforms.map(_platformFor).whereType<SocialPlatform>().toList();
 
   PostPlatformResult? _resultFor(SocialPlatform platform) {
-    for (final result in widget.post.platformResults) {
+    for (final result in _post.platformResults) {
       if (result.platform == platform.apiValue) return result;
     }
     return null;
@@ -181,11 +316,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
     if (_isScheduled) return 'รอส่งตามเวลา';
     if (_isPublished ||
-        widget.post.status.toUpperCase() == 'PUBLISHING' ||
-        widget.post.status.toUpperCase() == 'PARTIAL_PUBLISHED') {
+        _post.status.toUpperCase() == 'PUBLISHING' ||
+        _post.status.toUpperCase() == 'PARTIAL_PUBLISHED') {
       return postPlatformDeliveryLabel(null);
     }
-    if (widget.post.status.toUpperCase() == 'FAILED') return 'ส่งไม่สำเร็จ';
+    if (_post.status.toUpperCase() == 'FAILED') return 'ส่งไม่สำเร็จ';
     return 'รอส่ง';
   }
 
@@ -328,6 +463,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     ),
                   ),
                 ],
+                if (result?.status.toUpperCase() == 'FAILED' ||
+                    (result == null && _post.status.toUpperCase() == 'FAILED'))
+                  TextButton.icon(
+                    key: ValueKey('post-detail-review-${platform.apiValue}'),
+                    onPressed: () => _reviewFailedChannel(platform),
+                    icon: const Icon(Icons.fact_check_outlined, size: 16),
+                    label: const Text('ทบทวนช่องทางนี้'),
+                  ),
                 if (hasReference) ...[
                   const SizedBox(height: 4),
                   InkWell(
@@ -364,17 +507,30 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _publishNow() async {
-    if (!_ownerStillCurrent) return;
+    if (!_ownerStillCurrent ||
+        !_isScheduled ||
+        _postUnavailable ||
+        _isWorking) {
+      return;
+    }
     final confirmed = await _confirm(
       title: 'โพสต์เลยตอนนี้?',
       body: 'โพสต์นี้จะถูกส่งไปทุกช่องทางที่เลือกทันที',
       confirmLabel: 'โพสต์เลย',
     );
-    if (confirmed != true || !mounted || !_ownerStillCurrent) return;
+    if (confirmed != true ||
+        !mounted ||
+        !_ownerStillCurrent ||
+        !_isScheduled ||
+        _postUnavailable) {
+      return;
+    }
 
+    _readGeneration++;
+    _refreshTimer?.cancel();
     setState(() => _isWorking = true);
     try {
-      await _apiClient.publishPostNow(widget.post.id);
+      await _apiClient.publishPostNow(_post.id);
       if (!mounted || !_ownerStillCurrent) return;
       Navigator.of(context).pop(true);
     } on ApiException catch (error) {
@@ -393,6 +549,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง')),
       );
+    } finally {
+      _syncRefreshTimer();
     }
   }
 
@@ -411,26 +569,56 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _cancelPost() async {
-    if (!_ownerStillCurrent) return;
+    if (!_ownerStillCurrent ||
+        !_isScheduled ||
+        _postUnavailable ||
+        _isWorking) {
+      return;
+    }
     final confirmed = await _confirm(
       title: 'ยกเลิกโพสต์นี้?',
       body: 'โพสต์ที่ตั้งเวลาไว้จะถูกนำออกจากคิว',
       confirmLabel: 'ยกเลิกโพสต์',
       destructive: true,
     );
-    if (confirmed != true || !mounted || !_ownerStillCurrent) return;
+    if (confirmed != true ||
+        !mounted ||
+        !_ownerStillCurrent ||
+        !_isScheduled ||
+        _postUnavailable) {
+      return;
+    }
 
+    _readGeneration++;
+    _refreshTimer?.cancel();
     setState(() => _isWorking = true);
     try {
-      await _apiClient.cancelPost(widget.post.id);
+      await _apiClient.cancelPost(_post.id);
       if (!mounted || !_ownerStillCurrent) return;
       Navigator.of(context).pop(true);
     } catch (_) {
       if (!mounted || !_ownerStillCurrent) return;
+      // Drain an older read before checking the ambiguous mutation's outcome.
+      // Neither reconciliation nor the next refresh can requeue or publish.
+      await _readOperation;
+      if (!mounted || !_ownerStillCurrent) return;
       setState(() => _isWorking = false);
+      final checked = await _refresh();
+      if (!mounted || !_ownerStillCurrent) return;
+      final message = !checked
+          ? 'ยังยืนยันผลการยกเลิกไม่ได้ กรุณาตรวจสถานะอีกครั้งเมื่อเชื่อมต่อได้'
+          : _postUnavailable
+              ? 'ไม่พบโพสต์นี้ในรายการแล้ว อาจถูกยกเลิกหรือถูกนำออก'
+              : _post.status.toUpperCase() == 'PUBLISHING'
+                  ? 'โพสต์เริ่มส่งแล้ว จึงยกเลิกคิวไม่ได้ กรุณาติดตามผลล่าสุด'
+                  : !_isScheduled
+                      ? 'สถานะโพสต์เปลี่ยนแล้ว กำลังแสดงผลล่าสุด'
+                      : 'รายการยังรอส่งตามเวลา ยังยืนยันการยกเลิกไม่ได้';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ยกเลิกโพสต์ไม่สำเร็จ ลองใหม่อีกครั้ง')),
+        SnackBar(content: Text(message)),
       );
+    } finally {
+      _syncRefreshTimer();
     }
   }
 
@@ -439,29 +627,145 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     required String body,
     required String confirmLabel,
     bool destructive = false,
-  }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('ไม่'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: destructive
-                ? TextButton.styleFrom(
-                    foregroundColor: Theme.of(dialogContext).colorScheme.error,
-                  )
-                : null,
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
+  }) async {
+    _confirming = true;
+    _syncRefreshTimer();
+    try {
+      return await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('ไม่'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: destructive
+                  ? TextButton.styleFrom(
+                      foregroundColor:
+                          Theme.of(dialogContext).colorScheme.error,
+                    )
+                  : null,
+              child: Text(confirmLabel),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _confirming = false;
+      _syncRefreshTimer();
+    }
+  }
+
+  Future<void> _reviewFailedChannel(SocialPlatform platform) async {
+    if (!_ownerStillCurrent) return;
+    final openConnections = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: Text('ทบทวน ${platform.label}'),
+              content: const SingleChildScrollView(
+                  child: Text(
+                'ตรวจสอบช่องทางก่อนสร้างโพสต์ใหม่\n\n'
+                '1. เปิดแอปปลายทางเพื่อตรวจว่ามีคลิปนี้แล้วหรือไม่\n'
+                '2. ตรวจสิทธิ์และการเชื่อมต่อของบัญชี หากมีคำเตือนเรื่องคลิป ให้ส่งออกไฟล์ใหม่ตามคำแนะนำ\n'
+                '3. เมื่อตรวจแล้ว หากต้องสร้างโพสต์ใหม่ ให้เลือกเฉพาะช่องทางที่ต้องการส่งอีกครั้ง\n\n'
+                'การทบทวนนี้ไม่ส่งคลิป ช่องทางที่ส่งสำเร็จแล้วจะไม่ถูกส่งซ้ำ',
+              )),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('รับทราบ')),
+                TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('ตรวจการเชื่อมต่อ')),
+              ],
+            ));
+    if (!mounted || !_ownerStillCurrent) return;
+    if (openConnections == true) {
+      await Navigator.of(context).push<void>(
+          MaterialPageRoute(builder: (_) => const ConnectionsScreen()));
+    }
+  }
+
+  bool _safePreviewUrl(Uri? url) =>
+      url != null &&
+      (url.scheme == 'https' || url.scheme == 'http') &&
+      url.host.isNotEmpty &&
+      url.userInfo.isEmpty;
+
+  Future<void> _openPreview() async {
+    if (!_ownerStillCurrent || _postUnavailable) return;
+    // Re-sign at the user's request rather than playing an expired cached URL.
+    final pending = _readOperation;
+    if (pending != null) await pending;
+    if (!mounted || !_ownerStillCurrent) return;
+    final checked = await _refresh(includeMedia: true);
+    if (!mounted || !_ownerStillCurrent) return;
+    final videoUrl = _previewVideoUrl;
+    if (!checked || _postUnavailable || !_safePreviewUrl(videoUrl)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('ตัวอย่างคลิปยังไม่พร้อม กรุณาลองตรวจสถานะอีกครั้ง')));
+      return;
+    }
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => PostVideoPreviewScreen.network(
+              videoUrl: videoUrl!,
+              videoName:
+                  _post.caption.isEmpty ? 'คลิปที่ส่งแล้ว' : _post.caption,
+            )));
+  }
+
+  Widget _buildPreview() {
+    final canPlay = _safePreviewUrl(_previewVideoUrl);
+    final cover = _previewCoverUrl;
+    final content = ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 104,
+          height: 140,
+          color: const Color(0xFFE7EFE9),
+          child: Stack(fit: StackFit.expand, children: [
+            if (_safePreviewUrl(cover))
+              Image.network(cover.toString(),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(
+                      Icons.videocam_off_outlined,
+                      color: Color(0xFF8FA197))),
+            if (canPlay)
+              const Center(
+                  child: Icon(Icons.play_circle_fill_rounded,
+                      size: 38, color: Color(0xFF0E9F6E)))
+            else
+              Center(
+                  child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        if (!_safePreviewUrl(cover))
+                          const Icon(Icons.videocam_off_outlined,
+                              color: Color(0xFF8FA197)),
+                        const SizedBox(height: 6),
+                        const Text('ตัวอย่างยังไม่พร้อม',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 11)),
+                      ]))),
+          ]),
+        ));
+    return canPlay
+        ? Semantics(
+            button: true,
+            label: 'ดูคลิปที่ส่งแล้ว',
+            child: InkWell(
+              key: const ValueKey('post-detail-preview'),
+              onTap: _openPreview,
+              borderRadius: BorderRadius.circular(14),
+              child: content,
+            ))
+        : KeyedSubtree(
+            key: const ValueKey('post-detail-preview-unavailable'),
+            child: content);
   }
 
   void _openAnalytics() {
@@ -503,8 +807,22 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
         ),
       );
     }
+    if (_postUnavailable) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('รายละเอียดโพสต์')),
+        body: Padding(
+            padding: const EdgeInsets.all(24),
+            child: PostDeeNotice(
+              key: const ValueKey('post-detail-post-unavailable'),
+              icon: Icons.info_outline,
+              message: 'ไม่พบโพสต์นี้ในบัญชี อาจถูกยกเลิกหรือถูกนำออกแล้ว',
+              actionLabel: 'ตรวจอีกครั้ง',
+              onAction: () => unawaited(_refresh(includeMedia: true)),
+            )),
+      );
+    }
     final status = _statusMeta;
-    final caption = widget.post.caption.trim();
+    final caption = _post.caption.trim();
 
     return Scaffold(
       appBar: AppBar(
@@ -512,6 +830,16 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           'รายละเอียดโพสต์',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
+        actions: [
+          IconButton(
+            key: const ValueKey('post-detail-refresh'),
+            tooltip: 'ตรวจสถานะล่าสุด',
+            onPressed: _readOperation != null || _isWorking
+                ? null
+                : () => unawaited(_refresh(includeMedia: true)),
+            icon: const Icon(Icons.refresh),
+          )
+        ],
       ),
       body: DecoratedBox(
         decoration: AppTheme.screenBackground,
@@ -521,6 +849,21 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (_readError != null) ...[
+                  PostDeeNotice(
+                      message: _readError!,
+                      icon: Icons.cloud_off,
+                      actionLabel: 'ลองใหม่',
+                      onAction: () => unawaited(_refresh(includeMedia: true))),
+                  const SizedBox(height: 12),
+                ],
+                if (_lastChecked != null)
+                  Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                          'ตรวจล่าสุด ${_formatThaiDateTime(_lastChecked!)}',
+                          style: TextStyle(
+                              fontSize: 11, color: AppTheme.textMuted))),
                 Row(
                   children: [
                     PostDeePublishingBadge(
@@ -556,23 +899,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 104,
-                      height: 140,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.play_arrow_rounded,
-                        size: 34,
-                        color: Color(0xFF8FA197),
-                      ),
-                    ),
+                    _buildPreview(),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(

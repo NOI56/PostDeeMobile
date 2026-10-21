@@ -4,6 +4,42 @@ import 'package:postdee_mobile/features/notifications/notifications_screen.dart'
 import 'package:postdee_mobile/features/notifications/push_notification.dart';
 
 void main() {
+  testWidgets('opening one notification marks only that item as read',
+      (tester) async {
+    final read = PostDeeNotification(
+        title: 'First result',
+        body: 'Open this',
+        receivedAt: DateTime.now(),
+        postId: 'first');
+    final unread = PostDeeNotification(
+        title: 'Second result',
+        body: 'Keep this unread',
+        receivedAt: DateTime.now(),
+        postId: 'second');
+    final center = PostDeeNotificationCenter()
+      ..add(read)
+      ..add(unread);
+    await tester.pumpWidget(MaterialApp(
+        home: NotificationsScreen(center: center, onOpenPost: (_) {})));
+    await tester.tap(find.text('First result'));
+    await tester.pump();
+    expect(center.isUnread(read), isFalse);
+    expect(center.isUnread(unread), isTrue);
+    expect(center.hasUnread, isTrue);
+  });
+
+  testWidgets('empty notification history offers the actual post history',
+      (tester) async {
+    var opened = false;
+    await tester.pumpWidget(MaterialApp(
+        home: NotificationsScreen(
+            center: PostDeeNotificationCenter(),
+            onOpenPost: (_) {},
+            onOpenAllPosts: () => opened = true)));
+    await tester.tap(find.byKey(const ValueKey('notifications-open-posts')));
+    expect(opened, isTrue);
+  });
+
   testWidgets('notification tap opens its post', (tester) async {
     String? openedPost;
     final center = PostDeeNotificationCenter()

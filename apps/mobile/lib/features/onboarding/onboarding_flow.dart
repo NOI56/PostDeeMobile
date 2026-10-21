@@ -114,6 +114,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                     style: TextButton.styleFrom(
                       foregroundColor: AppTheme.textMuted,
                       textStyle: const TextStyle(
+                        fontFamily: 'Anuphan',
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
                       ),
@@ -122,62 +123,71 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   ),
                 ),
                 Expanded(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 128,
-                          height: 128,
-                          decoration: BoxDecoration(
-                            color: AppTheme.mint,
-                            borderRadius: BorderRadius.circular(36),
-                            boxShadow: [
-                              BoxShadow(
-                                color:
-                                    AppTheme.accent.withValues(alpha: 0.45),
-                                blurRadius: 44,
-                                spreadRadius: -18,
-                                offset: const Offset(0, 22),
+                  child: LayoutBuilder(
+                      builder: (context, constraints) => SingleChildScrollView(
+                            key: const ValueKey('onboarding-content'),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                  minHeight: constraints.maxHeight),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 128,
+                                    height: 128,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.mint,
+                                      borderRadius: BorderRadius.circular(36),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppTheme.accent
+                                              .withValues(alpha: 0.45),
+                                          blurRadius: 44,
+                                          spreadRadius: -18,
+                                          offset: const Offset(0, 22),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Icon(
+                                      step.icon,
+                                      size: 62,
+                                      color: AppTheme.accentCyanInk,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 34),
+                                  ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 300),
+                                    child: Text(
+                                      step.title,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 23,
+                                        fontWeight: FontWeight.w800,
+                                        height: 1.3,
+                                        color: AppTheme.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 300),
+                                    child: Text(
+                                      step.description,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 14.5,
+                                        height: 1.6,
+                                        color: AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: Icon(
-                            step.icon,
-                            size: 62,
-                            color: AppTheme.accentCyanInk,
-                          ),
-                        ),
-                        const SizedBox(height: 34),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 300),
-                          child: Text(
-                            step.title,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 23,
-                              fontWeight: FontWeight.w800,
-                              height: 1.3,
-                              color: AppTheme.textPrimary,
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 300),
-                          child: Text(
-                            step.description,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              height: 1.6,
-                              color: AppTheme.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                          )),
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -189,9 +199,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                         width: i == _step ? 22 : 7,
                         height: 7,
                         decoration: BoxDecoration(
-                          color: i == _step
-                              ? AppTheme.accent
-                              : AppTheme.border,
+                          color: i == _step ? AppTheme.accent : AppTheme.border,
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
@@ -227,19 +235,20 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                       const SizedBox(width: 12),
                     ],
                     Expanded(
-                      child: SizedBox(
-                        height: 56,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 56),
                         child: FilledButton(
                           key: const ValueKey('onboarding-next'),
                           onPressed: _next,
                           style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.accent,
+                            backgroundColor: AppTheme.actionBackground,
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
                             textStyle: const TextStyle(
+                              fontFamily: 'Anuphan',
                               fontSize: 16.5,
                               fontWeight: FontWeight.w700,
                             ),
@@ -247,7 +256,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(_isLastStep ? 'เริ่มใช้งาน' : 'ถัดไป'),
+                              Flexible(
+                                  child: Text(
+                                      _isLastStep ? 'เริ่มใช้งาน' : 'ถัดไป',
+                                      textAlign: TextAlign.center)),
                               const SizedBox(width: 8),
                               const Icon(Icons.arrow_forward, size: 21),
                             ],

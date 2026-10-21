@@ -355,6 +355,10 @@ export const createPrismaPostRepository = ({
 
     return posts.map(mapPost);
   },
+  findOwned: async ({ postId, userId }) => {
+    const persisted = await prisma.post.findFirst({ where: { id: postId, userId } });
+    return persisted ? mapPost(persisted) : undefined;
+  },
   create: (input: CreatePostInput) => runActiveOwnerTransaction(prisma, input.userId,
     (transaction) => createPost(transaction.post, input)),
   findIdempotent: async (input: FindIdempotentPostInput) => {

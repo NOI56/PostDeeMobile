@@ -532,6 +532,38 @@ export const registerPostRoutes = (
     });
   });
 
+  // A notification or status refresh reads one owned row, never the full history.
+  // Optional signed media is best-effort and cannot hide an otherwise valid post.
+  router.get('/posts/:id', authMiddleware, async (request, response) => {
+    response.setHeader('Cache-Control', 'private, no-store');
+    const authUser = readAuthUser(response.locals);
+    if (!authUser) {
+      response.status(401).json({ status: 'error', message: 'Authenticated user is required' });
+      return;
+    }
+    const post = await store.findOwned({ postId: String(request.params.id), userId: authUser.id });
+    if (!post || post.userId !== authUser.id) {
+      response.status(404).json({ status: 'error', code: 'POST_NOT_FOUND', message: 'Post not found' });
+      return;
+    }
+    const platformResults = platformPublishStore.listForPostIds
+      ? (await platformPublishStore.listForPostIds([post.id]))
+        .filter((result) => result.postId === post.id).map(toPublicPlatformResult)
+      : [];
+    const includeMedia = request.query.includeMedia === 'true';
+    const [coverImageUrl, videoUrl] = includeMedia
+      ? await Promise.all([
+        createOptionalPreviewUrl(post.coverImageS3Key, authUser.id),
+        createOptionalPreviewUrl(post.videoS3Key, authUser.id)
+      ])
+      : [undefined, undefined];
+    response.json({ status: 'ok', post: {
+      ...toPublicPost(post), platformResults,
+      ...(coverImageUrl ? { coverImageUrl } : {}),
+      ...(videoUrl ? { videoUrl } : {})
+    } });
+  });
+
   // POST keeps the private caption/intent out of URLs and access logs. This
   // lookup is strictly read-only: no gates, quota, profile or queue mutations.
   router.post('/posts/submissions/recover', authMiddleware, async (request, response) => {

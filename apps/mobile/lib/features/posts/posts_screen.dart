@@ -1,44 +1,64 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../platforms/social_platform.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_notice.dart';
 import 'post_detail_screen.dart';
 
 typedef PostsLoader = Future<List<PostSummaryResult>> Function();
 
-/// Lists every owned server post, including post-now items absent from Calendar.
+/// Searchable owned activity, including both immediate and scheduled posts.
 class PostsScreen extends StatefulWidget {
-  const PostsScreen({super.key, this.loadPosts});
+  const PostsScreen({super.key, this.loadPosts, this.apiClient});
   final PostsLoader? loadPosts;
+  final PostDeeApiClient? apiClient;
 
   @override
   State<PostsScreen> createState() => _PostsScreenState();
 }
 
-class _PostsScreenState extends State<PostsScreen> {
-  final _apiClient = PostDeeApiClient();
+class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
+  late final _apiClient = widget.apiClient ?? PostDeeApiClient();
   final _sessions = PostDeeAuthSessionStore.instance;
+  final _search = TextEditingController();
   List<PostSummaryResult> _posts = const [];
   bool _loading = true;
   String? _error;
   late String? _owner;
   int _generation = 0;
+  bool _ownerInvalidated = false;
+  String _status = 'ALL';
+  String _platform = 'ALL';
+  String _dateRange = 'ALL';
 
   @override
   void initState() {
     super.initState();
     _owner = _sessions.session.stableUserId;
     _sessions.addListener(_ownerChanged);
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        (ModalRoute.of(context)?.isCurrent ?? true)) {
+      unawaited(_load());
+    }
   }
 
   void _ownerChanged() {
     if (_owner == _sessions.session.stableUserId) return;
     _owner = _sessions.session.stableUserId;
     _generation++;
+    _ownerInvalidated = true;
+    _search.clear();
     setState(() {
       _posts = const [];
       _loading = false;
@@ -49,10 +69,13 @@ class _PostsScreenState extends State<PostsScreen> {
   @override
   void dispose() {
     _sessions.removeListener(_ownerChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    _search.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    if (_ownerInvalidated || !mounted) return;
     final generation = ++_generation;
     final owner = _sessions.session.stableUserId;
     setState(() {
@@ -70,7 +93,7 @@ class _PostsScreenState extends State<PostsScreen> {
       setState(() => _posts = [...posts]
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
     } catch (_) {
-      if (mounted && generation == _generation) {
+      if (mounted && !_ownerInvalidated && generation == _generation) {
         setState(() => _error = 'โหลดรายการโพสต์ไม่สำเร็จ กรุณาลองใหม่');
       }
     } finally {
@@ -81,53 +104,260 @@ class _PostsScreenState extends State<PostsScreen> {
   }
 
   Future<void> _open(PostSummaryResult post) async {
-    final changed = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => PostDetailScreen(post: post)));
-    if (changed == true && mounted) await _load();
+    final owner = _sessions.session.stableUserId;
+    await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => PostDetailScreen(
+              post: post,
+              apiClient: _apiClient,
+              refreshOnOpen: widget.loadPosts == null,
+              loadPost: widget.loadPosts == null
+                  ? null
+                  : (id) async => (await widget.loadPosts!())
+                      .where((post) => post.id == id)
+                      .firstOrNull,
+            )));
+    if (mounted &&
+        !_ownerInvalidated &&
+        owner == _sessions.session.stableUserId) {
+      await _load();
+    }
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('โพสต์ทั้งหมด')),
-        body: RefreshIndicator(
-            onRefresh: _load,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (_error != null)
-                  PostDeeNotice(
-                      icon: Icons.cloud_off,
-                      message: _error!,
-                      color: Theme.of(context).colorScheme.error,
-                      actionLabel: 'ลองใหม่',
-                      onAction: _load),
-                if (_loading)
-                  const Center(child: CircularProgressIndicator())
-                else if (_posts.isEmpty && _error == null)
-                  const PostDeeNotice(
-                      icon: Icons.video_library_outlined,
-                      message: 'ยังไม่มีโพสต์',
-                      color: AppTheme.accent)
-                else
-                  for (final post in _posts)
-                    Card(
-                        child: ListTile(
-                      key: ValueKey('all-post-${post.id}'),
-                      onTap: () => _open(post),
-                      leading: Icon(post.status == 'FAILED'
-                          ? Icons.error_outline
-                          : Icons.video_library_outlined),
-                      title: Text(
-                          post.caption.isEmpty ? 'โพสต์วิดีโอ' : post.caption,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                      subtitle: Text(_statusLabel(post)),
-                      trailing: const Icon(Icons.chevron_right),
-                    )),
-              ],
+  List<PostSummaryResult> get _filteredPosts {
+    final query = _search.text.trim().toLowerCase();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = switch (_dateRange) {
+      'TODAY' => today,
+      '7D' => today.subtract(const Duration(days: 6)),
+      '30D' => today.subtract(const Duration(days: 29)),
+      _ => null,
+    };
+    return _posts.where((post) {
+      if (query.isNotEmpty &&
+          !post.caption.toLowerCase().contains(query) &&
+          !post.id.toLowerCase().contains(query)) {
+        return false;
+      }
+      if (_platform != 'ALL' && !post.platforms.contains(_platform)) {
+        return false;
+      }
+      final state = post.status.toUpperCase();
+      if (_status == 'PENDING' && state != 'QUEUED' && state != 'PUBLISHING') {
+        return false;
+      }
+      if (_status == 'UNCONFIRMED' &&
+          !hasUnconfirmedDeliveryOutcome(post.platformResults)) {
+        return false;
+      }
+      if (_status != 'ALL' &&
+          _status != 'PENDING' &&
+          _status != 'UNCONFIRMED' &&
+          state != _status) {
+        return false;
+      }
+      final created = post.createdAt.toLocal();
+      if (start != null &&
+          (created.isBefore(start) ||
+              !created.isBefore(today.add(const Duration(days: 1))))) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
+  }
+
+  Widget _filters() =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        TextField(
+            key: const ValueKey('posts-search'),
+            controller: _search,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'ค้นหาแคปชั่นหรือรหัสโพสต์',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _search.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'ล้างคำค้นหา',
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        _search.clear();
+                        setState(() {});
+                      }),
             )),
-      );
+        const SizedBox(height: 12),
+        LayoutBuilder(builder: (context, constraints) {
+          final fullWidth = constraints.maxWidth < 330 ||
+              MediaQuery.textScalerOf(context).scale(1) > 1.4;
+          final width = fullWidth
+              ? constraints.maxWidth
+              : (constraints.maxWidth - 12) / 2;
+          return Wrap(spacing: 12, runSpacing: 12, children: [
+            SizedBox(
+                width: width,
+                child: DropdownButtonFormField<String>(
+                  key: const ValueKey('posts-status-filter'),
+                  initialValue: _status,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'สถานะ'),
+                  items: const {
+                    'ALL': 'ทุกสถานะ',
+                    'PENDING': 'รอส่ง / กำลังส่ง',
+                    'PUBLISHED': 'ส่งสำเร็จ',
+                    'PARTIAL_PUBLISHED': 'สำเร็จบางช่องทาง',
+                    'FAILED': 'ส่งไม่สำเร็จ',
+                    'UNCONFIRMED': 'ผลยังไม่ยืนยัน'
+                  }
+                      .entries
+                      .map((entry) => DropdownMenuItem(
+                          value: entry.key, child: Text(entry.value)))
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _status = value ?? 'ALL'),
+                )),
+            SizedBox(
+                width: width,
+                child: DropdownButtonFormField<String>(
+                  key: const ValueKey('posts-platform-filter'),
+                  initialValue: _platform,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'ช่องทาง'),
+                  items: [
+                    const DropdownMenuItem(
+                        value: 'ALL', child: Text('ทุกช่องทาง')),
+                    for (final platform in const [
+                      SocialPlatform.tiktok,
+                      SocialPlatform.youtubeShorts,
+                      SocialPlatform.instagramReels,
+                      SocialPlatform.facebookReels
+                    ])
+                      DropdownMenuItem(
+                          value: platform.apiValue, child: Text(platform.label))
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _platform = value ?? 'ALL'),
+                )),
+            SizedBox(
+                width: width,
+                child: DropdownButtonFormField<String>(
+                  key: const ValueKey('posts-date-filter'),
+                  initialValue: _dateRange,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'วันที่สร้าง'),
+                  items: const {
+                    'ALL': 'ทุกวัน',
+                    'TODAY': 'วันนี้',
+                    '7D': '7 วันล่าสุด',
+                    '30D': '30 วันล่าสุด'
+                  }
+                      .entries
+                      .map((entry) => DropdownMenuItem(
+                          value: entry.key, child: Text(entry.value)))
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _dateRange = value ?? 'ALL'),
+                )),
+          ]);
+        }),
+        const SizedBox(height: 12),
+      ]);
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = _filteredPosts;
+    return Scaffold(
+      appBar: AppBar(title: const Text('โพสต์ทั้งหมด')),
+      body: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: _ownerInvalidated ? 1 : visible.length + 1,
+            itemBuilder: (context, index) {
+              if (index > 0) {
+                final post = visible[index - 1];
+                final platforms = post.platforms
+                    .map((id) =>
+                        SocialPlatform.values
+                            .where((platform) => platform.apiValue == id)
+                            .firstOrNull
+                            ?.label ??
+                        id)
+                    .join(' · ');
+                return Card(
+                    child: ListTile(
+                  key: ValueKey('all-post-${post.id}'),
+                  onTap: () => _open(post),
+                  leading: Icon(post.status == 'FAILED'
+                      ? Icons.error_outline
+                      : Icons.video_library_outlined),
+                  title: Text(
+                      post.caption.isEmpty ? 'โพสต์วิดีโอ' : post.caption,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                  subtitle: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_statusLabel(post)),
+                        Text(_postDateLabel(post.createdAt)),
+                        Text(platforms,
+                            style: TextStyle(color: AppTheme.textMuted)),
+                      ]),
+                  trailing: const Icon(Icons.chevron_right),
+                ));
+              }
+              return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!_ownerInvalidated) _filters(),
+                    if (_error != null)
+                      PostDeeNotice(
+                          icon: Icons.cloud_off,
+                          message: _error!,
+                          color: Theme.of(context).colorScheme.error,
+                          actionLabel: 'ลองใหม่',
+                          onAction: _ownerInvalidated ? null : _load),
+                    if (_loading && _posts.isEmpty)
+                      Center(
+                          child: MediaQuery.disableAnimationsOf(context)
+                              ? const Icon(Icons.hourglass_empty)
+                              : const CircularProgressIndicator())
+                    else if (visible.isEmpty && _error == null)
+                      PostDeeNotice(
+                          icon: Icons.video_library_outlined,
+                          message: _posts.isEmpty
+                              ? 'ยังไม่มีโพสต์'
+                              : 'ไม่พบโพสต์ที่ตรงกับตัวกรอง',
+                          color: AppTheme.accent)
+                    else if (!_ownerInvalidated)
+                      Text('${visible.length} โพสต์',
+                          style: TextStyle(color: AppTheme.textMuted)),
+                    const SizedBox(height: 8),
+                  ]);
+            },
+          )),
+    );
+  }
+}
+
+String _postDateLabel(DateTime value) {
+  final local = value.toLocal();
+  const months = [
+    'ม.ค.',
+    'ก.พ.',
+    'มี.ค.',
+    'เม.ย.',
+    'พ.ค.',
+    'มิ.ย.',
+    'ก.ค.',
+    'ส.ค.',
+    'ก.ย.',
+    'ต.ค.',
+    'พ.ย.',
+    'ธ.ค.'
+  ];
+  return '${local.day} ${months[local.month - 1]} ${local.year} · ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
 }
 
 String _statusLabel(PostSummaryResult post) =>
@@ -141,12 +371,17 @@ String _statusLabel(PostSummaryResult post) =>
       _ => 'รอส่ง',
     };
 
-/// Resolves notification IDs through the authenticated user's post list.
+/// Resolves a notification directly through an authenticated owned-post read.
 class PostDetailLoaderScreen extends StatefulWidget {
   const PostDetailLoaderScreen(
-      {super.key, required this.postId, this.loadPosts, this.apiClient});
+      {super.key,
+      required this.postId,
+      this.loadPosts,
+      this.loadPost,
+      this.apiClient});
   final String postId;
   final PostsLoader? loadPosts;
+  final PostDetailReader? loadPost;
   final PostDeeApiClient? apiClient;
 
   @override
@@ -159,6 +394,19 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
   bool _loading = true;
   int _generation = 0;
   late String? _owner;
+  bool _ownerInvalidated = false;
+  bool _loadFailed = false;
+
+  Future<PostSummaryResult?> _readPost(String id) async {
+    if (widget.loadPost != null) return widget.loadPost!(id);
+    if (widget.loadPosts != null) {
+      return (await widget.loadPosts!())
+          .where((post) => post.id == id)
+          .firstOrNull;
+    }
+    return (widget.apiClient ?? PostDeeApiClient())
+        .getPostById(id, includeMedia: true);
+  }
 
   @override
   void initState() {
@@ -171,6 +419,7 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
   void _ownerChanged() {
     if (_owner == _sessions.session.stableUserId) return;
     _generation++;
+    _ownerInvalidated = true;
     setState(() {
       _post = null;
       _loading = false;
@@ -184,20 +433,30 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
   }
 
   Future<void> _load() async {
+    if (_ownerInvalidated) return;
     final generation = ++_generation;
     setState(() => _loading = true);
     try {
-      final posts = await (widget.loadPosts?.call() ??
-          (widget.apiClient ?? PostDeeApiClient()).listRecentPosts(limit: 0));
+      final post = await _readPost(widget.postId);
       if (!mounted ||
           generation != _generation ||
           _owner != _sessions.session.stableUserId) {
         return;
       }
-      setState(() =>
-          _post = posts.where((post) => post.id == widget.postId).firstOrNull);
+      if (post != null && post.id != widget.postId) {
+        throw const ApiException('Post id mismatch');
+      }
+      setState(() {
+        _post = post;
+        _loadFailed = false;
+      });
     } catch (_) {
-      if (mounted && generation == _generation) setState(() => _post = null);
+      if (mounted && generation == _generation) {
+        setState(() {
+          _post = null;
+          _loadFailed = true;
+        });
+      }
     } finally {
       if (mounted && generation == _generation) {
         setState(() => _loading = false);
@@ -209,7 +468,13 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
   Widget build(BuildContext context) {
     final post = _post;
     if (post != null) {
-      return PostDetailScreen(post: post, apiClient: widget.apiClient);
+      return PostDetailScreen(
+          post: post,
+          apiClient: widget.apiClient,
+          loadPost: widget.loadPost != null || widget.loadPosts != null
+              ? _readPost
+              : null,
+          refreshOnOpen: false);
     }
     return Scaffold(
         appBar: AppBar(title: const Text('รายละเอียดโพสต์')),
@@ -221,11 +486,15 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
                     child: PostDeeNotice(
                         key: const ValueKey('post-detail-unavailable'),
                         icon: Icons.info_outline,
-                        message:
-                            'ไม่พบโพสต์นี้ในบัญชีที่ใช้งาน หรือโหลดไม่สำเร็จ',
+                        message: _ownerInvalidated
+                            ? 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายละเอียดใหม่'
+                            : _loadFailed
+                                ? 'โหลดโพสต์ไม่สำเร็จ กรุณาลองใหม่เมื่อเชื่อมต่อได้'
+                                : 'ไม่พบโพสต์นี้ในบัญชีที่ใช้งาน อาจถูกยกเลิกหรือถูกนำออก',
                         color: AppTheme.accent,
                         actionLabel: 'ลองใหม่',
-                        onAction: _owner == _sessions.session.stableUserId
+                        onAction: !_ownerInvalidated &&
+                                _owner == _sessions.session.stableUserId
                             ? _load
                             : null))));
   }

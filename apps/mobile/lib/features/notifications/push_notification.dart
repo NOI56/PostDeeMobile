@@ -39,6 +39,7 @@ class PostDeeNotificationCenter extends ChangeNotifier {
   static final PostDeeNotificationCenter instance = PostDeeNotificationCenter();
 
   final List<PostDeeNotification> _items = <PostDeeNotification>[];
+  final Set<PostDeeNotification> _readItems = <PostDeeNotification>{};
 
   // Notifications received after this moment count as unread. markAllRead()
   // advances the cursor instead of mutating the immutable items.
@@ -49,9 +50,17 @@ class PostDeeNotificationCenter extends ChangeNotifier {
   bool get isEmpty => _items.isEmpty;
 
   bool isUnread(PostDeeNotification notification) =>
-      notification.receivedAt.isAfter(_lastReadAt);
+      notification.receivedAt.isAfter(_lastReadAt) &&
+      !_readItems.contains(notification);
 
   bool get hasUnread => _items.any(isUnread);
+
+  void markRead(PostDeeNotification notification) {
+    // A stale tap from a previous account must not affect the new history.
+    if (!_items.contains(notification) || !isUnread(notification)) return;
+    _readItems.add(notification);
+    notifyListeners();
+  }
 
   void markAllRead() {
     if (!hasUnread) {
@@ -59,6 +68,7 @@ class PostDeeNotificationCenter extends ChangeNotifier {
     }
 
     _lastReadAt = DateTime.now();
+    _readItems.addAll(_items);
     notifyListeners();
   }
 
@@ -73,6 +83,7 @@ class PostDeeNotificationCenter extends ChangeNotifier {
     }
 
     _items.clear();
+    _readItems.clear();
     _lastReadAt = DateTime.fromMillisecondsSinceEpoch(0);
     notifyListeners();
   }

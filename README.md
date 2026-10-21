@@ -7,6 +7,22 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Usability follow-up (2026-10-21, local candidate)
+
+The 100 synthetic-scenario review is followed by owner-scoped single-post reads,
+live detail refresh, clearer result/recovery navigation, searchable post history,
+visible composer validation, accessible onboarding and clearer account/quota
+actions. New reads never publish a video or consume quota. Native checkout and
+public posting are not used for verification. The selected smooth progress
+animation and existing draft/consent/receipt safeguards remain in place.
+
+Deploy the API before updating Mobile: `GET /posts/:id` is new and the optional
+`monthlyQuotaResetsAt` describes the included allowance's next UTC month boundary.
+Purchased credits still never expire, and add-on sales remain disabled. No schema
+migration or dependency change. This work is not yet merged, pushed, deployed or
+installed; the [work record](docs/superpowers/plans/2026-10-21-ux-review-fixes.md)
+tracks actual verification and remaining limits.
+
 ## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 
 A local Home follow-up places its sending badge below the caption, the activity
@@ -60,8 +76,9 @@ turn a partial result into confirmed completion.
 Home silently refreshes its existing recent-post read every 30 seconds only
 while a loaded post is `PUBLISHING`, with the app resumed, Home active, its route
 current and the same signed-in owner. Calendar retains its existing visible
-`QUEUED`/`PUBLISHING` polling. Detail remains a navigation snapshot: refresh the
-parent list and reopen it to see new results. No API, schema, dependency, flag,
+`QUEUED`/`PUBLISHING` polling. Detail was a navigation snapshot in this release;
+the 2026-10-21 usability follow-up adds a single-post read and refresh. No API,
+schema, dependency, flag,
 entitlement or migration changes are required. Targeted tests pass 145/145; the
 full Flutter suite passes 2,437 with two optional previews skipped, and analysis
 reports no issues. Release CI repeats those checks and builds Staging APK 12026

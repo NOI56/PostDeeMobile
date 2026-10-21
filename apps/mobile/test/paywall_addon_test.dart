@@ -116,6 +116,27 @@ void main() {
     expect(find.byKey(const ValueKey('paywall-retry-addon')), findsOneWidget);
   });
 
+  testWidgets('pending add-on offers support without dispatching another payment',
+      (tester) async {
+    final addon = _Addon(pending: true);
+    await show(tester, addon);
+    await tester.ensureVisible(find.byKey(const ValueKey('paywall-buy-addon')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('paywall-buy-addon')));
+    await tester.pumpAndSettle();
+    final calls = addon.purchaseCalls;
+    final help = find.byKey(const ValueKey('paywall-addon-help'));
+    await tester.ensureVisible(help);
+    await tester.pumpAndSettle();
+    await tester.tap(help);
+    await tester.pumpAndSettle();
+    expect(find.text('ช่วยตรวจสอบการซื้อ'), findsOneWidget);
+    expect(find.textContaining('support@postdee.app'), findsOneWidget);
+    expect(find.textContaining('อย่าซื้อซ้ำ'), findsOneWidget);
+    expect(addon.purchaseCalls, calls);
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('paywall-buy-addon'))).onPressed, isNull);
+  });
+
   testWidgets(
       'subscribing from Basic refreshes add-on eligibility without reopening the screen',
       (tester) async {

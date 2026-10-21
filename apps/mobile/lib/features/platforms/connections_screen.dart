@@ -188,6 +188,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   bool _loading = true;
   String? _statusError;
   String? _busyPlatform;
+  bool _isDisconnectConfirmationOpen = false;
   bool _waitingForOAuthReturn = false;
   bool _leftAppForOAuth = false;
   bool _pendingOAuthRefresh = false;
@@ -245,6 +246,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     setState(() {
       _statuses = {};
       _busyPlatform = null;
+      _isDisconnectConfirmationOpen = false;
       _loading = false;
       _statusError = 'กรุณาเข้าสู่ระบบใหม่เพื่อตรวจสอบช่องทาง';
     });
@@ -403,8 +405,37 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     if (_actionsLocked) return;
     final generation = ++_operationGeneration;
     final owner = _ownerUserId;
-    setState(() => _busyPlatform = platform.apiValue);
+    setState(() {
+      _busyPlatform = platform.apiValue;
+      _isDisconnectConfirmationOpen = true;
+    });
     try {
+      final name = _statusFor(platform)?.displayName;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          scrollable: true,
+          title: Text('ตัดการเชื่อมต่อ ${platform.label}?'),
+          content: Text(
+            '${name == null || name.isEmpty ? platform.label : name}\n\n'
+            'PostDee จะส่งโพสต์ใหม่ไปช่องทางนี้ไม่ได้จนกว่าจะเชื่อมต่ออีกครั้ง '
+            'โพสต์ที่ตั้งเวลาไว้อาจส่งไม่สำเร็จ กรุณาตรวจและยกเลิกรายการที่ไม่ต้องการในปฏิทิน '
+            'การตัดการเชื่อมต่อไม่ได้ยกเลิกงานที่ส่งเข้าระบบแล้ว',
+          ),
+          actions: [
+            TextButton(key: const ValueKey('disconnect-cancel'),
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('กลับไป')),
+            FilledButton(key: const ValueKey('disconnect-confirm'),
+              style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('ตัดการเชื่อมต่อ')),
+          ],
+        ),
+      );
+      if (confirmed != true || !_operationIsCurrent(generation, owner)) return;
+      setState(() => _isDisconnectConfirmationOpen = false);
       await _apiClient.disconnectSocialConnection(platform.apiValue);
       if (!_operationIsCurrent(generation, owner)) return;
       await _loadConnections();
@@ -413,7 +444,10 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       _showMessage('ยกเลิกการเชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
       if (_operationIsCurrent(generation, owner)) {
-        setState(() => _busyPlatform = null);
+        setState(() {
+          _busyPlatform = null;
+          _isDisconnectConfirmationOpen = false;
+        });
         _drainOAuthRefresh();
       }
     }
@@ -421,7 +455,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
 
   ButtonStyle get _actionStyle => OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        minimumSize: Size.zero,
+        minimumSize: const Size(48, 48),
         side: BorderSide(color: AppTheme.border),
       );
 
@@ -435,7 +469,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       );
     }
 
-    if (_busyPlatform == platform.apiValue) {
+    if (_busyPlatform == platform.apiValue && !_isDisconnectConfirmationOpen) {
       return const SizedBox(
         width: 18,
         height: 18,
@@ -457,7 +491,8 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         key: ValueKey('profile-platform-disconnect-${platform.apiValue}'),
         onPressed: _actionsLocked ? null : () => _disconnect(platform),
         style: _actionStyle,
-        child: const Text('ยกเลิก'),
+        child: Text('ตัดการเชื่อมต่อ', semanticsLabel:
+          'ตัดการเชื่อมต่อ ${platform.label}${_statusFor(platform)?.displayName == null ? '' : ' ${_statusFor(platform)!.displayName}'}'),
       );
     }
 
@@ -465,13 +500,13 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       key: ValueKey('profile-platform-connect-${platform.apiValue}'),
       onPressed: _actionsLocked ? null : () => _connect(platform),
       style: FilledButton.styleFrom(
-        backgroundColor: AppTheme.accent,
+        backgroundColor: AppTheme.actionBackground,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        minimumSize: Size.zero,
+        minimumSize: const Size(48, 48),
         textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
       ),
-      child: const Text('เชื่อม'),
+      child: Text('เชื่อม', semanticsLabel: 'เชื่อมต่อ ${platform.label}'),
     );
   }
 
@@ -479,6 +514,25 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     final status = _statusFor(platform);
     final connected = status?.connected ?? false;
     final displayName = connected ? status?.displayName : null;
+    final identity = Row(children: [
+      SocialPlatformLogo(platform: platform, size: 30),
+      const SizedBox(width: 12),
+      Expanded(child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Flexible(child: Text(platform.label, style: TextStyle(
+              fontSize: 13.5, fontWeight: FontWeight.w700, color: AppTheme.textPrimary))),
+            if (connected) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.check_circle, size: 16, color: AppTheme.accent),
+            ],
+          ]),
+          if (displayName != null && displayName.isNotEmpty)
+            Text(displayName, style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
+        ],
+      )),
+    ]);
 
     return Container(
       padding: const EdgeInsets.all(13),
@@ -495,48 +549,22 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
           ),
         ],
       ),
-      child: Row(
-        children: [
-          SocialPlatformLogo(platform: platform, size: 30),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        platform.label,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (connected) ...[
-                      const SizedBox(width: 6),
-                      const Icon(Icons.check_circle,
-                          size: 16, color: AppTheme.accent),
-                    ],
-                  ],
-                ),
-                if (displayName != null && displayName.isNotEmpty)
-                  Text(
-                    displayName,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-              ],
-            ),
-          ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 280 ||
+            MediaQuery.textScalerOf(context).scale(13.5) > 18;
+        if (stacked) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            identity,
+            const SizedBox(height: 10),
+            Align(alignment: Alignment.centerRight, child: _buildAction(platform)),
+          ]);
+        }
+        return Row(children: [
+          Expanded(child: identity),
           const SizedBox(width: 10),
           _buildAction(platform),
-        ],
-      ),
+        ]);
+      }),
     );
   }
 

@@ -8,6 +8,18 @@ const encodeGoogleNotification = (payload: Record<string, unknown>) =>
   Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 
 describe('billing routes', () => {
+  it.each([
+    ['2026-10-31T23:59:59.999Z', '2026-11-01T00:00:00.000Z'],
+    ['2026-11-01T00:00:00.000Z', '2026-12-01T00:00:00.000Z']
+  ])('reports the UTC usage-month reset at %s', async (now, reset) => {
+    const app = createApp({ now: () => new Date(now) });
+    const response = await request(app).get('/billing/subscription')
+      .set('x-postdee-user-id', 'seller-reset').set('x-postdee-phone-verified', 'true').expect(200);
+    expect(response.body.subscription).toMatchObject({
+      monthlyQuotaResetsAt: reset, monthlyPostLimit: 3, remainingPostsThisMonth: 3,
+      addonExpiresAt: null, addonCreditsExpire: false
+    });
+  });
   it('acknowledges protocol 1 purchase readiness after preparing the authenticated owner', async () => {
     const app = createApp();
     await request(app).post('/billing/purchase-readiness')
@@ -50,6 +62,7 @@ describe('billing routes', () => {
         plan: 'BASIC',
         status: 'INACTIVE',
         monthlyPostLimit: 3,
+        monthlyQuotaResetsAt: expect.any(String),
         baseMonthlyPostLimit: 3, addonPostUnits: 0, addonAiCaptions: 0,
         addonExpiresAt: null, addonCreditsExpire: false, availablePostUnits: 0,
         usedPostsThisMonth: 0,
@@ -142,6 +155,7 @@ describe('billing routes', () => {
         plan: 'PRO',
         status: 'ACTIVE',
         monthlyPostLimit: 250,
+        monthlyQuotaResetsAt: expect.any(String),
         baseMonthlyPostLimit: 250, addonPostUnits: 0, addonAiCaptions: 0,
         addonExpiresAt: null, addonCreditsExpire: false, availablePostUnits: 250,
         usedPostsThisMonth: 0,
@@ -200,6 +214,7 @@ describe('billing routes', () => {
         plan: 'STARTER',
         status: 'ACTIVE',
         monthlyPostLimit: 120,
+        monthlyQuotaResetsAt: expect.any(String),
         baseMonthlyPostLimit: 120, addonPostUnits: 0, addonAiCaptions: 0,
         addonExpiresAt: null, addonCreditsExpire: false, availablePostUnits: 120,
         usedPostsThisMonth: 0,

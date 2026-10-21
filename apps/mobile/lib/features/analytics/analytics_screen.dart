@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
@@ -51,7 +52,10 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  final _apiClient = PostDeeApiClient();
+  final _sessions = PostDeeAuthSessionStore.instance;
+  late final AuthSessionBinding _screenSession;
+  late final PostDeeApiClient _apiClient;
+  int _loadGeneration = 0;
   bool _isLoading = false;
   AnalyticsSummaryResult? _summary;
   String? _errorMessage;
@@ -61,7 +65,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   void initState() {
     super.initState();
+    _screenSession = _sessions.captureSession();
+    _apiClient = PostDeeApiClient(sessionBinding: _screenSession);
+    _sessions.addListener(_handleSessionChanged);
     _loadAnalytics();
+  }
+
+  @override
+  void dispose() {
+    _loadGeneration++;
+    _sessions.removeListener(_handleSessionChanged);
+    super.dispose();
+  }
+
+  bool get _canUpdateScreen => mounted && _screenSession.isCurrent;
+
+  bool _loadIsCurrent(int generation) =>
+      _canUpdateScreen && generation == _loadGeneration;
+
+  void _handleSessionChanged() {
+    if (!mounted || _screenSession.isCurrent) return;
+    _loadGeneration++;
+    setState(() {
+      _summary = null;
+      _isLoading = false;
+      _isProLocked = false;
+      _errorMessage = null;
+    });
   }
 
   bool get _hasAnalyticsData =>
@@ -71,6 +101,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           .any((platform) => platform.views > 0 || platform.likes > 0);
 
   Future<void> _loadAnalytics() async {
+    if (!_canUpdateScreen) return;
+    final generation = ++_loadGeneration;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -85,8 +117,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         final subscription = widget.loadSubscription != null
             ? await widget.loadSubscription!()
             : await _apiClient.loadCurrentSubscription();
+        if (!_loadIsCurrent(generation)) return;
         if (!subscription.canUseAnalytics) {
-          if (!mounted) return;
           setState(() {
             _summary = null;
             _isProLocked = true;
@@ -102,33 +134,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               : await _apiClient.loadAnalyticsSummary(
                   range: _selectedRange.apiValue,
                 );
-      if (!mounted) return;
+      if (!_loadIsCurrent(generation)) return;
       setState(() {
         _summary = summary;
         _isProLocked = false;
       });
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!_loadIsCurrent(generation)) return;
       setState(() {
         _isProLocked = isAnalyticsPlanRequired(error);
         _errorMessage = _isProLocked ? null : analyticsErrorMessage(error);
       });
     } on SocketException {
-      if (!mounted) return;
+      if (!_loadIsCurrent(generation)) return;
       setState(() => _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้');
     } catch (_) {
-      if (!mounted) return;
+      if (!_loadIsCurrent(generation)) return;
       setState(
           () => _errorMessage = 'เกิดข้อผิดพลาดระหว่างโหลดข้อมูลวิเคราะห์');
     } finally {
-      if (mounted) {
+      if (_loadIsCurrent(generation)) {
         setState(() => _isLoading = false);
       }
     }
   }
 
   Future<void> _selectRange(AnalyticsRangeOption range) async {
-    if (_selectedRange == range || _isLoading) return;
+    if (!_canUpdateScreen || _selectedRange == range || _isLoading) return;
     setState(() => _selectedRange = range);
     await _loadAnalytics();
   }
@@ -201,7 +233,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             _AnalyticsSkeleton()
           else if (!_hasAnalyticsData)
             PostDeeNotice(
-              message: _isProLocked
+              message: !_screenSession.isCurrent
+                  ? 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดหน้าวิเคราะห์ใหม่'
+                  : _isProLocked
                   ? 'ข้อมูลวิเคราะห์รวมเปิดให้ใช้ในแพ็กเกจ Pro'
                   : 'ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด',
               color: AppTheme.accentCyanInk,

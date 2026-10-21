@@ -830,6 +830,31 @@ void main() {
     expect(selection!.options, isNull);
   });
 
+  for (final throws in [false, true]) {
+    testWidgets('TikTok policy ${throws ? 'exception' : 'false'} shows recovery without consent',
+        (tester) async {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/url_launcher'), (_) async {
+        if (throws) throw PlatformException(code: 'unavailable');
+        return false;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+              const MethodChannel('plugins.flutter.io/url_launcher'), null));
+      await openTikTok(tester, loadOptions: () async => _options());
+      await tapKey(tester, _directKey);
+      final policy = find.text('อ่านเงื่อนไขการใช้เพลง');
+      await tester.ensureVisible(policy);
+      await tester.tap(policy);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('เปิดเงื่อนไข TikTok ไม่สำเร็จ'), findsOneWidget);
+      expect(tester.widget<CheckboxListTile>(find.byKey(
+          const ValueKey('uploader-tiktok-music-consent'))).value, isFalse);
+      expect(tester.takeException(), isNull);
+      await tapKey(tester, _cancelKey);
+    });
+  }
+
   testWidgets('TikTok loading and failures block Direct only', (tester) async {
     var loads = 0;
     final pending = Completer<TikTokPublishingOptionsResult>();

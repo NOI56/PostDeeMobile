@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
+import '../posts/posts_screen.dart';
 import '../shared/post_delivery_outcome.dart';
 
 enum PublishFlowAction { finish, analytics }
@@ -57,11 +59,13 @@ class PublishFlowScreen extends StatefulWidget {
     required this.platforms,
     required this.isScheduled,
     required this.publish,
+    this.onViewPost,
   });
 
   final List<SocialPlatform> platforms;
   final bool isScheduled;
   final PublishOperation publish;
+  final ValueChanged<String>? onViewPost;
 
   @override
   State<PublishFlowScreen> createState() => _PublishFlowScreenState();
@@ -80,10 +84,12 @@ class _PublishFlowScreenState extends State<PublishFlowScreen>
   bool _isPublishing = false;
   bool _appIsResumed = true;
   int _publishAttempt = 0;
+  late final AuthSessionBinding _viewPostSession;
 
   @override
   void initState() {
     super.initState();
+    _viewPostSession = PostDeeAuthSessionStore.instance.captureSession();
     WidgetsBinding.instance.addObserver(this);
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _appIsResumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
@@ -148,6 +154,23 @@ class _PublishFlowScreenState extends State<PublishFlowScreen>
             'เกิดข้อผิดพลาดระหว่างส่งโพสต์ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่');
   }
 
+  void _viewPost() {
+    final post = _post;
+    if (post == null || !mounted) return;
+    if (!_viewPostSession.isCurrent) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายการโพสต์ใหม่')));
+      return;
+    }
+    final onViewPost = widget.onViewPost;
+    if (onViewPost != null) {
+      onViewPost(post.id);
+    } else {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => PostDetailLoaderScreen(postId: post.id)));
+    }
+  }
+
   void _handleBlockedPop(bool didPop, Object? _) {
     if (didPop || !_isPublishing) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -180,6 +203,7 @@ class _PublishFlowScreenState extends State<PublishFlowScreen>
                       platforms: widget.platforms,
                       isScheduled: widget.isScheduled,
                       post: _post!,
+                       onViewPost: _viewPost,
                     )
                   : _publishError != null
                       ? _PublishErrorView(
@@ -582,6 +606,15 @@ class _PublishingViewState extends State<_PublishingView>
                 color: AppTheme.textMuted,
               ),
             ),
+            const SizedBox(height: 12),
+            Text(
+              'กรุณาเปิดแอปหน้านี้ไว้ระหว่างเตรียมและส่งข้อมูล '
+              'ยังยกเลิกไม่ได้จนจบขั้นตอน',
+              key: const ValueKey('publish-flow-foreground-notice'),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, height: 1.5,
+                  color: AppTheme.textSecondary),
+            ),
           ],
         ),
       ),
@@ -650,7 +683,7 @@ class _PublishErrorView extends StatelessWidget {
                 key: const ValueKey('publish-flow-retry'),
                 onPressed: onRetry,
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
+                  backgroundColor: AppTheme.actionBackground,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(15),
@@ -682,11 +715,15 @@ class _PublishDoneView extends StatelessWidget {
     required this.platforms,
     required this.isScheduled,
     required this.post,
+    required this.onViewPost,
   });
 
   final List<SocialPlatform> platforms;
   final bool isScheduled;
   final QueuedPostResult post;
+  final VoidCallback onViewPost;
+
+  bool get _failed => post.status.toUpperCase() == 'FAILED';
 
   String? get _deliveryLabel =>
       aggregatePostDeliveryOutcomeLabel(post.platformResults);
@@ -708,6 +745,7 @@ class _PublishDoneView extends StatelessWidget {
         'PUBLISHING' => 'กำลังส่ง',
         'PUBLISHED' => 'ส่งสำเร็จ',
         'PARTIAL_PUBLISHED' => 'ส่งสำเร็จบางช่องทาง',
+        'FAILED' => 'ส่งไม่สำเร็จ',
         _ => isScheduled ? 'จัดคิวส่งตามเวลาแล้ว' : 'รับรายการแล้ว',
       };
 
@@ -732,6 +770,8 @@ class _PublishDoneView extends StatelessWidget {
                     'PUBLISHED' => 'ส่ง $platformCount ช่องทางสำเร็จแล้ว',
                     'PARTIAL_PUBLISHED' =>
                       'ส่งสำเร็จเพียงบางช่องทาง กรุณาเปิดรายละเอียดเพื่อตรวจช่องทางที่ไม่สำเร็จ',
+                    'FAILED' =>
+                      'รายการนี้ส่งไม่สำเร็จ เปิดรายละเอียดเพื่อดูสิ่งที่ต้องแก้',
                     _ => isScheduled
                         ? 'ระบบรับรายการตั้งเวลาสำหรับ $platformCount ช่องทางแล้ว'
                         : 'ระบบรับรายการ $platformCount ช่องทางแล้ว กำลังส่ง',
@@ -765,17 +805,17 @@ class _PublishDoneView extends StatelessWidget {
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: _hasUnconfirmedOutcome
+                color: _failed || _hasUnconfirmedOutcome
                     ? const Color(0xFFEEF2EF)
                     : AppTheme.mint,
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                _hasUnconfirmedOutcome
+                _failed ? Icons.error_outline_rounded : _hasUnconfirmedOutcome
                     ? Icons.help_outline_rounded
                     : Icons.check_rounded,
                 size: 54,
-                color: _hasUnconfirmedOutcome
+                color: _failed ? Theme.of(context).colorScheme.error : _hasUnconfirmedOutcome
                     ? AppTheme.textMuted
                     : AppTheme.accentCyanInk,
               ),
@@ -847,13 +887,25 @@ class _PublishDoneView extends StatelessWidget {
             const SizedBox(height: 30),
             SizedBox(
               width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const ValueKey('publish-flow-view-post'),
+                onPressed: onViewPost,
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('ดูโพสต์นี้'),
+                style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
               height: 54,
               child: FilledButton(
                 key: const ValueKey('publish-flow-finish'),
                 onPressed: () =>
                     Navigator.of(context).pop(PublishFlowAction.finish),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
+                  backgroundColor: AppTheme.actionBackground,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(15),

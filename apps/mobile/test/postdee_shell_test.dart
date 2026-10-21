@@ -14,6 +14,7 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
+import 'package:postdee_mobile/features/analytics/analytics_screen.dart';
 import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/billing/addon_pending_store.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
@@ -1029,61 +1030,80 @@ void main() {
             .document,
         PostDeeLegalDocuments.privacyPolicy);
   });
-  testWidgets('a fresh sign-in for the same owner rebuilds the shop screen', (tester) async {
+  testWidgets('a fresh sign-in for the same owner rebuilds the shop screen',
+      (tester) async {
     final language = _signInShell();
     await tester.pumpWidget(_shellApp(PostDeeShell(
-      languageController: language, uploaderDraftStore: _ShellDraftStore())));
+        languageController: language, uploaderDraftStore: _ShellDraftStore())));
     await tester.pumpAndSettle();
     final shop = find.byType(LinkInBioScreen, skipOffstage: false);
     final before = tester.state(shop);
-    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'firebase-user-shell', idToken: 'new-token'));
+    PostDeeAuthSessionStore.instance.signIn(
+        const AuthSession(userId: 'firebase-user-shell', idToken: 'new-token'));
     await tester.pumpAndSettle();
     expect(identical(tester.state(shop), before), isFalse);
   });
 
-  testWidgets('a late bell initialization cannot open notifications for a later account', (tester) async {
+  testWidgets(
+      'a late bell initialization cannot open notifications for a later account',
+      (tester) async {
     final language = _signInShell();
     final ready = Completer<void>();
     final gateway = _FakePushMessagingGateway()..initialization = ready.future;
-    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
-      uploaderDraftStore: _ShellDraftStore(), pushMessagingGateway: gateway)));
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        pushMessagingGateway: gateway)));
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('Notifications'));
     await tester.pump();
-    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    PostDeeAuthSessionStore.instance
+        .signIn(const AuthSession(userId: 'b', idToken: 'b'));
     ready.complete();
     await tester.pumpAndSettle();
     expect(find.text('การแจ้งเตือน'), findsNothing);
   });
 
-  testWidgets('account transitions clear the shared notification history', (tester) async {
+  testWidgets('account transitions clear the shared notification history',
+      (tester) async {
     final language = _signInShell();
-    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
-      uploaderDraftStore: _ShellDraftStore())));
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: language, uploaderDraftStore: _ShellDraftStore())));
     await tester.pumpAndSettle();
-    PostDeeNotificationCenter.instance.add(PostDeeNotification(title: 'private A', body: 'body', receivedAt: DateTime(2026)));
-    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    PostDeeNotificationCenter.instance.add(PostDeeNotification(
+        title: 'private A', body: 'body', receivedAt: DateTime(2026)));
+    PostDeeAuthSessionStore.instance
+        .signIn(const AuthSession(userId: 'b', idToken: 'b'));
     expect(PostDeeNotificationCenter.instance.items, isEmpty);
   });
 
-  testWidgets('late account deletion cannot sign out a replacement account', (tester) async {
+  testWidgets('late account deletion cannot sign out a replacement account',
+      (tester) async {
     final language = _signInShell();
     final deleted = Completer<void>();
     var cleanupCalls = 0;
-    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
-      uploaderDraftStore: _ShellDraftStore(),
-      checkAccountDeletionReady: () async => true, deleteAccount: () => deleted.future,
-      deleteLocalPublishDrafts: () async { cleanupCalls++; })));
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        checkAccountDeletionReady: () async => true,
+        deleteAccount: () => deleted.future,
+        deleteLocalPublishDrafts: () async {
+          cleanupCalls++;
+        })));
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
     final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
-    await tester.scrollUntilVisible(button, 400, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(button, 400,
+        scrollable: find.byType(Scrollable).first);
     await tester.tap(button);
     await tester.pumpAndSettle();
-    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร')).onPressed!();
+    tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'))
+        .onPressed!();
     await tester.pump();
-    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'b', idToken: 'b'));
+    PostDeeAuthSessionStore.instance
+        .signIn(const AuthSession(userId: 'b', idToken: 'b'));
     deleted.complete();
     await tester.pumpAndSettle();
     expect(PostDeeAuthSessionStore.instance.session.userId, 'b');
@@ -1091,32 +1111,44 @@ void main() {
     expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsNothing);
   });
 
-  testWidgets('a session switch during local deletion cleanup preserves the replacement account pending purchase', (tester) async {
+  testWidgets(
+      'a session switch during local deletion cleanup preserves the replacement account pending purchase',
+      (tester) async {
     final language = _signInShell();
     final cleanupStarted = Completer<void>();
     final releaseCleanup = Completer<void>();
-    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
-      uploaderDraftStore: _ShellDraftStore(), checkAccountDeletionReady: () async => true,
-      deleteAccount: () async {}, deleteLocalPublishDrafts: () async {
-        cleanupStarted.complete(); await releaseCleanup.future;
-      })));
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        checkAccountDeletionReady: () async => true,
+        deleteAccount: () async {},
+        deleteLocalPublishDrafts: () async {
+          cleanupStarted.complete();
+          await releaseCleanup.future;
+        })));
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
     final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
-    await tester.scrollUntilVisible(button, 400, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(button, 400,
+        scrollable: find.byType(Scrollable).first);
     await tester.tap(button);
     await tester.pumpAndSettle();
-    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร')).onPressed!();
+    tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'))
+        .onPressed!();
     await tester.pump();
     await cleanupStarted.future;
-    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'replacement-owner', idToken: 'dummy-b'));
+    PostDeeAuthSessionStore.instance.signIn(
+        const AuthSession(userId: 'replacement-owner', idToken: 'dummy-b'));
     final replacement = SharedPreferencesAddonPendingStore();
-    await replacement.save(AddonPendingRecord(productId: 'postdee_post100_caption50', intentId: 'keep-owner-b'));
+    await replacement.save(AddonPendingRecord(
+        productId: 'postdee_post100_caption50', intentId: 'keep-owner-b'));
     releaseCleanup.complete();
     await tester.pumpAndSettle();
     expect((await replacement.load())!.intentId, 'keep-owner-b');
-    expect(PostDeeAuthSessionStore.instance.session.userId, 'replacement-owner');
+    expect(
+        PostDeeAuthSessionStore.instance.session.userId, 'replacement-owner');
   });
   testWidgets('opens one full screen composer without a hidden uploader',
       (tester) async {
@@ -1168,14 +1200,20 @@ void main() {
     expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
   });
 
-  testWidgets('calendar hands immediate partial activity to detail without a fake schedule',
+  testWidgets(
+      'calendar hands immediate partial activity to detail without a fake schedule',
       (tester) async {
     final languageController = _signInShell();
     final now = DateTime.now();
-    final post = CalendarPostResult(id: 'immediate-partial', caption: 'Immediate partial',
-        userId: 'firebase-user-shell', videoS3Key: 'uploads/clip.mp4',
-        platforms: const ['YOUTUBE_SHORTS'], status: 'PARTIAL_PUBLISHED',
-        createdAt: now, publishedAt: now);
+    final post = CalendarPostResult(
+        id: 'immediate-partial',
+        caption: 'Immediate partial',
+        userId: 'firebase-user-shell',
+        videoS3Key: 'uploads/clip.mp4',
+        platforms: const ['YOUTUBE_SHORTS'],
+        status: 'PARTIAL_PUBLISHED',
+        createdAt: now,
+        publishedAt: now);
     await tester.pumpWidget(_shellApp(PostDeeShell(
       languageController: languageController,
       loadCalendarPosts: () async => [post],
@@ -1187,7 +1225,8 @@ void main() {
     final calendar = tester.widget<CalendarScreen>(find.byType(CalendarScreen));
     calendar.onOpenCalendarPostDetail!(post);
     await tester.pumpAndSettle();
-    final detail = tester.widget<PostDetailScreen>(find.byType(PostDetailScreen));
+    final detail =
+        tester.widget<PostDetailScreen>(find.byType(PostDetailScreen));
     expect(detail.post.id, post.id);
     expect(detail.post.scheduledAt, isNull);
     expect(detail.post.status, 'PARTIAL_PUBLISHED');
@@ -3187,6 +3226,44 @@ void main() {
     await tester.tap(_referenceNavButton('Home'));
     await tester.pumpAndSettle();
     expect(recentPostsLoadCount, 2);
+  });
+
+  testWidgets('analytics is built only after explicitly opening it',
+      (tester) async {
+    final languageController = _signInShell();
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: languageController,
+      uploaderDraftStore: _ShellDraftStore(),
+      loadSubscription: () async => const SubscriptionStatusResult(
+          userId: 'firebase-user-shell',
+          plan: 'PRO',
+          status: 'ACTIVE',
+          canSchedule: true,
+          canUseAiCaptions: true,
+          canUseAnalytics: true),
+      loadRecentPosts: () async => const [],
+      loadSocialConnections: () async => const [],
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byType(AnalyticsScreen, skipOffstage: false), findsNothing);
+    await tester.tap(_referenceNavButton('Create post'));
+    await tester.pumpAndSettle();
+    tester
+        .widget<UploaderScreen>(find.byType(UploaderScreen))
+        .onViewAnalytics!();
+    await tester.pumpAndSettle();
+    expect(find.byType(AnalyticsScreen), findsOneWidget);
+    final previousAnalytics = tester.state(find.byType(AnalyticsScreen));
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(userId: 'firebase-user-shell', idToken: 'fresh-session'),
+    );
+    await tester.pumpAndSettle();
+    expect(identical(tester.state(find.byType(AnalyticsScreen)), previousAnalytics),
+        isFalse,
+        reason: 'A fresh sign-in must replace the previous analytics binding.');
+    await tester.tap(_referenceNavButton('Home'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AnalyticsScreen, skipOffstage: false), findsNothing);
   });
 
   testWidgets('shows first-run onboarding once, then goes to home',

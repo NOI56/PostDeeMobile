@@ -231,7 +231,18 @@ class _PostDeeShellState extends State<PostDeeShell> {
               unawaited(_openPostComposer(initialScheduleDate: date)),
           onOpenCalendarPostDetail: _openCalendarPostDetail,
         ),
-        const AnalyticsScreen(showTitle: true),
+        // Do not start provider/statistics reads for an offstage dashboard.
+        // Recreating it on entry also prevents an old owner's summary lingering.
+        _selectedIndex == 4
+            ? AnalyticsScreen(
+                key: ValueKey((
+                  'analytics',
+                  _authController.session.stableUserId,
+                  _linkSessionGeneration,
+                )),
+                showTitle: true,
+              )
+            : const SizedBox.shrink(),
         // Profile is the 5th nav tab per the design handoff (no pushed route).
         ProfileScreen(
           isActive: _selectedIndex == 5 && _composerRoute == null,

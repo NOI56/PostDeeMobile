@@ -632,6 +632,23 @@ class _PaywallScreenState extends State<PaywallScreen> {
     );
   }
 
+  void _showAddonHelp() {
+    if (!_canUpdateScreen) return;
+    _showOwnedDialog((dialogContext) => AlertDialog(
+      title: const Text('ช่วยตรวจสอบการซื้อ'),
+      scrollable: true,
+      content: const SelectableText(
+        'อย่าซื้อซ้ำระหว่างที่รายการเดิมยังรอยืนยัน '
+        'คุณปิดหน้านี้ได้ แล้วกลับมาตรวจสอบการซื้อแพ็กเติมอีกครั้ง\n\n'
+        'หากชำระเงินแล้วแต่เครดิตยังไม่เข้า ติดต่อ support@postdee.app '
+        'พร้อมเลขคำสั่งซื้อหรือหลักฐานจาก Google Play / App Store '
+        'และอีเมลบัญชี PostDee ที่ใช้ซื้อ ไม่ต้องส่งรหัสผ่าน',
+      ),
+      actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(),
+        child: const Text('รับทราบ'))],
+    ));
+  }
+
   Widget _buildAddonCard() {
     final catalog = _addonCatalog;
     final pending = _addonService.hasPendingPurchase;
@@ -675,6 +692,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
           TextButton(key: const ValueKey('paywall-retry-addon'),
             onPressed: _addonService.supportsPlatform && _canUpdateScreen && !_isBillingInProgress ? () => _buyAddon(retry: true) : null,
             child: const Text('ตรวจสอบการซื้อแพ็กเติมอีกครั้ง')),
+          TextButton.icon(key: const ValueKey('paywall-addon-help'),
+            onPressed: _canUpdateScreen ? _showAddonHelp : null,
+            icon: const Icon(Icons.support_agent, size: 18),
+            label: const Text('ขอความช่วยเหลือเรื่องการซื้อ')),
         ],
         const SizedBox(height: 12),
         SizedBox(width: double.infinity, child: FilledButton(
@@ -860,7 +881,7 @@ class _PlanCard extends StatelessWidget {
                 icon: const Icon(Icons.workspace_premium_outlined, size: 19),
                 label: Text('สมัคร ${plan.name}'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
+                  backgroundColor: AppTheme.actionBackground,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(

@@ -1830,6 +1830,7 @@ void main() {
             'userId': 'calendar-owner',
             'caption': 'Immediate clip',
             'videoS3Key': 'uploads/clip.mp4',
+            'coverImageS3Key': 'uploads/calendar-owner/selected-cover.jpg',
             'platforms': ['TIKTOK', 'YOUTUBE_SHORTS'],
             'status': 'PARTIAL_PUBLISHED',
             'createdAt': '2026-10-13T17:00:00.000Z',
@@ -1868,6 +1869,9 @@ void main() {
       final posts = await client.listCalendarPosts();
       expect(posts, hasLength(53), reason: 'Calendar activity must not use the 50-preview cap.');
       expect(posts.first.userId, 'calendar-owner');
+      expect(posts.first.coverImageS3Key,
+          'uploads/calendar-owner/selected-cover.jpg');
+      expect(posts.first.coverImageUrl, isNull);
       expect(posts.first.scheduledAt, isNull);
       expect(posts.first.toScheduledPost(), isNull);
       expect(posts.first.platformResults.map((result) => result.status),

@@ -2,6 +2,56 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Calendar selected-cover reads (2026-10-21)
+
+Calendar continues its full metadata-only `GET /posts` read without
+`includeMedia` or `limit`, avoiding the list preview path's 50-post cap. Mobile
+retains the existing `coverImageS3Key` and `coverFrameTimeMs` fields and loads
+safe media from owned `GET /posts/:id?includeMedia=true` only for selected-day
+rows with a stored image or video key. A provided safe cover URL needs no extra
+read. An image key takes precedence. Legacy records without an image key may
+use the owned signed video URL to extract the saved frame, including zero, or
+the first frame at zero when no selection was stored. The video URL comes from
+the exact owned read, not arbitrary list metadata. Calendar never creates a video
+player. Dart may fetch remote video ranges; FFmpeg writes only a temporary 144 by 256 JPEG, limited
+to 512 KiB, with an eight-second deadline, scoped cancellation and cleanup.
+
+The existing native FFmpeg video package lacks TLS. A per-extraction
+`CalendarCoverVideoProxy` binds only `127.0.0.1` and a random 24-byte (192-bit) path; FFmpeg
+receives only that local HTTP URL. The proxy fixes its upstream to the owned
+signed URI, retains Dart's HTTPS certificate validation, refuses redirects and
+uses identity encoding. It accepts only GET/HEAD and a single byte range; HEAD
+probes use an upstream signed GET with `Range: bytes=0-0`. Streaming with
+backpressure shares an 8 MiB/24-request/three-active-request budget per proxy;
+it does not write or buffer a full video. Extractor completion, its deadline or
+owner/day invalidation closes the proxy and its active upstream work. No native
+bridge, new dependency, server endpoint or external cleartext hop is added.
+
+The view/session-bound preview cache deduplicates reads, allows at most three
+active read/extraction operations and reuses results through rebuilds and silent
+status polling. Changing the selected day/filter evicts rows no longer displayed; manual refresh
+recreates the cache. Owner/session changes and disposal reject late results;
+inactive/background views do not dispatch queued reads. Failures remain static
+placeholders until refresh or eviction, avoiding rebuild retry loops. A legacy
+gallery image or text overlay that was never uploaded cannot be reconstructed
+from video metadata; the fallback is the saved video frame or its first frame.
+
+The uploader previously uploaded the chosen image only for Instagram/Facebook.
+New requests retain the chosen image through the existing cover upload and post
+fields on all four supported destinations, including its digest in media
+identity. Existing non-Meta upload receipts without an image key keep their
+original fingerprint and request identity, avoiding another upload or duplicate
+publication during recovery. This does not extend provider thumbnail support.
+
+The compact card uses a 48 by 85.33 logical-pixel 9:16 cover and keeps time,
+caption, status, channel chips and the original tap action. No new contract,
+dependency, schema or feature flag is needed. The existing
+single-post API is available in baseline `8c957ab`; this Mobile follow-up needs
+no additional backend deployment. The user authorized main integration and
+GitHub push on 2026-10-21; no manual cloud deployment or real publishing was
+performed for this release. See the
+[work record](docs/superpowers/plans/2026-10-21-calendar-post-covers.md).
+
 ## Owned post observation and UX boundaries (2026-10-21)
 
 `GET /posts/:id` queries the exact authenticated owner/id pair through the memory

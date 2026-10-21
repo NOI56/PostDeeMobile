@@ -6,8 +6,10 @@ import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 // Widget fake clocks cannot await filesystem streams. Test stores represent
 // the digest that the real store computes while materializing its media copy.
 String testPublishMediaFingerprint(PublishDraftSaveRequest request) {
-  final usesCover = request.platformApiValues.any((platform) =>
-      platform == 'INSTAGRAM_REELS' || platform == 'FACEBOOK_REELS');
+  final usesCover = request.uploadedMedia == null ||
+      request.uploadedMedia!.coverImageS3Key != null ||
+      request.platformApiValues.any((platform) =>
+          platform == 'INSTAGRAM_REELS' || platform == 'FACEBOOK_REELS');
   final cover = usesCover ? request.coverImageFile : null;
   return sha256
       .convert(utf8.encode(jsonEncode([

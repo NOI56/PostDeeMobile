@@ -7,6 +7,22 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Calendar selected covers (2026-10-21)
+
+Calendar post cards add the saved selected cover as a small portrait thumbnail,
+while retaining time, caption, actual channel status and existing navigation.
+The full calendar history read is unchanged; only selected-day cover previews
+use the existing owned single-post endpoint. Older posts without an image use
+the saved selected frame, or the first frame when no choice was recorded, as a
+small static image. A bounded proxy inside the device handles HTTPS video reads
+for the existing thumbnail extractor. New posts retain
+the chosen image for all four supported destinations; this does not add provider
+thumbnail capabilities. Missing or unavailable covers use a placeholder.
+The user authorized main integration and GitHub push on 2026-10-21. No API
+deployment, migration or dependency is required on the current Staging API.
+Verification and delivery are tracked separately in the
+[work record](docs/superpowers/plans/2026-10-21-calendar-post-covers.md).
+
 ## Usability follow-up (2026-10-21)
 
 The 100 synthetic-scenario review is followed by owner-scoped single-post reads,

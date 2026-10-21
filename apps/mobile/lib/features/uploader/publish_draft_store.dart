@@ -237,8 +237,12 @@ class FilePublishDraftStore implements PublishDraftStore {
     }
 
     final platforms = request.platformApiValues.toList()..sort();
-    final usesCover = platforms.any(
-        (value) => value == 'INSTAGRAM_REELS' || value == 'FACEBOOK_REELS');
+    // Keep historical non-Meta upload receipts bound to their original digest.
+    // A new request has no receipt and includes the chosen image on all channels.
+    final usesCover = request.uploadedMedia == null ||
+        request.uploadedMedia!.coverImageS3Key != null ||
+        platforms.any(
+            (value) => value == 'INSTAGRAM_REELS' || value == 'FACEBOOK_REELS');
     final mediaContentFingerprint = await publishMediaContentFingerprint(
       videoFile: videoTarget,
       watermarkEnabled: request.watermarkEnabled,

@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
+import 'support/test_tiktok_video_preparer.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
 PickedVideoFile _pickedVideo() {
@@ -79,6 +80,35 @@ Future<void> _selectAllPlatforms(WidgetTester tester) async {
   await goToUploaderStep(tester, 0);
 }
 
+Future<void> _completePlatformSettings(
+    WidgetTester tester, String platform) async {
+  if (platform != 'YOUTUBE_SHORTS' && platform != 'FACEBOOK_REELS') return;
+  await goToUploaderStep(tester, 2);
+  final settings = find.byKey(ValueKey('uploader-platform-settings-$platform'));
+  await tester.ensureVisible(settings);
+  await tester.pumpAndSettle();
+  await tester.tap(settings);
+  await tester.pumpAndSettle();
+  for (final key in platform == 'YOUTUBE_SHORTS'
+      ? const [
+          'uploader-youtube-made-for-kids-no',
+          'uploader-youtube-synthetic-no',
+          'uploader-youtube-guidelines-certified',
+        ]
+      : const ['uploader-facebook-publish', 'uploader-facebook-ai-no']) {
+    final control = find.byKey(ValueKey(key));
+    await tester.ensureVisible(control);
+    await tester.pumpAndSettle();
+    await tester.tap(control);
+    await tester.pumpAndSettle();
+  }
+  final save = find.byKey(const ValueKey('uploader-platform-settings-save'));
+  await tester.ensureVisible(save);
+  await tester.pumpAndSettle();
+  await tester.tap(save);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -142,108 +172,119 @@ void main() {
     expect(find.byKey(const ValueKey('uploader-cover-time')), findsOneWidget);
   });
 
-  testWidgets('uploads a custom cover and submits its metadata for Instagram',
-      (tester) async {
-    final pickedVideo = _pickedVideo();
-    final coverFile = File('assets/images/brand/postdee_mark.png').absolute;
-    final uploadRequests = <CreateUploadRequest>[];
-    final uploadedPaths = <String>[];
-    CreatePostRequest? postRequest;
+  for (final platform in const [
+    'INSTAGRAM_REELS',
+    'FACEBOOK_REELS',
+    'TIKTOK',
+    'YOUTUBE_SHORTS',
+  ]) {
+    testWidgets('uploads the selected cover for $platform post history',
+        (tester) async {
+      final pickedVideo = _pickedVideo();
+      final coverFile = File('assets/images/brand/postdee_mark.png').absolute;
+      final uploadRequests = <CreateUploadRequest>[];
+      final uploadedPaths = <String>[];
+      CreatePostRequest? postRequest;
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: UploaderScreen(
-            probePublishMedia: probeValidPublishMedia,
-            loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
-            draftStore: TestPublishDraftStore(),
-            loadSocialConnections: () => SynchronousFuture(
-              const [
-                SocialConnectionResult(
-                  platform: 'INSTAGRAM_REELS',
-                  connected: true,
-                  externalAccountId: 'instagram-seller',
-                ),
-              ],
-            ),
-            checkPublishingReadiness: () async {},
-            pickVideo: () async => pickedVideo,
-            openCoverEditor: (context, request) async => CoverEditorResult(
-              localImagePath: coverFile.path,
-              sizeBytes: coverFile.lengthSync(),
-              design: const CoverDesign(coverFrameTimeMs: 4500),
-            ),
-            loadSubscription: () => SynchronousFuture(
-              const SubscriptionStatusResult(
-                userId: 'seller-pro',
-                plan: 'PRO',
-                status: 'ACTIVE',
-                phoneVerified: true,
-                requiresPhoneVerification: false,
-                canUseFreePostQuota: false,
-                canSchedule: true,
-                canUseAiCaptions: true,
-                canUseAnalytics: true,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UploaderScreen(
+              probePublishMedia: probeValidPublishMedia,
+              loadSocialPublishingReadiness:
+                  connectedPublishingReadinessForTests,
+              draftStore: TestPublishDraftStore(),
+              prepareTikTokVideo: testPrepareTikTokVideo,
+              loadSocialConnections: () => SynchronousFuture(
+                [
+                  SocialConnectionResult(
+                    platform: platform,
+                    connected: true,
+                    externalAccountId: 'cover-seller-$platform',
+                  ),
+                ],
               ),
+              checkPublishingReadiness: () async {},
+              pickVideo: () async => pickedVideo,
+              openCoverEditor: (context, request) async => CoverEditorResult(
+                localImagePath: coverFile.path,
+                sizeBytes: coverFile.lengthSync(),
+                design: const CoverDesign(coverFrameTimeMs: 4500),
+              ),
+              loadSubscription: () => SynchronousFuture(
+                const SubscriptionStatusResult(
+                  userId: 'seller-pro',
+                  plan: 'PRO',
+                  status: 'ACTIVE',
+                  phoneVerified: true,
+                  requiresPhoneVerification: false,
+                  canUseFreePostQuota: false,
+                  canSchedule: true,
+                  canUseAiCaptions: true,
+                  canUseAnalytics: true,
+                ),
+              ),
+              createUpload: (request) {
+                uploadRequests.add(request);
+                final isCover = request.contentType == 'image/jpeg';
+                return SynchronousFuture(
+                  UploadResult(
+                    id: isCover ? 'cover-upload' : 'video-upload',
+                    videoS3Key: isCover
+                        ? 'uploads/seller/postdee-cover.jpg'
+                        : 'uploads/seller/clip.mp4',
+                    storageProvider: 'mock',
+                  ),
+                );
+              },
+              uploadVideoFile: (_, file) {
+                uploadedPaths.add(file.path);
+                return SynchronousFuture<void>(null);
+              },
+              createPost: (request) {
+                postRequest = request;
+                return SynchronousFuture(
+                  QueuedPostResult(
+                    id: 'post-with-cover',
+                    videoS3Key: request.videoS3Key,
+                    platforms: request.platforms,
+                    status: 'QUEUED',
+                  ),
+                );
+              },
             ),
-            createUpload: (request) {
-              uploadRequests.add(request);
-              final isCover = request.contentType == 'image/jpeg';
-              return SynchronousFuture(
-                UploadResult(
-                  id: isCover ? 'cover-upload' : 'video-upload',
-                  videoS3Key: isCover
-                      ? 'uploads/seller/postdee-cover.jpg'
-                      : 'uploads/seller/clip.mp4',
-                  storageProvider: 'mock',
-                ),
-              );
-            },
-            uploadVideoFile: (_, file) {
-              uploadedPaths.add(file.path);
-              return SynchronousFuture<void>(null);
-            },
-            createPost: (request) {
-              postRequest = request;
-              return SynchronousFuture(
-                QueuedPostResult(
-                  id: 'post-with-cover',
-                  videoS3Key: request.videoS3Key,
-                  platforms: request.platforms,
-                  status: 'QUEUED',
-                ),
-              );
-            },
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await _pickVideo(tester);
-    await _selectAllPlatforms(tester);
-    await _openCoverEditor(tester);
-    await _enterCaption(tester);
-    await goToUploaderStep(tester, 3);
-    expect(
-      find.byKey(const ValueKey('publish-review-cover-image')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('publish-review-cover-time')),
-      findsOneWidget,
-    );
-    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
-    for (var attempt = 0; attempt < 10 && postRequest == null; attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
+      await _pickVideo(tester);
+      await _selectAllPlatforms(tester);
+      await _openCoverEditor(tester);
+      await _enterCaption(tester);
+      await _completePlatformSettings(tester, platform);
+      await goToUploaderStep(tester, 3);
+      expect(
+        find.byKey(const ValueKey('publish-review-cover-image')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('publish-review-cover-time')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
+      for (var attempt = 0; attempt < 10 && postRequest == null; attempt += 1) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
 
-    expect(uploadRequests, hasLength(2));
-    expect(uploadRequests.last.contentType, 'image/jpeg');
-    expect(uploadRequests.last.width, 1080);
-    expect(uploadRequests.last.height, 1920);
-    expect(uploadedPaths, containsAll([pickedVideo.path, coverFile.path]));
-    expect(postRequest?.coverImageS3Key, 'uploads/seller/postdee-cover.jpg');
-    expect(postRequest?.coverFrameTimeMs, 4500);
-  });
+      expect(uploadRequests, hasLength(2));
+      expect(uploadRequests.last.contentType, 'image/jpeg');
+      expect(uploadRequests.last.width, 1080);
+      expect(uploadRequests.last.height, 1920);
+      expect(uploadedPaths, containsAll([pickedVideo.path, coverFile.path]));
+      expect(postRequest?.coverImageS3Key, 'uploads/seller/postdee-cover.jpg');
+      expect(postRequest?.coverFrameTimeMs, 4500);
+      expect(postRequest?.platforms, [platform]);
+    });
+  }
 }

@@ -2,6 +2,30 @@
 
 Build roadmap for PostDee.
 
+## Calendar selected covers (2026-10-21)
+
+- Show each saved selected cover in a 9:16 thumbnail beside the compact post
+  details, with a one-line caption and ellipsis plus a readable placeholder for
+  missing or unavailable images. Full captions remain in post details.
+- Preserve complete calendar history, date/platform filters, status refresh,
+  pending activity and existing post/queue actions. Load selected-day covers
+  through the existing exact-owner read with bounded concurrent requests.
+- Recover a saved legacy frame when no cover image was stored, defaulting to
+  the first frame when no frame choice was recorded. Preserve
+  chosen images for new posts on all four supported destinations while retaining
+  historical upload receipts and their retry identity.
+- Keep HTTPS fetching in Dart and stream bounded video ranges through a private
+  loopback proxy to the existing extractor, whose native package lacks TLS.
+- No backend, schema or dependency change. The earlier installed APK12035
+  exposed a legacy-data gap, and an installed APK12036 component check exposed
+  unsupported native HTTPS. The expanded fix passes 2,725 Mobile tests (six
+  optional skips), clean analysis and build. APK12039 is installed and native
+  Calendar cover/one-line-caption acceptance passes, as tracked in the
+  [work record](docs/superpowers/plans/2026-10-21-calendar-post-covers.md);
+  the user authorized main integration and GitHub push on 2026-10-21. No API
+  deployment or migration is required, and no manual cloud deployment, real
+  post or purchase was performed for this release.
+
 ## Usability review follow-up (2026-10-21)
 
 - Address the seven priority themes from the 100 synthetic scenarios: detail

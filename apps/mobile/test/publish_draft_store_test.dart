@@ -290,6 +290,75 @@ void main() {
     expect(changedMedia.submissionRequestId, first.submissionRequestId);
   });
 
+  for (final platform in const ['TIKTOK', 'YOUTUBE_SHORTS']) {
+    test('$platform binds new uploaded covers to the source fingerprint',
+        () async {
+      final video = await fixture('source.mp4', [1, 2, 3, 4]);
+      final cover = await fixture('cover.jpg', [5, 6, 7]);
+      final editedCover = await fixture('edited-cover.jpg', [8, 9, 10]);
+      final store = storeFor('firebase-user-a');
+      final fingerprint = await publishMediaContentFingerprint(
+          videoFile: video, watermarkEnabled: true, coverImageFile: cover);
+      final first = await store.saveDraft(
+          request(video: video, cover: cover, platformApiValues: {platform}));
+      expect(first.mediaContentFingerprint, fingerprint);
+      final receipt = PublishDraftUploadedMedia(
+          mediaContentFingerprint: fingerprint,
+          videoS3Key: 'uploads/firebase-user-a/video.mp4',
+          coverImageS3Key: 'uploads/firebase-user-a/selected-cover.jpg');
+      await store.saveDraft(request(
+          video: video,
+          cover: cover,
+          platformApiValues: {platform},
+          uploadedMedia: receipt));
+      final restored = (await store.loadDraft('draft-1'))!;
+      expect(restored.uploadedMedia!.coverImageS3Key, receipt.coverImageS3Key);
+      expect(restored.submissionRequestId, first.submissionRequestId);
+      final changed = await store.saveDraft(request(
+          video: video,
+          cover: editedCover,
+          platformApiValues: {platform},
+          uploadedMedia: restored.uploadedMedia));
+      expect(changed.mediaContentFingerprint, isNot(fingerprint));
+      expect(changed.uploadedMedia, isNull);
+      expect(changed.submissionRequestId, first.submissionRequestId);
+    });
+
+    test('$platform keeps a legacy no-cover receipt until a new request',
+        () async {
+      final video = await fixture('source.mp4', [1, 2, 3, 4]);
+      final cover = await fixture('cover.jpg', [5, 6, 7]);
+      final store = storeFor('firebase-user-a');
+      final legacyFingerprint = await publishMediaContentFingerprint(
+          videoFile: video, watermarkEnabled: true);
+      final receipt = PublishDraftUploadedMedia(
+          mediaContentFingerprint: legacyFingerprint,
+          videoS3Key: 'uploads/firebase-user-a/legacy.mp4');
+      final saved = await store.saveDraft(request(
+          video: video,
+          cover: cover,
+          platformApiValues: {platform},
+          uploadedMedia: receipt));
+      final restored = (await store.loadDraft(saved.id))!;
+      expect(restored.mediaContentFingerprint, legacyFingerprint);
+      expect(restored.uploadedMedia!.videoS3Key, receipt.videoS3Key);
+      expect(restored.uploadedMedia!.coverImageS3Key, isNull);
+      expect(restored.submissionRequestId, saved.submissionRequestId);
+      final newRequest = await store.saveDraft(request(
+          id: 'explicit-new-request',
+          video: video,
+          cover: cover,
+          platformApiValues: {platform}));
+      expect(
+          newRequest.mediaContentFingerprint,
+          await publishMediaContentFingerprint(
+              videoFile: video, watermarkEnabled: true, coverImageFile: cover));
+      expect(newRequest.uploadedMedia, isNull);
+      expect(
+          newRequest.submissionRequestId, isNot(restored.submissionRequestId));
+    });
+  }
+
   test(
       'keeps uploaded keys across retry and restart but discards them when source media changes',
       () async {

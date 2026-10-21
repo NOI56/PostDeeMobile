@@ -3680,9 +3680,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       final needsTikTokPreparation =
           _selectedPlatforms.contains(SocialPlatform.tiktok);
       final usesCover = submittedDraft.cover != null &&
-          _selectedPlatforms.any((platform) =>
-              platform == SocialPlatform.instagramReels ||
-              platform == SocialPlatform.facebookReels);
+          (submittedDraft.uploadedMedia == null ||
+              submittedDraft.uploadedMedia!.coverImageS3Key != null ||
+              _selectedPlatforms.any((platform) =>
+                  platform == SocialPlatform.instagramReels ||
+                  platform == SocialPlatform.facebookReels));
       final mediaContentFingerprint = submittedDraft.mediaContentFingerprint ??
           await publishMediaContentFingerprint(
               videoFile: localVideoFile,
@@ -3883,13 +3885,9 @@ class _UploaderScreenState extends State<UploaderScreen>
           }
         }
         ensureSubmissionStillOwned();
-        final shouldUploadCoverImage = selectedCover != null &&
-            _selectedPlatforms.any(
-              (platform) =>
-                  platform == SocialPlatform.instagramReels ||
-                  platform == SocialPlatform.facebookReels,
-            );
-        if (shouldUploadCoverImage) {
+        // Keep the chosen image for PostDee history on every destination.
+        // Provider-specific thumbnail support remains in the publisher.
+        if (selectedCover != null) {
           final cover = await _readCoverForUpload(
             videoFile: localVideoFile,
             fileName: fileName,

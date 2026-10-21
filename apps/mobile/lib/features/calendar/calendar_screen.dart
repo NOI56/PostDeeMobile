@@ -17,6 +17,7 @@ import '../shared/postdee_press_feedback.dart';
 import '../shared/postdee_publishing_motion.dart';
 import '../shared/postdee_skeleton.dart';
 import '../shared/publishing_availability.dart';
+import 'calendar_cover_preview_cache.dart';
 
 typedef ScheduledPostsLoader = Future<List<ScheduledPostResult>> Function();
 typedef CalendarPostsLoader = Future<List<CalendarPostResult>> Function();
@@ -39,6 +40,8 @@ class CalendarScreen extends StatefulWidget {
     this.reschedulePost,
     this.cancelPost,
     this.loadPost,
+    this.loadCoverPost,
+    this.extractLegacyCoverFrame,
     this.onAddPost,
     this.onAddPostForDate,
     this.ownerUserId,
@@ -56,6 +59,8 @@ class CalendarScreen extends StatefulWidget {
   final ScheduledPostRescheduler? reschedulePost;
   final ScheduledPostCanceller? cancelPost;
   final Future<PostSummaryResult?> Function(String postId)? loadPost;
+  final Future<PostSummaryResult?> Function(String postId)? loadCoverPost;
+  final CalendarLegacyCoverFrameLoader? extractLegacyCoverFrame;
   final CalendarTimeConverter? toLocalTime;
   final DateTime Function()? now;
   final CalendarSubscriptionLoader? loadSubscription;
@@ -78,6 +83,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   static const _queuedRefreshInterval = Duration(seconds: 30);
 
   final _apiClient = PostDeeApiClient();
+  late AuthSessionBinding _coverSession;
+  late CalendarCoverPreviewCache _coverPreviews;
   bool _isLoading = true;
   bool _hasLoaded = false;
   bool _isRefreshing = false;
@@ -105,6 +112,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     super.initState();
     _sessionOwnerId = PostDeeAuthSessionStore.instance.session.stableUserId;
     _ownerId = widget.ownerUserId ?? _sessionOwnerId;
+    _coverPreviews = _createCoverPreviews();
     PostDeeAuthSessionStore.instance.addListener(_onSessionChanged);
     WidgetsBinding.instance.addObserver(this);
     final lifecycleState = WidgetsBinding.instance.lifecycleState;
@@ -126,6 +134,10 @@ class _CalendarScreenState extends State<CalendarScreen>
       _resetOwner();
       if (widget.isActive) unawaited(_loadPosts());
       return;
+    }
+    if (oldWidget.loadCoverPost != widget.loadCoverPost ||
+        oldWidget.extractLegacyCoverFrame != widget.extractLegacyCoverFrame) {
+      _replaceCoverPreviews();
     }
     final becameActive = !oldWidget.isActive && widget.isActive;
     final refreshRequested = oldWidget.refreshToken != widget.refreshToken;
@@ -158,6 +170,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void dispose() {
     _ownerGeneration++;
+    _coverPreviews.dispose();
     PostDeeAuthSessionStore.instance.removeListener(_onSessionChanged);
     WidgetsBinding.instance.removeObserver(this);
     _queuedRefreshTimer?.cancel();
@@ -166,7 +179,10 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   void _onSessionChanged() {
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
-    if (_sessionOwnerId == owner) return;
+    if (_sessionOwnerId == owner) {
+      if (!_coverSession.isCurrent) setState(_replaceCoverPreviews);
+      return;
+    }
     _sessionOwnerId = owner;
     _resetOwner();
     if (widget.isActive &&
@@ -179,6 +195,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     _ownerGeneration++;
     _postMutationGeneration++;
     _ownerId = widget.ownerUserId ?? _sessionOwnerId;
+    _replaceCoverPreviews();
     _queuedRefreshTimer?.cancel();
     _queuedRefreshTimer = null;
     _loadInProgress = false;
@@ -204,6 +221,30 @@ class _CalendarScreenState extends State<CalendarScreen>
       generation == _ownerGeneration &&
       sessionOwner == PostDeeAuthSessionStore.instance.session.stableUserId;
 
+  CalendarCoverPreviewCache _createCoverPreviews() {
+    final session = PostDeeAuthSessionStore.instance.captureSession();
+    _coverSession = session;
+    final generation = _ownerGeneration;
+    final api = PostDeeApiClient(sessionBinding: session);
+    return CalendarCoverPreviewCache(
+      extractFrame: widget.extractLegacyCoverFrame,
+      loadPost: (id) =>
+          widget.loadCoverPost?.call(id) ??
+          api.getPostById(id, includeMedia: true),
+      isCurrent: () =>
+          mounted &&
+          session.isCurrent &&
+          generation == _ownerGeneration &&
+          widget.isActive &&
+          _appIsResumed,
+    );
+  }
+
+  void _replaceCoverPreviews() {
+    _coverPreviews.dispose();
+    _coverPreviews = _createCoverPreviews();
+  }
+
   Future<void> _loadPosts({bool silent = false}) async {
     if (_loadInProgress) {
       _reloadRequested = true;
@@ -227,6 +268,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     final generation = _ownerGeneration;
     final sessionOwner = PostDeeAuthSessionStore.instance.session.stableUserId;
     final owner = _ownerId;
+    if (!silent) _replaceCoverPreviews();
     setState(() {
       _isLoading = !_hasLoaded;
       _isRefreshing = _hasLoaded;
@@ -590,8 +632,23 @@ class _CalendarScreenState extends State<CalendarScreen>
     try {
       final reschedulePost = widget.reschedulePost ?? _apiClient.reschedulePost;
       if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
-      final updatedPost = CalendarPostResult.fromScheduledPost(
-          await reschedulePost(post.id, next));
+      final updated = await reschedulePost(post.id, next);
+      final updatedPost = CalendarPostResult(
+        id: updated.id,
+        caption: updated.caption,
+        videoS3Key: updated.videoS3Key,
+        platforms: updated.platforms,
+        status: updated.status,
+        createdAt: updated.createdAt,
+        scheduledAt: updated.scheduledAt,
+        publishedAt: updated.publishedAt,
+        platformResults: updated.platformResults,
+        userId: updated.userId,
+        videoUrl: post.videoUrl,
+        coverImageUrl: post.coverImageUrl,
+        coverImageS3Key: post.coverImageS3Key,
+        coverFrameTimeMs: post.coverFrameTimeMs,
+      );
       if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
       if (updatedPost.userId != null && updatedPost.userId != _ownerId) return;
       _postMutationGeneration += 1;
@@ -730,6 +787,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                     userId: post.userId,
                     videoUrl: latest.videoUrl,
                     coverImageUrl: latest.coverImageUrl,
+                    coverImageS3Key: latest.coverImageS3Key,
                     coverFrameTimeMs: latest.coverFrameTimeMs,
                   )
             ];
@@ -1182,6 +1240,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       ];
     }
     final dayPosts = _dayPosts;
+    _coverPreviews.retain(dayPosts.map((post) => post.id));
     return [
       if (_errorMessage != null) ...[
         PostDeeNotice(
@@ -1225,6 +1284,7 @@ class _CalendarScreenState extends State<CalendarScreen>
           for (final post in dayPosts)
             _DayPostRow(
                 post: post,
+                coverPreviews: _coverPreviews,
                 animate: _motionEnabled,
                 displayAt: _calendarTimeFor(post),
                 onTap: _postTapHandler(post),
@@ -1602,6 +1662,7 @@ class _PlatformFilterButton extends StatelessWidget {
 class _DayPostRow extends StatelessWidget {
   const _DayPostRow({
     required this.post,
+    required this.coverPreviews,
     required this.displayAt,
     required this.onTap,
     required this.busyLabel,
@@ -1609,6 +1670,7 @@ class _DayPostRow extends StatelessWidget {
   });
 
   final CalendarPostResult post;
+  final CalendarCoverPreviewCache coverPreviews;
   final DateTime displayAt;
   final VoidCallback? onTap;
   final String? busyLabel;
@@ -1664,26 +1726,22 @@ class _DayPostRow extends StatelessWidget {
               ),
               child:
                   Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                SizedBox(
-                    width: 57 *
-                        (MediaQuery.textScalerOf(context).scale(15) / 15)
-                            .clamp(1.0, 2.0),
-                    child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(_formatTime(displayAt),
-                            maxLines: 1,
-                            style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textPrimary)))),
-                const SizedBox(width: 9),
+                _CalendarPostCover(post: post, previews: coverPreviews),
+                const SizedBox(width: 10),
                 Expanded(
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                      Text(_formatTime(displayAt),
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary)),
+                      const SizedBox(height: 4),
                       Text(post.caption,
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               fontSize: 13.5,
@@ -1766,6 +1824,68 @@ class _DayPostRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CalendarPostCover extends StatelessWidget {
+  const _CalendarPostCover({required this.post, required this.previews});
+
+  final CalendarPostResult post;
+  final CalendarCoverPreviewCache previews;
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+        key: ValueKey('calendar-post-cover-${post.id}'),
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 48,
+          height: 48 * 16 / 9,
+          child: FutureBuilder<CalendarCoverPreview?>(
+            key: ValueKey((
+              previews,
+              post.id,
+              post.coverImageS3Key,
+              post.videoS3Key,
+              post.coverFrameTimeMs
+            )),
+            future: previews.load(post),
+            builder: (context, snapshot) {
+              final preview = snapshot.data;
+              final frameBytes = preview?.frameBytes;
+              if (frameBytes != null) {
+                return Image.memory(
+                  frameBytes,
+                  key: ValueKey('calendar-post-cover-image-${post.id}'),
+                  fit: BoxFit.cover,
+                  cacheWidth: 144,
+                  excludeFromSemantics: true,
+                  errorBuilder: (context, error, stackTrace) => _placeholder(),
+                );
+              }
+              final cover = preview?.imageUrl;
+              if (cover == null) return _placeholder();
+              return Image.network(
+                cover.toString(),
+                key: ValueKey('calendar-post-cover-image-${post.id}'),
+                fit: BoxFit.cover,
+                cacheWidth: 144,
+                excludeFromSemantics: true,
+                frameBuilder: (context, child, frame, synchronouslyLoaded) =>
+                    synchronouslyLoaded || frame != null
+                        ? child
+                        : _placeholder(),
+                errorBuilder: (context, error, stackTrace) => _placeholder(),
+              );
+            },
+          ),
+        ),
+      );
+
+  Widget _placeholder() => ColoredBox(
+        key: ValueKey('calendar-post-cover-placeholder-${post.id}'),
+        color: AppTheme.mint,
+        child: Icon(Icons.video_library_outlined,
+            size: 23, color: AppTheme.textMuted),
+      );
 }
 
 class _EmptyDayCard extends StatelessWidget {

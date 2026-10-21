@@ -1620,6 +1620,29 @@ from an older deployment remains an error, preserving the visible snapshot.
 The existing `GET /posts` contract is unchanged. Deploy this API before the
 updated Mobile detail/recovery/notification navigation. No migration is needed.
 
+The 2026-10-21 Calendar-cover follow-up reuses this already implemented endpoint
+without a contract change. Calendar keeps metadata-only `GET /posts` with no
+preview limit and retains existing `coverImageS3Key` and `coverFrameTimeMs`.
+Selected-day rows with a stored image or video key may request
+`GET /posts/:id?includeMedia=true`. Mobile prefers `coverImageUrl`; only an older
+post without an image key may use that owned read's signed `videoUrl` for
+bounded, static extraction of the saved frame, defaulting to frame time zero
+when the selection is absent. List metadata cannot supply an arbitrary fallback
+video URL. Mobile's bounded loopback proxy fetches HTTPS ranges through Dart
+with normal TLS verification, then streams them to the existing native extractor
+over local HTTP. This is not a new backend route or public video proxy. There is
+no video player, though extraction can fetch remote video data. Missing/failed previews leave the
+post visible with a placeholder.
+
+New Mobile submissions use the existing optional cover upload/post fields to
+retain chosen images on all four supported destinations. Historical non-Meta
+upload receipts without an image key keep their original retry identity. This
+adds no provider thumbnail capability, endpoint, quota charge, public storage,
+migration or backend deployment. The user authorized main integration and
+GitHub push on 2026-10-21; this Mobile release requires no manual API deployment.
+See the
+[work record](docs/superpowers/plans/2026-10-21-calendar-post-covers.md).
+
 ### Account mutation boundary for stateful reads
 
 Authenticated writes retain the existing owner mutation/deletion barrier and

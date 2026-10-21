@@ -2560,6 +2560,7 @@ class PostSummaryResult {
     this.platformResults = const [],
     this.videoUrl,
     this.coverImageUrl,
+    this.coverImageS3Key,
     this.coverFrameTimeMs,
   });
 
@@ -2574,6 +2575,7 @@ class PostSummaryResult {
   final List<PostPlatformResult> platformResults;
   final Uri? videoUrl;
   final Uri? coverImageUrl;
+  final String? coverImageS3Key;
   final int? coverFrameTimeMs;
 
   factory PostSummaryResult.fromJson(Map<String, Object?> json) {
@@ -2595,6 +2597,7 @@ class PostSummaryResult {
     }
 
     final rawFrameTimeMs = json['coverFrameTimeMs'];
+    final rawCoverKey = json['coverImageS3Key'];
 
     if (createdAt == null) {
       throw const ApiException('Post is missing createdAt');
@@ -2617,6 +2620,9 @@ class PostSummaryResult {
           .toList(),
       videoUrl: parsePreviewUrl(json['videoUrl']),
       coverImageUrl: parsePreviewUrl(json['coverImageUrl']),
+      coverImageS3Key: rawCoverKey is String && rawCoverKey.trim().isNotEmpty
+          ? rawCoverKey.trim()
+          : null,
       coverFrameTimeMs:
           rawFrameTimeMs is int && rawFrameTimeMs >= 0 ? rawFrameTimeMs : null,
     );
@@ -2637,6 +2643,7 @@ class CalendarPostResult extends PostSummaryResult {
     super.platformResults,
     super.videoUrl,
     super.coverImageUrl,
+    super.coverImageS3Key,
     super.coverFrameTimeMs,
     this.userId,
   }) : _scheduledPost = null;
@@ -2674,6 +2681,7 @@ class CalendarPostResult extends PostSummaryResult {
       platformResults: post.platformResults,
       videoUrl: post.videoUrl,
       coverImageUrl: post.coverImageUrl,
+      coverImageS3Key: post.coverImageS3Key,
       coverFrameTimeMs: post.coverFrameTimeMs,
       userId: rawUserId is String && rawUserId.trim().isNotEmpty
           ? rawUserId.trim()

@@ -4,6 +4,7 @@ import { readAuthUser, type AuthUser } from '../auth/authTypes.js';
 import type { AnalyticsStore } from '../analytics/analyticsStore.js';
 import type { AiEditUsageStore } from '../aiEdits/aiEditUsageStore.js';
 import type { RealClipCaptionUsageStore } from '../captions/captionUsageStore.js';
+import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 import type { DeviceTokenStore } from '../devices/deviceTokenStore.js';
 import type { LinkInBioStore } from '../linkInBio/linkInBioStore.js';
 import type { LinkInBioImageStore } from '../linkInBio/linkInBioImageStore.js';
@@ -42,6 +43,7 @@ export type AccountRouteDependencies = {
   subscriptionStore: SubscriptionStore;
   analyticsStore: AnalyticsStore;
   realClipCaptionUsageStore: RealClipCaptionUsageStore;
+  monthlyAddonStore?: Pick<MonthlyAddonStore, 'deleteAllForUser'>;
   aiEditUsageStore: AiEditUsageStore;
   deviceTokenStore: DeviceTokenStore;
   linkInBioStore?: LinkInBioStore;
@@ -84,6 +86,7 @@ export const registerAccountRoutes = (
     subscriptionStore,
     analyticsStore,
     realClipCaptionUsageStore,
+    monthlyAddonStore,
     aiEditUsageStore,
     deviceTokenStore,
     linkInBioStore,
@@ -461,6 +464,7 @@ export const registerAccountRoutes = (
       subscriptionStore.deleteAllForUser,
       analyticsStore.deleteAllForUser,
       realClipCaptionUsageStore.deleteAllForUser,
+      monthlyAddonStore?.deleteAllForUser,
       aiEditUsageStore.deleteAllForUser,
       deviceTokenStore.deleteAllForUser,
       linkInBioStore?.deleteAllForUser,

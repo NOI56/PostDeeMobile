@@ -19,6 +19,7 @@ import '../auth/firebase_email_auth_gateway.dart';
 import '../auth/firebase_google_auth_gateway.dart';
 import '../auth/firebase_id_token_refresher.dart';
 import '../calendar/calendar_screen.dart';
+import '../billing/addon_pending_store.dart';
 import '../captions/caption_writing_style_store.dart';
 import '../home/home_screen.dart';
 import '../link_in_bio/link_in_bio_draft_store.dart';
@@ -547,6 +548,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final deletionSession = PostDeeAuthSessionStore.instance.captureSession();
+    final addonPendingStore = SharedPreferencesAddonPendingStore();
     final apiClient = PostDeeApiClient(sessionBinding: deletionSession);
     final capturedOwnerUserId = _authController.session.stableUserId;
     final deleteAccount = widget.deleteAccount ?? apiClient.deleteAccount;
@@ -586,6 +588,11 @@ class _PostDeeShellState extends State<PostDeeShell> {
       }
 
       if (capturedOwnerUserId != null) {
+        try {
+          await addonPendingStore.clearForDeletedAccount();
+        } catch (_) {
+          localDraftCleanupFailed = true;
+        }
         try {
           await clearLinkInBioDraftForUser(capturedOwnerUserId);
         } catch (_) {

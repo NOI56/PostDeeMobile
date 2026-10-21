@@ -2247,6 +2247,22 @@ Required services for later milestones:
   compatibility value)
 - RevenueCat subscriptions for Starter and Pro, backed by Apple App Store and Google Play products
 
+The post/caption add-on is a separate, repeatable consumable purchase: target
+price 49 THB for 100 additional post units and 50 additional real-clip caption
+generations. The initial purchase path is Android only. Only effective
+Starter/Pro members can buy/use it. Credits expire
+at the next UTC calendar-month quota reset, with no carryover; a post to two
+destinations uses two units. Existing tier features and subscription prices do
+not change. The app displays the store's actual localized checkout price.
+
+Purchases stay disabled by default (`BILLING_ADDONS_ENABLED=false`) until the
+add-on migration/API, RevenueCat webhook verification, and the matching
+consumable store product are ready. Server-verified transactions grant once;
+subscription Restore is not a second grant. See the
+[implementation and rollout record](docs/superpowers/plans/2026-10-21-post-caption-addon.md).
+The iPhone add-on checkout remains disabled: Apple's In-App Purchase rules do
+not permit purchased credits to expire. Existing iOS subscriptions are unchanged.
+
 See `FIREBASE_SETUP.md` for the Firebase Auth and Google Sign-In setup checklist.
 
 Production account deletion is temporarily disabled with

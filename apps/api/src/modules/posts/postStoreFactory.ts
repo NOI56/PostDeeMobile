@@ -1,5 +1,6 @@
 import type { ServerConfig } from '../../config/env.js';
 import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
+import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 import {
   type PrismaPostClient,
   createPrismaPostRepository
@@ -11,11 +12,13 @@ type PostStoreConfig = Pick<ServerConfig, 'postStore'>;
 export const createPostStoreFromConfig = ({
   config,
   prisma,
-  runWithActiveOwner
+  runWithActiveOwner,
+  monthlyAddonStore
 }: {
   config: PostStoreConfig;
   prisma?: PrismaPostClient;
   runWithActiveOwner?: RunWithActiveOwner;
+  monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>;
 }): PostStore => {
   if (config.postStore === 'prisma') {
     if (!prisma) {
@@ -25,5 +28,5 @@ export const createPostStoreFromConfig = ({
     return createPrismaPostRepository({ prisma });
   }
 
-  return createPostStore({ runWithActiveOwner });
+  return createPostStore({ runWithActiveOwner, monthlyAddonStore });
 };

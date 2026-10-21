@@ -9,6 +9,8 @@ import type { PaidSubscriptionPlan, SubscriptionStatus } from '../subscriptions/
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import type { UserStore } from '../users/userStore.js';
 import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
+import { MonthlyAddonPurchaseConflictError, allowMonthlyAddonStore, type MonthlyAddonStore } from './monthlyAddonStore.js';
+import { normalizeRevenueCatAddonStore } from './revenueCatAddonPurchaseClient.js';
 
 type RevenueCatWebhookConfig = Pick<
   ServerConfig,
@@ -18,6 +20,9 @@ type RevenueCatWebhookConfig = Pick<
   | 'revenueCatProEntitlementId'
   | 'revenueCatStarterProductId'
   | 'revenueCatProProductId'
+  | 'billingAddonsEnabled'
+  | 'revenueCatAddonProductId'
+  | 'revenueCatAddonEnvironment'
 >;
 
 type RevenueCatEvent = {
@@ -157,13 +162,15 @@ export const registerRevenueCatWebhookRoutes = ({
   config,
   userStore,
   subscriptionStore,
-  ownerMutationLock = createOwnerMutationLock()
+  ownerMutationLock = createOwnerMutationLock(),
+  monthlyAddonStore
 }: {
   router: Router;
   config: RevenueCatWebhookConfig;
   userStore: UserStore;
   subscriptionStore: SubscriptionStore;
   ownerMutationLock?: OwnerMutationCoordinator;
+  monthlyAddonStore?: MonthlyAddonStore;
 }) => {
   if (config.billingProvider !== 'revenuecat') {
     return;
@@ -188,6 +195,51 @@ export const registerRevenueCatWebhookRoutes = ({
 
     if (!event) {
       sendInvalidPayload(response);
+      return;
+    }
+
+    if (event.productId === config.revenueCatAddonProductId) {
+      const raw = isRecord(request.body) && isRecord(request.body.event) ? request.body.event : {};
+      const isPurchase = event.type === 'NON_RENEWING_PURCHASE';
+      // RevenueCat non-subscription cancellations represent refund/revocation,
+      // not subscription auto-renewal cancellation. Keep them sticky.
+      const isRevoke = event.type === 'CANCELLATION' || event.type === 'REFUND';
+      if ((!config.billingAddonsEnabled && !isRevoke) || !monthlyAddonStore || (!isPurchase && !isRevoke)) {
+        response.status(202).json({ status: 'ok', ignored: true, code: 'BILLING_ADDONS_DISABLED' }); return;
+      }
+      const store = normalizeRevenueCatAddonStore(raw.store);
+      const transactionId = readString(raw.transaction_id);
+      const purchasedAtMs = readEventTimestamp(raw.purchased_at_ms);
+      if (!event.eventId || event.eventTimestampMs === undefined || !store || !transactionId || !purchasedAtMs ||
+        !['SANDBOX', 'PRODUCTION'].includes(String(raw.environment))) {
+        sendInvalidPayload(response); return;
+      }
+      if (raw.environment !== config.revenueCatAddonEnvironment) {
+        response.status(202).json({ status: 'ok', ignored: true, code: 'REVENUECAT_ADDON_ENVIRONMENT_MISMATCH' }); return;
+      }
+      if (isPurchase && !allowMonthlyAddonStore(store)) {
+        response.status(202).json({ status: 'ok', ignored: true, code: 'ADDON_STORE_UNSUPPORTED' }); return;
+      }
+      const release = await ownerMutationLock.acquireMutation(event.appUserId);
+      try {
+        if (!ownerMutationLock.isActive(event.appUserId) || !(await userStore.exists(event.appUserId))) {
+          response.status(202).json({ status: 'ok', ignored: true, code: 'REVENUECAT_USER_NOT_FOUND' }); return;
+        }
+        const purchase = { userId: event.appUserId, productId: config.revenueCatAddonProductId,
+          transactionId, store, environment: raw.environment as string, purchasedAt: new Date(purchasedAtMs).toISOString() };
+        if (isRevoke) {
+          await monthlyAddonStore.revokePurchase(purchase);
+          response.json({ status: 'ok', eventType: event.type, revoked: true }); return;
+        }
+        const result = await monthlyAddonStore.applyPurchase(purchase);
+        response.json({ status: 'ok', eventType: event.type, ignored: !result.applied, revoked: result.revoked });
+      } catch (error) {
+        if (error instanceof MonthlyAddonPurchaseConflictError) {
+          response.status(409).json({ status: 'error', code: 'PURCHASE_ALREADY_LINKED', message: error.message }); return;
+        }
+        if (!(error instanceof UploadSessionConflictError) || error.code !== 'ACCOUNT_DELETION_IN_PROGRESS') throw error;
+        response.status(202).json({ status: 'ok', ignored: true, code: 'REVENUECAT_USER_NOT_FOUND' });
+      } finally { release(); }
       return;
     }
 

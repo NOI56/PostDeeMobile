@@ -2958,6 +2958,46 @@ An unsupported range returns `400 INVALID_ANALYTICS_RANGE`.
 
 ## Billing And Subscriptions
 
+### Monthly post/caption add-on
+
+The catalog product `postdee_post100_caption50` represents one repeatable
+consumable purchase at a target price of 49 THB: 100 post units and 50 real-clip
+caption generations. Quantities come from the server catalog, never the client.
+Only effective Starter/Pro members can buy/use it; no subscription or tier
+feature is changed. Credits expire at the next UTC calendar-month boundary,
+matching existing quota resets. One video sent to two destinations uses two
+units. Refunds revoke that transaction's grant without removing existing posts
+or usage records.
+
+This expiring-credit add-on is initially Android only. Purchase grants accept
+Play Store and the isolated RevenueCat Test Store, with the configured
+environment restriction. iPhone checkout and App Store purchase grants stay
+disabled; existing Apple Starter/Pro subscription paths are unchanged.
+
+Authenticated `GET /billing/addons` returns the catalog and readiness fields:
+`enabled`, `eligible`, `productId`, `postUnits`, `aiCaptions`, `priceThb`,
+`monthKey`, `expiresAt`, and `purchasedPacks`. Mobile must obtain compatible
+readiness and a matching non-subscription store product before checkout.
+`BILLING_ADDONS_ENABLED` defaults to false.
+
+Authenticated `POST /billing/addons/confirm` accepts only the intended
+`productId` and `transactionId` as purchase selectors. The server derives the
+owner from authentication, verifies the exact transaction using RevenueCat,
+and grants idempotently. HTTP 200 with `confirmed: true` confirms fulfillment;
+HTTP 202 with `confirmed: false` remains pending. A pending response is not a
+new purchase instruction. Webhook retries and confirmation cannot double grant.
+Consumable purchase/refund events are handled separately from Starter/Pro
+subscription lifecycle events.
+
+When add-ons are enabled, subscription snapshots add `baseMonthlyPostLimit`,
+`addonPostUnits`, `addonAiCaptions` and `addonExpiresAt`; `monthlyPostLimit`
+includes the valid month's post add-ons. Existing used counts include all
+accepted usage and never reset when a purchase arrives. Caption quota limits
+likewise include valid caption add-ons. Older clients can keep using existing
+fields; the new client blocks add-on checkout on an old/unsupported server.
+Deploy the additive database migration and API before distributing Mobile or
+enabling purchases. See `2026-10-21-post-caption-addon.md` for release limits.
+
 ### `POST /billing/purchase-readiness`
 
 Authenticated preparation before a new RevenueCat SDK purchase. Send `{}`;
@@ -3463,6 +3503,9 @@ PostgreSQL.
 | `REVENUECAT_PRO_ENTITLEMENT_ID` | `pro` | RevenueCat entitlement mapped to Pro |
 | `REVENUECAT_STARTER_PRODUCT_ID` | `postdee_starter_monthly` | RevenueCat product mapped to Starter |
 | `REVENUECAT_PRO_PRODUCT_ID` | `postdee_pro_monthly` | RevenueCat product mapped to Pro |
+| `BILLING_ADDONS_ENABLED` | `false` | Explicitly enables the post/caption consumable catalog and quota grants after rollout verification |
+| `REVENUECAT_ADDON_PRODUCT_ID` | `postdee_post100_caption50` | Consumable SKU, distinct from all Starter/Pro product identifiers |
+| `REVENUECAT_ADDON_ENVIRONMENT` | `PRODUCTION` | Accept only the configured `PRODUCTION` or isolated `SANDBOX` purchase environment |
 | `STORE_STARTER_MONTHLY_PRODUCT_ID` | `postdee_starter_monthly` | Starter store product id |
 | `STORE_PRO_MONTHLY_PRODUCT_ID` | `postdee_pro_monthly` | Pro store product id |
 | `GOOGLE_PLAY_PACKAGE_NAME` | `com.postdee.postdee_mobile` | Android package name |

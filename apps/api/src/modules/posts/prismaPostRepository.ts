@@ -19,6 +19,7 @@ import {
 import { normalizePersistedPlatformSettings } from './platformSettings.js';
 import { normalizePersistedPlatformTargets } from './platformTargets.js';
 import { lockActiveOwner, runActiveOwnerTransaction, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
+import { readPrismaMonthlyAddonCredits, type PrismaMonthlyAddonReadTransaction } from '../billing/prismaMonthlyAddonRepository.js';
 
 type PrismaPostStatus =
   | 'DRAFT'
@@ -96,7 +97,7 @@ type PostDelegate = {
   findFirst: (args: { where: { id: string; userId?: string } }) => Promise<PrismaPost | null>;
 };
 
-type PrismaPostTransaction = PrismaOwnerLifecycleTransaction & {
+type PrismaPostTransaction = PrismaOwnerLifecycleTransaction & Partial<PrismaMonthlyAddonReadTransaction> & {
   post: PostDelegate;
 };
 export type PrismaPostClient = PrismaPostTransaction & {
@@ -250,9 +251,16 @@ const createWithinMonthlyLimit = async (
             }
           }
 
+          let addonPostUnits = 0;
+          if (input.includeMonthlyAddons) {
+            if (!transaction.monthlyAddonPurchase) throw new Error('Monthly addon transaction delegate is required');
+            addonPostUnits = (await readPrismaMonthlyAddonCredits(
+              { monthlyAddonPurchase: transaction.monthlyAddonPurchase }, input.userId, input.now
+            )).postUnits;
+          }
           const usedPostUnits = await countMonthlyUnits(transaction.post, input);
 
-          if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit) {
+          if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit + addonPostUnits) {
             return { ok: false as const };
           }
 

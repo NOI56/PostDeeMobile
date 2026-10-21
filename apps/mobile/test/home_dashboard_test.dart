@@ -81,6 +81,16 @@ void main() {
       .signIn(const AuthSession(userId: 'home-owner', idToken: 'test-token')));
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
+  testWidgets('monthly quota includes verified add-on units without showing 350 over 250', (tester) async {
+    await tester.pumpWidget(_app(_home(plan: () async => const SubscriptionStatusResult(
+      userId: 'home-owner', plan: 'PRO', status: 'ACTIVE', monthlyPostLimit: 350,
+      baseMonthlyPostLimit: 250, remainingPostsThisMonth: 348, addonPostUnits: 100,
+      addonAiCaptions: 50, canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true))));
+    await tester.pumpAndSettle();
+    expect(find.text('เหลือ 348/350 หน่วย · รวมซื้อเพิ่ม 100'), findsOneWidget);
+    expect(find.textContaining('348/250'), findsNothing);
+  });
+
   testWidgets('notification button exposes one enabled accessibility tap',
       (tester) async {
     final semantics = tester.ensureSemantics();

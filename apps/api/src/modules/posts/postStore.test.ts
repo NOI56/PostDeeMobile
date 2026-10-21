@@ -7,6 +7,42 @@ import {
 } from './postStore.js';
 
 describe('createPostStore', () => {
+  it('keeps concurrent addon submissions with the same client request id idempotent across the credit read', async () => {
+    const store = createPostStore({ monthlyAddonStore: {
+      readCredits: async () => ({ postUnits: 100, aiCaptions: 50 })
+    } });
+    const input: CreatePostWithinMonthlyLimitInput = {
+      userId: 'addon-idempotent', clientRequestId: 'same-draft', caption: 'One post',
+      videoS3Key: 'uploads/addon-idempotent/video.mp4', platforms: ['TIKTOK'],
+      monthlyPostUnitLimit: 0, includeMonthlyAddons: true, now: '2026-10-21T00:00:00.000Z'
+    };
+    const results = await Promise.all(Array.from({ length: 10 }, () => store.createWithinMonthlyLimit(input)));
+    expect(results.filter(result => result.ok && result.created)).toHaveLength(1);
+    expect(results.filter(result => result.ok && !result.created)).toHaveLength(9);
+    expect(await store.countMonthlyPostUnits(input)).toBe(1);
+  });
+
+  it('uses monthly addon units once under concurrent reservations and preserves replay after expiry', async () => {
+    const store = createPostStore({ monthlyAddonStore: {
+      readCredits: async ({ now }) => ({ postUnits: now.startsWith('2026-10') ? 100 : 0, aiCaptions: 50 })
+    } });
+    const input: CreatePostWithinMonthlyLimitInput = {
+      userId: 'addon-owner', caption: 'Addon post', videoS3Key: 'uploads/addon-owner/video.mp4',
+      platforms: ['TIKTOK'], monthlyPostUnitLimit: 0, includeMonthlyAddons: true,
+      now: '2026-10-31T23:59:59.000Z'
+    };
+    const results = await Promise.all(Array.from({ length: 102 }, (_, index) =>
+      store.createWithinMonthlyLimit({ ...input, clientRequestId: `addon-${index}` })));
+    expect(results.filter((result) => result.ok)).toHaveLength(100);
+    expect(await store.countMonthlyPostUnits(input)).toBe(100);
+    expect(await store.createWithinMonthlyLimit({ ...input, clientRequestId: 'addon-0',
+      now: '2026-11-01T00:00:00.000Z' })).toMatchObject({ ok: true, created: false });
+    expect(await store.createWithinMonthlyLimit({ ...input, clientRequestId: 'new-month',
+      now: '2026-11-01T00:00:00.000Z' })).toEqual({ ok: false });
+    expect(await store.createWithinMonthlyLimit({ ...input, clientRequestId: 'disabled',
+      includeMonthlyAddons: false })).toEqual({ ok: false });
+  });
+
   it('counts monthly platform units through the dedicated bounded usage API', async () => {
     const store = createPostStore();
     await store.createWithinMonthlyLimit({

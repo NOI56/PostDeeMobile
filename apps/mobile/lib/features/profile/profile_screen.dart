@@ -260,6 +260,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => PaywallScreen(
+          onAddonPurchased: () { if (mounted) _loadSubscription(); },
           loadSubscription:
               widget.loadSubscription ?? _apiClient.loadCurrentSubscription,
         ),
@@ -1183,6 +1184,11 @@ class _CurrentPlanCard extends StatelessWidget {
                       color: AppTheme.textSecondary,
                     ),
                   ),
+                ],
+                if (subscription.addonPostUnits > 0 || subscription.addonAiCaptions > 0) ...[
+                  const SizedBox(height: 4),
+                  Text('รวมซื้อเพิ่ม ${subscription.addonPostUnits} หน่วย · AI ${subscription.addonAiCaptions} ครั้ง',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                 ],
               ],
             ),

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
+import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 
 import { countCurrentMonthPostUnits } from './postUsage.js';
 import {
@@ -62,6 +63,7 @@ export type CreatePostInput = {
 export type CreatePostWithinMonthlyLimitInput = CreatePostInput & {
   clientRequestId?: string;
   monthlyPostUnitLimit: number;
+  includeMonthlyAddons?: boolean;
   now: string;
 };
 
@@ -180,8 +182,10 @@ export const isValidPlatform = (value: unknown): value is Platform =>
   typeof value === 'string' && validPlatforms.includes(value as Platform);
 
 export const createPostStore = ({
-  runWithActiveOwner = async (_ownerId, operation) => operation()
-}: { runWithActiveOwner?: RunWithActiveOwner } = {}): PostStore => {
+  runWithActiveOwner = async (_ownerId, operation) => operation(),
+  monthlyAddonStore
+}: { runWithActiveOwner?: RunWithActiveOwner;
+  monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'> } = {}): PostStore => {
   const posts: QueuedPost[] = [];
   const createPost = (
     input: CreatePostInput,
@@ -221,6 +225,13 @@ export const createPostStore = ({
 
   const findIdempotent = (input: FindIdempotentPostInput) =>
     posts.find((post) => post.id === buildIdempotentPostId(input));
+  const readIdempotentReplay = (input: CreatePostWithinMonthlyLimitInput) => {
+    if (!input.clientRequestId) return undefined;
+    const existing = findIdempotent({ userId: input.userId, clientRequestId: input.clientRequestId });
+    if (!existing) return undefined;
+    if (!isMatchingIdempotentIntent(existing, input)) throw new PostIdempotencyKeyReusedError();
+    return { ok: true as const, post: existing, created: false };
+  };
 
   return {
     listPublishing: async () => posts
@@ -256,26 +267,24 @@ export const createPostStore = ({
     create: (input) => runWithActiveOwner(input.userId, async () => createPost(input)),
     findIdempotent: async (input) => findIdempotent(input),
     createWithinMonthlyLimit: (input) => runWithActiveOwner(input.userId, async () => {
-      if (input.clientRequestId) {
-        const idempotencyKey = {
-          userId: input.userId,
-          clientRequestId: input.clientRequestId
-        };
-        const existing = findIdempotent(idempotencyKey);
-        if (existing) {
-          if (!isMatchingIdempotentIntent(existing, input)) {
-            throw new PostIdempotencyKeyReusedError();
-          }
-          return { ok: true, post: existing, created: false };
-        }
-      }
+      const replay = readIdempotentReplay(input);
+      if (replay) return replay;
 
+      let addonPostUnits = 0;
+      if (input.includeMonthlyAddons) {
+        if (!monthlyAddonStore) throw new Error('Monthly addon store is required');
+        addonPostUnits = (await monthlyAddonStore.readCredits({ userId: input.userId, now: input.now })).postUnits;
+        const concurrentReplay = readIdempotentReplay(input);
+        if (concurrentReplay) return concurrentReplay;
+      }
+      // There is no await between counting and inserting: concurrent memory
+      // reservations share the same combined allowance without overspending it.
       const usedPostUnits = countCurrentMonthPostUnits(
         posts.filter((post) => post.userId === input.userId),
         new Date(input.now)
       );
 
-      if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit) {
+      if (usedPostUnits + input.platforms.length > input.monthlyPostUnitLimit + addonPostUnits) {
         return { ok: false };
       }
 

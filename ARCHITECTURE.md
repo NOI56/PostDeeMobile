@@ -1756,6 +1756,27 @@ still a separate release gate. Local FFmpeg rendering has its own deadlines.
 
 PostDee uses RevenueCat as the main mobile paid subscription provider.
 
+The 49 THB post/caption add-on is a distinct consumable, never a perpetual
+Starter/Pro entitlement. Its server-owned grant is 100 post units plus 50 caption
+generations, usable only with an effective paid tier and only within the UTC
+calendar month of purchase. Valid purchases increase that month's limits;
+existing post/caption usage records remain the source of consumption. No
+cross-month wallet or independent editing-minute allowance is introduced.
+Atomic quota operations read grants in the same database transaction as usage.
+Initial add-on checkout is Android only, with Play Store/Test Store purchase
+grants. iPhone add-on checkout and App Store purchase grants are disabled for
+this expiring-credit product; existing iOS subscription billing is unchanged.
+
+The purchase ledger deduplicates store/environment/transaction identity across
+webhooks and authenticated confirmation. Immutable ownership and sticky refund
+tombstones prevent replay after a refund, account switch or account deletion.
+Consumable events do not advance the subscription lifecycle cursor or activate
+a subscription. Mobile uses the shared RevenueCat owner-bound SDK queue and
+checks the specific transaction with the server before reporting fulfillment;
+a pending confirmation retries that purchase without another checkout.
+Rollout starts disabled and requires the additive migration, API, matching
+consumable product and separate sandbox/production environment configuration.
+
 ```mermaid
 sequenceDiagram
   participant U as User

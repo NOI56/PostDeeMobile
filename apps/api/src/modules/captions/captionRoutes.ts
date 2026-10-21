@@ -1,4 +1,5 @@
 import type { RequestHandler, Response, Router } from 'express';
+import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 
 import type { TranscriptionProvider } from '../aiEdits/transcriptionProvider.js';
 import { readAuthUser } from '../auth/authTypes.js';
@@ -156,7 +157,8 @@ export const registerCaptionRoutes = (
   realClipCaptionProvider?: RealClipCaptionProvider,
   fetchClipMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>,
   deleteClipMedia?: (videoS3Key: string) => Promise<void>,
-  userStore?: UserStore
+  userStore?: UserStore,
+  options: { monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>; billingAddonsEnabled?: boolean; now?: () => Date } = {}
 ) => {
   router.post('/captions/generate', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -190,13 +192,19 @@ export const registerCaptionRoutes = (
       return;
     }
 
-    const monthKey = readCurrentRealClipCaptionMonthKey();
-    const limit = monthlyAiCaptionGenerationLimits[plan];
+    const now = (options.now?.() ?? new Date()).toISOString();
+    const monthKey = readCurrentRealClipCaptionMonthKey(new Date(now));
+    const baseLimit = monthlyAiCaptionGenerationLimits[plan];
+    const includeMonthlyAddons = options.billingAddonsEnabled;
+    const addonCredits = includeMonthlyAddons
+      ? await options.monthlyAddonStore?.readCredits({ userId: authUser.id, now }) : undefined;
+    const limit = baseLimit + (addonCredits?.aiCaptions ?? 0);
     await userStore?.ensure(authUser);
     const reservation = await realClipCaptionUsageStore.reserve({
       userId: authUser.id,
       monthKey,
-      limit
+      limit: baseLimit,
+      ...(includeMonthlyAddons ? { includeMonthlyAddons: true, now } : {})
     });
 
     if (!reservation.ok) {
@@ -323,8 +331,13 @@ export const registerCaptionRoutes = (
       }
     };
 
-    const monthKey = readCurrentRealClipCaptionMonthKey();
-    const limit = monthlyAiCaptionGenerationLimits[plan];
+    const now = (options.now?.() ?? new Date()).toISOString();
+    const monthKey = readCurrentRealClipCaptionMonthKey(new Date(now));
+    const baseLimit = monthlyAiCaptionGenerationLimits[plan];
+    const includeMonthlyAddons = options.billingAddonsEnabled;
+    const addonCredits = includeMonthlyAddons
+      ? await options.monthlyAddonStore?.readCredits({ userId: authUser.id, now }) : undefined;
+    const limit = baseLimit + (addonCredits?.aiCaptions ?? 0);
     const usedThisMonth = await realClipCaptionUsageStore.countForMonth({
       userId: authUser.id,
       monthKey
@@ -354,7 +367,8 @@ export const registerCaptionRoutes = (
       const nextReservation = await realClipCaptionUsageStore.reserve({
         userId: authUser.id,
         monthKey,
-        limit
+        limit: baseLimit,
+        ...(includeMonthlyAddons ? { includeMonthlyAddons: true, now } : {})
       });
 
       if (!nextReservation.ok) {

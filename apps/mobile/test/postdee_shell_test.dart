@@ -15,6 +15,7 @@ import 'package:postdee_mobile/core/theme/theme_controller.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
 import 'package:postdee_mobile/features/billing/paywall_screen.dart';
+import 'package:postdee_mobile/features/billing/addon_pending_store.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
 import 'package:postdee_mobile/features/captions/caption_writing_style_store.dart';
 import 'package:postdee_mobile/features/home/home_screen.dart';
@@ -1088,6 +1089,34 @@ void main() {
     expect(PostDeeAuthSessionStore.instance.session.userId, 'b');
     expect(cleanupCalls, 0);
     expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsNothing);
+  });
+
+  testWidgets('a session switch during local deletion cleanup preserves the replacement account pending purchase', (tester) async {
+    final language = _signInShell();
+    final cleanupStarted = Completer<void>();
+    final releaseCleanup = Completer<void>();
+    await tester.pumpWidget(_shellApp(PostDeeShell(languageController: language,
+      uploaderDraftStore: _ShellDraftStore(), checkAccountDeletionReady: () async => true,
+      deleteAccount: () async {}, deleteLocalPublishDrafts: () async {
+        cleanupStarted.complete(); await releaseCleanup.future;
+      })));
+    await tester.pumpAndSettle();
+    await tester.tap(_referenceNavButton('Account'));
+    await tester.pumpAndSettle();
+    final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    await tester.scrollUntilVisible(button, 400, scrollable: find.byType(Scrollable).first);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร')).onPressed!();
+    await tester.pump();
+    await cleanupStarted.future;
+    PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'replacement-owner', idToken: 'dummy-b'));
+    final replacement = SharedPreferencesAddonPendingStore();
+    await replacement.save(AddonPendingRecord(productId: 'postdee_post100_caption50', intentId: 'keep-owner-b'));
+    releaseCleanup.complete();
+    await tester.pumpAndSettle();
+    expect((await replacement.load())!.intentId, 'keep-owner-b');
+    expect(PostDeeAuthSessionStore.instance.session.userId, 'replacement-owner');
   });
   testWidgets('opens one full screen composer without a hidden uploader',
       (tester) async {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { RequestHandler, Router } from 'express';
+import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 
 import {
@@ -326,6 +327,8 @@ export const registerPostRoutes = (
   subscriptionStore: SubscriptionStore,
   platformPublishStore: PlatformPublishStore,
   options: {
+    monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>;
+    billingAddonsEnabled?: boolean;
     allowSubscriptionPlanOverride?: boolean;
     socialPublishingEnabled?: boolean;
     assertOwnerActive?: (ownerId: string) => Promise<void>;
@@ -940,6 +943,8 @@ export const registerPostRoutes = (
       ...(platformTargets ? { platformTargets } : {}),
       scheduledAt,
       monthlyPostUnitLimit: monthlyPostLimit,
+      ...(options.billingAddonsEnabled && subscriptionPlan !== 'BASIC'
+        ? { includeMonthlyAddons: true } : {}),
       now: requestNow.toISOString()
     };
     const releaseCreation = await acquireLock(
@@ -1065,6 +1070,7 @@ export const registerPostRoutes = (
             }
             monthlyPostLimit = monthlyPostUnitLimits[subscriptionPlan];
             idempotentInput.monthlyPostUnitLimit = monthlyPostLimit;
+            idempotentInput.includeMonthlyAddons = options.billingAddonsEnabled;
           }
         }
 
@@ -1094,10 +1100,14 @@ export const registerPostRoutes = (
         }
 
         if (!createResult.ok) {
+          const addonCredits = idempotentInput.includeMonthlyAddons
+            ? await options.monthlyAddonStore?.readCredits({ userId: user.id, now: now().toISOString() })
+            : undefined;
+          const effectiveMonthlyPostLimit = monthlyPostLimit + (addonCredits?.postUnits ?? 0);
           response.status(402).json({
             status: 'error',
             code: 'POST_LIMIT_REACHED',
-            message: `${readPlanLabel(subscriptionPlan)} plan is limited to ${monthlyPostLimit} post units per month`
+            message: `${readPlanLabel(subscriptionPlan)} plan is limited to ${effectiveMonthlyPostLimit} post units per month`
           });
           return;
         }

@@ -151,6 +151,41 @@ abstract class RevenueCatBillingGateway {
   Future<void> restorePurchases();
 }
 
+class StoreAddonTransaction {
+  const StoreAddonTransaction({required this.productId, required this.transactionId});
+  final String productId;
+  final String transactionId;
+}
+
+class StoreAddonStorePendingException extends StoreSubscriptionException {
+  const StoreAddonStorePendingException()
+      : super('ร้านค้ายังไม่ยืนยันผลการซื้อ กรุณาตรวจสอบรายการเดิมก่อนซื้อซ้ำ');
+}
+
+class StoreAddonPurchaseCancelledException extends StoreSubscriptionException {
+  const StoreAddonPurchaseCancelledException() : super('ยกเลิกการซื้อแพ็กเติมแล้ว');
+}
+
+class StoreAddonPurchaseNotStartedException extends StoreSubscriptionException {
+  const StoreAddonPurchaseNotStartedException([super.message = 'ยังไม่เริ่มชำระเงิน กรุณาโหลดแพ็กเติมแล้วลองใหม่']);
+}
+
+abstract interface class StoreAddonGateway {
+  Future<bool> isAvailable();
+  Future<List<StoreProductInfo>> queryAddonProducts(Set<String> productIds);
+  Future<StoreAddonTransaction> buyAddon(String productId);
+}
+
+abstract interface class PendingAddonPurchaseReconciler {
+  Future<StoreAddonTransaction?> reconcilePendingAddonPurchase();
+}
+
+abstract interface class DurableAddonPurchaseGateway {
+  Future<StoreAddonTransaction> buyAddonWithSnapshot(String productId,
+    Future<void> Function(Set<String>) persistBeforeDispatch);
+  Future<StoreAddonTransaction?> recoverAddonPurchase(String productId, Set<String> baselineTransactionIds);
+}
+
 /// Retains unfinished purchases for one signed-in user in memory only.
 class StoreSubscriptionSessionCache {
   StoreSubscriptionSessionCache({
@@ -1009,7 +1044,7 @@ class StoreSubscriptionService {
   }
 }
 
-RevenueCatBillingGateway? createRevenueCatBillingGatewayFromConfig({
+PurchasesRevenueCatBillingGateway? createRevenueCatBillingGatewayFromConfig({
   PostDeeAuthSessionStore? sessionStore,
 }) {
   if (!AppConfig.enableRevenueCatBilling) {
@@ -1036,7 +1071,14 @@ abstract class RevenueCatPurchasesSdk {
   Future<void> restorePurchases();
 }
 
-class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk {
+/// Optional consumable support keeps subscription-only SDK test adapters small.
+abstract interface class RevenueCatConsumablePurchasesSdk {
+  Future<List<purchases.StoreProduct>> getNonSubscriptionProducts(List<String> productIds);
+  Future<StoreAddonTransaction> purchaseConsumable(purchases.StoreProduct product);
+  Future<List<StoreAddonTransaction>> getAddonTransactions();
+}
+
+class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsumablePurchasesSdk {
   const _RevenueCatPurchasesSdk();
 
   @override
@@ -1078,9 +1120,29 @@ class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk {
   Future<void> restorePurchases() async {
     await purchases.Purchases.restorePurchases();
   }
+
+  @override
+  Future<List<purchases.StoreProduct>> getNonSubscriptionProducts(List<String> productIds) =>
+      purchases.Purchases.getProducts(productIds,
+        productCategory: purchases.ProductCategory.nonSubscription);
+
+  @override
+  Future<StoreAddonTransaction> purchaseConsumable(purchases.StoreProduct product) async {
+    final result = await purchases.Purchases.purchase(purchases.PurchaseParams.storeProduct(product));
+    return StoreAddonTransaction(productId: result.storeTransaction.productIdentifier,
+      transactionId: result.storeTransaction.transactionIdentifier);
+  }
+
+  @override
+  Future<List<StoreAddonTransaction>> getAddonTransactions() async {
+    await purchases.Purchases.invalidateCustomerInfoCache();
+    final customer = await purchases.Purchases.getCustomerInfo();
+    return customer.nonSubscriptionTransactions.map((transaction) => StoreAddonTransaction(
+      productId: transaction.productIdentifier, transactionId: transaction.transactionIdentifier)).toList();
+  }
 }
 
-class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
+class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway, StoreAddonGateway, PendingAddonPurchaseReconciler, DurableAddonPurchaseGateway {
   PurchasesRevenueCatBillingGateway({
     required this.apiKey,
     required this.androidApiKey,
@@ -1097,6 +1159,9 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
   final Future<String?> Function()? appUserIdProvider;
   final PostDeeAuthSessionStore _sessionStore;
   final RevenueCatPurchasesSdk _sdk;
+  AuthSessionBinding? _pendingAddonBinding;
+  String? _pendingAddonProduct;
+  Set<String>? _addonTransactionsBeforePurchase;
 
   // RevenueCat's native identity is global. Keep configuration through the
   // terminal purchase/restore callback serialized across gateway instances.
@@ -1175,6 +1240,126 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
             error.message ?? 'RevenueCat purchase failed.',
           );
         }
+      });
+
+  RevenueCatConsumablePurchasesSdk get _consumableSdk {
+    final sdk = _sdk;
+    if (sdk is RevenueCatConsumablePurchasesSdk) return sdk as RevenueCatConsumablePurchasesSdk;
+    throw const StoreSubscriptionException('ร้านค้ายังไม่รองรับแพ็กเติมในรุ่นนี้');
+  }
+
+  void _ensureAddonPlatformSupported() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      throw StoreAddonPurchaseNotStartedException(defaultTargetPlatform == TargetPlatform.iOS
+        ? 'แพ็กเติมนี้ยังไม่รองรับบน iPhone' : 'แพ็กเติมนี้รองรับบน Android เท่านั้น');
+    }
+  }
+
+  @override
+  Future<List<StoreProductInfo>> queryAddonProducts(Set<String> productIds) =>
+      _runWithSession((binding, userId) async {
+        _ensureAddonPlatformSupported();
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final products = await _consumableSdk.getNonSubscriptionProducts(productIds.toList());
+        binding.ensureCurrent();
+        return products.map((product) => StoreProductInfo(id: product.identifier,
+          title: product.title, description: product.description, price: product.priceString)).toList();
+      });
+
+  @override
+  Future<StoreAddonTransaction> buyAddon(String productId) => _buyAddon(productId);
+
+  @override
+  Future<StoreAddonTransaction> buyAddonWithSnapshot(String productId,
+    Future<void> Function(Set<String>) persistBeforeDispatch) =>
+      _buyAddon(productId, persistBeforeDispatch: persistBeforeDispatch);
+
+  Future<StoreAddonTransaction> _buyAddon(String productId,
+    {Future<void> Function(Set<String>)? persistBeforeDispatch}) =>
+      _runWithSession((binding, userId) async {
+        _ensureAddonPlatformSupported();
+        late final purchases.StoreProduct product;
+        try {
+          await _ensureConfigured(binding, userId);
+          binding.ensureCurrent();
+          final products = await _consumableSdk.getNonSubscriptionProducts([productId]);
+          binding.ensureCurrent();
+          final matching = products.where((item) => item.identifier == productId).firstOrNull;
+          if (matching == null) throw const StoreAddonPurchaseNotStartedException();
+          product = matching;
+          final previousTransactions = await _consumableSdk.getAddonTransactions();
+          binding.ensureCurrent();
+          final baseline = previousTransactions.map((item) => item.transactionId).toSet();
+          await persistBeforeDispatch?.call(baseline);
+          binding.ensureCurrent();
+          _pendingAddonBinding = binding;
+          _pendingAddonProduct = productId;
+          _addonTransactionsBeforePurchase = baseline;
+        } on AuthSessionChangedException {
+          rethrow;
+        } catch (_) {
+          binding.ensureCurrent();
+          throw const StoreAddonPurchaseNotStartedException();
+        }
+        try {
+          final transaction = await _consumableSdk.purchaseConsumable(product);
+          binding.ensureCurrent();
+          _clearPendingAddon();
+          return transaction;
+        } on PlatformException catch (error) {
+          binding.ensureCurrent();
+          if (int.tryParse(error.code) == purchases.PurchasesErrorCode.purchaseCancelledError.index) {
+            _clearPendingAddon();
+            throw const StoreAddonPurchaseCancelledException();
+          }
+          throw const StoreAddonStorePendingException();
+        } on AuthSessionChangedException {
+          rethrow;
+        } catch (_) {
+          binding.ensureCurrent();
+          throw const StoreAddonStorePendingException();
+        }
+      });
+
+  @override
+  Future<StoreAddonTransaction?> recoverAddonPurchase(String productId, Set<String> baselineTransactionIds) =>
+      _runWithSession((binding, userId) async {
+        _ensureAddonPlatformSupported();
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final transactions = await _consumableSdk.getAddonTransactions();
+        binding.ensureCurrent();
+        final candidates = transactions.where((item) => item.productId == productId &&
+          item.transactionId.trim().isNotEmpty && !baselineTransactionIds.contains(item.transactionId)).toList();
+        return candidates.length == 1 ? candidates.single : null;
+      });
+
+  void _clearPendingAddon() {
+    _pendingAddonBinding = null;
+    _pendingAddonProduct = null;
+    _addonTransactionsBeforePurchase = null;
+  }
+
+  @override
+  Future<StoreAddonTransaction?> reconcilePendingAddonPurchase() =>
+      _runWithSession((binding, userId) async {
+        _ensureAddonPlatformSupported();
+        final originalBinding = _pendingAddonBinding;
+        final originalTransactions = _addonTransactionsBeforePurchase;
+        final productId = _pendingAddonProduct;
+        if (originalBinding == null || originalTransactions == null || productId == null) return null;
+        originalBinding.ensureCurrent();
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final transactions = await _consumableSdk.getAddonTransactions();
+        binding.ensureCurrent();
+        originalBinding.ensureCurrent();
+        final candidates = transactions.where((item) => item.productId == productId &&
+          item.transactionId.trim().isNotEmpty && !originalTransactions.contains(item.transactionId)).toList();
+        if (candidates.length != 1) return null;
+        _clearPendingAddon();
+        return candidates.single;
       });
 
   @override

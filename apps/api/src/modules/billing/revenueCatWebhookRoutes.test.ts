@@ -61,6 +61,47 @@ const createKnownUser = (app: ReturnType<typeof createRevenueCatApp>, userId: st
     .expect(200);
 
 describe('RevenueCat webhooks', () => {
+  it('ignores a new App Store monthly add-on but still records its refund without upgrading the plan', async () => {
+    const { createInMemoryMonthlyAddonStore } = await import('./monthlyAddonStore.js');
+    const store = createInMemoryMonthlyAddonStore();
+    const app = createApp({ config: readServerConfig({ BILLING_PROVIDER: 'revenuecat', BILLING_ADDONS_ENABLED: 'true',
+      REVENUECAT_WEBHOOK_AUTH_TOKEN: revenueCatToken, REVENUECAT_ADDON_ENVIRONMENT: 'SANDBOX' }), monthlyAddonStore: store });
+    await createKnownUser(app, 'apple-addon-owner');
+    const event = { app_user_id: 'apple-addon-owner', product_id: 'postdee_post100_caption50', store: 'APP_STORE',
+      environment: 'SANDBOX', transaction_id: 'apple-addon-txn', purchased_at_ms: new Date('2026-10-21T00:00:00.000Z').getTime() };
+    await postRevenueCatWebhook(app, { event: { ...event, type: 'NON_RENEWING_PURCHASE' } }).expect(202);
+    expect(await store.readCredits({ userId: 'apple-addon-owner', now: '2026-10-21T00:00:00.000Z' })).toEqual({ postUnits: 0, aiCaptions: 0 });
+    expect((await request(app).get('/billing/subscription').set('x-postdee-user-id', 'apple-addon-owner')).body.subscription.plan).toBe('BASIC');
+    await postRevenueCatWebhook(app, { event: { ...event, type: 'CANCELLATION' } }).expect(200);
+    expect(await store.findPurchaseConfirmation({ userId: 'apple-addon-owner', productId: event.product_id,
+      transactionId: event.transaction_id, environment: event.environment })).toMatchObject({ revoked: true });
+  });
+  it('credits add-on transactions once and preserves a refund-before-purchase tombstone without changing the plan', async () => {
+    const { createInMemoryMonthlyAddonStore } = await import('./monthlyAddonStore.js');
+    const store = createInMemoryMonthlyAddonStore();
+    const app = createApp({ config: readServerConfig({ BILLING_PROVIDER: 'revenuecat', BILLING_ADDONS_ENABLED: 'true',
+      REVENUECAT_WEBHOOK_AUTH_TOKEN: revenueCatToken, REVENUECAT_REST_API_V1_KEY: 'fixture', REVENUECAT_ADDON_ENVIRONMENT: 'SANDBOX' }), monthlyAddonStore: store });
+    await createKnownUser(app, 'addon-owner');
+    const event = { app_user_id: 'addon-owner', product_id: 'postdee_post100_caption50', environment: 'SANDBOX',
+      store: 'PLAY_STORE', transaction_id: 'addon-store-txn', purchased_at_ms: new Date('2026-10-21T00:00:00.000Z').getTime() };
+    await postRevenueCatWebhook(app, { event: { ...event, type: 'CANCELLATION' } }).expect(200);
+    await postRevenueCatWebhook(app, { event: { ...event, type: 'NON_RENEWING_PURCHASE' } }).expect(200);
+    await postRevenueCatWebhook(app, { event: { ...event, transaction_id: 'addon-two', type: 'NON_RENEWING_PURCHASE' } }).expect(200);
+    await postRevenueCatWebhook(app, { event: { ...event, transaction_id: 'addon-two', type: 'NON_RENEWING_PURCHASE' } }).expect(200);
+    expect(await store.readCredits({ userId: 'addon-owner', now: '2026-10-21T00:00:00.000Z' })).toEqual({ postUnits: 100, aiCaptions: 50 });
+    expect((await request(app).get('/billing/subscription').set('x-postdee-user-id', 'addon-owner')).body.subscription.plan).toBe('BASIC');
+  });
+  it('rejects malformed add-on proof and ignores another store environment', async () => {
+    const { createInMemoryMonthlyAddonStore } = await import('./monthlyAddonStore.js');
+    const store = createInMemoryMonthlyAddonStore();
+    const app = createApp({ config: readServerConfig({ BILLING_PROVIDER: 'revenuecat', BILLING_ADDONS_ENABLED: 'true',
+      REVENUECAT_WEBHOOK_AUTH_TOKEN: revenueCatToken, REVENUECAT_ADDON_ENVIRONMENT: 'PRODUCTION' }), monthlyAddonStore: store });
+    await createKnownUser(app, 'addon-owner');
+    const event = { type: 'NON_RENEWING_PURCHASE', app_user_id: 'addon-owner', product_id: 'postdee_post100_caption50',
+      store: 'PLAY_STORE', environment: 'PRODUCTION', transaction_id: 'proof', purchased_at_ms: 100 };
+    await postRevenueCatWebhook(app, { event: { ...event, transaction_id: undefined } }).expect(400);
+    await postRevenueCatWebhook(app, { event: { ...event, environment: 'SANDBOX' } }).expect(202);
+  });
   it('acknowledges a final-write tombstone even when the process coordinator still sees an active owner', async () => {
     const app = express();
     const router = express.Router();

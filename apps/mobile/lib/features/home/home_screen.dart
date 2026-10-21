@@ -381,7 +381,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => PaywallScreen(loadSubscription: loader),
+        builder: (context) => PaywallScreen(loadSubscription: loader,
+          onAddonPurchased: () { if (mounted) _loadSubscription(force: true); }),
       ),
     );
 
@@ -1080,6 +1081,8 @@ class _PlanSummaryCard extends StatelessWidget {
   // Monthly post units included per plan (design handoff: free 3, Starter
   // 120, Pro 250).
   int _planIncludedUnits() {
+    final effectiveLimit = subscription?.monthlyPostLimit;
+    if (effectiveLimit != null) return effectiveLimit;
     return switch (subscription?.plan.toUpperCase()) {
       'PRO' => 250,
       'STARTER' => 120,
@@ -1103,9 +1106,12 @@ class _PlanSummaryCard extends StatelessWidget {
       return isThai ? 'ยังไม่ทราบหน่วยคงเหลือ' : 'Remaining units unavailable';
     }
     final includedUnits = _planIncludedUnits();
+    final addonUnits = subscription?.addonPostUnits ?? 0;
+    final addonSuffix = addonUnits > 0
+        ? (isThai ? ' · รวมซื้อเพิ่ม $addonUnits' : ' · includes $addonUnits added') : '';
     return isThai
-        ? 'เหลือ $remainingPosts/$includedUnits หน่วย'
-        : '$remainingPosts/$includedUnits units left';
+        ? 'เหลือ $remainingPosts/$includedUnits หน่วย$addonSuffix'
+        : '$remainingPosts/$includedUnits units left$addonSuffix';
   }
 
   @override

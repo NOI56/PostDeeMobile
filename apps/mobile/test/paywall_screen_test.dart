@@ -6,9 +6,11 @@ import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     PostDeeAuthSessionStore.instance.signIn(const AuthSession(
       userId: 'paywall-user', idToken: 'dummy-paywall-token',
     ));
@@ -33,7 +35,8 @@ void main() {
       final action = operation == 'buy' ? find.text('สมัคร Pro')
           : operation == 'restore' ? find.text('กู้คืนการซื้อ')
           : find.byKey(const ValueKey('paywall-retry-purchase'));
-      await tester.ensureVisible(action);
+      await tester.scrollUntilVisible(action, 250);
+      await tester.pumpAndSettle();
       await tester.tap(action);
       await tester.pump();
       unawaited(navigator.currentState!.push(MaterialPageRoute<void>(
@@ -478,6 +481,7 @@ void main() {
     await tester.tap(find.text('สมัคร Pro'));
     await tester.pump();
     expect(find.text('กำลังดำเนินการสั่งซื้อ...'), findsNothing);
+    await tester.scrollUntilVisible(find.text('กำลังตรวจสอบแพ็กเกจปัจจุบัน...'), -250);
     expect(find.text('กำลังตรวจสอบแพ็กเกจปัจจุบัน...'), findsOneWidget);
 
     initialSubscription.complete(_subscription(plan: 'BASIC'));

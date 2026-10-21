@@ -2218,7 +2218,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           'PRO_REQUIRED' =>
             'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ',
           'AI_CAPTION_QUOTA_REACHED' =>
-            'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว กรุณารอรอบเดือนถัดไป',
+            'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว สมาชิก Starter หรือ Pro ดูแพ็กเติมได้ในหน้าเลือกแพ็กเกจ หรือรอรอบเดือนถัดไป',
           'UPLOAD_AI_CAPTION_VIDEO_INVALID' =>
             'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
           _ => apiErrorMessage(error,

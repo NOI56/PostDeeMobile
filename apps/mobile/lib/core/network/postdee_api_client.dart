@@ -2141,6 +2141,10 @@ class SubscriptionStatusResult {
     this.monthlyPostLimit,
     this.usedPostsThisMonth,
     this.remainingPostsThisMonth,
+    this.baseMonthlyPostLimit,
+    this.addonPostUnits = 0,
+    this.addonAiCaptions = 0,
+    this.addonExpiresAt,
     required this.canSchedule,
     required this.canUseAiCaptions,
     required this.canUseAnalytics,
@@ -2159,6 +2163,10 @@ class SubscriptionStatusResult {
   final int? monthlyPostLimit;
   final int? usedPostsThisMonth;
   final int? remainingPostsThisMonth;
+  final int? baseMonthlyPostLimit;
+  final int addonPostUnits;
+  final int addonAiCaptions;
+  final DateTime? addonExpiresAt;
   final bool canSchedule;
   final bool canUseAiCaptions;
   final bool canUseAnalytics;
@@ -2180,6 +2188,10 @@ class SubscriptionStatusResult {
         monthlyPostLimit: json['monthlyPostLimit'] as int?,
         usedPostsThisMonth: json['usedPostsThisMonth'] as int?,
         remainingPostsThisMonth: json['remainingPostsThisMonth'] as int?,
+        baseMonthlyPostLimit: json['baseMonthlyPostLimit'] as int?,
+        addonPostUnits: json['addonPostUnits'] as int? ?? 0,
+        addonAiCaptions: json['addonAiCaptions'] as int? ?? 0,
+        addonExpiresAt: DateTime.tryParse(json['addonExpiresAt'] as String? ?? ''),
         phoneVerified: json['phoneVerified'] as bool? ?? false,
         requiresPhoneVerification:
             json['requiresPhoneVerification'] as bool? ?? false,
@@ -2190,6 +2202,67 @@ class SubscriptionStatusResult {
         canUseAiAudioReview: json['canUseAiAudioReview'] as bool? ?? false,
         canUseAiVideoReview: json['canUseAiVideoReview'] as bool? ?? false,
       );
+}
+
+class AddonCatalogResult {
+  const AddonCatalogResult({required this.enabled, required this.eligible,
+    required this.productId, required this.postUnits, required this.aiCaptions,
+    required this.priceThb, required this.monthKey, required this.expiresAt,
+    required this.purchasedPacks});
+  final bool enabled;
+  final bool eligible;
+  final String productId;
+  final int postUnits;
+  final int aiCaptions;
+  final int priceThb;
+  final String monthKey;
+  final DateTime expiresAt;
+  final int purchasedPacks;
+
+  factory AddonCatalogResult.fromJson(Map<String, Object?> json) {
+    final expiresAt = DateTime.tryParse(json['expiresAt'] as String? ?? '');
+    if (json['status'] != 'ok' || json['enabled'] is! bool ||
+        json['eligible'] is! bool || json['productId'] is! String ||
+        json['postUnits'] is! int || json['aiCaptions'] is! int ||
+        json['priceThb'] is! int || json['monthKey'] is! String ||
+        json['purchasedPacks'] is! int || expiresAt == null) {
+      throw const ApiException('Invalid add-on catalog response');
+    }
+    return AddonCatalogResult(enabled: json['enabled'] as bool,
+      eligible: json['eligible'] as bool, productId: json['productId'] as String,
+      postUnits: json['postUnits'] as int, aiCaptions: json['aiCaptions'] as int,
+      priceThb: json['priceThb'] as int, monthKey: json['monthKey'] as String,
+      expiresAt: expiresAt.toUtc(), purchasedPacks: json['purchasedPacks'] as int);
+  }
+}
+
+class AddonConfirmationResult {
+  const AddonConfirmationResult({required this.confirmed,
+    required this.transactionId, this.postUnits = 0, this.aiCaptions = 0,
+    this.expiresAt});
+  final bool confirmed;
+  final String transactionId;
+  final int postUnits;
+  final int aiCaptions;
+  final DateTime? expiresAt;
+
+  factory AddonConfirmationResult.fromJson(Map<String, Object?> json) {
+    if (json['status'] != 'ok' || json['confirmed'] is! bool ||
+        json['transactionId'] is! String ||
+        (json['transactionId'] as String).isEmpty) {
+      throw const ApiException('Invalid add-on confirmation response');
+    }
+    final confirmed = json['confirmed'] as bool;
+    final expiresAt = DateTime.tryParse(json['expiresAt'] as String? ?? '');
+    if (confirmed && (json['postUnits'] is! int ||
+        json['aiCaptions'] is! int || expiresAt == null)) {
+      throw const ApiException('Add-on confirmation is missing verified credits');
+    }
+    return AddonConfirmationResult(confirmed: confirmed,
+      transactionId: json['transactionId'] as String,
+      postUnits: json['postUnits'] as int? ?? 0,
+      aiCaptions: json['aiCaptions'] as int? ?? 0, expiresAt: expiresAt?.toUtc());
+  }
 }
 
 class VerifyStorePurchaseRequest {
@@ -3532,6 +3605,15 @@ class PostDeeApiClient {
 
     return SubscriptionStatusResult.fromJson(subscription);
   }
+
+  Future<AddonCatalogResult> loadAddonCatalog() async =>
+      AddonCatalogResult.fromJson(await _getJson('/billing/addons'));
+
+  Future<AddonConfirmationResult> confirmAddonPurchase(
+    String productId, String transactionId,
+  ) async => AddonConfirmationResult.fromJson(await _postJson(
+    '/billing/addons/confirm', {'productId': productId, 'transactionId': transactionId},
+  ));
 
   Future<String> resyncRevenueCatSubscription() async {
     return _resyncRevenueCatPlan(purchasedOnly: false);

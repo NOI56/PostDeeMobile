@@ -3,6 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { readServerConfig } from './env.js';
 
 describe('readServerConfig', () => {
+  it.each(['REVENUECAT_STARTER_PRODUCT_ID', 'REVENUECAT_PRO_PRODUCT_ID',
+    'STORE_STARTER_MONTHLY_PRODUCT_ID', 'STORE_PRO_MONTHLY_PRODUCT_ID'])('rejects add-on SKU collision with %s even while disabled', key => {
+    expect(() => readServerConfig({ [key]: 'postdee_post100_caption50' })).toThrow('REVENUECAT_ADDON_PRODUCT_ID must differ from subscription product identifiers');
+  });
+  it('keeps add-on sales off and isolates the configured store environment', () => {
+    expect(readServerConfig({})).toMatchObject({ billingAddonsEnabled: false, revenueCatAddonEnvironment: 'PRODUCTION', revenueCatAddonProductId: 'postdee_post100_caption50' });
+    expect(readServerConfig({ BILLING_ADDONS_ENABLED: 'true', REVENUECAT_ADDON_ENVIRONMENT: 'SANDBOX' })).toMatchObject({ billingAddonsEnabled: true, revenueCatAddonEnvironment: 'SANDBOX' });
+    expect(() => readServerConfig({ REVENUECAT_ADDON_ENVIRONMENT: 'both' })).toThrow('REVENUECAT_ADDON_ENVIRONMENT must be SANDBOX or PRODUCTION');
+  });
   it('requires a database for enabled trial access and keeps it opt-in', () => {
     expect(readServerConfig({}).trialAccessEnabled).toBe(false);
     expect(() => readServerConfig({ TRIAL_ACCESS_ENABLED: 'true' })).toThrow('DATABASE_URL is required');
@@ -38,6 +47,9 @@ describe('readServerConfig', () => {
       billingProvider: 'mock',
       revenueCatWebhookAuthToken: undefined,
       revenueCatRestApiV1Key: undefined,
+      billingAddonsEnabled: false,
+      revenueCatAddonProductId: 'postdee_post100_caption50',
+      revenueCatAddonEnvironment: 'PRODUCTION',
       revenueCatStarterEntitlementId: 'starter',
       revenueCatProEntitlementId: 'pro',
       revenueCatStarterProductId: 'postdee_starter_monthly',

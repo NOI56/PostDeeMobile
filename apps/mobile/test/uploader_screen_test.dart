@@ -1003,7 +1003,7 @@ void main() {
     (
       error: const ApiException('Monthly AI quota reached',
           statusCode: 429, code: 'AI_CAPTION_QUOTA_REACHED'),
-      message: 'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว กรุณารอรอบเดือนถัดไป',
+      message: 'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว สมาชิก Starter หรือ Pro ดูแพ็กเติมได้ในหน้าเลือกแพ็กเกจ หรือรอรอบเดือนถัดไป',
       onUpload: false,
     ),
     (

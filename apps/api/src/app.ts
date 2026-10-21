@@ -53,6 +53,10 @@ import {
   type RevenueCatSubscriberClient
 } from './modules/billing/revenueCatSubscriberClient.js';
 import { registerRevenueCatWebhookRoutes } from './modules/billing/revenueCatWebhookRoutes.js';
+import { createInMemoryMonthlyAddonStore, type MonthlyAddonStore } from './modules/billing/monthlyAddonStore.js';
+import { createPrismaMonthlyAddonRepository, type PrismaMonthlyAddonClient } from './modules/billing/prismaMonthlyAddonRepository.js';
+import { createRevenueCatAddonPurchaseClient, type RevenueCatAddonPurchaseClient } from './modules/billing/revenueCatAddonPurchaseClient.js';
+import { registerAddonRoutes } from './modules/billing/addonRoutes.js';
 import type {
   AppleSignedNotificationDecoder
 } from './modules/billing/storeNotificationRoutes.js';
@@ -198,6 +202,8 @@ type AppOptions = {
   visualEditPlanProvider?: VisualEditPlanProvider;
   storePurchaseVerifier?: StorePurchaseVerifier;
   revenueCatSubscriberClient?: RevenueCatSubscriberClient;
+  monthlyAddonStore?: MonthlyAddonStore;
+  revenueCatAddonPurchaseClient?: RevenueCatAddonPurchaseClient;
   appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
   socialConnectionStore?: SocialConnectionStore;
   postPeerConnectClient?: PostPeerConnectClient;
@@ -511,10 +517,14 @@ export const createApp = (options: AppOptions = {}) => {
   const runWithActiveOwner = uploadSessionStore.runWithActiveOwner;
   const runWithOwnerLifetime = uploadSessionStore.runWithOwnerLifetime;
   router = createOwnerOperationRouter(router, runWithOwnerLifetime);
+  const monthlyAddonStore = options.monthlyAddonStore ?? (prismaClient
+    ? createPrismaMonthlyAddonRepository({ prisma: prismaClient as unknown as PrismaMonthlyAddonClient })
+    : createInMemoryMonthlyAddonStore({ runWithActiveOwner }));
   const postStore = createPostStoreFromConfig({
     config,
     prisma: prismaClient as unknown as PrismaPostClient | undefined,
-    runWithActiveOwner
+    runWithActiveOwner,
+    monthlyAddonStore
   });
   const userStore = createUserStoreForPostStore({
     config,
@@ -555,6 +565,7 @@ export const createApp = (options: AppOptions = {}) => {
     options.realClipCaptionUsageStore ??
     createRealClipCaptionUsageStoreFromConfig({
       config,
+      monthlyAddonStore,
       prisma: prismaClient as unknown as PrismaRealClipCaptionUsageClient | undefined
     });
   const videoStorage =
@@ -651,7 +662,8 @@ export const createApp = (options: AppOptions = {}) => {
       createRealClipCaptionProviderFromConfig({ config }),
     fetchClipMedia,
     videoStorage.deleteVideo,
-    userStore
+    userStore,
+    { monthlyAddonStore, billingAddonsEnabled: config.billingAddonsEnabled, now: options.now }
   );
   const aiEditUsageStore = createAiEditUsageStoreFromConfig({
     config,
@@ -689,6 +701,8 @@ export const createApp = (options: AppOptions = {}) => {
     {
       allowSubscriptionPlanOverride:
         config.nodeEnv !== 'production' && config.authProvider === 'mock',
+      monthlyAddonStore,
+      billingAddonsEnabled: config.billingAddonsEnabled,
       socialPublishingEnabled: config.socialPublisher !== 'disabled',
       assertOwnerActive,
       runWithOwnerLifetime,
@@ -754,7 +768,10 @@ export const createApp = (options: AppOptions = {}) => {
     postStore,
     {
       config,
+      monthlyAddonStore,
+      billingAddonsEnabled: config.billingAddonsEnabled,
       storePurchaseVerifier: options.storePurchaseVerifier,
+      now: options.now,
       appleSignedNotificationDecoder: options.appleSignedNotificationDecoder
     }
   );
@@ -777,8 +794,12 @@ export const createApp = (options: AppOptions = {}) => {
     config,
     userStore,
     subscriptionStore,
-    ownerMutationLock
+    ownerMutationLock,
+    monthlyAddonStore
   });
+  registerAddonRoutes({ router, authMiddleware: accountAwareAuthMiddleware, config, userStore,
+    subscriptionStore, monthlyAddonStore, now: options.now,
+    purchaseClient: options.revenueCatAddonPurchaseClient ?? createRevenueCatAddonPurchaseClient({ apiKey: config.revenueCatRestApiV1Key }) });
   const deviceTokenStore = createDeviceTokenStore({
     prisma: prismaClient
       ? (prismaClient as unknown as PrismaDeviceTokenClient)
@@ -818,6 +839,7 @@ export const createApp = (options: AppOptions = {}) => {
     assertOwnerActive, runWithOwnerLifetime, now: options.now
   });
   registerAccountRoutes(router, accountDeletionAuthMiddleware, {
+    monthlyAddonStore,
     postStore,
     templateStore,
     subscriptionStore,

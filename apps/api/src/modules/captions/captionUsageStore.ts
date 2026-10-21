@@ -1,3 +1,5 @@
+import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
+
 export type RealClipCaptionUsageRecord = {
   id?: string;
   userId: string;
@@ -23,6 +25,8 @@ export type RealClipCaptionUsageStore = {
     userId: string;
     monthKey: string;
     limit: number;
+    includeMonthlyAddons?: boolean;
+    now?: string;
   }) => Promise<RealClipCaptionUsageReservation>;
   // Removes only this reservation, never another concurrent request's usage.
   release?: (record: RealClipCaptionUsageRecord) => Promise<boolean>;
@@ -35,9 +39,11 @@ export const readCurrentRealClipCaptionMonthKey = (date = new Date()) =>
   `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 
 export const createInMemoryRealClipCaptionUsageStore = ({
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  monthlyAddonStore
 }: {
   now?: () => string;
+  monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>;
 } = {}): RealClipCaptionUsageStore => {
   const records: RealClipCaptionUsageRecord[] = [];
   const createRecord = ({ userId, monthKey }: { userId: string; monthKey: string }) => {
@@ -57,12 +63,21 @@ export const createInMemoryRealClipCaptionUsageStore = ({
     record: async ({ userId, monthKey }) => {
       return createRecord({ userId, monthKey });
     },
-    reserve: async ({ userId, monthKey, limit }) => {
+    reserve: async ({ userId, monthKey, limit, includeMonthlyAddons, now: reservationNow }) => {
+      let addonAiCaptions = 0;
+      if (includeMonthlyAddons) {
+        if (!monthlyAddonStore) throw new Error('Monthly addon store is required');
+        const creditNow = reservationNow ?? now();
+        if (readCurrentRealClipCaptionMonthKey(new Date(creditNow)) !== monthKey) {
+          throw new Error('Caption reservation month does not match addon window');
+        }
+        addonAiCaptions = (await monthlyAddonStore.readCredits({ userId, now: creditNow })).aiCaptions;
+      }
       const usedThisMonth = records.filter(
         (record) => record.userId === userId && record.monthKey === monthKey
       ).length;
 
-      if (usedThisMonth >= limit) {
+      if (usedThisMonth >= limit + addonAiCaptions) {
         return {
           ok: false,
           usedThisMonth

@@ -4,6 +4,27 @@ import { createPrismaPostRepository } from './prismaPostRepository.js';
 import { withPostRepositoryFixture } from '../../../test/repositoryFixtures.js';
 
 describe('createPrismaPostRepository', () => {
+  it('reads addon grants inside the quota transaction and rechecks a refunded grant after a conflict', async () => {
+    const transactionGrants = { findMany: vi.fn().mockResolvedValueOnce([{ id: 'grant' }]).mockResolvedValue([]) };
+    const post = { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockRejectedValue(Object.assign(new Error('serialization conflict'), { code: 'P2034' })) };
+    const rootGrants = { findMany: vi.fn() };
+    const prisma = withPostRepositoryFixture({ post, monthlyAddonPurchase: rootGrants,
+      $transaction: vi.fn(async (operation: (client: unknown) => Promise<unknown>) =>
+        operation({ post, monthlyAddonPurchase: transactionGrants })) });
+    const repository = createPrismaPostRepository({ prisma });
+    expect(await repository.createWithinMonthlyLimit({ userId: 'addon-refund', clientRequestId: 'new-post',
+      caption: 'Not accepted after refund', videoS3Key: 'uploads/addon-refund/video.mp4', platforms: ['TIKTOK'],
+      monthlyPostUnitLimit: 0, includeMonthlyAddons: true, now: '2026-10-21T00:00:00.000Z' }))
+      .toEqual({ ok: false });
+    expect(transactionGrants.findMany).toHaveBeenCalledTimes(2);
+    expect(transactionGrants.findMany).toHaveBeenCalledWith({ where: { userId: 'addon-refund', revoked: false,
+      purchasedAt: { gte: new Date('2026-10-01T00:00:00.000Z'), lt: new Date('2026-11-01T00:00:00.000Z') } },
+      select: { id: true } });
+    expect(rootGrants.findMany).not.toHaveBeenCalled();
+    expect(post.create).toHaveBeenCalledTimes(1);
+  });
+
   it.each([undefined, true, false])('round-trips historical and explicit Meta AI declarations through Prisma JSON (%s)', async (isAiGenerated) => {
     const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };
     const platformSettings = {

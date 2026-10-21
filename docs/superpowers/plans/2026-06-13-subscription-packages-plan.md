@@ -153,6 +153,22 @@ Pro should be the plan for serious sellers, creators, and shops that want to gro
 ## Top-up
 
 - AI editing-minute top-ups are no longer offered in the current mobile product.
+- Post/caption add-on (2026-10-21): a repeatable, one-time 49 THB purchase adds
+  100 post units and 50 real-clip AI caption generations for effective Starter
+  and Pro members. It does not change the subscription or unlock another tier.
+- Credits expire with the existing UTC calendar-month quota, not one month
+  after purchase or at the store subscription renewal date. They do not carry
+  over. One video sent to two destinations costs two post units.
+- Starter keeps audio-only captions; Pro keeps audio with frames. Monthly
+  limits increase by verified, non-refunded purchases in that purchase month.
+  A refund reduces the available limit without deleting prior usage/posts.
+- Store products, RevenueCat routing, a database migration and backend rollout
+  must be ready before enabling purchases. The initial server gate is off;
+  native store acceptance remains a separate release check. See
+  `2026-10-21-post-caption-addon.md` for delivery status.
+- Initial add-on sales are Android only. Keep iPhone checkout and App Store
+  purchase grants disabled: Apple does not permit purchased credits to expire.
+  Existing iOS subscription purchases remain supported by their existing path.
 
 ## Paused / Removed From Package Marketing
 

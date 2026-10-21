@@ -19,6 +19,18 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  testWidgets('account quota uses effective total and labels verified add-on credits', (tester) async {
+    final apiClient = _FakeSocialApiClient(connections: const [],
+      subscription: const SubscriptionStatusResult(userId: 'seller', plan: 'PRO', status: 'ACTIVE',
+        monthlyPostLimit: 350, remainingPostsThisMonth: 348, addonPostUnits: 100,
+        addonAiCaptions: 50, canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true));
+    await tester.pumpWidget(_hostProfile(apiClient: apiClient));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('รวมซื้อเพิ่ม 100 หน่วย · AI 50 ครั้ง'), 200);
+    expect(find.text('เหลือโพสต์ 348 / 350 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.text('รวมซื้อเพิ่ม 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+  });
+
   testWidgets('refreshes an expired plan when returning to the app',
       (tester) async {
     final apiClient = _FakeSocialApiClient(

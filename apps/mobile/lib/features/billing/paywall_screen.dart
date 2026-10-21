@@ -7,8 +7,17 @@ import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'store_subscription_service.dart';
+import 'store_addon_service.dart';
 
 typedef PaywallSubscriptionLoader = Future<SubscriptionStatusResult> Function();
+
+String _addonExpiryLabel(DateTime expiresAt) {
+  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  final local = expiresAt.toLocal();
+  return '${local.day} ${months[local.month - 1]} ${local.year + 543} เวลา '
+      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')} น.';
+}
 
 class _PlanFeature {
   const _PlanFeature(this.text, {this.included = true});
@@ -46,6 +55,8 @@ class PaywallScreen extends StatefulWidget {
     this.loadSubscription,
     this.sessionCache,
     this.sessionStore,
+    this.addonService,
+    this.onAddonPurchased,
   });
 
   /// Called with the chosen plan id after a verified purchase.
@@ -59,6 +70,8 @@ class PaywallScreen extends StatefulWidget {
   final PaywallSubscriptionLoader? loadSubscription;
   final StoreSubscriptionSessionCache? sessionCache;
   final PostDeeAuthSessionStore? sessionStore;
+  final StoreAddonService? addonService;
+  final VoidCallback? onAddonPurchased;
 
   @override
   State<PaywallScreen> createState() => _PaywallScreenState();
@@ -71,6 +84,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
   late final StoreSubscriptionService _service = widget.service ??
       (widget.sessionCache ?? StoreSubscriptionSessionCache.instance).service;
   late final _apiClient = PostDeeApiClient(sessionBinding: _screenBinding);
+  late final _addonService = widget.addonService ??
+      (widget.sessionStore == null ? StoreAddonSessionCache.instance.service :
+        StoreAddonService(sessionStore: widget.sessionStore));
   final _ownedDialogs = <DialogRoute<void>>{};
   SubscriptionStatusResult? _subscription;
   var _isSubscriptionLoading = true;
@@ -82,6 +98,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
   var _priceLoadFailed = false;
   var _priceLoadGeneration = 0;
   Timer? _priceTimer;
+  AddonCatalogResult? _addonCatalog;
+  StoreProductInfo? _addonProduct;
+  var _addonLoading = true;
+  var _addonLoadFailed = false;
+  var _addonLoadGeneration = 0;
 
   @override
   void initState() {
@@ -90,6 +111,62 @@ class _PaywallScreenState extends State<PaywallScreen> {
     _sessionStore.addListener(_handleSessionChanged);
     _loadSubscription();
     _loadPrices();
+    _loadAddon();
+  }
+
+  Future<void> _loadAddon() async {
+    if (!_canUpdateScreen) return;
+    final generation = ++_addonLoadGeneration;
+    setState(() { _addonLoading = true; _addonLoadFailed = false; _addonProduct = null; });
+    try {
+      final catalog = await _addonService.loadCatalog();
+      if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
+      final product = _addonService.supportsPlatform && catalog.enabled && catalog.eligible
+          ? await _addonService.loadProduct(catalog) : null;
+      if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
+      setState(() { _addonCatalog = catalog; _addonProduct = product; _addonLoading = false; });
+    } catch (_) {
+      if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
+      setState(() { _addonCatalog = null; _addonLoading = false; _addonLoadFailed = true; });
+    }
+  }
+
+  Future<void> _buyAddon({bool retry = false}) async {
+    if (!_canUpdateScreen || !_addonService.supportsPlatform || _isBillingInProgress || _service.hasPendingConfirmation ||
+        (!retry && (_addonService.hasPendingPurchase || _addonProduct == null ||
+          _addonCatalog?.enabled != true || _addonCatalog?.eligible != true))) {
+      return;
+    }
+    setState(() => _isBillingInProgress = true);
+    final progress = _showProgress(retry ? 'กำลังตรวจสอบการซื้อ...' : 'กำลังซื้อแพ็กเติม...');
+    try {
+      final result = retry ? await _addonService.retryPendingPurchase() : await _addonService.purchase();
+      if (!_canUpdateScreen || !result.confirmed) return;
+      await _loadSubscription();
+      if (!_canUpdateScreen) return;
+      widget.onAddonPurchased?.call();
+      if (!_canUpdateScreen) return;
+      final expiry = _addonExpiryLabel(result.expiresAt!);
+      _showOwnedDialog((context) => AlertDialog(
+        title: const Text('เติมเครดิตสำเร็จ'),
+        content: Text('เพิ่มโพสต์ 100 หน่วย และ AI แคปชั่น 50 ครั้ง ใช้ได้ก่อน $expiry ตามเวลาเครื่อง'),
+        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('ตกลง'))],
+      ));
+      unawaited(_loadAddon());
+    } on AuthSessionChangedException {
+      _showBillingError('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่');
+    } on StoreAddonPendingException {
+      if (_canUpdateScreen) setState(() {});
+    } on StoreAddonException catch (error) {
+      _showBillingError(error.message);
+    } on StoreSubscriptionException catch (error) {
+      _showBillingError(error.message);
+    } catch (_) {
+      _showBillingError('ซื้อแพ็กเติมไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      _closeOwnedDialog(progress);
+      if (_canUpdateScreen) setState(() => _isBillingInProgress = false);
+    }
   }
 
   Future<void> _loadPrices() async {
@@ -123,6 +200,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     _sessionStore.removeListener(_handleSessionChanged);
     _subscriptionLoadGeneration++;
     _priceLoadGeneration++;
+    _addonLoadGeneration++;
     _priceTimer?.cancel();
     final ownedDialogs = _ownedDialogs.toList();
     _ownedDialogs.clear();
@@ -183,6 +261,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _isSubscriptionLoading = false;
       _subscriptionLoadError = null;
     });
+    unawaited(_loadAddon());
   }
 
   bool get _canUpdateScreen => mounted && _screenBinding.isCurrent;
@@ -191,6 +270,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     if (_screenBinding.isCurrent || !mounted) return;
     _subscriptionLoadGeneration++;
     _priceLoadGeneration++;
+    _addonLoadGeneration++;
     _priceTimer?.cancel();
     for (final route in _ownedDialogs.toList()) {
       _closeOwnedDialog(route);
@@ -203,6 +283,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _isPriceLoading = false;
       _priceLoadFailed = false;
       _isBillingInProgress = false;
+      _addonCatalog = null;
+      _addonProduct = null;
+      _addonLoading = false;
     });
   }
 
@@ -384,7 +467,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _restorePurchase() async {
-    if (!_canUpdateScreen || _isBillingInProgress) return;
+    if (!_canUpdateScreen || _isBillingInProgress || _addonService.hasPendingPurchase) return;
     setState(() => _isBillingInProgress = true);
     final progress = _showProgress('กำลังกู้คืนการซื้อ...');
 
@@ -501,6 +584,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           !_isSubscriptionLoading &&
                           !_isBillingInProgress &&
                           !_service.hasPendingConfirmation &&
+                          !_addonService.hasPendingPurchase &&
                           _subscriptionLoadError == null &&
                           _subscription != null
                       ? () => _subscribe(_plans[index])
@@ -508,6 +592,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 ),
                 if (index < _plans.length - 1) const SizedBox(height: 13),
               ],
+              const SizedBox(height: 16),
+              _buildAddonCard(),
               const SizedBox(height: 16),
               if (_priceLoadFailed)
                 TextButton(
@@ -520,7 +606,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 SizedBox(
                   height: 48,
                   child: OutlinedButton.icon(
-                    onPressed: !_screenBinding.isCurrent || _isBillingInProgress
+                    onPressed: !_screenBinding.isCurrent || _isBillingInProgress || _addonService.hasPendingPurchase
                         ? null : _restorePurchase,
                     icon: const Icon(Icons.restore, size: 19),
                     label: const Text('กู้คืนการซื้อ'),
@@ -552,6 +638,58 @@ class _PaywallScreenState extends State<PaywallScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAddonCard() {
+    final catalog = _addonCatalog;
+    final pending = _addonService.hasPendingPurchase;
+    final canBuy = _addonService.supportsPlatform && _canUpdateScreen && !_addonLoading && !_isBillingInProgress &&
+        !_service.hasPendingConfirmation && !pending && !_isSubscriptionLoading &&
+        _subscriptionLoadError == null && _subscription != null &&
+        catalog?.enabled == true && catalog?.eligible == true && _addonProduct != null;
+    final message = !_addonService.supportsPlatform ? _addonService.platformUnavailableMessage
+        : _addonLoading ? 'กำลังตรวจสอบแพ็กเติม...'
+        : _addonLoadFailed ? 'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่'
+        : catalog?.enabled != true ? 'แพ็กเติมยังไม่เปิดขาย'
+        : catalog?.eligible == false ? 'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครแพ็กเกจด้านบนก่อน'
+        : _addonProduct == null ? 'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้'
+        : 'ซื้อเพิ่มได้หลายครั้ง';
+    return Container(
+      key: const ValueKey('paywall-addon-card'), padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: AppTheme.glass, borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('แพ็กเติม ซื้อครั้งเดียว', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        const Text('โพสต์เพิ่ม 100 หน่วย + AI แคปชั่น 50 ครั้ง', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        Text('ราคาไทย 49 บาท · ชำระตามราคาที่ร้านค้าแสดง', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        const SizedBox(height: 8),
+        Text(message, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        if (catalog != null) ...[
+          const SizedBox(height: 6),
+          Text('ใช้ได้ก่อน ${_addonExpiryLabel(catalog.expiresAt)} ตามเวลาเครื่อง',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+        ],
+        const SizedBox(height: 6),
+        Text('1 ช่องทางใช้ 1 หน่วย · หมดอายุพร้อมโควตารายเดือน ไม่ยกยอด · ไม่ต่ออายุอัตโนมัติ',
+          style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+        if (pending) ...[
+          const SizedBox(height: 12),
+          Text(const StoreAddonPendingException().message, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+          TextButton(key: const ValueKey('paywall-retry-addon'),
+            onPressed: _addonService.supportsPlatform && _canUpdateScreen && !_isBillingInProgress ? () => _buyAddon(retry: true) : null,
+            child: const Text('ตรวจสอบการซื้อแพ็กเติมอีกครั้ง')),
+        ],
+        const SizedBox(height: 12),
+        SizedBox(width: double.infinity, child: FilledButton(
+          key: const ValueKey('paywall-buy-addon'), onPressed: canBuy ? () => _buyAddon() : null,
+          child: Text(_addonProduct == null ? 'ซื้อแพ็กเติม' : 'ซื้อครั้งเดียว ${_addonProduct!.price}'),
+        )),
+        if (_addonService.supportsPlatform && !_addonLoading && (_addonLoadFailed || catalog?.enabled == true && _addonProduct == null && catalog?.eligible == true))
+          TextButton(onPressed: _canUpdateScreen && !_isBillingInProgress ? _loadAddon : null, child: const Text('โหลดแพ็กเติมอีกครั้ง')),
+      ]),
     );
   }
 }

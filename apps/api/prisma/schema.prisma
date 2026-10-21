@@ -90,6 +90,26 @@ model User {
   updatedAt          DateTime      @updatedAt
   adminTrialAccess   AdminTrialAccess?
   adminTrialAudits   AdminTrialAudit[]
+  monthlyAddonPurchases MonthlyAddonPurchase[]
+}
+
+// Keep transaction tombstones after deleting an account so a consumed purchase
+// can never be claimed by another account. ownerHash does not expose its UID.
+model MonthlyAddonPurchase {
+  id String @id
+  userId String?
+  ownerHash String
+  productId String
+  store String
+  environment String
+  transactionId String
+  purchasedAt DateTime
+  revoked Boolean @default(false)
+  createdAt DateTime @default(now())
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([store, environment, transactionId])
+  @@index([userId, revoked, purchasedAt])
 }
 
 model AdminTrialAccess {

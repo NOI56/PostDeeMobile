@@ -28,19 +28,23 @@ import {
   registerStoreNotificationRoutes
 } from './storeNotificationRoutes.js';
 import { createStoreNotificationSubscriptionHandler } from './storeNotificationSubscriptionHandler.js';
+import { readMonthlyAddonWindow, type MonthlyAddonStore } from './monthlyAddonStore.js';
 
 const buildSubscriptionStatus = ({
   userId,
   plan,
   phoneVerified,
-  usedPostsThisMonth
+  usedPostsThisMonth,
+  addonCredits
 }: {
   userId: string;
   plan: SubscriptionPlan;
   phoneVerified: boolean;
   usedPostsThisMonth: number;
+  addonCredits?: { postUnits: number; aiCaptions: number; expiresAt?: string };
 }) => {
-  const monthlyPostLimit = monthlyPostUnitLimits[plan];
+  const baseMonthlyPostLimit = monthlyPostUnitLimits[plan];
+  const monthlyPostLimit = baseMonthlyPostLimit + (addonCredits?.postUnits ?? 0);
   const requiresPhoneVerification = plan === 'BASIC' && !phoneVerified;
   const canUseFreePostQuota = plan === 'BASIC' && phoneVerified;
   const remainingPostsThisMonth =
@@ -53,6 +57,12 @@ const buildSubscriptionStatus = ({
     plan,
     status: plan === 'BASIC' ? 'INACTIVE' : 'ACTIVE',
     monthlyPostLimit,
+    ...(addonCredits ? {
+      baseMonthlyPostLimit,
+      addonPostUnits: addonCredits.postUnits,
+      addonAiCaptions: addonCredits.aiCaptions,
+      ...(addonCredits.expiresAt ? { addonExpiresAt: addonCredits.expiresAt } : {})
+    } : {}),
     usedPostsThisMonth,
     remainingPostsThisMonth,
     phoneVerified,
@@ -238,6 +248,9 @@ export const registerBillingRoutes = (
     config?: BillingRoutesConfig;
     storePurchaseVerifier?: StorePurchaseVerifier;
     appleSignedNotificationDecoder?: AppleSignedNotificationDecoder;
+    monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>;
+    billingAddonsEnabled?: boolean;
+    now?: () => Date;
   } = {}
 ) => {
   const config = options.config ?? defaultBillingRoutesConfig;
@@ -276,10 +289,15 @@ export const registerBillingRoutes = (
     // repository's final owner fence still prevents a deleted-owner revival.
     await userStore.ensure(authUser);
     const plan = await subscriptionStore.getPlan(authUser);
+    const now = (options.now?.() ?? new Date()).toISOString();
     const usedPostsThisMonth = await postStore.countMonthlyPostUnits({
       userId: authUser.id,
-      now: new Date().toISOString()
+      now
     });
+    const purchasedPlan = subscriptionStore.getPurchasedPlan ? await subscriptionStore.getPurchasedPlan(authUser) : plan;
+    const addonCredits = options.billingAddonsEnabled && plan !== 'BASIC'
+      ? await options.monthlyAddonStore?.readCredits({ userId: authUser.id, now })
+      : undefined;
 
     response.json({
       status: 'ok',
@@ -287,8 +305,14 @@ export const registerBillingRoutes = (
         userId: authUser.id,
         plan,
         phoneVerified: authUser.phoneVerified === true,
-        usedPostsThisMonth
-      }), ...(subscriptionStore.getPurchasedPlan ? { purchasedPlan: await subscriptionStore.getPurchasedPlan(authUser) } : {}) }
+        usedPostsThisMonth,
+        ...(options.billingAddonsEnabled ? { addonCredits: {
+          postUnits: addonCredits?.postUnits ?? 0,
+          aiCaptions: addonCredits?.aiCaptions ?? 0,
+          ...(addonCredits && (addonCredits.postUnits > 0 || addonCredits.aiCaptions > 0)
+            ? { expiresAt: readMonthlyAddonWindow(now).expiresAt } : {})
+        } } : {})
+      }), ...(subscriptionStore.getPurchasedPlan ? { purchasedPlan } : {}) }
     });
   });
 

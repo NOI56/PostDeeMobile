@@ -6,6 +6,7 @@ import { readServerConfig } from '../../config/env.js';
 import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 import type { PostPeerConnectClient } from '../socialConnections/postPeerConnectClient.js';
 import { createInMemorySocialConnectionStore } from '../socialConnections/socialConnectionStore.js';
+import { createInMemoryMonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 import type { VideoStorage } from '../storage/videoStorage.js';
 import {
   ManagedUploadServiceError,
@@ -281,6 +282,33 @@ describe('account routes', () => {
       .set('x-postdee-user-id', 'seller-b')
       .expect(200);
     expect(sellerBPosts.body.posts).toHaveLength(1);
+  });
+
+  it('removes add-on ownership on deletion and retains transaction replay protection', async () => {
+    const monthlyAddonStore = createInMemoryMonthlyAddonStore();
+    const app = createApp({ monthlyAddonStore });
+    const now = new Date().toISOString();
+    const purchase = {
+      userId: 'addon-account-delete', productId: 'postdee_post100_caption50',
+      transactionId: 'account-delete-purchase', store: 'PLAY_STORE',
+      environment: 'SANDBOX', purchasedAt: now
+    };
+    await monthlyAddonStore.applyPurchase(purchase);
+    await monthlyAddonStore.applyPurchase({
+      ...purchase, userId: 'addon-other-owner', transactionId: 'other-purchase'
+    });
+
+    await request(app).delete('/account')
+      .set('x-postdee-user-id', purchase.userId).expect(200);
+
+    expect(await monthlyAddonStore.readCredits({ userId: purchase.userId, now }))
+      .toEqual({ postUnits: 0, aiCaptions: 0 });
+    expect(await monthlyAddonStore.readCredits({ userId: 'addon-other-owner', now }))
+      .toEqual({ postUnits: 100, aiCaptions: 50 });
+    await expect(monthlyAddonStore.applyPurchase({ ...purchase, userId: 'addon-other-owner' }))
+      .rejects.toThrow('already linked');
+    expect(await monthlyAddonStore.applyPurchase(purchase))
+      .toMatchObject({ applied: false, revoked: true });
   });
 
   it('removes social connections when the account is deleted', async () => {

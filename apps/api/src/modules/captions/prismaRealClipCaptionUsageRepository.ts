@@ -3,6 +3,8 @@ import type {
   RealClipCaptionUsageRecord,
   RealClipCaptionUsageStore
 } from './captionUsageStore.js';
+import { readCurrentRealClipCaptionMonthKey } from './captionUsageStore.js';
+import { readPrismaMonthlyAddonCredits, type PrismaMonthlyAddonReadTransaction } from '../billing/prismaMonthlyAddonRepository.js';
 
 type PrismaRealClipCaptionUsage = {
   id?: string;
@@ -33,10 +35,13 @@ type RealClipCaptionUsageDelegate = {
   deleteMany?: (args: { where: { id: string; userId: string; monthKey: string } }) => Promise<{ count: number }>;
 };
 
-export type PrismaRealClipCaptionUsageClient = {
+type CaptionUsageTransaction = Partial<PrismaMonthlyAddonReadTransaction> & {
   realClipCaptionUsage: RealClipCaptionUsageDelegate;
+};
+
+export type PrismaRealClipCaptionUsageClient = CaptionUsageTransaction & {
   $transaction?: <T>(
-    callback: (client: { realClipCaptionUsage: RealClipCaptionUsageDelegate }) => Promise<T>,
+    callback: (client: CaptionUsageTransaction) => Promise<T>,
     options?: { isolationLevel: 'Serializable' }
   ) => Promise<T>;
 };
@@ -62,17 +67,32 @@ export const createPrismaRealClipCaptionUsageRepository = ({
     createdAt: true
   } as const;
   const reserveWithClient = async (
-    client: { realClipCaptionUsage: RealClipCaptionUsageDelegate },
+    client: CaptionUsageTransaction,
     {
       userId,
       monthKey,
-      limit
+      limit,
+      includeMonthlyAddons,
+      now
     }: {
       userId: string;
       monthKey: string;
       limit: number;
+      includeMonthlyAddons?: boolean;
+      now?: string;
     }
   ): Promise<RealClipCaptionUsageReservation> => {
+    let addonAiCaptions = 0;
+    if (includeMonthlyAddons) {
+      if (!client.monthlyAddonPurchase) throw new Error('Monthly addon transaction delegate is required');
+      const creditNow = now ?? new Date().toISOString();
+      if (readCurrentRealClipCaptionMonthKey(new Date(creditNow)) !== monthKey) {
+        throw new Error('Caption reservation month does not match addon window');
+      }
+      addonAiCaptions = (await readPrismaMonthlyAddonCredits(
+        { monthlyAddonPurchase: client.monthlyAddonPurchase }, userId, creditNow
+      )).aiCaptions;
+    }
     const usedThisMonth = await client.realClipCaptionUsage.count({
       where: {
         userId,
@@ -80,7 +100,7 @@ export const createPrismaRealClipCaptionUsageRepository = ({
       }
     });
 
-    if (usedThisMonth >= limit) {
+    if (usedThisMonth >= limit + addonAiCaptions) {
       return {
         ok: false,
         usedThisMonth
@@ -130,11 +150,20 @@ export const createPrismaRealClipCaptionUsageRepository = ({
     },
     reserve: async (input) => {
       if (prisma.$transaction) {
-        return prisma.$transaction((client) => reserveWithClient(client, input), {
-          isolationLevel: 'Serializable'
-        });
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          try {
+            return await prisma.$transaction((client) => reserveWithClient(client, input), {
+              isolationLevel: 'Serializable'
+            });
+          } catch (error) {
+            if (attempt === 3 || !error || typeof error !== 'object' ||
+                !('code' in error) || error.code !== 'P2034') throw error;
+          }
+        }
+        throw new Error('Caption quota transaction retry exhausted');
       }
 
+      if (input.includeMonthlyAddons) throw new Error('Monthly addons require transaction support');
       return reserveWithClient(prisma, input);
     }
   };

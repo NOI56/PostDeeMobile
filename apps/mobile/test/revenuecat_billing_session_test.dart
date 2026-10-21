@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/features/billing/store_subscription_service.dart';
@@ -7,6 +10,9 @@ import 'package:purchases_flutter/purchases_flutter.dart' as purchases;
 
 const _product = purchases.StoreProduct(
   'postdee_pro_monthly', 'Pro subscription', 'PostDee Pro', 1, 'THB1', 'THB',
+);
+const _addonProduct = purchases.StoreProduct(
+  'postdee_post100_caption50', '100 + 50', 'PostDee add-on', 49, '฿49', 'THB',
 );
 
 PostDeeAuthSessionStore _session(String userId) => PostDeeAuthSessionStore(
@@ -22,6 +28,100 @@ PurchasesRevenueCatBillingGateway _gateway(
 );
 
 void main() {
+  test('iOS add-on query checkout and recovery stop before any RevenueCat SDK call', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final sdk = _FakePurchasesSdk();
+    final gateway = _gateway(_session('account-a'), sdk);
+    var snapshotWrites = 0;
+    await expectLater(gateway.queryAddonProducts({_addonProduct.identifier}), throwsA(isA<StoreAddonPurchaseNotStartedException>()));
+    await expectLater(gateway.buyAddon(_addonProduct.identifier), throwsA(isA<StoreAddonPurchaseNotStartedException>()));
+    await expectLater(gateway.buyAddonWithSnapshot(_addonProduct.identifier, (_) async { snapshotWrites++; }), throwsA(isA<StoreAddonPurchaseNotStartedException>()));
+    await expectLater(gateway.recoverAddonPurchase(_addonProduct.identifier, {}), throwsA(isA<StoreAddonPurchaseNotStartedException>()));
+    await expectLater(gateway.reconcilePendingAddonPurchase(), throwsA(isA<StoreAddonPurchaseNotStartedException>()));
+    expect(snapshotWrites, 0);
+    expect(sdk.calls, isEmpty);
+  });
+
+  test('iOS monthly subscriptions continue to use the existing RevenueCat purchase path', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final sdk = _FakePurchasesSdk();
+    await _gateway(_session('account-a'), sdk).buySubscription(_product.identifier);
+    expect(sdk.purchaseUserIds, ['account-a']);
+  });
+  test('RevenueCat pending checkout reconciles only a unique new transaction, without another payment', () async {
+    final session = _session('account-a');
+    final sdk = _FakePurchasesSdk(onStep: (step) async {
+      if (step == 'addonPurchase') throw PlatformException(code: purchases.PurchasesErrorCode.paymentPendingError.index.toString());
+    });
+    sdk.addonTransactions = [const StoreAddonTransaction(productId: 'postdee_post100_caption50', transactionId: 'old')];
+    final gateway = _gateway(session, sdk);
+    await expectLater(gateway.buyAddon(_addonProduct.identifier), throwsA(isA<StoreAddonStorePendingException>()));
+    expect(await gateway.reconcilePendingAddonPurchase(), isNull);
+    sdk.addonTransactions.add(const StoreAddonTransaction(productId: 'postdee_post100_caption50', transactionId: 'new'));
+    expect((await gateway.reconcilePendingAddonPurchase())!.transactionId, 'new');
+    expect(sdk.purchaseUserIds, ['account-a']);
+  });
+
+  test('RevenueCat cancelled checkout has a terminal error and no pending transaction snapshot', () async {
+    final sdk = _FakePurchasesSdk(onStep: (step) async {
+      if (step == 'addonPurchase') throw PlatformException(code: purchases.PurchasesErrorCode.purchaseCancelledError.index.toString());
+    });
+    final gateway = _gateway(_session('account-a'), sdk);
+    await expectLater(gateway.buyAddon(_addonProduct.identifier),
+      throwsA(isA<StoreSubscriptionException>().having((error) => error is StoreAddonStorePendingException, 'pending', isFalse)));
+    expect(await gateway.reconcilePendingAddonPurchase(), isNull);
+  });
+  test('add-on queries non-subscriptions and retains the exact transaction identifier', () async {
+    final session = _session('account-a');
+    final sdk = _FakePurchasesSdk();
+    final gateway = _gateway(session, sdk);
+    final products = await gateway.queryAddonProducts({_addonProduct.identifier});
+    expect(products.single.price, '฿49');
+    final receipt = await gateway.buyAddon(_addonProduct.identifier);
+    expect(receipt.productId, _addonProduct.identifier);
+    expect(receipt.transactionId, 'addon-transaction');
+    expect(sdk.calls, isNot(contains('products')));
+  });
+
+  for (final phase in ['addonProducts', 'addonPurchase']) {
+    test('add-on stops after account replacement during $phase', () async {
+      final session = _session('account-a');
+      final started = Completer<void>();
+      final release = Completer<void>();
+      final sdk = _FakePurchasesSdk(onStep: (step) async {
+        if (step == phase) { started.complete(); await release.future; }
+      });
+      final failure = expectLater(_gateway(session, sdk).buyAddon(_addonProduct.identifier),
+        throwsA(isA<AuthSessionChangedException>()));
+      await started.future;
+      session.signIn(const AuthSession(userId: 'account-b', idToken: 'dummy-b'));
+      release.complete();
+      await failure;
+      expect(sdk.loggedInUserIds, isEmpty);
+      expect(sdk.purchaseUserIds, phase == 'addonProducts' ? isEmpty : ['account-a']);
+    });
+  }
+
+  test('add-on native purchase and subscription share the global identity queue', () async {
+    final session = _session('account-a');
+    final started = Completer<void>();
+    final release = Completer<void>();
+    final sdk = _FakePurchasesSdk(onStep: (step) async {
+      if (step == 'addonPurchase') { started.complete(); await release.future; }
+    });
+    final old = expectLater(_gateway(session, sdk).buyAddon(_addonProduct.identifier),
+      throwsA(isA<AuthSessionChangedException>()));
+    await started.future;
+    session.signIn(const AuthSession(userId: 'account-b', idToken: 'dummy-b'));
+    final next = _gateway(session, sdk).buySubscription(_product.identifier);
+    await Future<void>.delayed(Duration.zero);
+    expect(sdk.loggedInUserIds, isEmpty);
+    release.complete();
+    await Future.wait([old, next]);
+    expect(sdk.purchaseUserIds, ['account-a', 'account-b']);
+  });
   for (final step in ['isConfigured', 'appUserId', 'debugLogLevel', 'configure', 'logIn', 'products']) {
     test('RevenueCat purchase stops when the account changes during $step', () async {
       final session = _session('account-a');
@@ -191,7 +291,7 @@ void main() {
   });
 }
 
-class _FakePurchasesSdk implements RevenueCatPurchasesSdk {
+class _FakePurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsumablePurchasesSdk {
   _FakePurchasesSdk({this.configured = true, this.currentUserId = 'account-a', this.onStep});
   bool configured;
   String currentUserId;
@@ -201,6 +301,7 @@ class _FakePurchasesSdk implements RevenueCatPurchasesSdk {
   final loggedInUserIds = <String>[];
   final purchaseUserIds = <String>[];
   final restoreUserIds = <String>[];
+  List<StoreAddonTransaction> addonTransactions = [];
 
   Future<void> _step(String name) async {
     calls.add(name);
@@ -259,5 +360,24 @@ class _FakePurchasesSdk implements RevenueCatPurchasesSdk {
   Future<void> restorePurchases() async {
     restoreUserIds.add(currentUserId);
     await _step('restore');
+  }
+
+  @override
+  Future<List<purchases.StoreProduct>> getNonSubscriptionProducts(List<String> ids) async {
+    await _step('addonProducts');
+    return [_addonProduct];
+  }
+
+  @override
+  Future<StoreAddonTransaction> purchaseConsumable(purchases.StoreProduct product) async {
+    purchaseUserIds.add(currentUserId);
+    await _step('addonPurchase');
+    return StoreAddonTransaction(productId: product.identifier, transactionId: 'addon-transaction');
+  }
+
+  @override
+  Future<List<StoreAddonTransaction>> getAddonTransactions() async {
+    await _step('addonTransactions');
+    return addonTransactions;
   }
 }

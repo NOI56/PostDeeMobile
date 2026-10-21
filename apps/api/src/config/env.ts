@@ -49,6 +49,9 @@ export type ServerConfig = {
   billingProvider: BillingProviderKind;
   revenueCatWebhookAuthToken?: string;
   revenueCatRestApiV1Key?: string;
+  billingAddonsEnabled: boolean;
+  revenueCatAddonProductId: string;
+  revenueCatAddonEnvironment: 'SANDBOX' | 'PRODUCTION';
   revenueCatStarterEntitlementId: string;
   revenueCatProEntitlementId: string;
   revenueCatStarterProductId: string;
@@ -533,6 +536,13 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     billingProvider: readBillingProvider(env),
     revenueCatWebhookAuthToken: readOptional(env, 'REVENUECAT_WEBHOOK_AUTH_TOKEN'),
     revenueCatRestApiV1Key: readOptional(env, 'REVENUECAT_REST_API_V1_KEY'),
+    billingAddonsEnabled: readBoolean(env, 'BILLING_ADDONS_ENABLED', false),
+    revenueCatAddonProductId: readOptional(env, 'REVENUECAT_ADDON_PRODUCT_ID') ?? 'postdee_post100_caption50',
+    revenueCatAddonEnvironment: (() => {
+      const value = readOptional(env, 'REVENUECAT_ADDON_ENVIRONMENT') ?? 'PRODUCTION';
+      if (value !== 'SANDBOX' && value !== 'PRODUCTION') throw new Error('REVENUECAT_ADDON_ENVIRONMENT must be SANDBOX or PRODUCTION');
+      return value;
+    })(),
     revenueCatStarterEntitlementId:
       readOptional(env, 'REVENUECAT_STARTER_ENTITLEMENT_ID') ?? 'starter',
     revenueCatProEntitlementId: readOptional(env, 'REVENUECAT_PRO_ENTITLEMENT_ID') ?? 'pro',
@@ -609,6 +619,10 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     mockUserId: readOptional(env, 'MOCK_USER_ID') ?? 'local-dev-user'
   };
 
+  if ([config.revenueCatStarterProductId, config.revenueCatProProductId,
+    config.storeStarterMonthlyProductId, config.storeProMonthlyProductId].includes(config.revenueCatAddonProductId)) {
+    throw new Error('REVENUECAT_ADDON_PRODUCT_ID must differ from subscription product identifiers');
+  }
   assertRuntimeStoreConfig(config);
   assertPostPeerLegacyRecoveryConfig(config);
   assertProductionSafeConfig(config);

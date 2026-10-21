@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Usability follow-up (2026-10-21, local candidate)
+## Usability follow-up (2026-10-21)
 
 The 100 synthetic-scenario review is followed by owner-scoped single-post reads,
 live detail refresh, clearer result/recovery navigation, searchable post history,
@@ -19,9 +19,10 @@ animation and existing draft/consent/receipt safeguards remain in place.
 Deploy the API before updating Mobile: `GET /posts/:id` is new and the optional
 `monthlyQuotaResetsAt` describes the included allowance's next UTC month boundary.
 Purchased credits still never expire, and add-on sales remain disabled. No schema
-migration or dependency change. This work is not yet merged, pushed, deployed or
-installed; the [work record](docs/superpowers/plans/2026-10-21-ux-review-fixes.md)
-tracks actual verification and remaining limits.
+migration or dependency change. The
+[work record](docs/superpowers/plans/2026-10-21-ux-review-fixes.md)
+tracks tested source, release order and remaining limits. Deployment and native
+installation are verified separately for each release.
 
 ## Publishing progress motion (2026-10-20, locally verified and Staging APK installed)
 

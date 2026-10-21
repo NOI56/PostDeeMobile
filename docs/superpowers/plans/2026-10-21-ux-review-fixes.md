@@ -65,8 +65,23 @@ record and optionally safe signed media; `404 POST_NOT_FOUND` is distinguishable
 from an old deployment's generic route 404. `monthlyQuotaResetsAt` is optional
 and uses the next UTC calendar-month boundary, displayed in device-local time.
 Legacy post lists, publishing contracts, migrations, credentials and feature
-flags remain unchanged. This task does not authorize a real post, purchase,
-account deletion, main integration, push, deployment or emulator update.
+flags remain unchanged. The original implementation request did not include
+main integration, push, deployment, emulator updates or external transactions.
+
+### Authorized release follow-up
+
+The user's subsequent `main/push/deploy` request authorizes main integration,
+GitHub push and the established PostDee Staging service in the previously
+confirmed My Workspace. Canonical main was freshly checked at `ca4f215`, then
+fast-forwarded to implementation commit `a3837bd`; only release-documentation
+changes follow it. Verify their API/Mobile/shared hashes against the manifests
+above instead of rebuilding unchanged source solely for documentation edits.
+Target service: `srv-d9bb72ojs32c739osa5g`, branch `main`,
+`https://postdee-api-staging.onrender.com`; automatic deploy is disabled.
+Record the exact remote commit, CI checks, Render deploy ID, terminal status,
+startup/migration logs and read-only smoke results in the execution receipt.
+This release request does not include an emulator update, real post, purchase,
+account deletion, production activation or purchase-gate changes.
 
 ## Verification record
 

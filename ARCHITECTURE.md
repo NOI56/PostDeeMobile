@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Owned post observation and UX boundaries (2026-10-21, local candidate)
+## Owned post observation and UX boundaries (2026-10-21)
 
 `GET /posts/:id` queries the exact authenticated owner/id pair through the memory
 or Prisma post store, returns public post/outcome fields and never mutates a post,

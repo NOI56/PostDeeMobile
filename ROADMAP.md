@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Usability review follow-up (2026-10-21, local candidate)
+## Usability review follow-up (2026-10-21)
 
 - Address the seven priority themes from the 100 synthetic scenarios: detail
   status freshness, visible validation, safe result/recovery navigation, readable

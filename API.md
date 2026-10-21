@@ -1597,7 +1597,7 @@ startup reports 20 migrations and none pending, and health/readiness return 200.
 New provider publication and native active-sending/FPS are not claimed. See the
 [publishing-motion plan](docs/superpowers/plans/2026-10-18-publishing-motion.md).
 
-### `GET /posts/:id` (2026-10-21 usability candidate)
+### `GET /posts/:id` (2026-10-21 usability follow-up)
 
 Requires the existing Bearer authentication. Returns only the exact post owned
 by that authenticated user, with `Cache-Control: private, no-store`:
@@ -3081,7 +3081,7 @@ preparation-aware app; read-only GET is a separate later rollout step.
 
 ### `GET /billing/subscription`
 
-The 2026-10-21 usability candidate adds optional ISO-8601
+The 2026-10-21 usability follow-up adds optional ISO-8601
 `subscription.monthlyQuotaResetsAt`, the start of the next UTC calendar month
 using the same observation time as monthly usage. For example, an observation
 on 2026-10-21 returns `2026-11-01T00:00:00.000Z`. Mobile displays device-local

@@ -43,7 +43,10 @@ describe('createRevenueCatSubscriberClient', () => {
             }
           },
           subscriptions: {
+            postdee_pro_monthly: { is_sandbox: false, store: 'play_store' },
+            lifetime_product: { is_sandbox: true, store: 'test_store' },
             postdee_starter_monthly: {
+              is_sandbox: false, store: 'app_store',
               grace_period_expires_date: '2026-07-20T00:00:00.000Z'
             }
           }
@@ -63,15 +66,18 @@ describe('createRevenueCatSubscriberClient', () => {
         {
           id: 'pro',
           productId: 'postdee_pro_monthly',
+          isSandbox: false, store: 'PLAY_STORE',
           expiresAt: '2026-08-15T00:00:00.000Z'
         },
         {
           id: 'lifetime',
-          productId: 'lifetime_product'
+          productId: 'lifetime_product',
+          isSandbox: true, store: 'TEST_STORE'
         },
         {
           id: 'starter',
           productId: 'postdee_starter_monthly',
+          isSandbox: false, store: 'APP_STORE',
           expiresAt: '2026-07-20T00:00:00.000Z'
         }
       ]

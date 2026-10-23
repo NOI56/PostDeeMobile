@@ -1993,6 +1993,31 @@ still a separate release gate. Local FFmpeg rendering has its own deadlines.
 
 PostDee uses RevenueCat as the main mobile paid subscription provider.
 
+Starter/Pro eligibility is bound to `REVENUECAT_SUBSCRIPTION_ENVIRONMENT`
+(`PRODUCTION` by default), independently from the add-on environment. The
+subscriber adapter retains boolean `is_sandbox` and normalized `store` from
+the product subscription, including lifetime access. The shared selection policy
+filters provenance before prioritizing Pro over Starter. Only App Store and
+Play Store are accepted in production; Test Store requires `SANDBOX`. Missing
+or invalid proof cannot grant access. Subscription lifecycle webhooks apply the
+same checks before any subscription/cursor mutation; mismatches receive 202.
+Add-on confirmation, webhooks and both ledger adapters also disallow production
+Test Store grants.
+
+Authenticated webhook `TRANSFER` has a separate parser and reuses the same
+subscriber client as Restore. It admits mutations only for existing active
+owners, loads all participating subscriber snapshots before writing, then
+reconciles each via `applyRevenueCatEvent`. No entitlement is inferred from a
+destination ID. Sources retain independently verified purchases; sources with
+no eligible access lose only their matching RevenueCat subscription. Unknown
+and deleting owners are skipped, without `ensure`. Provider failures and
+snapshots older than the transfer remain retryable, while eligible unmapped
+access is treated as configuration drift. Snapshot observation timestamps and
+namespaced event IDs use the existing durable per-user cursor and active-owner
+transaction fence. Cross-user application is not atomic; retries repair partial
+delivery without overriding newer state. See
+`docs/superpowers/plans/2026-10-23-billing-security-batch1.md` for rollout limits.
+
 The 49 THB post/caption add-on is a distinct consumable, never a perpetual
 Starter/Pro entitlement. Its server-owned grant is 100 post units plus 50 caption
 generations, usable only with an effective paid tier. Purchased credits never

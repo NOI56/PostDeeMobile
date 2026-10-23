@@ -27,7 +27,7 @@ export const readPrismaMonthlyAddonCredits = async (transaction: PrismaMonthlyAd
 };
 export const createPrismaMonthlyAddonRepository = ({ prisma }: { prisma: PrismaMonthlyAddonClient }): MonthlyAddonStore => {
   const apply = async (input: MonthlyAddonPurchase, revoke: boolean) => {
-    if (!revoke && !allowMonthlyAddonStore(input.store)) throw new MonthlyAddonUnsupportedStoreError();
+    if (!revoke && !allowMonthlyAddonStore(input.store, input.environment)) throw new MonthlyAddonUnsupportedStoreError();
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         return await runActiveOwnerTransaction(prisma, input.userId, async transaction => {

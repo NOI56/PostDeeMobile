@@ -11,11 +11,15 @@ import type { UserStore } from '../users/userStore.js';
 import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 import { MonthlyAddonPurchaseConflictError, allowMonthlyAddonStore, type MonthlyAddonStore } from './monthlyAddonStore.js';
 import { normalizeRevenueCatAddonStore } from './revenueCatAddonPurchaseClient.js';
+import { isRevenueCatSubscriptionStoreAllowed } from './revenueCatSubscriptionPolicy.js';
+import type { RevenueCatSubscriberClient } from './revenueCatSubscriberClient.js';
+import { handleRevenueCatTransfer } from './revenueCatTransfer.js';
 
 type RevenueCatWebhookConfig = Pick<
   ServerConfig,
   | 'billingProvider'
   | 'revenueCatWebhookAuthToken'
+  | 'revenueCatSubscriptionEnvironment'
   | 'revenueCatStarterEntitlementId'
   | 'revenueCatProEntitlementId'
   | 'revenueCatStarterProductId'
@@ -33,6 +37,8 @@ type RevenueCatEvent = {
   entitlementIds: string[];
   eventTimestampMs?: number;
   expirationAtMs?: number | null;
+  environment?: string;
+  store?: string;
 };
 
 const activeEventTypes = new Set([
@@ -110,6 +116,8 @@ const readRevenueCatEvent = (body: unknown): RevenueCatEvent | undefined => {
     eventId: readString(event.id),
     productId: readString(event.product_id),
     entitlementIds: readStringList(event.entitlement_ids),
+    environment: readString(event.environment),
+    store: readString(event.store)?.toUpperCase(),
     eventTimestampMs,
     expirationAtMs:
       event.expiration_at_ms === null
@@ -163,7 +171,8 @@ export const registerRevenueCatWebhookRoutes = ({
   userStore,
   subscriptionStore,
   ownerMutationLock = createOwnerMutationLock(),
-  monthlyAddonStore
+  monthlyAddonStore,
+  subscriberClient
 }: {
   router: Router;
   config: RevenueCatWebhookConfig;
@@ -171,6 +180,7 @@ export const registerRevenueCatWebhookRoutes = ({
   subscriptionStore: SubscriptionStore;
   ownerMutationLock?: OwnerMutationCoordinator;
   monthlyAddonStore?: MonthlyAddonStore;
+  subscriberClient?: RevenueCatSubscriberClient;
 }) => {
   if (config.billingProvider !== 'revenuecat') {
     return;
@@ -188,6 +198,12 @@ export const registerRevenueCatWebhookRoutes = ({
 
     if (readAuthorizationToken(request) !== config.revenueCatWebhookAuthToken) {
       sendUnauthorized(response);
+      return;
+    }
+
+    if (isRecord(request.body) && isRecord(request.body.event) && request.body.event.type === 'TRANSFER') {
+      await handleRevenueCatTransfer({ event: request.body.event, response, config, subscriberClient,
+        userStore, subscriptionStore, ownerMutationLock });
       return;
     }
 
@@ -217,7 +233,7 @@ export const registerRevenueCatWebhookRoutes = ({
       if (raw.environment !== config.revenueCatAddonEnvironment) {
         response.status(202).json({ status: 'ok', ignored: true, code: 'REVENUECAT_ADDON_ENVIRONMENT_MISMATCH' }); return;
       }
-      if (isPurchase && !allowMonthlyAddonStore(store)) {
+      if (isPurchase && !allowMonthlyAddonStore(store, String(raw.environment))) {
         response.status(202).json({ status: 'ok', ignored: true, code: 'ADDON_STORE_UNSUPPORTED' }); return;
       }
       const release = await ownerMutationLock.acquireMutation(event.appUserId);
@@ -269,6 +285,19 @@ export const registerRevenueCatWebhookRoutes = ({
         ignored: true,
         code: 'REVENUECAT_EVENT_NOT_ACTIONABLE',
         message: 'RevenueCat event does not change PostDee entitlements'
+      });
+      return;
+    }
+
+    if (event.environment !== config.revenueCatSubscriptionEnvironment) {
+      response.status(202).json({
+        status: 'ok', ignored: true, code: 'REVENUECAT_SUBSCRIPTION_ENVIRONMENT_MISMATCH'
+      });
+      return;
+    }
+    if (!isRevenueCatSubscriptionStoreAllowed(event.store, config.revenueCatSubscriptionEnvironment)) {
+      response.status(202).json({
+        status: 'ok', ignored: true, code: 'REVENUECAT_SUBSCRIPTION_STORE_UNSUPPORTED'
       });
       return;
     }

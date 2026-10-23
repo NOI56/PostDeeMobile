@@ -645,8 +645,23 @@ provider flags หรือ credentials
 - `FIREBASE_PROJECT_ID`: ใช้ Firebase project สำหรับ Staging เท่านั้น
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN`: ใช้ RevenueCat Test Store/webhook ของ Staging
 - `REVENUECAT_REST_API_V1_KEY`: server-only key สำหรับอ่าน subscriber ตอนผู้ใช้
-  กด Restore; ห้ามใช้ mobile SDK key แทนและห้ามใส่ใน Flutter
+  กด Restore และตรวจ TRANSFER; ห้ามใช้ mobile SDK key แทนและห้ามใส่ใน Flutter
 - `GEMINI_API_KEY` และ `ELEVENLABS_API_KEY`: ควรใช้ key จำกัดโควตาสำหรับ Staging
+
+### Billing environment isolation (Batch 1 source change)
+
+Before an authorized API rollout, set
+`REVENUECAT_SUBSCRIPTION_ENVIRONMENT=SANDBOX` for isolated Staging and
+`PRODUCTION` for production. The respective Blueprints now declare these
+values; this source change does not modify the live dashboard. The separate
+`REVENUECAT_ADDON_ENVIRONMENT` must also match the intended purchases.
+Production rejects Test Store and unproven subscription purchase metadata.
+TRANSFER requires the server REST v1 key to reconcile existing users from
+subscriber readback. Verify source revocation, destination activation and
+provider-failure retries in Staging before any production release. No schema
+or mobile update is required. See
+`docs/superpowers/plans/2026-10-23-billing-security-batch1.md` for owner actions
+and historical-grant limits.
 
 ## สถานะ AI transcription ที่ถือเป็นข้อมูลจริง
 

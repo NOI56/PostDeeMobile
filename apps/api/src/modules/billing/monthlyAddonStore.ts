@@ -4,7 +4,9 @@ import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 export const monthlyAddonPostUnits = 100;
 export const monthlyAddonAiCaptions = 50;
 // Purchased credits never expire and use the same policy on both app stores.
-export const allowMonthlyAddonStore = (store: string) => ['PLAY_STORE', 'APP_STORE', 'TEST_STORE'].includes(store);
+export const allowMonthlyAddonStore = (store: string, environment = 'PRODUCTION') =>
+  (environment === 'PRODUCTION' || environment === 'SANDBOX') &&
+  (store === 'PLAY_STORE' || store === 'APP_STORE' || (environment === 'SANDBOX' && store === 'TEST_STORE'));
 export class MonthlyAddonUnsupportedStoreError extends Error {
   constructor() { super('Add-on credits are not supported by this store.'); }
 }
@@ -39,7 +41,7 @@ export const createInMemoryMonthlyAddonStore = ({ runWithActiveOwner = async (_i
   { runWithActiveOwner?: RunWithActiveOwner } = {}): MonthlyAddonStore => {
   const purchases = new Map<string, MonthlyAddonPurchase & { ownerHash: string; revoked: boolean }>();
   const apply = (input: MonthlyAddonPurchase, revoke: boolean) => runWithActiveOwner(input.userId, async () => {
-    if (!revoke && !allowMonthlyAddonStore(input.store)) throw new MonthlyAddonUnsupportedStoreError();
+    if (!revoke && !allowMonthlyAddonStore(input.store, input.environment)) throw new MonthlyAddonUnsupportedStoreError();
     const key = monthlyAddonPurchaseKey(input);
     const existing = purchases.get(key);
     if (existing && (existing.ownerHash !== monthlyAddonOwnerHash(input.userId) || existing.productId !== input.productId)) {

@@ -14,6 +14,14 @@ const fixture = () => {
   return { tx, $transaction, store: createPrismaMonthlyAddonRepository({ prisma }) };
 };
 describe('Prisma monthly add-on ledger', () => {
+  it('keeps isolated sandbox Test Store grants and production Test Store refund tombstones', async () => {
+    const { store, tx } = fixture();
+    const sandbox = { ...input, store: 'TEST_STORE', environment: 'SANDBOX' };
+    await expect(store.applyPurchase(sandbox)).resolves.toMatchObject({ applied: true });
+    expect(tx.monthlyAddonPurchase.create).toHaveBeenCalledWith({ data: expect.objectContaining({ store: 'TEST_STORE', environment: 'SANDBOX', revoked: false }) });
+    await store.revokePurchase({ ...sandbox, environment: 'PRODUCTION' });
+    expect(tx.monthlyAddonPurchase.create).toHaveBeenLastCalledWith({ data: expect.objectContaining({ store: 'TEST_STORE', environment: 'PRODUCTION', revoked: true }) });
+  });
   it('retries an exhausted inner serialization race at the bounded purchase-ledger boundary', async () => {
     const { store, tx, $transaction } = fixture();
     for (let attempt = 0; attempt < 6; attempt += 1) $transaction.mockRejectedValueOnce({ code: 'P2034' });

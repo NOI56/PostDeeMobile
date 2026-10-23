@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { readServerConfig } from './env.js';
 
 describe('readServerConfig', () => {
+  it('isolates paid subscriptions in production by default and requires an explicit sandbox setting', () => {
+    expect(readServerConfig({}).revenueCatSubscriptionEnvironment).toBe('PRODUCTION');
+    expect(readServerConfig({ REVENUECAT_SUBSCRIPTION_ENVIRONMENT: 'SANDBOX' }).revenueCatSubscriptionEnvironment).toBe('SANDBOX');
+    expect(() => readServerConfig({ REVENUECAT_SUBSCRIPTION_ENVIRONMENT: 'both' }))
+      .toThrow('REVENUECAT_SUBSCRIPTION_ENVIRONMENT must be SANDBOX or PRODUCTION');
+  });
   it.each(['REVENUECAT_STARTER_PRODUCT_ID', 'REVENUECAT_PRO_PRODUCT_ID',
     'STORE_STARTER_MONTHLY_PRODUCT_ID', 'STORE_PRO_MONTHLY_PRODUCT_ID'])('rejects add-on SKU collision with %s even while disabled', key => {
     expect(() => readServerConfig({ [key]: 'postdee_post100_caption50' })).toThrow('REVENUECAT_ADDON_PRODUCT_ID must differ from subscription product identifiers');
@@ -47,6 +53,7 @@ describe('readServerConfig', () => {
       billingProvider: 'mock',
       revenueCatWebhookAuthToken: undefined,
       revenueCatRestApiV1Key: undefined,
+      revenueCatSubscriptionEnvironment: 'PRODUCTION',
       billingAddonsEnabled: false,
       revenueCatAddonProductId: 'postdee_post100_caption50',
       revenueCatAddonEnvironment: 'PRODUCTION',

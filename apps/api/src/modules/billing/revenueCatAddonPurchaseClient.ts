@@ -47,16 +47,17 @@ export const createRevenueCatAddonPurchaseClient = ({ apiKey, fetchImpl = fetch,
       if (candidates.length !== 1) throw new RevenueCatAddonAmbiguousSelectorError();
       const row = candidates[0];
       const store = normalizeRevenueCatAddonStore(row.store);
-      if (store && !allowMonthlyAddonStore(store)) return null;
       const date = typeof row.purchase_date === 'string' ? new Date(row.purchase_date) : undefined;
       if (!store || typeof row.is_sandbox !== 'boolean' || !date || !Number.isFinite(date.getTime())) throw new RevenueCatAddonLookupError();
+      const environment = row.is_sandbox ? 'SANDBOX' : 'PRODUCTION';
+      if (!allowMonthlyAddonStore(store, environment)) return null;
       const transactionId = typeof row.store_transaction_id === 'string' && row.store_transaction_id.trim() === row.store_transaction_id &&
         row.store_transaction_id.length > 0 ? row.store_transaction_id : undefined;
       // Customer Info `id` can select an exact RC history row, but only its
       // explicit canonical store id is a grant key. Date/amount similarity
       // cannot prove identity when the two systems observe events out of order.
       return { userId: input.userId, productId: input.productId, ...(transactionId ? { transactionId } : {}), store,
-        environment: row.is_sandbox ? 'SANDBOX' : 'PRODUCTION', purchasedAt: date.toISOString(),
+        environment, purchasedAt: date.toISOString(),
         ...(revenueCatSelector ? { verifiedSelector: input.transactionId } : {}),
         ...(row.refunded_at || row.refund_date ? { revoked: true } : {}) };
     } catch (error) {

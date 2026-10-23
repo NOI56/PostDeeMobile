@@ -3211,8 +3211,10 @@ future purchases cover any resulting deficit before more purchased credits
 become available. Monthly included quota remains usable during that deficit.
 
 Native Android and iPhone use the same policy. Purchase grants accept Play
-Store, App Store and the isolated RevenueCat Test Store, restricted to the
-configured environment. Existing Starter/Pro subscription paths are unchanged.
+Store and App Store, restricted to `REVENUECAT_ADDON_ENVIRONMENT`. RevenueCat
+Test Store is accepted only with `SANDBOX`, including ledger writes and trusted
+purchase confirmation. Starter/Pro separately enforce
+`REVENUECAT_SUBSCRIPTION_ENVIRONMENT`.
 
 Authenticated `GET /billing/addons` returns the catalog and readiness fields:
 `enabled`, `eligible`, `productId`, `postUnits`, `aiCaptions`, `priceThb`,
@@ -3409,6 +3411,8 @@ Example request:
     "app_user_id": "firebase-user-id",
     "product_id": "postdee_pro_monthly",
     "entitlement_ids": ["pro"],
+    "environment": "PRODUCTION",
+    "store": "PLAY_STORE",
     "event_timestamp_ms": 1780444800000,
     "expiration_at_ms": 1780531200000
   }
@@ -3441,6 +3445,28 @@ acknowledged with `ignored: true` and cannot overwrite newer entitlement state.
 without revoking access immediately because the subscription can still be active
 until the paid period actually expires. Unknown product or entitlement ids return
 `202` with `ignored: true`.
+
+Actionable subscription events must match
+`REVENUECAT_SUBSCRIPTION_ENVIRONMENT` (default `PRODUCTION`) and a supported
+store (`APP_STORE` or `PLAY_STORE`; `TEST_STORE` only with `SANDBOX`). Missing
+or mismatched environment/store proof returns 202 with `ignored: true`, without
+changing the subscription or cursor. This also applies to `EXPIRATION`, so a
+sandbox expiration cannot cancel a production plan.
+
+`TRANSFER` uses its own payload shape: `id`, `event_timestamp_ms`, and non-empty
+`transferred_from` / `transferred_to` arrays. It does not require `app_user_id`
+or `product_id`. Environment/store on this payload are optional; trusted
+subscriber readback supplies purchase proof instead. The handler queries each
+distinct existing active PostDee user in both arrays before applying changes.
+An eligible remaining paid entitlement is retained; otherwise only that user's
+matching RevenueCat subscription is canceled. Unknown or deleting users are
+skipped, never created. Each write uses the existing owner mutation barrier
+and atomic per-user cursor with the subscriber observation timestamp.
+There is no cross-user transaction; retry delivery safely reconciles a partial
+application. The destination receives access only when its readback proves it.
+Lookup/configuration failures and snapshots older than the transfer are
+retryable errors and do not fabricate a cancellation. Eligible but unmapped
+entitlements remain a configuration error rather than a reason to revoke.
 
 ### `POST /billing/revenuecat/resync`
 
@@ -3486,11 +3512,16 @@ to the stable signed-in UID. Sign-out/account changes clear it and reject old
 results; app restart requires Restore rather than a locally persisted receipt.
 
 The backend requests the subscriber from RevenueCat API v1 using the server-only
-`REVENUECAT_REST_API_V1_KEY`. It maps active Starter/Pro entitlements or products,
-prefers Pro if both are active, preserves a lifetime entitlement, and respects
+`REVENUECAT_REST_API_V1_KEY`. It first filters purchase provenance from
+`subscriptions[productId].is_sandbox` and `.store` against
+`REVENUECAT_SUBSCRIPTION_ENVIRONMENT`. Missing/invalid proof is ineligible,
+including for lifetime entitlements; production never accepts Test Store.
+It maps eligible active Starter/Pro entitlements or products,
+prefers Pro if both are eligible, preserves a lifetime entitlement, and respects
 entitlement/subscription grace-period expiry. When RevenueCat returns no active
 entitlement, only the matching `revenuecat:<uid>` subscription is deactivated;
-paid access from another provider is left unchanged. An active but unmapped
+paid access from another provider is left unchanged. A result containing only
+ineligible purchases is treated as no eligible paid access. An eligible active but unmapped
 entitlement is treated as configuration drift and never downgrades the user.
 The subscriber response's positive integer `request_date_ms` advances the same
 per-user ordering cursor used by webhooks, in the same serializable transaction
@@ -3784,6 +3815,7 @@ PostgreSQL.
 | `BILLING_PROVIDER` | `mock`, `store`, `revenuecat` | Billing verifier adapter |
 | `REVENUECAT_WEBHOOK_AUTH_TOKEN` | `...` | Bearer token required by the RevenueCat webhook endpoint |
 | `REVENUECAT_REST_API_V1_KEY` | `...` | Server-only secret used to read a subscriber during authenticated restore/resync |
+| `REVENUECAT_SUBSCRIPTION_ENVIRONMENT` | `PRODUCTION` | Starter/Pro purchase environment, `PRODUCTION` or isolated `SANDBOX`; Test Store is never accepted in production |
 | `REVENUECAT_STARTER_ENTITLEMENT_ID` | `starter` | RevenueCat entitlement mapped to Starter |
 | `REVENUECAT_PRO_ENTITLEMENT_ID` | `pro` | RevenueCat entitlement mapped to Pro |
 | `REVENUECAT_STARTER_PRODUCT_ID` | `postdee_starter_monthly` | RevenueCat product mapped to Starter |

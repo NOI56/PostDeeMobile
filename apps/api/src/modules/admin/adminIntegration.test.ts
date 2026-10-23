@@ -52,7 +52,7 @@ describe('trial access across real application routes', () => {
     await trials.mutate(command);
     const app=createApp({config:readServerConfig({NODE_ENV:'test',DATABASE_URL:'postgresql://unused@127.0.0.1:55439/postdee_admin_fixture',
       TRIAL_ACCESS_ENABLED:'true',BILLING_PROVIDER:'revenuecat',REVENUECAT_WEBHOOK_AUTH_TOKEN:'fixture',REVENUECAT_REST_API_V1_KEY:'fixture'}),
-      trialAccessStore:trials,revenueCatSubscriberClient:{loadSubscriber:async()=>({observedAtMs:Date.now(),activeEntitlements:[{id:'starter',productId:'postdee_starter_monthly',expiresAt:'2100-01-01T00:00:00Z'}]})}});
+      trialAccessStore:trials,revenueCatSubscriberClient:{loadSubscriber:async()=>({observedAtMs:Date.now(),activeEntitlements:[{id:'starter',productId:'postdee_starter_monthly',isSandbox:false,store:'PLAY_STORE',expiresAt:'2100-01-01T00:00:00Z'}]})}});
     const result=await request(app).post('/billing/revenuecat/resync').set('x-postdee-user-id',id).send({}).expect(200);
     expect(result.body).toMatchObject({plan:'STARTER',effectivePlan:'PRO',purchasedPlan:'STARTER',subscription:{plan:'STARTER'}});
     const current=await request(app).get('/billing/subscription').set('x-postdee-user-id',id).expect(200);

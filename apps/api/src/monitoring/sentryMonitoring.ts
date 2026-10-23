@@ -98,23 +98,24 @@ export const sanitizeSentryEvent = (event: ErrorEvent): ErrorEvent => ({
   logger: 'postdee',
   tags: safeTags(event.tags),
   exception: {
-    values: (event.exception?.values ?? [{ type: 'Error' }]).slice(0, 3).map((exception) => ({
-      type: exception.type && errorNames.has(exception.type) ? exception.type : 'Error',
-      value: 'PostDee server error',
-      ...(typeof exception.mechanism?.handled === 'boolean'
-        ? { mechanism: { type: 'generic', handled: exception.mechanism.handled } } : {}),
-      ...(exception.stacktrace?.frames ? { stacktrace: {
-        frames: exception.stacktrace.frames.slice(-30).flatMap((frame) => {
-          const filename = safeSourceFile(frame.filename);
-          if (!filename) return [];
-          return [{
-            filename,
-            ...(Number.isInteger(frame.lineno) ? { lineno: frame.lineno } : {}),
-            ...(Number.isInteger(frame.colno) ? { colno: frame.colno } : {})
-          }];
-        })
-      } } : {})
-    }))
+    values: (event.exception?.values ?? [{ type: 'Error' }]).slice(0, 3).map((exception) => {
+      const frames = exception.stacktrace?.frames?.slice(-30).flatMap((frame) => {
+        const filename = safeSourceFile(frame.filename);
+        if (!filename) return [];
+        return [{
+          filename,
+          ...(Number.isInteger(frame.lineno) ? { lineno: frame.lineno } : {}),
+          ...(Number.isInteger(frame.colno) ? { colno: frame.colno } : {})
+        }];
+      });
+      return {
+        type: exception.type && errorNames.has(exception.type) ? exception.type : 'Error',
+        value: 'PostDee server error',
+        ...(typeof exception.mechanism?.handled === 'boolean'
+          ? { mechanism: { type: 'generic', handled: exception.mechanism.handled } } : {}),
+        ...(frames?.length ? { stacktrace: { frames } } : {})
+      };
+    })
   }
 });
 

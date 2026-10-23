@@ -107,6 +107,27 @@ describe('Sentry error monitoring', () => {
     });
   });
 
+  it.each([
+    { label: 'an explicitly empty input', frames: [] },
+    { label: 'only filtered frames', frames: [
+      { filename: 'https://private.test/src/account.ts?token=secret', lineno: 3 },
+      { filename: '/app/src/../private-secret.ts', lineno: 4 },
+      { filename: '[eval1]', lineno: 5 }
+    ] }
+  ])('omits the stacktrace when there are no safe frames from $label', ({ frames }) => {
+    const clean = sanitizeSentryEvent({ type: undefined, exception: { values: [{
+      type: 'TypeError', value: 'private-provider-message',
+      mechanism: { type: 'private-provider', handled: true },
+      stacktrace: { frames }
+    }] } });
+    expect(clean.exception?.values?.[0]).toEqual({
+      type: 'TypeError', value: 'PostDee server error',
+      mechanism: { type: 'generic', handled: true }
+    });
+    expect(clean.exception?.values?.[0]).not.toHaveProperty('stacktrace');
+    expect(JSON.stringify(clean)).not.toMatch(/private|secret|eval1/);
+  });
+
   it('allows only scrubbed error envelopes, stripping SDK trace metadata and attachments at transport', async () => {
     const send = vi.fn(async (_envelope: unknown) => ({ statusCode: 200 }));
     const transport = createErrorOnlySentryTransport({ send, flush: async () => true });

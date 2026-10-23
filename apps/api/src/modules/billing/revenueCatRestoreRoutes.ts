@@ -4,7 +4,6 @@ import type { ServerConfig } from '../../config/env.js';
 import type { OwnerMutationCoordinator } from '../account/ownerMutationLock.js';
 import { readAuthUser } from '../auth/authTypes.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
-import type { PaidSubscriptionPlan } from '../subscriptions/subscriptionStore.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import type { UserStore } from '../users/userStore.js';
 import {
@@ -12,15 +11,13 @@ import {
   type RevenueCatActiveEntitlement,
   type RevenueCatSubscriberClient
 } from './revenueCatSubscriberClient.js';
+import {
+  isRevenueCatSubscriptionEntitlementAllowed,
+  selectRevenueCatPaidEntitlement,
+  type RevenueCatSubscriptionPolicyConfig
+} from './revenueCatSubscriptionPolicy.js';
 
-type RevenueCatRestoreConfig = Pick<
-  ServerConfig,
-  | 'billingProvider'
-  | 'revenueCatStarterEntitlementId'
-  | 'revenueCatProEntitlementId'
-  | 'revenueCatStarterProductId'
-  | 'revenueCatProProductId'
->;
+type RevenueCatRestoreConfig = Pick<ServerConfig, 'billingProvider'> & RevenueCatSubscriptionPolicyConfig;
 
 const revenueCatBillingSubscriptionId = (appUserId: string) =>
   `revenuecat:${appUserId}`;
@@ -35,39 +32,6 @@ const buildRevenueCatResyncEventId = ({
   outcome: string;
 }) =>
   `revenuecat-resync:${encodeURIComponent(appUserId)}:${observedAtMs}:${outcome}`;
-
-const findMappedEntitlement = (
-  entitlements: RevenueCatActiveEntitlement[],
-  entitlementId: string,
-  productId: string
-) =>
-  entitlements.find(
-    (entitlement) =>
-      entitlement.id === entitlementId || entitlement.productId === productId
-  );
-
-const readPaidPlan = (
-  entitlements: RevenueCatActiveEntitlement[],
-  config: RevenueCatRestoreConfig
-): { plan: PaidSubscriptionPlan; entitlement: RevenueCatActiveEntitlement } | undefined => {
-  const pro = findMappedEntitlement(
-    entitlements,
-    config.revenueCatProEntitlementId,
-    config.revenueCatProProductId
-  );
-
-  if (pro) {
-    return { plan: 'PRO', entitlement: pro };
-  }
-
-  const starter = findMappedEntitlement(
-    entitlements,
-    config.revenueCatStarterEntitlementId,
-    config.revenueCatStarterProductId
-  );
-
-  return starter ? { plan: 'STARTER', entitlement: starter } : undefined;
-};
 
 export const registerRevenueCatRestoreRoutes = ({
   router,
@@ -140,10 +104,11 @@ export const registerRevenueCatRestoreRoutes = ({
         }
         await assertOwnerActive?.(authUser.id);
 
-        const paidPlan = readPaidPlan(activeEntitlements, config);
+        const eligibleEntitlements = activeEntitlements.filter(entitlement => isRevenueCatSubscriptionEntitlementAllowed(entitlement, config));
+        const paidPlan = selectRevenueCatPaidEntitlement(eligibleEntitlements, config);
 
         if (!paidPlan) {
-          if (activeEntitlements.length > 0) {
+          if (eligibleEntitlements.length > 0) {
             response.status(409).json({
               status: 'error',
               code: 'REVENUECAT_ENTITLEMENT_NOT_MAPPED',

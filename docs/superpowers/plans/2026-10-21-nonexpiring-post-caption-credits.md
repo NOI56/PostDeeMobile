@@ -1,5 +1,11 @@
 # Non-expiring purchased post/caption credits, 2026-10-21
 
+Security follow-up: Batch 1 on 2026-10-23 also restricts Test Store add-on
+purchase grants to SANDBOX in confirmation, webhooks and both ledger adapters.
+Production accepts App Store/Play Store only. Non-expiry, quantities, monthly
+quota ordering and existing balances are unchanged. See
+`2026-10-23-billing-security-batch1.md` for release and owner checks.
+
 Status: implementation and local verification complete. Native store purchase,
 refund and missing-canonical-ID recovery acceptance remain release gates; new
 sales stay default-off. No hosted database, store product, payment, deployment

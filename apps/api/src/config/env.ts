@@ -51,6 +51,7 @@ export type ServerConfig = {
   billingProvider: BillingProviderKind;
   revenueCatWebhookAuthToken?: string;
   revenueCatRestApiV1Key?: string;
+  revenueCatSubscriptionEnvironment: 'SANDBOX' | 'PRODUCTION';
   billingAddonsEnabled: boolean;
   revenueCatAddonProductId: string;
   revenueCatAddonEnvironment: 'SANDBOX' | 'PRODUCTION';
@@ -540,6 +541,11 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     billingProvider: readBillingProvider(env),
     revenueCatWebhookAuthToken: readOptional(env, 'REVENUECAT_WEBHOOK_AUTH_TOKEN'),
     revenueCatRestApiV1Key: readOptional(env, 'REVENUECAT_REST_API_V1_KEY'),
+    revenueCatSubscriptionEnvironment: (() => {
+      const value = readOptional(env, 'REVENUECAT_SUBSCRIPTION_ENVIRONMENT') ?? 'PRODUCTION';
+      if (value !== 'SANDBOX' && value !== 'PRODUCTION') throw new Error('REVENUECAT_SUBSCRIPTION_ENVIRONMENT must be SANDBOX or PRODUCTION');
+      return value;
+    })(),
     billingAddonsEnabled: readBoolean(env, 'BILLING_ADDONS_ENABLED', false),
     revenueCatAddonProductId: readOptional(env, 'REVENUECAT_ADDON_PRODUCT_ID') ?? 'postdee_post100_caption50',
     revenueCatAddonEnvironment: (() => {

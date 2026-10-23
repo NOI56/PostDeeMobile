@@ -49,6 +49,8 @@ const postRevenueCatWebhook = (app: ReturnType<typeof createRevenueCatApp>, body
     event: {
       id: `test-revenuecat-event-${revenueCatEventSequence}`,
       event_timestamp_ms: 1_784_044_800_000 + revenueCatEventSequence,
+      environment: 'PRODUCTION',
+      store: 'PLAY_STORE',
       ...body.event
     }
   });
@@ -127,7 +129,8 @@ describe('RevenueCat webhooks', () => {
     app.use(router);
     await request(app).post('/billing/revenuecat/webhooks').set('Authorization', `Bearer ${revenueCatToken}`)
       .send({ event: { id: 'event-remote-deleted', event_timestamp_ms: 1, type: 'RENEWAL',
-        app_user_id: 'owner-remote-deleted', entitlement_ids: ['pro'], product_id: 'postdee_pro_monthly' } })
+        app_user_id: 'owner-remote-deleted', entitlement_ids: ['pro'], product_id: 'postdee_pro_monthly',
+        environment: 'PRODUCTION', store: 'PLAY_STORE' } })
       .expect(202).expect(({ body }) => { expect(body.code).toBe('REVENUECAT_USER_NOT_FOUND'); });
     await expect(subscriptionStore.getPlan({ id: 'owner-remote-deleted', provider: 'firebase' })).resolves.toBe('BASIC');
   });

@@ -19,6 +19,7 @@ const setup = (enabled = true) => {
     now: () => new Date('2026-10-21T12:00:00.000Z') });
   const paid = () => request(app).post('/billing/revenuecat/webhooks').set('Authorization', 'Bearer fixture')
     .send({ event: { id: 'paid-plan', type: 'RENEWAL', app_user_id: userId, event_timestamp_ms: 1,
+      environment: 'PRODUCTION', store: 'PLAY_STORE',
       product_id: 'postdee_pro_monthly', expiration_at_ms: new Date('2099-01-01').getTime() } });
   const bootstrap = () => request(app).get('/billing/subscription').set('x-postdee-user-id', userId);
   const confirm = (transactionId = 'store-txn', transactionIdKind?: string) => request(app).post('/billing/addons/confirm')

@@ -10,6 +10,8 @@ export type RevenueCatActiveEntitlement = {
   id: string;
   productId: string;
   expiresAt?: string;
+  isSandbox?: boolean;
+  store?: string;
 };
 
 export type RevenueCatSubscriberSnapshot = {
@@ -145,12 +147,16 @@ export const createRevenueCatSubscriberClient = ({
             throw new RevenueCatSubscriberProviderError();
           }
 
+          const subscription = readRecord(subscriptions[productId]);
+          const isSandbox = typeof subscription?.is_sandbox === 'boolean' ? subscription.is_sandbox : undefined;
+          const store = readRequiredString(subscription?.store)?.toUpperCase();
+          const provenance = { ...(isSandbox !== undefined ? { isSandbox } : {}), ...(store ? { store } : {}) };
+
           if (entitlement.expires_date === null) {
-            activeEntitlements.push({ id, productId });
+            activeEntitlements.push({ id, productId, ...provenance });
             continue;
           }
 
-          const subscription = readRecord(subscriptions[productId]);
           const effectiveAccessEnd = laterTimestamp([
             readOptionalDate(entitlement.expires_date),
             readOptionalDate(entitlement.grace_period_expires_date),
@@ -161,6 +167,7 @@ export const createRevenueCatSubscriberClient = ({
             activeEntitlements.push({
               id,
               productId,
+              ...provenance,
               expiresAt: new Date(effectiveAccessEnd).toISOString()
             });
           }

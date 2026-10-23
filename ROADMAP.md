@@ -1202,6 +1202,16 @@ Current status:
   sessions/objects in PostgreSQL and R2. Full mobile-to-worker real-video and
   slow-network tests still remain.
 - Backend RevenueCat webhook and authenticated subscriber resync paths are
+  hardened in the Batch 1 source change with explicit subscription environment/
+  store validation, production Test Store rejection and TRANSFER reconciliation
+  through existing owner/cursor guards. RevenueCat promotional grants do not
+  unlock paid access; trial access uses the existing audited
+  admin-console trial flow. Promotional-only resync cancellation has explicit
+  regression coverage. This work does not establish live production billing
+  acceptance or deploy changes; owner configuration and staged validation remain
+  required. See
+  `docs/superpowers/plans/2026-10-23-billing-security-batch1.md`.
+- Backend RevenueCat webhook and authenticated subscriber resync paths are
   prepared; mobile `purchases_flutter` purchase/restore is wired behind
   `ENABLE_REVENUECAT_BILLING=true`. Test Store purchase E2E passes on the
   Android Emulator, and true Restore/resync E2E passes after the Staging deploy

@@ -7,6 +7,13 @@ const input = { userId: 'owner/one', productId: 'postdee_post100_caption50', tra
 const payload = (rows: unknown[]) => ({ subscriber: { original_app_user_id: 'owner/one', non_subscriptions: { postdee_post100_caption50: rows } } });
 
 describe('RevenueCat verified add-on lookup', () => {
+  it.each([true, false])('isolates Test Store add-on receipts by verified is_sandbox=%s', async isSandbox => {
+    const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
+      json: async () => payload([{ ...row, store: 'test_store', is_sandbox: isSandbox }]) }) });
+    const purchase = await client.findPurchase(input);
+    if (isSandbox) expect(purchase).toMatchObject({ store: 'TEST_STORE', environment: 'SANDBOX' });
+    else expect(purchase).toBeNull();
+  });
   it('verifies nonexpiring credits from an App Store purchase', async () => {
     const client = createRevenueCatAddonPurchaseClient({ apiKey: 'fixture', fetchImpl: vi.fn().mockResolvedValue({ ok: true,
       json: async () => payload([{ ...row, store: 'app_store' }]) }) });

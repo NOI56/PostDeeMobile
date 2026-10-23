@@ -15,6 +15,11 @@
 
 **Tech Stack:** Express, TypeScript, Vitest, Prisma, Render Blueprint, RevenueCat webhooks.
 
+> **Security follow-up — 2026-10-23:** Batch 1 adds explicit subscription
+> environment/store eligibility and TRANSFER subscriber reconciliation. See
+> `2026-10-23-billing-security-batch1.md` for the current validation and rollout
+> boundaries. Historical provider acceptance below does not verify this change.
+
 > **Status addendum — 2026-07-15:** RevenueCat Test Store purchase E2E now
 > passes on the Android Emulator with a Firebase uid and test price. Restore
 > UI/SDK passed before server reconciliation was added. The code now performs

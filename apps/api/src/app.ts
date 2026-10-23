@@ -784,15 +784,16 @@ export const createApp = (options: AppOptions = {}) => {
       appleSignedNotificationDecoder: options.appleSignedNotificationDecoder
     }
   );
+  const revenueCatSubscriberClient =
+    options.revenueCatSubscriberClient ??
+    createRevenueCatSubscriberClient({
+      apiKey: config.revenueCatRestApiV1Key
+    });
   registerRevenueCatRestoreRoutes({
     router,
     authMiddleware: accountAwareAuthMiddleware,
     config,
-    subscriberClient:
-      options.revenueCatSubscriberClient ??
-      createRevenueCatSubscriberClient({
-        apiKey: config.revenueCatRestApiV1Key
-      }),
+    subscriberClient: revenueCatSubscriberClient,
     userStore,
     subscriptionStore,
     assertOwnerActive,
@@ -801,6 +802,7 @@ export const createApp = (options: AppOptions = {}) => {
   registerRevenueCatWebhookRoutes({
     router,
     config,
+    subscriberClient: revenueCatSubscriberClient,
     userStore,
     subscriptionStore,
     ownerMutationLock,

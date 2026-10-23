@@ -118,6 +118,8 @@ services:
         sync: false
       - key: REVENUECAT_REST_API_V1_KEY
         sync: false
+      - key: REVENUECAT_SUBSCRIPTION_ENVIRONMENT
+        value: PRODUCTION
       - key: GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN
         sync: false
       - key: REVENUECAT_STARTER_ENTITLEMENT_ID

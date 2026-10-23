@@ -1876,6 +1876,8 @@ Request shape:
     "app_user_id": "firebase-user-id",
     "product_id": "postdee_pro_monthly",
     "entitlement_ids": ["pro"],
+    "environment": "PRODUCTION",
+    "store": "PLAY_STORE",
     "event_timestamp_ms": 1780444800000,
     "expiration_at_ms": 1780531200000
   }
@@ -1888,6 +1890,25 @@ are acknowledged without revoking access immediately because the subscription
 can still be active until the paid period actually expires. Actionable events
 require `id` and `event_timestamp_ms`; the per-user cursor and subscription
 change are atomic, so retries and older events cannot overwrite newer state.
+
+Subscription webhooks and subscriber resync enforce
+`REVENUECAT_SUBSCRIPTION_ENVIRONMENT` (`PRODUCTION` by default). Production
+accepts only verified App Store/Play Store purchases. Sandbox and Test Store
+access requires an isolated server configured as `SANDBOX`; missing purchase
+provenance cannot grant paid access. Mismatched subscription lifecycle webhooks
+are acknowledged with HTTP 202 without changing access or the ordering cursor.
+
+RevenueCat promotional grants do not unlock paid access. A fresh resync with
+only promotional entitlements lacking verified purchase provenance cancels the
+matching RevenueCat subscription. Use PostDee's audited admin-console trial
+flow instead; an independent valid admin trial remains available.
+
+`TRANSFER` re-reads both source and destination subscribers for existing active
+PostDee users, then reconciles each through the same durable per-user cursor.
+It does not grant from the transfer payload alone or create unknown users.
+Provider errors or snapshots older than the transfer return a retryable error
+without guessing a cancellation. See the
+[Batch 1 rollout and validation plan](docs/superpowers/plans/2026-10-23-billing-security-batch1.md).
 
 #### `POST /billing/revenuecat/resync`
 
@@ -2492,7 +2513,12 @@ Queue/storage scaffold switches:
 - `BILLING_PROVIDER=mock` keeps the local billing scaffold; `BILLING_PROVIDER=store` keeps the legacy direct Apple/Google verifier; `BILLING_PROVIDER=revenuecat` receives RevenueCat webhooks and is the production billing path.
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN` is required when `BILLING_PROVIDER=revenuecat` in production.
 - `REVENUECAT_REST_API_V1_KEY` is a server-only RevenueCat secret used by the
-  authenticated restore/resync route. Never put it in Flutter or commit it.
+  authenticated restore/resync route and TRANSFER reconciliation. Never put it in Flutter or commit it.
+- `REVENUECAT_SUBSCRIPTION_ENVIRONMENT=PRODUCTION|SANDBOX` isolates Starter/Pro
+  purchases. The production Blueprint pins `PRODUCTION`; Staging pins `SANDBOX`.
+  Configure the environment before rolling out the API. No mobile or schema
+  migration is required. `REVENUECAT_ADDON_ENVIRONMENT` remains independent;
+  `TEST_STORE` is accepted only when that purchase environment is `SANDBOX`.
 - `REVENUECAT_STARTER_ENTITLEMENT_ID` and `REVENUECAT_PRO_ENTITLEMENT_ID` map RevenueCat entitlements to PostDee plans.
 - `REVENUECAT_STARTER_PRODUCT_ID` and `REVENUECAT_PRO_PRODUCT_ID` map RevenueCat products to PostDee plans when entitlement ids are not present in the webhook.
 - `GOOGLE_PLAY_PACKAGE_NAME` is the Android package name registered in Google Play Console.

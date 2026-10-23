@@ -17,6 +17,8 @@ const createRevenueCatConfig = (restApiKey = 'rc-secret-key') =>
     REVENUECAT_PRO_PRODUCT_ID: 'postdee_pro_monthly'
   });
 
+const productionPro = { id: 'pro', productId: 'postdee_pro_monthly', isSandbox: false, store: 'PLAY_STORE' };
+
 describe('RevenueCat subscription resync', () => {
   it('does not ensure or reconcile a user when deletion seals the owner during subscriber lookup', async () => {
     const ownerMutationLock = createOwnerMutationLock();
@@ -39,7 +41,7 @@ describe('RevenueCat subscription resync', () => {
           return {
             observedAtMs: 1_784_044_899_001,
             activeEntitlements: [
-              { id: 'pro', productId: 'postdee_pro_monthly' }
+              productionPro
             ]
           };
         })
@@ -82,7 +84,7 @@ describe('RevenueCat subscription resync', () => {
           return {
             observedAtMs: 1_784_044_899_002,
             activeEntitlements: [
-              { id: 'pro', productId: 'postdee_pro_monthly' }
+              productionPro
             ]
           };
         })
@@ -118,6 +120,8 @@ describe('RevenueCat subscription resync', () => {
         {
           id: 'pro',
           productId: 'postdee_pro_monthly',
+          isSandbox: false,
+          store: 'PLAY_STORE',
           expiresAt: '2100-01-01T00:00:00.000Z'
         }
       ]
@@ -158,8 +162,8 @@ describe('RevenueCat subscription resync', () => {
       loadSubscriber: vi.fn().mockResolvedValue({
         observedAtMs: 1_784_044_800_002,
         activeEntitlements: [
-          { id: 'starter', productId: 'postdee_starter_monthly' },
-          { id: 'pro', productId: 'postdee_pro_monthly' }
+          { id: 'starter', productId: 'postdee_starter_monthly', isSandbox: false, store: 'PLAY_STORE' },
+          productionPro
         ]
       })
     };
@@ -182,7 +186,7 @@ describe('RevenueCat subscription resync', () => {
       .fn()
       .mockResolvedValueOnce({
         observedAtMs: 1_784_044_800_003,
-        activeEntitlements: [{ id: 'pro', productId: 'postdee_pro_monthly' }]
+        activeEntitlements: [productionPro]
       })
       .mockResolvedValueOnce({
         observedAtMs: 1_784_044_800_004,
@@ -238,6 +242,7 @@ describe('RevenueCat subscription resync', () => {
       .send({
         event: {
           id: 'newer-renewal',
+          environment: 'PRODUCTION', store: 'PLAY_STORE',
           type: 'RENEWAL',
           app_user_id: userId,
           entitlement_ids: ['pro'],
@@ -277,7 +282,7 @@ describe('RevenueCat subscription resync', () => {
         loadSubscriber: vi.fn().mockResolvedValue({
           observedAtMs: 1_784_044_800_500,
           activeEntitlements: [
-            { id: 'pro', productId: 'postdee_pro_monthly' }
+            productionPro
           ]
         })
       }
@@ -293,6 +298,7 @@ describe('RevenueCat subscription resync', () => {
       .send({
         event: {
           id: 'initial-paid-state',
+          environment: 'PRODUCTION', store: 'PLAY_STORE',
           type: 'INITIAL_PURCHASE',
           app_user_id: userId,
           entitlement_ids: ['pro'],
@@ -307,6 +313,7 @@ describe('RevenueCat subscription resync', () => {
       .send({
         event: {
           id: 'newer-expiration',
+          environment: 'PRODUCTION', store: 'PLAY_STORE',
           type: 'EXPIRATION',
           app_user_id: userId,
           entitlement_ids: ['pro'],
@@ -345,7 +352,7 @@ describe('RevenueCat subscription resync', () => {
         loadSubscriber: vi.fn().mockResolvedValue({
           observedAtMs,
           activeEntitlements: [
-            { id: 'pro', productId: 'postdee_pro_monthly' }
+            productionPro
           ]
         })
       }
@@ -371,6 +378,7 @@ describe('RevenueCat subscription resync', () => {
         .send({
           event: {
             id: eventId,
+            environment: 'PRODUCTION', store: 'PLAY_STORE',
             type: 'EXPIRATION',
             app_user_id: userId,
             entitlement_ids: ['pro'],
@@ -424,6 +432,7 @@ describe('RevenueCat subscription resync', () => {
       .send({
         event: {
           id: 'event-google-play-expired-revenuecat',
+          environment: 'PRODUCTION', store: 'PLAY_STORE',
           type: 'INITIAL_PURCHASE',
           app_user_id: 'seller-google-play',
           entitlement_ids: ['pro'],
@@ -473,11 +482,11 @@ describe('RevenueCat subscription resync', () => {
       .fn()
       .mockResolvedValueOnce({
         observedAtMs: 1_784_044_800_006,
-        activeEntitlements: [{ id: 'pro', productId: 'postdee_pro_monthly' }]
+        activeEntitlements: [productionPro]
       })
       .mockResolvedValueOnce({
         observedAtMs: 1_784_044_800_007,
-        activeEntitlements: [{ id: 'renamed-pro', productId: 'renamed-product' }]
+        activeEntitlements: [{ id: 'renamed-pro', productId: 'renamed-product', isSandbox: false, store: 'PLAY_STORE' }]
       });
     const app = createApp({
       config: createRevenueCatConfig(),
@@ -508,7 +517,7 @@ describe('RevenueCat subscription resync', () => {
       .fn()
       .mockResolvedValueOnce({
         observedAtMs: 1_784_044_800_008,
-        activeEntitlements: [{ id: 'pro', productId: 'postdee_pro_monthly' }]
+        activeEntitlements: [productionPro]
       })
       .mockRejectedValueOnce(new Error('upstream secret detail'));
     const app = createApp({

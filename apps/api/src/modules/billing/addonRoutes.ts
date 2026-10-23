@@ -75,7 +75,7 @@ export const registerAddonRoutes = ({ router, authMiddleware, config, userStore,
       response.status(202).json({ status: 'ok', confirmed: false, transactionId, transactionIdKind, ...addonCreditPolicy }); return;
     }
     if (!purchase) { response.status(202).json({ status: 'ok', confirmed: false, transactionId, transactionIdKind, ...addonCreditPolicy }); return; }
-    if (!allowMonthlyAddonStore(purchase.store) && !purchase.revoked) {
+    if (!allowMonthlyAddonStore(purchase.store, purchase.environment) && !purchase.revoked) {
       response.status(403).json({ status: 'error', code: 'ADDON_STORE_UNSUPPORTED', message: 'Add-on purchases are not supported by this store.' }); return;
     }
     const verifiedSelector = transactionIdKind === 'REVENUECAT' ? purchase.verifiedSelector : purchase.transactionId;

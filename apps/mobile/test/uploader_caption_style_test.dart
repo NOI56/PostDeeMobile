@@ -199,6 +199,32 @@ Future<void> _openStyle(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openAdvancedStyle(WidgetTester tester, _Fixture fixture) async {
+  await tester.binding.setSurfaceSize(const Size(430, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(fixture.app());
+  await tester.pumpAndSettle();
+  await goToUploaderStep(tester, 1);
+  await _enableAdvancedCaptions(tester);
+  await _openStyle(tester);
+}
+
+Future<void> _enableAdvancedCaptions(WidgetTester tester) async {
+  final mode = find.byKey(const ValueKey('uploader-platform-captions-toggle'));
+  await _show(tester, mode);
+  await tester.tap(mode);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapStyleAction(WidgetTester tester, Finder action) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(action);
+  await tester.pumpAndSettle();
+  await tester.tap(action);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -503,6 +529,117 @@ void main() {
     expect(find.byKey(_styleSheet), findsNothing);
     expect(fixture.store.saves.single.profile.style.tone,
         CaptionWritingTone.friendly);
+  });
+
+  testWidgets(
+      'failed advanced style save retains staged guidance but cancel preserves the committed guidance',
+      (tester) async {
+    final fixture = _Fixture();
+    final guidance = find.byKey(const ValueKey('uploader-ai-guidance-field'));
+    final save = find.byKey(const ValueKey('uploader-ai-style-save'));
+    await _openAdvancedStyle(tester, fixture);
+    await tester.enterText(guidance, 'คำแนะนำที่บันทึกไว้');
+    await _tapStyleAction(tester, save);
+    expect(find.byKey(_styleSheet), findsNothing);
+    expect(fixture.store.saves, hasLength(1));
+
+    fixture.store.onSave = (_, __) async => throw StateError('Local write failed');
+    await _openStyle(tester);
+    await tester.enterText(guidance, 'คำแนะนำใหม่ที่ยังบันทึกไม่สำเร็จ');
+    await _tapStyleAction(tester, save);
+    expect(find.byKey(_styleSheet), findsOneWidget);
+    expect(find.text('บันทึกสไตล์ไม่สำเร็จ กรุณาลองใหม่'), findsOneWidget);
+    expect(tester.widget<TextField>(guidance).controller!.text,
+        'คำแนะนำใหม่ที่ยังบันทึกไม่สำเร็จ');
+    expect(fixture.store.saves, hasLength(1));
+
+    await _tapStyleAction(tester, find.text('ยกเลิก'));
+    await _openStyle(tester);
+    expect(tester.widget<TextField>(guidance).controller!.text,
+        'คำแนะนำที่บันทึกไว้');
+    expect(fixture.requests, isEmpty);
+    expect(fixture.uploads, 0);
+    await _tapStyleAction(tester, find.text('ยกเลิก'));
+  });
+
+  testWidgets(
+      'late advanced style save cannot commit guidance or dismiss a new owner sheet',
+      (tester) async {
+    final fixture = _Fixture();
+    fixture.store.profiles['owner-b'] = const CaptionWritingStyleProfile(
+        style: CaptionWritingStyle(tone: CaptionWritingTone.directReview));
+    final saveGate = Completer<void>();
+    fixture.store.onSave = (_, __) => saveGate.future;
+    final guidance = find.byKey(const ValueKey('uploader-ai-guidance-field'));
+    final save = find.byKey(const ValueKey('uploader-ai-style-save'));
+    await _openAdvancedStyle(tester, fixture);
+    await tester.enterText(guidance, 'คำแนะนำของ A ที่ยังรอบันทึก');
+    await tester.tap(
+        find.byKey(const ValueKey('uploader-ai-style-tone-playful')));
+    await _tapStyleAction(tester, save);
+    expect(tester.widget<TextField>(guidance).readOnly, isTrue);
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    expect(fixture.store.saves, isEmpty);
+
+    final sessions = PostDeeAuthSessionStore.instance;
+    sessions.signIn(
+        AuthSession.authenticated(userId: 'owner-b', idToken: 'token-b'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(_styleSheet), findsNothing);
+    // The injected draft store retains this form across owner changes; style
+    // ownership still changes, so the stale save must not write into its text.
+    await _openStyle(tester);
+    expect(tester.widget<TextField>(guidance).controller!.text, isEmpty);
+
+    saveGate.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(_styleSheet), findsOneWidget,
+        reason: 'An old owner save must not close the new owner modal');
+    expect(tester.widget<TextField>(guidance).controller!.text, isEmpty);
+    expect(
+        tester.widget<ChoiceChip>(find.byKey(
+            const ValueKey('uploader-ai-style-tone-direct_review'))).selected,
+        isTrue);
+    expect(fixture.store.saves.single.owner, 'owner-a');
+    await _tapStyleAction(tester, find.text('ยกเลิก'));
+
+    sessions.signIn(
+        AuthSession.authenticated(userId: 'owner-a', idToken: 'token-a-new'));
+    await tester.pumpAndSettle();
+    await _openStyle(tester);
+    expect(tester.widget<TextField>(guidance).controller!.text, isEmpty);
+    expect(fixture.requests, isEmpty);
+    expect(fixture.uploads, 0);
+    expect(tester.takeException(), isNull);
+    await _tapStyleAction(tester, find.text('ยกเลิก'));
+  });
+
+  testWidgets(
+      'clearing advanced style examples does not commit staged guidance',
+      (tester) async {
+    final fixture = _Fixture();
+    fixture.store.profiles['owner-a'] = const CaptionWritingStyleProfile(
+        style: CaptionWritingStyle(examples: ['ตัวอย่างส่วนตัว']));
+    final guidance = find.byKey(const ValueKey('uploader-ai-guidance-field'));
+    final save = find.byKey(const ValueKey('uploader-ai-style-save'));
+    await _openAdvancedStyle(tester, fixture);
+    await tester.enterText(guidance, 'คำแนะนำที่บันทึกไว้');
+    await _tapStyleAction(tester, save);
+    await _openStyle(tester);
+    await tester.enterText(guidance, 'คำแนะนำชั่วคราวระหว่างลบตัวอย่าง');
+    await _tapStyleAction(tester,
+        find.byKey(const ValueKey('uploader-ai-style-clear')));
+    expect(find.byKey(_styleSheet), findsOneWidget);
+    expect(fixture.store.saves.last.profile.style.examples, isEmpty);
+    expect(tester.widget<TextField>(guidance).controller!.text,
+        'คำแนะนำชั่วคราวระหว่างลบตัวอย่าง');
+    await _tapStyleAction(tester, find.text('ยกเลิก'));
+    await _openStyle(tester);
+    expect(tester.widget<TextField>(guidance).controller!.text,
+        'คำแนะนำที่บันทึกไว้');
+    expect(fixture.requests, isEmpty);
+    expect(fixture.uploads, 0);
+    await _tapStyleAction(tester, find.text('ยกเลิก'));
   });
 
   testWidgets('late confirmed learning reloads memory for the replacement clip',

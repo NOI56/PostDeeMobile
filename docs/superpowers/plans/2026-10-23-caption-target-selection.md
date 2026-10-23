@@ -1,5 +1,12 @@
 # Choose AI caption channels — 2026-10-23
 
+The original selection UI and its release evidence are recorded below. A later
+approved presentation follow-up replaces the chip/actions layout with a compact
+two-by-two grid and moves style/guidance behind a style action, while retaining
+this selection and quota contract. Its new implementation and pending delivery
+are tracked separately in the
+[compact AI panel plan](2026-10-23-caption-ai-compact-panel.md).
+
 ## Request and baseline
 
 The user wants advanced caption mode to generate only the channels they choose,

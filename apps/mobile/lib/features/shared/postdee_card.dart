@@ -52,12 +52,14 @@ class PostDeeGradientButton extends StatelessWidget {
     super.key,
     this.icon,
     this.height = 44,
+    this.labelMaxLines = 1,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
-  final double height;
+  final double? height;
+  final int? labelMaxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -81,26 +83,32 @@ class PostDeeGradientButton extends StatelessWidget {
               ]
             : const [],
       ),
-      child: SizedBox(
-        height: height,
-        child: TextButton.icon(
-          onPressed: onPressed,
-          icon: icon == null
-              ? const SizedBox.shrink()
-              : Icon(icon, color: Colors.white, size: 18),
-          label: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: height ?? 48),
+        child: SizedBox(
+          height: height,
+          child: TextButton.icon(
+            onPressed: onPressed,
+            icon: icon == null
+                ? const SizedBox.shrink()
+                : Icon(icon, color: Colors.white, size: 18),
+            label: Text(
+              label,
+              maxLines: labelMaxLines,
+              overflow: labelMaxLines == null
+                  ? TextOverflow.clip
+                  : TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+              ),
             ),
           ),
         ),

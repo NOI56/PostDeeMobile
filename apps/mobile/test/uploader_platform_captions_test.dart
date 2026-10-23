@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
@@ -188,15 +189,25 @@ Future<void> _selectTargets(WidgetTester tester, List<String> platforms) async {
   }
 }
 
+Future<void> _openAdvancedStyle(WidgetTester tester) async {
+  final style = find.byKey(const ValueKey('uploader-ai-style-button'));
+  await _show(tester, style);
+  await tester.tap(style);
+  await tester.pumpAndSettle();
+  expect(find.byKey(const ValueKey('uploader-ai-style-sheet')), findsOneWidget);
+}
+
 Future<void> _generate(WidgetTester tester,
     {bool pending = false, bool selectAll = true}) async {
   FocusManager.instance.primaryFocus?.unfocus();
   await tester.pumpAndSettle();
   if (selectAll) {
-    final all = find.byKey(const ValueKey('ai-caption-select-all'));
-    await _show(tester, all);
-    await tester.tap(all);
-    await tester.pumpAndSettle();
+    for (final platform in _platforms) {
+      final target = find.byKey(ValueKey('ai-caption-target-$platform'));
+      if (!tester.widget<FilterChip>(target).selected) {
+        await _selectTargets(tester, [platform]);
+      }
+    }
   }
   final button = find.byKey(const ValueKey('uploader-ai-generate-button'));
   await _show(tester, button);
@@ -241,6 +252,79 @@ void main() {
       expect(_text(tester, _field(platform)), 'เขียนเอง $platform');
     }
     expect(fixture.requests, isEmpty);
+  });
+
+  testWidgets('advanced AI panel keeps choices compact and cost in the action',
+      (tester) async {
+    await _start(tester, _Fixture());
+    await _toggle(tester);
+    final panel = find.byKey(const ValueKey('uploader-ai-caption-panel'));
+    Finder inside(Finder target) =>
+        find.descendant(of: panel, matching: target);
+    expect(inside(find.text('ให้ AI ช่วยเขียน')), findsOneWidget);
+    expect(inside(find.text('เลือกช่องทางที่ต้องการ')), findsOneWidget);
+    expect(inside(find.text('สไตล์')), findsOneWidget);
+    expect(inside(find.text('Starter/Pro')), findsNothing);
+    expect(inside(find.byKey(const ValueKey('uploader-ai-style-summary'))),
+        findsNothing);
+    expect(find.byKey(const ValueKey('uploader-ai-open-panel')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('uploader-ai-guidance-field')), findsNothing);
+    final button = find.byKey(const ValueKey('uploader-ai-generate-button'));
+    expect(tester.widget<PostDeeGradientButton>(button).label,
+        'สร้างแคปชั่น · 1 เครดิต');
+    expect(tester.widget<PostDeeGradientButton>(button).onPressed, isNull);
+    await _selectTargets(tester, ['TIKTOK']);
+    expect(tester.widget<PostDeeGradientButton>(button).label,
+        'สร้างแคปชั่น · 1 เครดิต');
+    expect(tester.widget<PostDeeGradientButton>(button).onPressed, isNotNull);
+  });
+
+  testWidgets('advanced style sheet saves guidance without spending AI credit',
+      (tester) async {
+    final fixture = _Fixture();
+    await _start(tester, fixture);
+    await _toggle(tester);
+    await _openAdvancedStyle(tester);
+    final guidance = find.byKey(const ValueKey('uploader-ai-guidance-field'));
+    await tester.enterText(guidance, 'ขอข้อความสั้นสำหรับลูกค้าใหม่');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final save = find.byKey(const ValueKey('uploader-ai-style-save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-ai-style-sheet')), findsNothing);
+    expect(fixture.requests, isEmpty);
+    expect(fixture.uploadCount, 0);
+    await _openAdvancedStyle(tester);
+    expect(_text(tester, guidance), 'ขอข้อความสั้นสำหรับลูกค้าใหม่');
+    await tester.enterText(guidance, 'ไม่บันทึกข้อความนี้');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('ยกเลิก'));
+    await tester.tap(find.text('ยกเลิก'));
+    await tester.pumpAndSettle();
+    await _selectTargets(tester, ['YOUTUBE_SHORTS']);
+    await _generate(tester, selectAll: false);
+    expect(fixture.requests.single.guidance, 'ขอข้อความสั้นสำหรับลูกค้าใหม่');
+    expect(fixture.requests.single.toJson()['platforms'], ['YOUTUBE_SHORTS']);
+  });
+
+  testWidgets('owner change dismisses advanced style and discards guidance',
+      (tester) async {
+    final fixture = _Fixture();
+    await _start(tester, fixture);
+    await _toggle(tester);
+    await _openAdvancedStyle(tester);
+    await tester.enterText(
+        find.byKey(const ValueKey('uploader-ai-guidance-field')), 'ของบัญชี A');
+    PostDeeAuthSessionStore.instance.signIn(
+        AuthSession.authenticated(userId: 'owner-b', idToken: 'token-b'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-ai-style-sheet')), findsNothing);
+    expect(fixture.requests, isEmpty);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -509,6 +593,12 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(320, 900));
     await tester.pumpAndSettle();
     await _toggle(tester);
+    final actionLabel = find.descendant(
+        of: find.byKey(const ValueKey('uploader-ai-generate-button')),
+        matching: find.text('สร้างแคปชั่น · 1 เครดิต'));
+    expect(tester.renderObject<RenderParagraph>(actionLabel).didExceedMaxLines,
+        isFalse,
+        reason: 'The cost must remain visible with enlarged text');
     for (final platform in _platforms) {
       await _show(tester, _field(platform));
       await tester.enterText(_field(platform), 'ข้อความของฉัน $platform');

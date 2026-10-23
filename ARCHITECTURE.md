@@ -2,6 +2,25 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Compact caption AI presentation (2026-10-23, local candidate)
+
+The advanced uploader keeps its generation state and request pipeline while
+presenting the target selector as a uniform two-by-two grid. The compact header
+`ให้ AI ช่วยเขียน` exposes a `สไตล์` action for existing clip guidance and the
+full saved writing-profile controls. Those values retain their current owner,
+draft and request boundaries rather than becoming a second profile system.
+The helper is `เลือกช่องทางที่ต้องการ`; the single generation action shows
+`สร้างแคปชั่น · 1 เครดิต` and is disabled for an empty target set. Separate
+select-all, clear-selection and cost rows are removed from this panel.
+
+All four manual editors, local target persistence, selected-only preview/apply/
+undo, stale-result checks and publishing destinations remain independent and
+unchanged. There is no API, data contract, schema, migration, quota or backend
+runtime change: a set of 1–4 generated channels still uses one credit. This is
+an uninstalled UI candidate; final checks and delivery remain pending. The
+prior release below does not verify this follow-up. See its
+[scope and acceptance](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
+
 ## Selective caption-generation boundary (2026-10-23, Staging Live)
 
 The uploader retains four manual platform-caption editors while keeping a

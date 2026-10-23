@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
+import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
 import 'package:postdee_mobile/features/uploader/platform_caption_fields.dart';
 
 void main() {
@@ -13,10 +15,10 @@ void main() {
       onChanged: (value) => selected = value,
     ));
 
-    expect(find.text('เลือกช่องทางให้ AI เขียน'), findsOneWidget);
-    expect(find.text('เลือกอย่างน้อย 1 ช่องทาง'), findsOneWidget);
+    expect(find.text('เลือกช่องทางให้ AI เขียน'), findsNothing);
+    expect(find.text('เลือกอย่างน้อย 1 ช่องทาง'), findsNothing);
     expect(find.text('เลือกแล้ว 0 ช่องทาง · ใช้ 1 เครดิต AI ต่อครั้ง'),
-        findsOneWidget);
+        findsNothing);
     for (final platform in captionPlatforms) {
       expect(_chip(tester, platform).selected, isFalse);
     }
@@ -25,8 +27,6 @@ void main() {
     await tester.pump();
     expect(selected, {SocialPlatform.tiktok});
     expect(_chip(tester, SocialPlatform.tiktok).selected, isTrue);
-    expect(find.text('เลือกแล้ว 1 ช่องทาง · ใช้ 1 เครดิต AI ต่อครั้ง'),
-        findsOneWidget);
 
     await tester.tap(_target(SocialPlatform.tiktok));
     await tester.pump();
@@ -34,7 +34,7 @@ void main() {
     expect(_chip(tester, SocialPlatform.tiktok).selected, isFalse);
   });
 
-  testWidgets('AI targets select all and clear without mutating the input set',
+  testWidgets('AI targets update independently without mutating the input set',
       (tester) async {
     const initial = {SocialPlatform.youtubeShorts};
     var selected = initial;
@@ -43,15 +43,17 @@ void main() {
       onChanged: (value) => selected = value,
     ));
 
-    await tester.tap(find.byKey(const ValueKey('ai-caption-select-all')));
+    await tester.tap(_target(SocialPlatform.tiktok));
     await tester.pump();
-    expect(selected, captionPlatforms.toSet());
+    expect(selected, {SocialPlatform.tiktok, SocialPlatform.youtubeShorts});
     expect(initial, {SocialPlatform.youtubeShorts});
-    expect(find.text('เลือกแล้ว 4 ช่องทาง · ใช้ 1 เครดิต AI ต่อครั้ง'),
-        findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('ai-caption-clear-selection')));
+    await tester.tap(_target(SocialPlatform.youtubeShorts));
     await tester.pump();
-    expect(selected, isEmpty);
+    expect(selected, {SocialPlatform.tiktok});
+    expect(initial, {SocialPlatform.youtubeShorts});
+    expect(find.byKey(const ValueKey('ai-caption-select-all')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('ai-caption-clear-selection')), findsNothing);
   });
 
   testWidgets('AI target controls do not change while disabled',
@@ -67,20 +69,65 @@ void main() {
       expect(_chip(tester, platform).onSelected, isNull);
       await tester.tap(_target(platform));
     }
-    expect(
-        tester
-            .widget<TextButton>(
-                find.byKey(const ValueKey('ai-caption-select-all')))
-            .onPressed,
-        isNull);
-    expect(
-        tester
-            .widget<TextButton>(
-                find.byKey(const ValueKey('ai-caption-clear-selection')))
-            .onPressed,
-        isNull);
     expect(changes, 0);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets(
+        'compact AI targets use an equal two-column grid in '
+        '${dark ? 'dark' : 'light'} mode', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_selector(
+        selected: {SocialPlatform.tiktok, SocialPlatform.facebookReels},
+        textScale: 1.7,
+        dark: dark,
+        onChanged: (_) {},
+      ));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final boxes = [
+        for (final platform in captionPlatforms)
+          tester.getRect(_target(platform)),
+      ];
+      for (final box in boxes) {
+        expect(box.width, closeTo(boxes.first.width, .1));
+        expect(box.height, greaterThanOrEqualTo(48));
+        expect(box.left, greaterThanOrEqualTo(16));
+        expect(box.right, lessThanOrEqualTo(304));
+      }
+      expect(boxes[0].top, boxes[1].top);
+      expect(boxes[2].top, boxes[3].top);
+      expect(boxes[0].left, boxes[2].left);
+      expect(boxes[1].left, boxes[3].left);
+      expect(boxes[1].left, greaterThan(boxes[0].right));
+      expect(boxes[2].top, greaterThan(boxes[0].bottom));
+      expect(find.text('TikTok'), findsOneWidget);
+      expect(find.text('YouTube Shorts'), findsOneWidget);
+      expect(find.text('Instagram Reels'), findsOneWidget);
+      expect(find.text('Facebook Page Video'), findsOneWidget);
+      expect(find.text('Facebook Reels'), findsNothing);
+      for (final platform in captionPlatforms) {
+        final chip = _chip(tester, platform);
+        expect(chip.avatar, isA<SocialPlatformLogo>());
+        final label = find.descendant(
+          of: _target(platform),
+          matching: find.byType(Text),
+        );
+        final textBox = tester.getRect(label);
+        final chipBox = tester.getRect(_target(platform));
+        expect(textBox.top, greaterThanOrEqualTo(chipBox.top));
+        expect(textBox.bottom, lessThanOrEqualTo(chipBox.bottom));
+      }
+      expect(_chip(tester, SocialPlatform.tiktok).showCheckmark, isTrue);
+      expect(_chip(tester, SocialPlatform.facebookReels).showCheckmark, isTrue);
+      final selectedSide = _chip(tester, SocialPlatform.tiktok).side!;
+      final unselectedSide = _chip(tester, SocialPlatform.youtubeShorts).side!;
+      expect(selectedSide.width, greaterThan(unselectedSide.width));
+      expect(selectedSide.color, isNot(unselectedSide.color));
+    });
+  }
 
   for (final platforms in [
     [SocialPlatform.tiktok],
@@ -192,8 +239,10 @@ Widget _selector({
   required ValueChanged<Set<SocialPlatform>> onChanged,
   bool enabled = true,
   double textScale = 1,
+  bool dark = false,
 }) =>
     MaterialApp(
+      theme: dark ? AppTheme.dark : AppTheme.light,
       home: Scaffold(
         body: MediaQuery(
           data: MediaQueryData(textScaler: TextScaler.linear(textScale)),

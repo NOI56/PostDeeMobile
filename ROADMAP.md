@@ -2,6 +2,21 @@
 
 Build roadmap for PostDee.
 
+## Compact caption AI controls (2026-10-23, local candidate)
+
+- Replace the advanced target chips with a uniform two-by-two grid under
+  `ให้ AI ช่วยเขียน` and `เลือกช่องทางที่ต้องการ`.
+- Put the full existing writing profile and clip guidance behind `สไตล์`.
+  Remove select-all/clear and the standalone cost row. Show the cost on the
+  single action `สร้างแคปชั่น · 1 เครดิต`, disabled when no channel is selected.
+- Preserve four manual editors, draft targets, selected-only AI preview/apply/
+  undo and one credit per request of 1–4 channels. No API, contract, quota,
+  schema or backend change is introduced.
+- Final validation, exact-environment build and delivery are pending. This
+  request does not authorize a new main/push/deploy or app installation. Track
+  actual results in the
+  [compact-panel plan](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
+
 ## Select AI caption channels (2026-10-23, Staging Live)
 
 - Keep four advanced manual caption editors and start AI targets empty. Let

@@ -29,64 +29,91 @@ class PlatformCaptionAiTargets extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = captionPlatforms.where(selectedPlatforms.contains).toSet();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text('เลือกช่องทางให้ AI เขียน',
-            style: TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+    final colors = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Reserve both selected borders as well as padding, logo and label gap
+        // so the chip measures wrapped text at its final available width.
+        final labelWidth = ((constraints.maxWidth - 8) / 2 - 46)
+            .clamp(0, double.infinity)
+            .toDouble();
+        Widget target(SocialPlatform platform) {
+          final isSelected = selected.contains(platform);
+          return FilterChip(
+            key: ValueKey('ai-caption-target-${platform.apiValue}'),
+            avatar: SocialPlatformLogo(platform: platform, size: 20),
+            avatarBoxConstraints:
+                const BoxConstraints.tightFor(width: 20, height: 20),
+            label: SizedBox(
+              width: labelWidth,
+              child: Builder(builder: (context) {
+                // FilterChip supplies a one-line default. Reset it so full
+                // platform names remain readable at larger text sizes.
+                return DefaultTextStyle(
+                  style: DefaultTextStyle.of(context).style,
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  child: Text(
+                    platform == SocialPlatform.facebookReels
+                        ? 'Facebook Page Video'
+                        : platform.label,
+                    softWrap: true,
+                    overflow: TextOverflow.visible,
+                  ),
+                );
+              }),
+            ),
+            labelStyle: TextStyle(
+              color: enabled ? colors.onSurface : colors.onSurfaceVariant,
+              fontSize: 12,
+              height: 1.25,
+              fontWeight: FontWeight.w600,
+            ),
+            labelPadding: const EdgeInsets.only(left: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            side: BorderSide(
+              color: isSelected ? colors.primary : colors.outlineVariant,
+              width: isSelected ? 1.5 : 1,
+            ),
+            backgroundColor: colors.surface,
+            selectedColor: colors.primary.withValues(alpha: .10),
+            showCheckmark: true,
+            checkmarkColor: colors.primary,
+            selected: isSelected,
+            onSelected: enabled
+                ? (value) {
+                    final updated = {...selected};
+                    if (value) {
+                      updated.add(platform);
+                    } else {
+                      updated.remove(platform);
+                    }
+                    onChanged(updated);
+                  }
+                : null,
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final platform in captionPlatforms)
-              FilterChip(
-                key: ValueKey('ai-caption-target-${platform.apiValue}'),
-                avatar: SocialPlatformLogo(platform: platform, size: 18),
-                label: Text(platform == SocialPlatform.facebookReels
-                    ? 'Facebook Page Video'
-                    : platform.label),
-                selected: selected.contains(platform),
-                onSelected: enabled
-                    ? (value) {
-                        final updated = {...selected};
-                        if (value) {
-                          updated.add(platform);
-                        } else {
-                          updated.remove(platform);
-                        }
-                        onChanged(updated);
-                      }
-                    : null,
+            for (var index = 0; index < captionPlatforms.length; index += 2)
+              Padding(
+                padding: EdgeInsets.only(bottom: index == 0 ? 8 : 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: target(captionPlatforms[index])),
+                    const SizedBox(width: 8),
+                    Expanded(child: target(captionPlatforms[index + 1])),
+                  ],
+                ),
               ),
           ],
-        ),
-        Wrap(
-          spacing: 8,
-          children: [
-            TextButton(
-              key: const ValueKey('ai-caption-select-all'),
-              onPressed: enabled && selected.length != captionPlatforms.length
-                  ? () => onChanged(captionPlatforms.toSet())
-                  : null,
-              child: const Text('เลือกทั้งหมด'),
-            ),
-            TextButton(
-              key: const ValueKey('ai-caption-clear-selection'),
-              onPressed:
-                  enabled && selected.isNotEmpty ? () => onChanged({}) : null,
-              child: const Text('ล้างที่เลือก'),
-            ),
-          ],
-        ),
-        Text('เลือกแล้ว ${selected.length} ช่องทาง · ใช้ 1 เครดิต AI ต่อครั้ง',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-        if (selected.isEmpty) ...[
-          const SizedBox(height: 4),
-          Text('เลือกอย่างน้อย 1 ช่องทาง',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-        ],
-      ],
+        );
+      },
     );
   }
 }

@@ -209,3 +209,53 @@ Evidence: `owner-conflict-targeted.log`,
 `owner-conflict-full-tests-final.log` and `owner-conflict-check-results.json`
 in the ignored artifact directory. The replacement deploy and installed-app
 dashboard verification will be recorded after they pass.
+
+## Final release verification
+
+- Feature commit `6b06c63fba5504437b7f3577f1d3c7cf1a5ac467` and owner-conflict
+  fix `a391bc47cc8158a38e14041ee9723ba0ebf97ef9` are merged to `main` and pushed.
+  Both integrations were fast-forwards; unrelated dirty launcher, Staging docs
+  and generated Windows changes were excluded and preserved.
+- Final exact-source GitHub CI
+  [39947934732](https://github.com/NOI56/PostDeeMobile/actions/runs/39947934732)
+  succeeds: **2,500 API tests/25 skipped**, **2,767 Mobile tests/6 skipped**,
+  analyze/typecheck/build/Prisma checks and zero high production audit findings.
+- Mobile tree `82775361b22e4c9f00a46dfcff3a0079dea07f8b` is identical between
+  the feature and API-only fix commits. iOS no-codesign run
+  [39945497035](https://github.com/NOI56/PostDeeMobile/actions/runs/39945497035)
+  succeeds and uploads the IPA artifact; this is compilation/package evidence,
+  not a signed iPhone/TestFlight release.
+- Render deployment `dep-dbdkh4mq1p3s738ubv10` for exact API fix source `a391bc4`
+  is **Live**, finished **2026-10-23 18:45:51 GMT+7**, on `postdee-api-staging`
+  in the user-confirmed My Workspace. Auto-deploy remains off, one API instance
+  and the Prisma-backed in-process scheduler remain configured. Node is
+  **22.23.3**, **22 existing migrations/no pending**, and the required empty
+  publish-backlog guard passes. No schema or environment changes were made.
+- Post-deploy probes pass: `/health` and `/ready` return HTTP 200 with database
+  and queue ready; publishing readiness, owned-post GET, post submission and
+  caption-generation requests without credentials retain HTTP 401. No post or
+  AI operation was accepted by these rejected probes.
+- Staging APK **12042**, package `com.postdee.postdee_mobile.staging`, is
+  installed and opened on `emulator-5554`. The verified SHA-256 above is
+  unchanged; package UID, storage and data are preserved. The new advanced
+  caption control is visible in the installed app. Firebase, existing billing
+  Test Store and Sentry build configuration remain the verified values above.
+- At **18:50:08 GMT+7**, the existing installed Home API client's public
+  `loadCurrentSubscription` GET succeeds for **three concurrent requests**
+  against the new API, returning the existing effective Pro plan and unchanged
+  usage/AI access. The probe reads no credentials or customer captions, changes
+  no navigation, and leaves the open composer intact. It does not rewrite the
+  Home widget's cached state; normal Home activation/refresh reloads that data.
+  The final startup/runtime log sample has no new Prisma/startup error.
+- Evidence is stored locally in `owner-fix-release-ci*.json/log`,
+  `ios-release-ci*`, `cloud-release-smoke.json`,
+  `cloud-deployment-owner-fix-result.json`, `emulator-install-result.json` and
+  `installed-dashboard-refresh.json` under the artifact directory above.
+
+Any documentation-only follow-up can advance `main` beyond `a391bc4`; its API
+and Mobile trees must remain identical to this verified source. No customer
+post, purchase, remote AI generation or quota consumption was performed for this
+release. Real four-caption AI quality and destination-specific publication
+remain explicitly unverified; the available acceptance evidence is automated
+contract/UI testing, exact-source builds, deployed startup/readiness and the
+installed client's authenticated subscription reads.

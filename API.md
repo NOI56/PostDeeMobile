@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Per-platform caption contract (2026-10-23, local candidate)
+## Per-platform caption contract (2026-10-23, Staging Live)
 
 The optional `caption` string in each `platformSettings.<platform>` object
 overrides the shared post caption for that destination. TikTok, Instagram and
@@ -28,8 +28,11 @@ The existing `POST /captions/generate-from-clip` additionally accepts optional
 `platforms` and can return `platformCaptions`; its detailed contract is below.
 Both additions use existing JSON/storage paths and require no database
 migration. Deploy the updated API before Mobile sends these fields; old API
-parsers can reject the new settings. Local implementation is not deployment,
-provider or device acceptance. See the
+parsers can reject the new settings. Staging serves the contract at `a391bc4`,
+with APK 12042 installed after API deployment. Final CI, health/readiness,
+authentication barriers and three authenticated installed-client subscription
+reads passed. This does not establish actual multi-caption provider quality or
+real destination publication. See the
 [feature work record](docs/superpowers/plans/2026-10-23-platform-captions.md).
 
 ## Opt-in Sentry reporting (2026-10-23, Staging Live)
@@ -1835,7 +1838,7 @@ Rules:
   to 100 Unicode code points. An explicit custom title is preserved across
   caption edits and must pass the existing title validation. The full caption
   remains the description, with its existing length/character guards unchanged.
-  In the 2026-10-23 advanced-caption candidate, automatic title derivation and
+  In the 2026-10-23 advanced-caption mode, automatic title derivation and
   description validation use YouTube's effective override when present.
   No database migration or top-level `youtubeTitle` request field is added.
   Local automated verification passes; [results and delivery limits](docs/superpowers/plans/2026-10-18-unified-platform-settings.md#youtube-title-follow-up-2026-10-18-local-implementation)
@@ -2357,7 +2360,7 @@ Requires Starter or Pro.
   remains the simple override path when a seller wants a specific language,
   market, or style.
 
-Optional platform-caption generation (2026-10-23 local candidate):
+Optional platform-caption generation (2026-10-23, Staging Live):
 
 - Omit `platforms` to retain the existing request/result behavior. When supplied,
   it must contain 1–4 unique values from `TIKTOK`, `YOUTUBE_SHORTS`,

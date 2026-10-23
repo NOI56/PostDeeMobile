@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Advanced platform-caption boundary (2026-10-23, local candidate)
+## Advanced platform-caption boundary (2026-10-23, Staging Live)
 
 The existing uploader owns two local caption modes. Shared mode keeps the
 original editor; advanced mode hides it and presents four platform editors.
@@ -38,8 +38,13 @@ account/clip ownership, mode and edited text guards prevent stale asynchronous
 results replacing current input; dismissing the preview preserves original text.
 Applying a set retains a local undo snapshot; restoring it also invalidates
 TikTok confirmation only if that destination's effective caption changes.
-Deploy API first, then verify the Mobile build/device and actual provider path.
-This feature remains a local candidate; see
+Staging API `a391bc4` was deployed before installing APK 12042; the verified
+Mobile source tree is unchanged by the release's API-only follow-up. That
+follow-up retries only failed Serializable owner transactions on `P2034`, up to
+six attempts with positive jitter and at most 1,145ms of backoff. Owner locks,
+deletion fences and external-operation lifetimes remain unchanged; provider or
+queue actions are not replayed. Installed-client subscription reads pass, while
+actual AI generation and destination publication remain separate acceptance; see
 [scope, tests and release gates](docs/superpowers/plans/2026-10-23-platform-captions.md).
 
 ## Optional Sentry error boundary (2026-10-23, candidate verified)

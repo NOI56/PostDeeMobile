@@ -2,13 +2,13 @@
 
 Build roadmap for PostDee.
 
-## Four-platform advanced captions (2026-10-23, local candidate)
+## Four-platform advanced captions (2026-10-23, Staging Live)
 
 - Add optional advanced caption settings in Create Post: hide the shared editor,
   show four manual platform fields, and offer an explicit AI request for all
   four with preview/apply before replacing text and undo to pre-AI text.
-  Preserve shared and advanced
-  edits across toggles, drafts and stale/account-switched asynchronous results.
+  Preserve shared and advanced edits across toggles, drafts and
+  stale/account-switched asynchronous results.
 - Store optional per-post captions inside the existing platform-settings JSON;
   validate and deliver each selected destination's effective text. Retain old
   clients, immutable recovery, existing disclosure/visibility/target settings and
@@ -22,10 +22,12 @@ Build roadmap for PostDee.
   uses the existing quota refund path. No new provider, credential or migration.
 - Keep per-post captions out of reusable channel defaults. Derive an automatic
   YouTube title from its effective description and preserve explicit titles.
-- Release gates: complete local Mobile/API verification, deploy API before
-  Mobile, then build/install and verify actual provider results and sending.
-  No main integration, push, deployment, installation or real publication has
-  been completed for this candidate. Record results in the
+- Released to `main` and Staging: caption commit `6b06c63` plus startup owner
+  conflict fix `a391bc4`; API-first installation of APK 12042 preserves data.
+  Final CI passes 2,500 API and 2,767 Mobile tests. The unchanged Mobile tree
+  also passes iOS compilation without signing. Existing plan/quota reads pass
+  from the installed client; actual AI output and real publication remain
+  untested for this feature. Results and remaining acceptance are in the
   [implementation plan](docs/superpowers/plans/2026-10-23-platform-captions.md).
 
 ## Sentry error reporting (2026-10-23, candidate verified)

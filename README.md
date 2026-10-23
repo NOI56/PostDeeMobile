@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Four-platform captions (2026-10-23, local candidate)
+## Four-platform captions (2026-10-23, Staging Live)
 
 The post composer's optional advanced caption mode hides the shared input and
 shows separate editable captions for TikTok, YouTube Shorts, Instagram Reels
@@ -33,9 +33,12 @@ set reserves one generation and calls the provider once, retaining the existing
 transient retry policy. Incomplete/malformed AI output becomes a labeled local
 fallback, with quota refunded when release succeeds.
 
-Deploy the updated API before an app that sends the new fields. No database
-migration, provider credential or new integration is introduced. This candidate
-has not been merged, pushed, deployed or installed; real AI output and real
+The feature is merged and pushed to `main`; Staging API `a391bc4` includes
+the caption implementation and a bounded owner-transaction conflict fix found
+during release smoke. APK **12042** was installed after the API, preserving app
+data. Final CI passes **2,500 API tests** and **2,767 Mobile tests**; the unchanged
+Mobile tree also passes the iOS no-codesign build. No database migration,
+provider credential or new integration is introduced. Real AI output and real
 publication have not been tested for this feature. See the
 [implementation and verification record](docs/superpowers/plans/2026-10-23-platform-captions.md).
 

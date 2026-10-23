@@ -1,5 +1,32 @@
 # PostDee Staging
 
+## Facebook Page Reels — 24 ตุลาคม 2026
+
+[Deploy `dep-dbdqk7sipgvc739q4r50`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbdqk7sipgvc739q4r50)
+เป็น **Live** ที่ source `342470fbc2f656ca4a3d289ddcd500ce58177a6e` จาก `main`
+เวลา 01:41:49 น. ไทย (23 ตุลาคม 2026 เวลา 18:41:49 UTC).
+
+- วางแพตช์บนฐาน `a4efd65` และรักษา platform settings, captions, target snapshots,
+  TikTok Direct Post และ billing ของ `main` ล่าสุด ไม่คัดลอกสาขาเก่าทับระบบใหม่.
+- Facebook ส่ง `contentType: 'reel'` เสมอ รวมโหมด `PAGE_DRAFT`; คง
+  `published`, `isAiGenerated` และบัญชีเจ้าของโพสต์ ไม่มี Page feed fallback.
+- ซิงก์ `REVENUECAT_SUBSCRIPTION_ENVIRONMENT=SANDBOX` ตาม Staging Blueprint
+  ก่อนรุ่นใหม่เริ่มทำงาน; ไม่มี schema/dependency/migration ใหม่จากแพตช์ Reels.
+- ตรวจด้วย Node `22.23.3`: API 2,577 tests ผ่าน/25 ข้าม (4 ชุดต้องใช้ฐานข้อมูล
+  ทดสอบแยก), typecheck, build, Prisma generate/validate และ built-server
+  `/health`/`/ready` ผ่าน. Backend CI ของ source เดียวกันผ่านแล้ว.
+- หลัง Live: `/health` และ `/ready` ตอบ HTTP 200, database/queue `ok`,
+  `/ready` มี `Cache-Control: no-store`; `/posts` ที่ไม่มี token ตอบ 401.
+  ไม่พบ app error logs ในช่วง 18:40:31–18:42:33 UTC ที่ตรวจ.
+- Mobile targeted tests 253 ผ่าน/1 ข้ามและ analyze ผ่าน; full suite ในเครื่อง
+  หยุดเพราะ PowerShell หน่วยความจำไม่พอหลัง 2,525 ผ่าน/5 ข้าม จึงไม่ถือว่า
+  full suite ผ่านจากการรันในเครื่อง. Full Mobile suite และ analyze ของ source
+  เดียวกันผ่านครบแล้วบน GitHub พร้อม Backend API ที่
+  [CI run 40005219097](https://github.com/NOI56/PostDeeMobile/actions/runs/40005219097).
+- รอบนี้ deploy เฉพาะ API Staging ไม่แจก APK และไม่ resume/deploy Production.
+  ยังไม่ได้โพสต์ Reel จริง; provider delivery, draft และ custom thumbnail E2E
+  ต้องตรวจด้วยเพจทดสอบที่เชื่อมบัญชีแล้ว.
+
 ## รวมชุด Staging เข้า main — 20 ตุลาคม 2026
 
 ผู้ใช้อนุมัติ main/push หลังตรวจรายการค้าง จึงรวม runtime `0a43e7b`, เอกสาร

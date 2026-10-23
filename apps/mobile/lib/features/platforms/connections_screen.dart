@@ -192,6 +192,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   bool _waitingForOAuthReturn = false;
   bool _leftAppForOAuth = false;
   bool _pendingOAuthRefresh = false;
+  String? _pendingConnectNonce;
+  DateTime? _pendingConnectExpiresAt;
+  SocialPlatform? _pendingConnectPlatform;
   String? _ownerUserId;
   int _loadGeneration = 0;
   int _operationGeneration = 0;
@@ -243,6 +246,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     _waitingForOAuthReturn = false;
     _leftAppForOAuth = false;
     _pendingOAuthRefresh = false;
+    _clearConnectAttempt();
     setState(() {
       _statuses = {};
       _busyPlatform = null;
@@ -324,10 +328,33 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _clearConnectAttempt() {
+    _pendingConnectNonce = null;
+    _pendingConnectExpiresAt = null;
+    _pendingConnectPlatform = null;
+  }
+
+  String? _connectAttemptErrorMessage(ApiException error) {
+    switch (error.code) {
+      case 'SOCIAL_ACCOUNT_ALREADY_LINKED':
+        return 'บัญชีช่องทางนี้เชื่อมกับบัญชี PostDee อื่นแล้ว กรุณาตัดการเชื่อมต่อจากบัญชีเดิมก่อน หรือเลือกบัญชีช่องทางอื่น';
+      case 'SOCIAL_CONNECTION_ATTEMPT_INVALID':
+      case 'SOCIAL_CONNECTION_ATTEMPT_EXPIRED':
+        return 'คำขอเชื่อมต่อหมดอายุหรือใช้ไปแล้ว กรุณากดเชื่อมต่อช่องทางอีกครั้ง';
+      case 'SOCIAL_CONNECTION_COMPLETION_AMBIGUOUS':
+        return 'พบหลายบัญชีที่เพิ่งเชื่อมต่อ กรุณากดเชื่อมต่อใหม่ทีละบัญชี';
+      default:
+        return error.statusCode == 409
+            ? 'ตรวจสอบการเชื่อมต่อไม่สำเร็จ กรุณากดเชื่อมต่อช่องทางอีกครั้ง'
+            : null;
+    }
+  }
+
   Future<void> _connect(SocialPlatform platform) async {
     if (_actionsLocked) return;
     final generation = ++_operationGeneration;
     final owner = _ownerUserId;
+    _clearConnectAttempt();
     setState(() => _busyPlatform = platform.apiValue);
     try {
       final returnTarget = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
@@ -344,6 +371,19 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         _showMessage('ลิงก์เชื่อมบัญชีไม่ปลอดภัย กรุณาลองใหม่อีกครั้ง');
         return;
       }
+      final nonce = link.nonce;
+      final expiresAt = link.expiresAt;
+      if (nonce == null ||
+          !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(nonce) ||
+          expiresAt == null ||
+          !expiresAt.isAfter(DateTime.now())) {
+        _showMessage(
+            'เริ่มเชื่อมต่ออย่างปลอดภัยไม่ได้ กรุณาลองใหม่ หรือติดต่อผู้ดูแลให้อัปเดตระบบ');
+        return;
+      }
+      _pendingConnectNonce = nonce;
+      _pendingConnectExpiresAt = expiresAt;
+      _pendingConnectPlatform = platform;
       _waitingForOAuthReturn = true;
       _leftAppForOAuth = false;
       final launched = await _launch(link.connectUri);
@@ -362,12 +402,14 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       _waitingForOAuthReturn = false;
       _leftAppForOAuth = false;
       _pendingOAuthRefresh = false;
-      _showMessage(error.message);
+      _clearConnectAttempt();
+      _showMessage(_connectAttemptErrorMessage(error) ?? error.message);
     } catch (_) {
       if (!_operationIsCurrent(generation, owner)) return;
       _waitingForOAuthReturn = false;
       _leftAppForOAuth = false;
       _pendingOAuthRefresh = false;
+      _clearConnectAttempt();
       _showMessage('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
       if (_operationIsCurrent(generation, owner)) {
@@ -386,13 +428,42 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       _statusError = null;
     });
     try {
-      final results = await _apiClient.refreshSocialConnections();
+      if (_pendingConnectNonce != null &&
+          !(_pendingConnectExpiresAt?.isAfter(DateTime.now()) ?? false)) {
+        _clearConnectAttempt();
+        _showMessage('คำขอเชื่อมต่อหมดอายุ กรุณากดเชื่อมต่อช่องทางอีกครั้ง');
+      }
+      final nonce = _pendingConnectNonce;
+      final List<SocialConnectionResult> results;
+      if (nonce == null) {
+        results = await _apiClient.refreshSocialConnections();
+      } else {
+        final refresh = await _apiClient.refreshSocialConnectionsWithAttempt(
+          nonce: nonce,
+        );
+        if (!_loadIsCurrent(generation, owner)) return;
+        if (refresh.connectAttemptConsumed) _clearConnectAttempt();
+        results = refresh.connections;
+      }
       if (!_loadIsCurrent(generation, owner)) return;
       setState(() {
         _statuses = {for (final result in results) result.platform: result};
         _loading = false;
       });
       widget.onConnectionsChanged?.call(_connectedCount);
+    } on ApiException catch (error) {
+      if (!_loadIsCurrent(generation, owner)) return;
+      final message = _connectAttemptErrorMessage(error);
+      if (message == null) {
+        _setStatusUnavailable();
+      } else {
+        _clearConnectAttempt();
+        setState(() {
+          _statuses = {};
+          _loading = false;
+          _statusError = message;
+        });
+      }
     } catch (_) {
       if (!_loadIsCurrent(generation, owner)) return;
       _setStatusUnavailable();
@@ -435,6 +506,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         ),
       );
       if (confirmed != true || !_operationIsCurrent(generation, owner)) return;
+      if (_pendingConnectPlatform == platform) _clearConnectAttempt();
       setState(() => _isDisconnectConfirmationOpen = false);
       await _apiClient.disconnectSocialConnection(platform.apiValue);
       if (!_operationIsCurrent(generation, owner)) return;

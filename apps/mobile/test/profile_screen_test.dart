@@ -1177,7 +1177,8 @@ void main() {
       ],
       connectLink: SocialConnectLinkResult(
         connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
-        expiresAt: DateTime.utc(2026, 6, 26, 9, 10),
+        nonce: 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE',
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
       ),
     );
     Uri? launched;
@@ -1402,6 +1403,8 @@ void main() {
       ],
       connectLink: SocialConnectLinkResult(
         connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
+        nonce: 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE',
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
       ),
     );
 
@@ -1449,7 +1452,8 @@ void main() {
       ],
       connectLink: SocialConnectLinkResult(
         connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
-        expiresAt: DateTime.utc(2026, 6, 26, 9, 10),
+        nonce: 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE',
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
       ),
     );
 
@@ -1804,6 +1808,14 @@ class _FakeSocialApiClient extends PostDeeApiClient {
     connections = refreshedConnections ?? connections;
     return connections;
   }
+
+  @override
+  Future<SocialConnectionsRefreshResult> refreshSocialConnectionsWithAttempt({
+    required String nonce,
+  }) async =>
+      SocialConnectionsRefreshResult(
+          connections: await refreshSocialConnections(),
+          connectAttemptConsumed: true);
 
   @override
   Future<SocialConnectLinkResult> createSocialConnectionLink(

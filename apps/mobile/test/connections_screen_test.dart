@@ -10,11 +10,28 @@ import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
 
+const _attemptNonce = 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE';
+
+SocialConnectLinkResult _connectLink(
+        {String? nonce = _attemptNonce, DateTime? expiresAt}) =>
+    SocialConnectLinkResult(
+      connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
+      nonce: nonce,
+      expiresAt: expiresAt ?? DateTime.now().add(const Duration(minutes: 15)),
+    );
+
 class _StatusApiClient extends PostDeeApiClient {
-  _StatusApiClient({required this.list, this.refresh, this.connect, this.disconnect});
+  _StatusApiClient(
+      {required this.list,
+      this.refresh,
+      this.attemptRefresh,
+      this.connect,
+      this.disconnect});
 
   final Future<List<SocialConnectionResult>> Function() list;
   final Future<List<SocialConnectionResult>> Function()? refresh;
+  final Future<SocialConnectionsRefreshResult> Function(String nonce)?
+      attemptRefresh;
   final Future<SocialConnectLinkResult> Function(String? returnTarget)? connect;
   final Future<void> Function(String platform)? disconnect;
 
@@ -31,14 +48,21 @@ class _StatusApiClient extends PostDeeApiClient {
       (refresh ?? list)();
 
   @override
+  Future<SocialConnectionsRefreshResult> refreshSocialConnectionsWithAttempt({
+    required String nonce,
+  }) async =>
+      attemptRefresh != null
+          ? attemptRefresh!(nonce)
+          : SocialConnectionsRefreshResult(
+              connections: await (refresh ?? list)(),
+              connectAttemptConsumed: true);
+
+  @override
   Future<SocialConnectLinkResult> createSocialConnectionLink(
     String platform, {
     String? returnTarget,
   }) async =>
-      connect == null
-          ? const SocialConnectLinkResult(
-              connectUrl: 'https://www.tiktok.com/v2/auth/authorize')
-          : connect!(returnTarget);
+      connect == null ? _connectLink() : connect!(returnTarget);
 }
 
 void main() {
@@ -46,6 +70,251 @@ void main() {
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
     PostDeeAuthSessionStore.instance.clear();
+  });
+
+  for (final action in ['connect', 'refresh']) {
+    testWidgets(
+        'social account ownership conflict on $action explains recovery in Thai',
+        (tester) async {
+      _signIn('owner-a');
+      const conflict = ApiException(
+        'Provider account private-external-id belongs to another user',
+        statusCode: 409,
+        code: 'SOCIAL_ACCOUNT_ALREADY_LINKED',
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: ConnectionsScreen(
+          apiClient: _StatusApiClient(
+            list: () async => const [],
+            connect: (_) async => throw conflict,
+            refresh: () async => throw conflict,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      if (action == 'connect') {
+        await _tapConnect(tester);
+      } else {
+        await tester
+            .tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+      }
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+            'บัญชีช่องทางนี้เชื่อมกับบัญชี PostDee อื่นแล้ว กรุณาตัดการเชื่อมต่อจากบัญชีเดิมก่อน หรือเลือกบัญชีช่องทางอื่น'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('private-external-id'), findsNothing);
+      expect(
+          find.textContaining('SOCIAL_ACCOUNT_ALREADY_LINKED'), findsNothing);
+    });
+  }
+
+  for (final invalid in [
+    'missing nonce',
+    'invalid nonce',
+    'expired',
+    'missing expiry'
+  ]) {
+    testWidgets('does not launch OAuth with $invalid connect attempt',
+        (tester) async {
+      _signIn('owner-a');
+      var launched = false;
+      await tester.pumpWidget(MaterialApp(
+          home: ConnectionsScreen(
+        apiClient: _StatusApiClient(
+          list: () async => const [],
+          connect: (_) async => SocialConnectLinkResult(
+            connectUrl: 'https://www.tiktok.com/v2/auth/authorize',
+            nonce: invalid == 'missing nonce'
+                ? null
+                : invalid == 'invalid nonce'
+                    ? 'unsafe'
+                    : _attemptNonce,
+            expiresAt: invalid == 'missing expiry'
+                ? null
+                : DateTime.now()
+                    .add(Duration(minutes: invalid == 'expired' ? -1 : 15)),
+          ),
+        ),
+        launchConnectUrl: (_) async {
+          launched = true;
+          return true;
+        },
+      )));
+      await tester.pumpAndSettle();
+      await _tapConnect(tester);
+      await tester.pumpAndSettle();
+      expect(launched, isFalse);
+      expect(
+          find.text(
+              'เริ่มเชื่อมต่ออย่างปลอดภัยไม่ได้ กรุณาลองใหม่ หรือติดต่อผู้ดูแลให้อัปเดตระบบ'),
+          findsOneWidget);
+    });
+  }
+
+  for (final trigger in ['manual', 'OAuth return']) {
+    testWidgets(
+        '$trigger refresh keeps pending nonce until completion is acknowledged',
+        (tester) async {
+      _signIn('owner-a');
+      final nonces = <String>[];
+      var ordinaryRefreshes = 0;
+      await tester.pumpWidget(MaterialApp(
+          home: ConnectionsScreen(
+        apiClient: _StatusApiClient(
+          list: () async => const [],
+          refresh: () async {
+            ordinaryRefreshes++;
+            return const [];
+          },
+          attemptRefresh: (nonce) async {
+            nonces.add(nonce);
+            return SocialConnectionsRefreshResult(
+                connections: const [],
+                connectAttemptConsumed: nonces.length == 2);
+          },
+        ),
+        launchConnectUrl: (_) async => true,
+      )));
+      await tester.pumpAndSettle();
+      await _tapConnect(tester);
+      await tester.pumpAndSettle();
+      if (trigger == 'OAuth return') {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      } else {
+        await tester
+            .tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+      }
+      await tester.pumpAndSettle();
+      expect(nonces, [_attemptNonce]);
+      expect(ordinaryRefreshes, 0);
+      await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+      await tester.pumpAndSettle();
+      expect(nonces, [_attemptNonce, _attemptNonce]);
+      await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+      await tester.pumpAndSettle();
+      expect(nonces, hasLength(2));
+      expect(ordinaryRefreshes, 1);
+    });
+  }
+
+  testWidgets('network failure keeps the same pending nonce for retry',
+      (tester) async {
+    _signIn('owner-a');
+    final nonces = <String>[];
+    await tester.pumpWidget(MaterialApp(
+        home: ConnectionsScreen(
+      apiClient: _StatusApiClient(
+        list: () async => const [],
+        attemptRefresh: (nonce) async {
+          nonces.add(nonce);
+          if (nonces.length == 1) {
+            throw const ApiException('network failed', statusCode: 503);
+          }
+          return const SocialConnectionsRefreshResult(
+              connections: [], connectAttemptConsumed: true);
+        },
+      ),
+      launchConnectUrl: (_) async => true,
+    )));
+    await tester.pumpAndSettle();
+    await _tapConnect(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+    await tester.pumpAndSettle();
+    expect(find.text('ตรวจสอบช่องทางไม่ได้'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-retry')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+    await tester.pumpAndSettle();
+    expect(nonces, [_attemptNonce, _attemptNonce]);
+  });
+
+  for (final code in [
+    'SOCIAL_ACCOUNT_ALREADY_LINKED',
+    'SOCIAL_CONNECTION_ATTEMPT_EXPIRED',
+    'SOCIAL_CONNECTION_ATTEMPT_INVALID',
+    'SOCIAL_CONNECTION_COMPLETION_AMBIGUOUS',
+  ]) {
+    testWidgets('$code clears the pending attempt and explains recovery',
+        (tester) async {
+      _signIn('owner-a');
+      var attemptRefreshes = 0;
+      var ordinaryRefreshes = 0;
+      await tester.pumpWidget(MaterialApp(
+          home: ConnectionsScreen(
+        apiClient: _StatusApiClient(
+          list: () async => const [],
+          refresh: () async {
+            ordinaryRefreshes++;
+            return const [];
+          },
+          attemptRefresh: (_) async {
+            attemptRefreshes++;
+            throw ApiException('private-provider-details',
+                statusCode: 409, code: code);
+          },
+        ),
+        launchConnectUrl: (_) async => true,
+      )));
+      await tester.pumpAndSettle();
+      await _tapConnect(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('private-provider-details'), findsNothing);
+      expect(find.text('ตรวจสอบช่องทางไม่ได้'), findsOneWidget);
+      expect(
+          find.textContaining(code == 'SOCIAL_ACCOUNT_ALREADY_LINKED'
+              ? 'บัญชีช่องทางนี้เชื่อมกับบัญชี PostDee อื่นแล้ว'
+              : code == 'SOCIAL_CONNECTION_COMPLETION_AMBIGUOUS'
+                  ? 'พบหลายบัญชีที่เพิ่งเชื่อมต่อ'
+                  : 'คำขอเชื่อมต่อหมดอายุหรือใช้ไปแล้ว'),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('profile-platforms-retry')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+      await tester.pumpAndSettle();
+      expect(attemptRefreshes, 1);
+      expect(ordinaryRefreshes, 1);
+    });
+  }
+
+  testWidgets('owner change discards the nonce after a launched OAuth attempt',
+      (tester) async {
+    _signIn('owner-a');
+    var attempts = 0;
+    var ordinaryRefreshes = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: ConnectionsScreen(
+      apiClient: _StatusApiClient(
+        list: () async => const [],
+        refresh: () async {
+          ordinaryRefreshes++;
+          return const [];
+        },
+        attemptRefresh: (_) async {
+          attempts++;
+          return const SocialConnectionsRefreshResult(
+              connections: [], connectAttemptConsumed: false);
+        },
+      ),
+      launchConnectUrl: (_) async => true,
+    )));
+    await tester.pumpAndSettle();
+    await _tapConnect(tester);
+    await tester.pumpAndSettle();
+    _signIn('owner-b');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+    await tester.pumpAndSettle();
+    expect(attempts, 0);
+    expect(ordinaryRefreshes, 1);
   });
 
   for (final action in ['cancel', 'confirm', 'owner-change']) {
@@ -136,8 +405,7 @@ void main() {
             list: () async => const [],
             connect: (returnTarget) async {
               requestedTarget = returnTarget;
-              return const SocialConnectLinkResult(
-                  connectUrl: 'https://www.tiktok.com/v2/auth/authorize');
+              return _connectLink();
             },
           ),
           launchConnectUrl: (_) async {
@@ -225,8 +493,7 @@ void main() {
     await tester.pump();
     _signIn('owner-b');
     await tester.pump();
-    link.complete(const SocialConnectLinkResult(
-        connectUrl: 'https://www.tiktok.com/v2/auth/authorize'));
+    link.complete(_connectLink());
     await tester.pumpAndSettle();
 
     expect(launched, isFalse);

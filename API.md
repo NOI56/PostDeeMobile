@@ -2,6 +2,25 @@
 
 PostDee backend API reference.
 
+## Social linking security Batch 2 (2026-10-23, review candidate)
+
+New links require an authenticated, single-use connect attempt. The updated
+connect and refresh contracts below supersede the earlier profile-only polling
+flow. Existing saved connections can still be listed and reconciled, but a
+legacy refresh without a nonce cannot import or replace an account.
+
+This candidate adds one Prisma migration. Run the read-only
+[`social-linking-preflight.sql`](apps/api/prisma/social-linking-preflight.sql)
+against each target database before rollout; both result sets must be empty.
+The migration also locks/checks the table and aborts on duplicates without
+deleting or reassigning connections. Apply the migration and API before updated
+Mobile. Old Mobile cannot finish a new connection after this API change until
+it is updated; saved connections and publishing retain their existing contracts.
+Hosted duplicate counts and real PostPeer completion are **not verified**.
+Staging external database access is blocked and Production is suspended; no
+access settings were changed. See the
+[Batch 2 validation and rollout record](docs/superpowers/plans/2026-10-23-social-linking-security-batch2.md).
+
 ## Mobile AI caption selection (2026-10-23, Staging Live)
 
 The advanced composer can request captions for an explicitly chosen subset of
@@ -2084,8 +2103,16 @@ succeeds.
 
 ### `POST /social-connections/:platform/connect`
 
-Creates/loads the user's PostPeer profile and returns `{ connectUrl }` for the
-requested supported platform. The provider adapter validates the returned URL
+Creates/loads the user's PostPeer profile and returns
+`{ status: "ok", connectUrl, nonce, expiresAt }` for the requested supported
+platform. `nonce` is a cryptographically random 32-byte base64url value (43
+characters); `expiresAt` is an ISO timestamp 15 minutes after attempt creation.
+The API stores only its SHA-256 hash, bound to the authenticated user, platform,
+claimed profile and the integration IDs listed before issuing the URL. There
+is at most one pending attempt per user/platform; a new attempt replaces the
+previous one. Failed URL creation cancels only its own attempt. Responses are
+`Cache-Control: private, no-store`; do not log or persist the raw nonce or URL.
+The provider adapter validates the returned URL
 as absolute HTTPS against the requested platform's trusted OAuth domains, and
 Mobile repeats that check before opening it. Android uses a dedicated native
 Custom Tab bridge that returns failure to Dart instead of substituting a
@@ -2114,7 +2141,9 @@ retain the X/manual-refresh fallback. An injected VIEW URI verified warm return
 to the original Connections screen on the installed Staging APK. Real
 provider/browser handoff, browser Open App confirmation and cold callback remain
 unverified; the injected URI does not verify provider connection or refresh.
-No new permission, provider OAuth app, schema or environment setting is added.
+The original fixed-return-target feature added no schema or environment setting.
+The Batch 2 attempt table and account uniqueness indexes described above are
+required for the current nonce contract.
 
 For a new Firebase identity, the API ensures the local `User` row before saving
 the foreign-keyed PostPeer profile. Profile creation sends PostPeer a required,
@@ -2132,9 +2161,48 @@ authoritative.
 
 ### `POST /social-connections/refresh`
 
-Reconciles the user's PostPeer profile integrations after the browser OAuth
-flow, then upserts connected platforms and removes stale local connections.
-Mobile calls this once when returning to PostDee; the manual refresh remains
+Accepts optional JSON `{ "nonce": "<value returned by connect>" }`. The API
+verifies its authenticated owner, profile, platform and expiry, then admits
+exactly one integration of that platform whose ID was absent from the attempt's
+baseline. Zero candidates leaves the attempt pending; multiple candidates fail
+closed. Successful account write and nonce consumption share one transaction.
+It returns `{ status: "ok", connections, connectAttemptConsumed }` for requests
+with a nonce; `connectAttemptConsumed` is false while pending and true only
+after successful atomic completion. Retrying a consumed nonce is rejected.
+
+With `{}` or no nonce, the API only updates metadata/removes already-saved
+exact provider/external identities. It never imports new integrations, including
+ones found through profile recovery, or silently rotates an account identity.
+Provider snapshots are applied conditionally so a slow refresh cannot overwrite
+or remove a newer completed link or cancel its pending attempt.
+
+| HTTP / code | Meaning |
+| --- | --- |
+| 400 `SOCIAL_CONNECTION_ATTEMPT_INVALID` | Nonce is malformed. |
+| 409 `SOCIAL_CONNECTION_ATTEMPT_EXPIRED` | Unknown, wrong-owner/profile, expired, replaced or consumed attempt; restart after checking current status. |
+| 409 `SOCIAL_CONNECTION_COMPLETION_AMBIGUOUS` | More than one new integration matches; reconnect one account at a time. |
+| 409 `SOCIAL_ACCOUNT_ALREADY_LINKED` | `(platform, externalAccountId)` or global `postPeerAccountId` is already claimed by another connection; no owner identifiers are exposed. |
+
+Mobile holds the nonce only in the initiating screen's memory, clears it on
+completion/owner switch/disconnect/terminal attempt errors, and retains it for
+pending responses or transient network failure until expiry. A lost completion
+response can yield an expired/replayed error even though linking succeeded;
+use the ordinary status refresh before reconnecting. A process restart loses
+the nonce. Pre-existing unbound integrations cannot be adopted by starting
+another attempt; provider integration-ID reuse requires operator/provider
+resolution rather than bypassing the baseline check. Thai conflict guidance
+asks the user to disconnect from the original PostDee account or choose another
+social account. New Mobile rejects a missing/invalid nonce contract before
+opening the browser.
+
+The nonce proves possession by the initiating authenticated app request, **not
+which human consented in PostPeer OAuth**. Forwarding an attacker's live connect
+URL to a different human with an otherwise unbound social account remains a
+provider-dependent risk. Signed/echoed completion state, short-lived URL and
+browser/profile binding, stable `platformUserId` and reconnect ID behavior need
+PostPeer owner validation; no live provider flow was tested in this change.
+
+Mobile calls refresh once when returning to PostDee; the manual refresh remains
 available. This is an explicit reconciliation request, not an OAuth completion
 callback, and it must not be polled aggressively. PostPeer documents an
 optional `redirectUri`; Android requests use the fixed targets above. A warm
@@ -2149,7 +2217,10 @@ Disconnects the authenticated user's platform using the stored, user-scoped
 PostPeer integration id. The provider integration is removed first and the
 local record is deleted only after provider success; provider `404` and a
 repeated request with no local record are treated as successful idempotent
-cleanup. If provider cleanup is unavailable or fails, the route returns
+cleanup. The API captures the connection and pending nonce in one snapshot;
+after provider success it removes only that same account identity and cancels
+only that captured nonce. A delayed DELETE cannot remove a newer link or a
+newer pending attempt. If provider cleanup is unavailable or fails, the route returns
 `503 SOCIAL_CONNECTION_UNAVAILABLE` or `502 SOCIAL_CONNECTION_FAILED` and
 keeps the local record so a refresh cannot silently recreate a connection the
 user believed was removed.

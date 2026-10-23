@@ -79,6 +79,19 @@ const createFixture = (responses: unknown[] = [published()]) => {
 };
 
 describe('TikTok explicit Direct Post worker', () => {
+  it('sends and validates the TikTok override even when called without the queue worker', async () => {
+    const fixture = createFixture();
+    const settings = directSettings();
+    settings.TIKTOK = { ...settings.TIKTOK!, caption: 'TikTok destination text' };
+    await fixture.publisher.publish({ ...publishInput(settings), caption: 'a'.repeat(2201) });
+    expect(JSON.parse(String(fixture.calls[0].init.body)).content).toBe('TikTok destination text');
+    const denied = createFixture();
+    settings.TIKTOK = { ...settings.TIKTOK!, caption: '😀'.repeat(1101) };
+    await expect(denied.publisher.publish(publishInput(settings))).rejects.toMatchObject({ code: 'TIKTOK_CAPTION_TOO_LONG' });
+    expect(denied.getCreatorInfo).not.toHaveBeenCalled();
+    expect(denied.calls).toEqual([]);
+  });
+
   it.each([
     ['PUBLIC_TO_EVERYONE', 'LIVE'], ['MUTUAL_FOLLOW_FRIENDS', 'LIVE'],
     ['FOLLOWER_OF_CREATOR', 'LIVE'], ['SELF_ONLY', 'PRIVATE']

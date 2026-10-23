@@ -35,7 +35,7 @@ import {
   type QueuedPost,
   isValidPlatform
 } from './postStore.js';
-import { normalizePersistedPlatformSettings, readPlatformSettings, type PlatformSettings } from './platformSettings.js';
+import { normalizePersistedPlatformSettings, readEffectivePlatformCaption, readPlatformSettings, type PlatformSettings } from './platformSettings.js';
 import { readPlatformCaptionIssue } from './platformCaptionValidation.js';
 import {
   buildTikTokConnectionRevision,
@@ -803,7 +803,7 @@ export const registerPostRoutes = (
 
     // Matching accepted requests were recovered above. Only new publishing
     // intents are subject to these guards, before media/provider/quota work.
-    const captionIssue = readPlatformCaptionIssue(caption, platforms);
+    const captionIssue = readPlatformCaptionIssue(caption, platforms, platformSettings);
     if (captionIssue) {
       response.status(400).json({ status: 'error', code: 'PLATFORM_CAPTION_INVALID', ...captionIssue });
       return;
@@ -1044,7 +1044,7 @@ export const registerPostRoutes = (
 
         if (isExplicitTikTokDirectSettings(tikTokSettings)) {
           try {
-            validateTikTokDirectCaption(caption);
+            validateTikTokDirectCaption(readEffectivePlatformCaption(caption, 'TIKTOK', platformSettings));
             const target = platformTargets?.TIKTOK;
             if (!target || !options.resolveTikTokCreatorInfo || !options.resolvePlatformTarget) {
               throw new TikTokPublishingError(

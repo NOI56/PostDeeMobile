@@ -45,6 +45,26 @@ const publishedResult = (platform: Platform): PlatformPublishSuccess => ({
 });
 
 describe('processPublishJobForPost', () => {
+  it('uses destination captions and falls back to shared text only for an omitted override', async () => {
+    const publish = vi.fn(async ({ platform }: PlatformPublishInput) => publishedResult(platform));
+    await processPublishJob({ jobData: {
+      userId: 'owner', postId: 'per-platform', caption: 'Shared Facebook text',
+      videoS3Key: 'uploads/owner/video.mp4',
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'],
+      platformSettings: {
+        TIKTOK: { publishMode: 'INBOX_DRAFT', caption: 'TikTok text' },
+        YOUTUBE_SHORTS: { visibility: 'private', caption: 'YouTube text' },
+        INSTAGRAM_REELS: { shareToFeed: true, caption: 'Instagram text' },
+        FACEBOOK_REELS: { publishMode: 'PUBLISH' }
+      }, runAt: '2026-06-01T00:00:00.000Z', status: 'READY'
+    }, publisher: { publish } });
+    for (const [platform, caption] of [
+      ['TIKTOK', 'TikTok text'], ['YOUTUBE_SHORTS', 'YouTube text'],
+      ['INSTAGRAM_REELS', 'Instagram text'], ['FACEBOOK_REELS', 'Shared Facebook text']
+    ]) expect(publish).toHaveBeenCalledWith(expect.objectContaining({ platform, caption }));
+    expect(publish).toHaveBeenCalledTimes(4);
+  });
+
   const jobData: BullMqPublishJobData = {
     userId: 'seller-1',
     postId: 'post-1',

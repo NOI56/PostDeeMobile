@@ -2,6 +2,32 @@
 
 Build roadmap for PostDee.
 
+## Four-platform advanced captions (2026-10-23, local candidate)
+
+- Add optional advanced caption settings in Create Post: hide the shared editor,
+  show four manual platform fields, and offer an explicit AI request for all
+  four with preview/apply before replacing text and undo to pre-AI text.
+  Preserve shared and advanced
+  edits across toggles, drafts and stale/account-switched asynchronous results.
+- Store optional per-post captions inside the existing platform-settings JSON;
+  validate and deliver each selected destination's effective text. Retain old
+  clients, immutable recovery, existing disclosure/visibility/target settings and
+  platform-specific limits. Facebook remains Page Video.
+  Preserve YouTube's explicit empty description (`caption: ""`, including
+  trimmed whitespace) without falling back to shared text, while retaining
+  title/settings requirements and rejecting empty overrides for the other three.
+- Generate platform-adapted variants from the selected clip in one provider
+  operation/one quota reservation per set; keep writing style and grounded
+  evidence rules. Incomplete/malformed output is a labeled local fallback and
+  uses the existing quota refund path. No new provider, credential or migration.
+- Keep per-post captions out of reusable channel defaults. Derive an automatic
+  YouTube title from its effective description and preserve explicit titles.
+- Release gates: complete local Mobile/API verification, deploy API before
+  Mobile, then build/install and verify actual provider results and sending.
+  No main integration, push, deployment, installation or real publication has
+  been completed for this candidate. Record results in the
+  [implementation plan](docs/superpowers/plans/2026-10-23-platform-captions.md).
+
 ## Sentry error reporting (2026-10-23, candidate verified)
 
 - Add opt-in, errors-only monitoring to Flutter, the API/in-process publisher

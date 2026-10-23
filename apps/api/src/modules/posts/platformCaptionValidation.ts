@@ -1,4 +1,5 @@
 import type { Platform } from './postStore.js';
+import { readEffectivePlatformCaption, type PlatformSettings } from './platformSettings.js';
 
 export type PlatformCaptionIssue = {
   platform: Platform;
@@ -16,9 +17,13 @@ export class PlatformCaptionValidationError extends Error {
   }
 }
 
-export const readPlatformCaptionIssue = (caption: string | undefined, platforms: readonly Platform[]): PlatformCaptionIssue | undefined => {
-  const value = caption ?? '';
+export const readPlatformCaptionIssue = (
+  caption: string | undefined,
+  platforms: readonly Platform[],
+  platformSettings?: PlatformSettings | null
+): PlatformCaptionIssue | undefined => {
   for (const platform of platforms) {
+    const value = readEffectivePlatformCaption(caption, platform, platformSettings) ?? '';
     if (platform === 'YOUTUBE_SHORTS') {
       if (/[<>]/.test(value)) return { platform, reason: 'YOUTUBE_DESCRIPTION_INVALID_CHARACTERS', message: 'YouTube descriptions cannot contain < or >. Edit the caption before posting.' };
       if (Buffer.byteLength(value, 'utf8') > 5000) return { platform, reason: 'YOUTUBE_DESCRIPTION_TOO_LONG', message: 'YouTube descriptions must not exceed 5000 UTF-8 bytes. Shorten the caption before posting.', maxLength: 5000, unit: 'utf8_bytes' };

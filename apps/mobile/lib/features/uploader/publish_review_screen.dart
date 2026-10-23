@@ -294,7 +294,9 @@ class PublishReviewSummary extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    trimmedCaption.isEmpty ? '(ไม่มีแคปชั่น)' : trimmedCaption,
+                    platformSettings.usePlatformCaptions
+                        ? 'ใช้แคปชั่นแยกตามช่องทางด้านล่าง'
+                        : trimmedCaption.isEmpty ? '(ไม่มีแคปชั่น)' : trimmedCaption,
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.5,
@@ -318,6 +320,32 @@ class PublishReviewSummary extends StatelessWidget {
             ),
           ],
         ),
+        if (platformSettings.usePlatformCaptions) ...[
+          const SizedBox(height: 14),
+          for (final platform in platforms)
+            Container(
+              key: ValueKey('publish-review-caption-${platform.apiValue}'),
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                  color: AppTheme.glass,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.border)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    SocialPlatformLogo(platform: platform, size: 22),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(platform.label,
+                        style: const TextStyle(fontWeight: FontWeight.w600))),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(platformSettings.effectiveCaption(platform, caption).trim()),
+                ],
+              ),
+            ),
+        ],
         if (coverResult != null) ...[
           const SizedBox(height: 12),
           Row(

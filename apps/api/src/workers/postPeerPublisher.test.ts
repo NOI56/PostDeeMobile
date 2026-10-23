@@ -31,6 +31,44 @@ afterEach(() => {
 });
 
 describe('createPostPeerPublisher', () => {
+  it.each(['', '   '])('sends an explicitly empty YouTube description instead of the shared caption (%j)', async (caption) => {
+    const requests: Record<string, unknown>[] = [];
+    const publisher = createPostPeerPublisher({ apiKey: 'key', baseUrl: 'https://api.postpeer.test',
+      accountIds: { YOUTUBE_SHORTS: 'youtube-account' },
+      fetchImpl: async (_url, init) => {
+        requests.push(JSON.parse(String(init.body)));
+        return { ok: true, status: 200, json: async () => ({ externalPostId: 'video' }) };
+      } });
+    await publisher.publish({ userId: 'owner', postId: 'post', platform: 'YOUTUBE_SHORTS',
+      caption: 'Shared text < which must not become a YouTube description >',
+      platformSettings: { YOUTUBE_SHORTS: { title: 'Title only', visibility: 'private',
+        madeForKids: false, containsSyntheticMedia: false, communityGuidelinesCertified: true, caption } } });
+    expect(requests[0]).toMatchObject({ content: '', platforms: [{ platformSpecificData: { title: 'Title only' } }] });
+  });
+
+  it.each(['INSTAGRAM_REELS', 'FACEBOOK_REELS', 'YOUTUBE_SHORTS'] as const)(
+    'sends only the effective %s text and validates it before provider reads', async (platform) => {
+      const calls: Record<string, unknown>[] = [];
+      const fetchImpl = vi.fn(async (_url, init) => {
+        calls.push(JSON.parse(String(init.body)));
+        return { ok: true, status: 200, json: async () => ({ externalPostId: 'video' }) };
+      });
+      const publisher = createPostPeerPublisher({ apiKey: 'key', baseUrl: 'https://api.postpeer.test',
+        accountIds: { [platform]: 'account' }, fetchImpl });
+      const baseSettings = platform === 'INSTAGRAM_REELS' ? { shareToFeed: true }
+        : platform === 'FACEBOOK_REELS' ? { publishMode: 'PUBLISH' } : { visibility: 'private' };
+      await publisher.publish({ userId: 'owner', postId: 'post', platform, caption: 'unused < shared >',
+        platformSettings: { [platform]: { ...baseSettings, caption: 'Destination text' } } });
+      expect(calls[0].content).toBe('Destination text');
+      const tooLong = platform === 'YOUTUBE_SHORTS' ? 'ก'.repeat(1667)
+        : 'a'.repeat(platform === 'INSTAGRAM_REELS' ? 2201 : 63207);
+      await expect(publisher.publish({ userId: 'owner', postId: 'post', platform, caption: 'valid',
+        platformSettings: { [platform]: { ...baseSettings, caption: tooLong } } }))
+        .rejects.toMatchObject({ code: 'PLATFORM_CAPTION_INVALID', issue: { platform } });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it.each(['', 'คำอธิบายเต็ม\nพร้อมรายละเอียด #สินค้า'])(
     'preserves the full description independently of an explicit YouTube title (%j)', async (caption) => {
       let requestBody: Record<string, unknown> | undefined;

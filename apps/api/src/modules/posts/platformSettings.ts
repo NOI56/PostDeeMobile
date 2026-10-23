@@ -46,19 +46,32 @@ export type YoutubePlatformSettings =
     };
 
 export type PlatformSettings = Partial<{
-  TIKTOK: TikTokPlatformSettings;
-  YOUTUBE_SHORTS: YoutubePlatformSettings;
+  TIKTOK: TikTokPlatformSettings & PlatformCaptionSettings;
+  YOUTUBE_SHORTS: YoutubePlatformSettings & PlatformCaptionSettings;
   INSTAGRAM_REELS: {
     shareToFeed: boolean;
     isAiGenerated?: boolean;
-  };
+  } & PlatformCaptionSettings;
   FACEBOOK_REELS: {
     // FACEBOOK_REELS is the legacy internal key. The provider target is a
     // Facebook Page Video; PAGE_DRAFT means an unpublished Page draft.
     publishMode: 'PUBLISH' | 'PAGE_DRAFT';
     isAiGenerated?: boolean;
-  };
+  } & PlatformCaptionSettings;
 }>;
+
+type PlatformCaptionSettings = {
+  // Absence retains the shared post caption for installed legacy clients.
+  // An explicit empty YouTube description stays empty; other platforms
+  // require non-empty overrides in the request/persisted-settings parser.
+  caption?: string;
+};
+
+export const readEffectivePlatformCaption = (
+  caption: string | undefined,
+  platform: Platform,
+  platformSettings?: PlatformSettings | null
+): string | undefined => platformSettings?.[platform]?.caption ?? caption;
 
 export type ReadPlatformSettingsResult =
   | { ok: true; value: PlatformSettings }
@@ -73,6 +86,24 @@ const hasExactKeys = (value: Record<string, unknown>, expectedKeys: readonly str
     keys.length === expectedKeys.length &&
     expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
   );
+};
+
+const readSettingsWithCaption = <T extends object>(
+  value: unknown,
+  readSettings: (value: unknown) => T | undefined,
+  allowEmptyCaption = false
+): (T & PlatformCaptionSettings) | undefined => {
+  if (!isRecord(value)) return undefined;
+  const hasCaption = Object.prototype.hasOwnProperty.call(value, 'caption');
+  if (hasCaption && (typeof value.caption !== 'string' ||
+      (!allowEmptyCaption && value.caption.trim().length === 0))) {
+    return undefined;
+  }
+  const { caption, ...settings } = value;
+  const parsed = readSettings(settings);
+  return parsed
+    ? { ...parsed, ...(hasCaption ? { caption: (caption as string).trim() } : {}) }
+    : undefined;
 };
 
 export const createDefaultPlatformSettings = (platforms: Platform[]): PlatformSettings => {
@@ -265,28 +296,27 @@ const readPlatformSettingsSnapshot = (
 
   for (const platform of platforms) {
     if (platform === 'TIKTOK') {
-      const parsed = readTikTokSettings(value.TIKTOK, allowLegacyShapes);
+      const parsed = readSettingsWithCaption(value.TIKTOK, (settings) =>
+        readTikTokSettings(settings, allowLegacyShapes));
       if (!parsed) {
         return { ok: false };
       }
       settings = { ...settings, TIKTOK: parsed };
     } else if (platform === 'YOUTUBE_SHORTS') {
-      const parsed = readYoutubeSettings(
-        value.YOUTUBE_SHORTS,
-        allowLegacyShapes
-      );
+      const parsed = readSettingsWithCaption(value.YOUTUBE_SHORTS, (settings) =>
+        readYoutubeSettings(settings, allowLegacyShapes), true);
       if (!parsed) {
         return { ok: false };
       }
       settings = { ...settings, YOUTUBE_SHORTS: parsed };
     } else if (platform === 'INSTAGRAM_REELS') {
-      const parsed = readInstagramSettings(value.INSTAGRAM_REELS);
+      const parsed = readSettingsWithCaption(value.INSTAGRAM_REELS, readInstagramSettings);
       if (!parsed) {
         return { ok: false };
       }
       settings = { ...settings, INSTAGRAM_REELS: parsed };
     } else if (platform === 'FACEBOOK_REELS') {
-      const parsed = readFacebookSettings(value.FACEBOOK_REELS);
+      const parsed = readSettingsWithCaption(value.FACEBOOK_REELS, readFacebookSettings);
       if (!parsed) {
         return { ok: false };
       }
@@ -329,6 +359,9 @@ export const arePlatformSettingsEqual = (
   const normalizedRight = normalizePersistedPlatformSettings(right, platforms);
 
   return platforms.every((platform) => {
+    if (normalizedLeft[platform]?.caption !== normalizedRight[platform]?.caption) {
+      return false;
+    }
     if (platform === 'TIKTOK') {
       const leftSettings = normalizedLeft.TIKTOK;
       const rightSettings = normalizedRight.TIKTOK;

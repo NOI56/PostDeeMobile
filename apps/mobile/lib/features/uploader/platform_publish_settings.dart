@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../core/network/postdee_api_client.dart';
 import '../platforms/social_platform.dart';
 
@@ -44,6 +46,8 @@ String safeYouTubeTitleSuggestion(String caption) {
 /// prepared-video duration before serialization. Inbox retains its old shape.
 class PlatformPublishSettings {
   const PlatformPublishSettings({
+    this.usePlatformCaptions = false,
+    this.platformCaptions = const {},
     this.tiktokPublishMode = TikTokPublishMode.inboxDraft,
     this.tiktokPrivacyLevel,
     this.tiktokCreatorInfoRevision,
@@ -67,6 +71,9 @@ class PlatformPublishSettings {
     this.facebookIsAiGenerated,
   });
 
+  /// Per-post caption drafts stay available when the shared editor is active.
+  final bool usePlatformCaptions;
+  final Map<SocialPlatform, String> platformCaptions;
   final TikTokPublishMode tiktokPublishMode;
   final TikTokPrivacyLevel? tiktokPrivacyLevel;
   final String? tiktokCreatorInfoRevision;
@@ -89,14 +96,25 @@ class PlatformPublishSettings {
   final FacebookPublishMode? facebookPublishMode;
   final bool? facebookIsAiGenerated;
 
+  String effectiveCaption(SocialPlatform platform, String sharedCaption) =>
+      usePlatformCaptions
+          ? platformCaptions[platform] ?? sharedCaption
+          : sharedCaption;
+
   /// Resolve only for validation/review/submission. Drafts retain the override
   /// so automatic titles continue to follow edits to their saved caption.
   PlatformPublishSettings resolvedForCaption(String caption) =>
       youtubeTitle.trim().isNotEmpty
           ? this
-          : copyWith(youtubeTitle: safeYouTubeTitleSuggestion(caption));
+          : copyWith(
+              youtubeTitle: safeYouTubeTitleSuggestion(
+                effectiveCaption(SocialPlatform.youtubeShorts, caption),
+              ),
+            );
 
   PlatformPublishSettings copyWith({
+    bool? usePlatformCaptions,
+    Map<SocialPlatform, String>? platformCaptions,
     TikTokPublishMode? tiktokPublishMode,
     Object? tiktokPrivacyLevel = _keepSetting,
     Object? tiktokCreatorInfoRevision = _keepSetting,
@@ -120,6 +138,8 @@ class PlatformPublishSettings {
     Object? facebookIsAiGenerated = _keepSetting,
   }) =>
       PlatformPublishSettings(
+        usePlatformCaptions: usePlatformCaptions ?? this.usePlatformCaptions,
+        platformCaptions: platformCaptions ?? this.platformCaptions,
         tiktokPublishMode: tiktokPublishMode ?? this.tiktokPublishMode,
         tiktokPrivacyLevel: identical(tiktokPrivacyLevel, _keepSetting)
             ? this.tiktokPrivacyLevel
@@ -273,6 +293,7 @@ class PlatformPublishSettings {
     return {
       if (selectedPlatforms.contains(SocialPlatform.tiktok))
         'TIKTOK': <String, Object?>{
+          ..._captionApiJson(SocialPlatform.tiktok),
           'publishMode': switch (tiktokPublishMode) {
             TikTokPublishMode.inboxDraft => 'INBOX_DRAFT',
             TikTokPublishMode.directPost => 'DIRECT_POST',
@@ -294,6 +315,7 @@ class PlatformPublishSettings {
         },
       if (selectedPlatforms.contains(SocialPlatform.youtubeShorts))
         'YOUTUBE_SHORTS': <String, Object?>{
+          ..._captionApiJson(SocialPlatform.youtubeShorts),
           'title': youtubeTitle.trim(),
           'visibility': youtubeVisibility.name,
           'madeForKids': youtubeMadeForKids,
@@ -302,12 +324,14 @@ class PlatformPublishSettings {
         },
       if (selectedPlatforms.contains(SocialPlatform.instagramReels))
         'INSTAGRAM_REELS': <String, Object?>{
+          ..._captionApiJson(SocialPlatform.instagramReels),
           'shareToFeed': instagramShareToFeed,
           if (instagramIsAiGenerated != null)
             'isAiGenerated': instagramIsAiGenerated,
         },
       if (selectedPlatforms.contains(SocialPlatform.facebookReels))
         'FACEBOOK_REELS': <String, Object?>{
+          ..._captionApiJson(SocialPlatform.facebookReels),
           'publishMode': switch (facebookPublishMode) {
             FacebookPublishMode.publish => 'PUBLISH',
             FacebookPublishMode.pageDraft => 'PAGE_DRAFT',
@@ -327,6 +351,7 @@ class PlatformPublishSettings {
       {
         if (selectedPlatforms.contains(SocialPlatform.tiktok))
           'TIKTOK': <String, Object?>{
+            ..._captionApiJson(SocialPlatform.tiktok),
             'publishMode': switch (tiktokPublishMode) {
               TikTokPublishMode.inboxDraft => 'INBOX_DRAFT',
               TikTokPublishMode.directPost => 'DIRECT_POST',
@@ -348,6 +373,7 @@ class PlatformPublishSettings {
           },
         if (selectedPlatforms.contains(SocialPlatform.youtubeShorts))
           'YOUTUBE_SHORTS': <String, Object?>{
+            ..._captionApiJson(SocialPlatform.youtubeShorts),
             'visibility': youtubeVisibility.name,
             if (youtubeTitle.trim().isNotEmpty &&
                 youtubeMadeForKids != null &&
@@ -362,6 +388,7 @@ class PlatformPublishSettings {
           },
         if (selectedPlatforms.contains(SocialPlatform.instagramReels))
           'INSTAGRAM_REELS': <String, Object?>{
+            ..._captionApiJson(SocialPlatform.instagramReels),
             'shareToFeed': instagramShareToFeed,
             if (instagramIsAiGenerated != null)
               'isAiGenerated': instagramIsAiGenerated,
@@ -369,6 +396,7 @@ class PlatformPublishSettings {
         if (selectedPlatforms.contains(SocialPlatform.facebookReels) &&
             facebookPublishMode != null)
           'FACEBOOK_REELS': <String, Object?>{
+            ..._captionApiJson(SocialPlatform.facebookReels),
             'publishMode': switch (facebookPublishMode!) {
               FacebookPublishMode.publish => 'PUBLISH',
               FacebookPublishMode.pageDraft => 'PAGE_DRAFT',
@@ -378,7 +406,19 @@ class PlatformPublishSettings {
           },
       };
 
+  Map<String, Object?> _captionApiJson(SocialPlatform platform) => {
+        if (usePlatformCaptions && platformCaptions.containsKey(platform))
+          'caption': platformCaptions[platform],
+      };
+
   Map<String, Object?> toDraftJson() => {
+        if (usePlatformCaptions) 'usePlatformCaptions': true,
+        if (platformCaptions.isNotEmpty)
+          'platformCaptions': {
+            for (final platform in _captionPlatforms)
+              if (platformCaptions.containsKey(platform))
+                platform.apiValue: platformCaptions[platform],
+          },
         'tiktokPublishMode': tiktokPublishMode.name,
         'tiktokPrivacyLevel': tiktokPrivacyLevel?.name,
         'tiktokCreatorInfoRevision': tiktokCreatorInfoRevision,
@@ -436,6 +476,12 @@ class PlatformPublishSettings {
       }
     }
     return PlatformPublishSettings(
+      usePlatformCaptions: json.containsKey('usePlatformCaptions')
+          ? _requiredCaptionMode(json['usePlatformCaptions'])
+          : false,
+      platformCaptions: json.containsKey('platformCaptions')
+          ? _readPlatformCaptionDrafts(json['platformCaptions'])
+          : const {},
       tiktokPublishMode: _enumByName(
         TikTokPublishMode.values,
         json['tiktokPublishMode'],
@@ -488,6 +534,8 @@ class PlatformPublishSettings {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is PlatformPublishSettings &&
+          other.usePlatformCaptions == usePlatformCaptions &&
+          mapEquals(other.platformCaptions, platformCaptions) &&
           other.tiktokPublishMode == tiktokPublishMode &&
           other.tiktokPrivacyLevel == tiktokPrivacyLevel &&
           other.tiktokCreatorInfoRevision == tiktokCreatorInfoRevision &&
@@ -515,6 +563,12 @@ class PlatformPublishSettings {
 
   @override
   int get hashCode => Object.hashAll([
+        usePlatformCaptions,
+        Object.hashAll([
+          for (final platform in _captionPlatforms)
+            if (platformCaptions.containsKey(platform))
+              Object.hash(platform, platformCaptions[platform]),
+        ]),
         tiktokPublishMode,
         tiktokPrivacyLevel,
         tiktokCreatorInfoRevision,
@@ -537,6 +591,35 @@ class PlatformPublishSettings {
         facebookPublishMode,
         facebookIsAiGenerated,
       ]);
+}
+
+const _captionPlatforms = {
+  SocialPlatform.tiktok,
+  SocialPlatform.youtubeShorts,
+  SocialPlatform.instagramReels,
+  SocialPlatform.facebookReels,
+};
+
+bool _requiredCaptionMode(Object? value) {
+  if (value is bool) return value;
+  throw const FormatException('usePlatformCaptions must be a boolean');
+}
+
+Map<SocialPlatform, String> _readPlatformCaptionDrafts(Object? value) {
+  if (value is! Map) {
+    throw const FormatException('platformCaptions must be an object');
+  }
+  final captions = <SocialPlatform, String>{};
+  for (final entry in value.entries) {
+    final platform = _captionPlatforms
+        .where((platform) => platform.apiValue == entry.key)
+        .firstOrNull;
+    if (platform == null || entry.value is! String) {
+      throw const FormatException('Invalid platform caption');
+    }
+    captions[platform] = entry.value as String;
+  }
+  return Map.unmodifiable(captions);
 }
 
 final _tikTokRevisionPattern = RegExp(r'^[0-9a-f]{64}$');

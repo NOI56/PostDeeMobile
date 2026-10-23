@@ -4,6 +4,28 @@ import { createPrismaPostRepository } from './prismaPostRepository.js';
 import { withPostRepositoryFixture } from '../../../test/repositoryFixtures.js';
 
 describe('createPrismaPostRepository', () => {
+  it.each(['YouTube', ''])('round-trips all four caption overrides, including an explicit empty YouTube description, through existing JSON (%j)', async (youtubeCaption) => {
+    const platformSettings = {
+      TIKTOK: { publishMode: 'INBOX_DRAFT' as const, caption: 'TikTok' },
+      YOUTUBE_SHORTS: { visibility: 'private' as const, caption: youtubeCaption },
+      INSTAGRAM_REELS: { shareToFeed: true, caption: 'Instagram' },
+      FACEBOOK_REELS: { publishMode: 'PUBLISH' as const, caption: 'Facebook' }
+    };
+    const platforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const;
+    const row = { id: 'captions', userId: 'owner', caption: 'Shared', videoS3Key: 'uploads/owner/v.mp4',
+      selectedPlatforms: [...platforms], platformSettings, scheduledAt: null, status: 'QUEUED',
+      createdAt: new Date('2026-06-01T00:00:00.000Z') };
+    const create = vi.fn().mockResolvedValue(row);
+    const repository = createPrismaPostRepository({ prisma: withPostRepositoryFixture({ post: {
+      create, findMany: vi.fn().mockResolvedValue([row])
+    } }) });
+    const result = await repository.create({ userId: 'owner', caption: row.caption, videoS3Key: row.videoS3Key,
+      platforms: [...platforms], platformSettings });
+    expect(create.mock.calls[0][0].data.platformSettings).toEqual(platformSettings);
+    expect(result.platformSettings).toEqual(platformSettings);
+    expect((await repository.list({ userId: 'owner' }))[0].platformSettings).toEqual(platformSettings);
+  });
+
   it('reads addon grants inside the quota transaction and rechecks a refunded grant after a conflict', async () => {
     const transactionGrants = { findMany: vi.fn().mockResolvedValueOnce([{ id: 'grant' }]).mockResolvedValue([]) };
     const post = { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]),

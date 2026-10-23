@@ -50,6 +50,29 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('review shows the effective caption for each selected platform',
+      (tester) async {
+    await pumpSummary(tester,
+        platforms: const [SocialPlatform.tiktok, SocialPlatform.youtubeShorts],
+        connectionDisplayNames: const {
+          SocialPlatform.tiktok: '@seller',
+          SocialPlatform.youtubeShorts: 'Seller channel',
+        },
+        platformSettings: const PlatformPublishSettings(
+          usePlatformCaptions: true,
+          platformCaptions: {
+            SocialPlatform.tiktok: 'ข้อความสำหรับ TikTok',
+            SocialPlatform.youtubeShorts: 'ข้อความสำหรับ YouTube',
+          },
+        ));
+    expect(find.byKey(const ValueKey('publish-review-caption-TIKTOK')),
+        findsOneWidget);
+    expect(find.text('ข้อความสำหรับ TikTok'), findsOneWidget);
+    expect(find.text('ข้อความสำหรับ YouTube'), findsOneWidget);
+    expect(find.text('แคปชั่นขายสินค้า'), findsNothing);
+    expect(find.text('ชื่อวิดีโอ: ข้อความสำหรับ YouTube'), findsOneWidget);
+  });
+
   testWidgets('YouTube review shows the title and every explicit answer',
       (tester) async {
     await pumpSummary(

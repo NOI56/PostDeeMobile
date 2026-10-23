@@ -1663,6 +1663,7 @@ class GenerateRealClipCaptionRequest {
     this.selectedFrameKeys = const [],
     this.deleteAfterUse = false,
     this.writingStyle,
+    this.platforms = const [],
   });
 
   final String videoS3Key;
@@ -1670,6 +1671,7 @@ class GenerateRealClipCaptionRequest {
   final List<String> selectedFrameKeys;
   final bool deleteAfterUse;
   final CaptionWritingStyle? writingStyle;
+  final List<String> platforms;
 
   Map<String, Object?> toJson() => {
         'videoS3Key': videoS3Key,
@@ -1679,6 +1681,7 @@ class GenerateRealClipCaptionRequest {
           'selectedFrameKeys': selectedFrameKeys,
         if (deleteAfterUse) 'deleteAfterUse': true,
         if (writingStyle != null) 'writingStyle': writingStyle!.toJson(),
+        if (platforms.isNotEmpty) 'platforms': platforms,
       };
 }
 
@@ -1783,6 +1786,7 @@ class RealClipCaptionResult {
     this.context = RealClipCaptionContext.fallback,
     this.model,
     this.isFallback = false,
+    this.platformCaptions = const {},
   });
 
   final String caption;
@@ -1796,6 +1800,7 @@ class RealClipCaptionResult {
   final RealClipCaptionContext context;
   final String? model;
   final bool isFallback;
+  final Map<String, CaptionResult> platformCaptions;
 
   factory RealClipCaptionResult.fromJson(Map<String, Object?> json) {
     final source = json['source'];
@@ -1820,6 +1825,9 @@ class RealClipCaptionResult {
       searchTitle: json['searchTitle'] as String,
       model: json['model'] as String?,
       isFallback: json['isFallback'] as bool? ?? false,
+      platformCaptions: json.containsKey('platformCaptions')
+          ? _readPlatformCaptionResults(json['platformCaptions'])
+          : const {},
       source: RealClipCaptionSource.fromJson(source),
       quota: RealClipCaptionQuota.fromJson(quota),
       context: context is Map<String, Object?>
@@ -1827,6 +1835,31 @@ class RealClipCaptionResult {
           : RealClipCaptionContext.fallback,
     );
   }
+}
+
+Map<String, CaptionResult> _readPlatformCaptionResults(Object? value) {
+  if (value is! Map<String, Object?>) {
+    throw const ApiException('API response has invalid platform captions');
+  }
+  const platforms = {
+    'TIKTOK',
+    'YOUTUBE_SHORTS',
+    'INSTAGRAM_REELS',
+    'FACEBOOK_REELS',
+  };
+  final results = <String, CaptionResult>{};
+  for (final entry in value.entries) {
+    final result = entry.value;
+    if (!platforms.contains(entry.key) ||
+        result is! Map<String, Object?> ||
+        result['caption'] is! String ||
+        result['hashtags'] is! List ||
+        (result['hashtags'] as List).any((tag) => tag is! String)) {
+      throw const ApiException('API response has invalid platform captions');
+    }
+    results[entry.key] = CaptionResult.fromJson(result);
+  }
+  return Map.unmodifiable(results);
 }
 
 List<String> _readStringList(Object? value) {

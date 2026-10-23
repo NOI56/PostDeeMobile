@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
 import 'package:postdee_mobile/features/uploader/platform_publish_settings.dart';
 import 'package:postdee_mobile/features/uploader/platform_publish_preflight.dart';
@@ -97,6 +98,31 @@ void main() {
         ownerUserId: ownerUserId,
         beforePromotion: beforePromotion,
       );
+
+  test('retains all per-platform caption drafts while shared mode is selected',
+      () async {
+    final video = await fixture('source.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    const settings = PlatformPublishSettings(
+      platformCaptions: {
+        SocialPlatform.tiktok: 'TikTok ของฉัน',
+        SocialPlatform.youtubeShorts: 'Shorts ของฉัน',
+        SocialPlatform.instagramReels: 'Instagram ของฉัน',
+        SocialPlatform.facebookReels: 'Facebook ของฉัน',
+      },
+    );
+    await store.saveDraft(request(video: video, platformSettings: settings));
+    final restored = (await store.loadDraft('draft-1'))!;
+    expect(restored.platformSettings, settings);
+    expect(restored.caption, 'แคปชันร่าง');
+    final active =
+        restored.platformSettings.copyWith(usePlatformCaptions: true);
+    await store.saveDraft(request(
+      video: File(restored.videoPath),
+      platformSettings: active,
+    ));
+    expect((await store.loadDraft('draft-1'))!.platformSettings, active);
+  });
 
   test(
       'persists caption review until explicitly acknowledged without a version bump',

@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 
 import { CaptionProviderError } from './captionGeneratorFactory.js';
+import { readRealClipPlatformCaptions } from './captionService.js';
 import type {
   RealClipCaptionContext,
   RealClipCaptionMode,
@@ -171,6 +172,19 @@ const buildInstruction = (input: RealClipCaptionGenerateInput) => {
       : 'พิจารณาคลิปที่ส่งมาทั้งคลิป ไม่มีภาพแยกแนบเพิ่ม.';
   const sentenceCount = input.request.writingStyle?.length === 'medium' ? '3–4' : '1–2';
   const sentenceLength = sentenceCount === '3–4' ? 'ที่กระชับ' : 'สั้น';
+  const platformInstruction = input.request.platforms ? (
+    '\nเพิ่ม platformCaptions เป็น object โดยใช้เฉพาะ keys ที่ขอ: ' + input.request.platforms.join(', ') + '. ' +
+    'ต้องมีครบทุก key แต่ละค่าเป็น {"caption": string, "hashtags": string[0..5]}. ' +
+    'คิดแคปชั่นแยกให้แต่ละช่องทางในครั้งเดียว ไม่คัดลอกข้อความเดียวทั้งชุด ปรับจังหวะภาษาโดยรักษาข้อเท็จจริงจากคลิปเดียวกันและสไตล์ที่เลือก. ' +
+    'TIKTOK: เปิดสั้น กระชับ ชวนติดตามเรื่องที่เห็นจริง. ' +
+    'YOUTUBE_SHORTS: ให้บริบทชัดและคำค้นธรรมชาติ เป็นคำอธิบายวิดีโอ ไม่ใช่ชื่อวิดีโอ และห้ามมี < หรือ >. ' +
+    'INSTAGRAM_REELS: แบ่งประโยคให้อ่านง่าย เก็บน้ำเสียงครีเอเตอร์และแฮชแท็กที่ตรงเรื่อง. ' +
+    'FACEBOOK_REELS คือ Facebook Page Video: เล่าให้เข้าใจง่ายและชวนคุยจากเรื่องที่เห็นจริง ไม่เรียกว่า Facebook Reels. ' +
+    'ทุก caption รวมแฮชแท็กต้องกระชับไม่เกิน 1000 ตัวอักษร ไม่ต้องเติมข้อมูลเพื่อให้ต่างกัน ' +
+    'ถ้าหลักฐานไม่พอให้ใช้ข้อสังเกตหรือคำถามโดยไม่แต่งข้อเท็จจริง ' +
+    'platformCaptions ทุกช่องใช้กฎภาษา หลักฐาน ความยาว อีโมจิ และตัวอย่างสไตล์เดียวกับ caption หลัก ' +
+    'ไม่ใส่แฮชแท็กใน caption ให้แยกใน hashtags และไม่เติมราคา โปรโมชัน คำรับรอง หรือคำอ้างที่ไม่ได้อยู่ในคลิป.\n'
+  ) : '';
 
   return (
     `${sourceNote}${guidance}\n` +
@@ -193,11 +207,13 @@ const buildInstruction = (input: RealClipCaptionGenerateInput) => {
     'metadata ใช้ภาษาเดียวกับแคปชั่น ยกเว้นชื่อเฉพาะที่เห็นจริง คำค้นและแฮชแท็กไม่ซ้ำ สูงสุดอย่างละ 5 รายการ ถ้าหลักฐานไม่พอให้ส่ง [] ' +
     'ไม่เติมแท็กการตลาดทั่วไป เช่น #affiliate #marketing #onlinestore หากคลิปไม่ได้เกี่ยวกับเรื่องนั้น.\n' +
     buildWritingStyleInstruction(input.request) +
+    platformInstruction +
     'ตอบเฉพาะ JSON object โดยใช้ชื่อฟิลด์เหล่านี้เท่านั้น:\n' +
     '{"caption": string, "captionOptions": string[3], "hooks": string[3], ' +
     '"hashtags": string[0..5], "seoKeywords": string[0..5], "searchTitle": string, ' +
     '"detectedSpokenLanguage": string (ISO code like "th"), ' +
-    '"captionLanguage": string, "targetMarket": string}\n' +
+    '"captionLanguage": string, "targetMarket": string' +
+    (input.request.platforms ? ', "platformCaptions": object' : '') + '}\n' +
     'caption, captionOptions, hooks, seoKeywords และ searchTitle ใช้ภาษาที่เลือก captionLanguage ใช้รหัสภาษานั้น ' +
     'แฮชแท็กเริ่มด้วย #. ไม่มีข้อความนอก JSON.'
   );
@@ -241,6 +257,15 @@ const mapResult = (
   const hooks = readStringList(parsed.hooks, 3);
   const hashtags = readMetadataList(parsed.hashtags, true);
   const seoKeywords = readMetadataList(parsed.seoKeywords);
+  const platformCaptions = input.request.platforms
+    ? readRealClipPlatformCaptions(parsed.platformCaptions, input.request.platforms)
+    : undefined;
+  if (input.request.platforms && !platformCaptions) {
+    throw new CaptionProviderError('Gemini real-clip caption returned incomplete or invalid platform captions');
+  }
+  for (const entry of Object.values(platformCaptions ?? {})) {
+    entry.hashtags = readMetadataList(entry.hashtags, true);
+  }
 
   return {
     model,
@@ -248,6 +273,7 @@ const mapResult = (
     captionOptions: captionOptions.length > 0 ? captionOptions : [caption],
     hooks,
     hashtags,
+    ...(platformCaptions ? { platformCaptions } : {}),
     seoKeywords,
     searchTitle: readString(parsed.searchTitle) ?? caption,
     affiliateLinkPlaceholder,

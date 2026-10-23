@@ -8,7 +8,7 @@ import {
   type PlatformPublishStore,
   createInMemoryPlatformPublishStore
 } from '../modules/platformPublishes/platformPublishStore.js';
-import type { PlatformSettings } from '../modules/posts/platformSettings.js';
+import { readEffectivePlatformCaption, type PlatformSettings } from '../modules/posts/platformSettings.js';
 import type { PlatformTargets } from '../modules/posts/platformTargets.js';
 import { TikTokPublishingError } from '../modules/socialConnections/postPeerTikTokClient.js';
 import type { BullMqPublishJobData } from '../modules/queue/bullMqPublishQueue.js';
@@ -249,7 +249,7 @@ export const processPublishJob = async ({
           return await publisher.publish({
             ...(jobData.userId ? { userId: jobData.userId } : {}),
             postId: jobData.postId,
-            caption: jobData.caption,
+            caption: readEffectivePlatformCaption(jobData.caption, platform, jobData.platformSettings),
             videoS3Key: jobData.videoS3Key,
             ...(jobData.coverImageS3Key
               ? { coverImageS3Key: jobData.coverImageS3Key }

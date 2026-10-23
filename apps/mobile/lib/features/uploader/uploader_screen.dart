@@ -29,6 +29,7 @@ import 'clip_frame_extractor.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
+import 'platform_caption_fields.dart';
 import 'platform_publish_defaults_store.dart';
 import 'platform_settings_scaffold.dart';
 import 'platform_publish_preflight.dart';
@@ -362,6 +363,9 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _isSavingCaptionStyle = false;
   String? _captionStyleError;
   BuildContext? _captionStyleSheetContext;
+  BuildContext? _platformCaptionPreviewContext;
+  Map<SocialPlatform, String>? _platformCaptionsBeforeAi;
+  bool _platformCaptionReviewBeforeAi = false;
   String? _acceptedAiCaption;
   String? _acceptedAiCaptionOwner;
   String? _acceptedAiCaptionSource;
@@ -382,7 +386,45 @@ class _UploaderScreenState extends State<UploaderScreen>
   PlatformPublishSettings get _resolvedPlatformSettings =>
       _platformSettings.resolvedForCaption(_captionController.text);
 
+  String _effectiveCaption(SocialPlatform platform) => _platformSettings
+      .effectiveCaption(platform, _captionController.text).trim();
+
+  bool get _hasAnyCaption => _platformSettings.usePlatformCaptions
+      ? captionPlatforms.any((p) => _effectiveCaption(p).isNotEmpty)
+      : _captionController.text.trim().isNotEmpty;
+
+  String? _platformCaptionError(SocialPlatform platform) {
+    final text = _effectiveCaption(platform);
+    if (_captionRequired && text.isEmpty) return 'เพิ่มแคปชั่นสำหรับช่องทางนี้';
+    if (platform == SocialPlatform.tiktok &&
+        _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost &&
+        text.length > 2200) {
+      return 'แคปชั่น TikTok ต้องไม่เกิน 2,200 ตัวอักษร';
+    }
+    return validatePlatformPublishPreflight(
+        selectedPlatforms: {platform}, caption: text)?.message;
+  }
+
+  String _requestCaption(String shared, PlatformPublishSettings settings,
+      Iterable<SocialPlatform> platforms) {
+    if (!settings.usePlatformCaptions) return shared.trim();
+    for (final platform in captionPlatforms.where(platforms.contains)) {
+      final text = settings.effectiveCaption(platform, shared).trim();
+      if (text.isNotEmpty) return text;
+    }
+    // YouTube can intentionally have only a title and an empty description.
+    // Its compatibility summary must not expose the hidden shared draft.
+    return '';
+  }
+
   String? get _captionLimitError {
+    if (_platformSettings.usePlatformCaptions) {
+      for (final platform in _selectedPlatforms) {
+        final error = _platformCaptionError(platform);
+        if (error != null) return error;
+      }
+      return null;
+    }
     final caption = _captionController.text.trim();
     if (_selectedPlatforms.contains(SocialPlatform.tiktok) &&
         _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost &&
@@ -410,6 +452,16 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   String? _postTextValidationError() {
+    if (_platformSettings.usePlatformCaptions) {
+      for (final platform in _selectedPlatforms) {
+        if (_effectiveCaption(platform).isEmpty &&
+            !(platform == SocialPlatform.youtubeShorts &&
+                _platformSettings.youtubeTitle.trim().isNotEmpty)) {
+          return 'เพิ่มแคปชั่น ${platform.label} ก่อนโพสต์';
+        }
+      }
+      return _captionLimitError;
+    }
     if (_captionController.text.trim().isNotEmpty) return _captionLimitError;
     if (_selectedPlatforms.length == 1 &&
         _selectedPlatforms.contains(SocialPlatform.youtubeShorts)) {
@@ -541,14 +593,21 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (step >= _currentStep) return false;
     return switch (step) {
       0 => _localFilePathController.text.trim().isNotEmpty,
-      1 => _captionController.text.trim().isNotEmpty,
+      1 => _hasAnyCaption,
       2 => _destinationsReady,
       _ => false,
     };
   }
 
-  void _invalidateAiCaption({bool clearCaptionMetadata = true}) {
+  void _invalidateAiCaption({bool clearCaptionMetadata = true,
+      bool clearPlatformUndo = true}) {
     _captionGeneration++;
+    if (clearPlatformUndo) _platformCaptionsBeforeAi = null;
+    final previewContext = _platformCaptionPreviewContext;
+    _platformCaptionPreviewContext = null;
+    if (previewContext != null && previewContext.mounted) {
+      Navigator.of(previewContext).pop(false);
+    }
     _isGeneratingCaption = false;
     _clearCaptionLearningBaseline();
     _clearCaptionValidation();
@@ -562,7 +621,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool get _aiCaptionReady =>
       !_isGeneratingCaption &&
       _acceptedAiCaption != null &&
-      _acceptedAiCaption == _captionController.text &&
+      _acceptedAiCaption == (_platformSettings.usePlatformCaptions
+          ? jsonEncode(_platformSettings.platformCaptions.map(
+              (key, value) => MapEntry(key.apiValue, value)))
+          : _captionController.text) &&
       _acceptedAiCaptionSource == _localFilePathController.text &&
       _acceptedAiCaptionOwner ==
           PostDeeAuthSessionStore.instance.session.stableUserId;
@@ -622,7 +684,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   String get _tikTokConsentIntent => jsonEncode([
-        _captionController.text,
+        _effectiveCaption(SocialPlatform.tiktok),
         _localFilePathController.text,
         _scheduledAtController.text,
         _coverResult?.localImagePath,
@@ -849,7 +911,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (_currentStep == 0 && _localFilePathController.text.trim().isEmpty) {
       error = 'เลือกวิดีโอจากเครื่องก่อน';
     } else if (_currentStep == 1 &&
-        _captionController.text.trim().isEmpty &&
+        !_hasAnyCaption &&
         !_connectedPlatforms.contains(SocialPlatform.youtubeShorts)) {
       error = 'เพิ่มแคปชั่นก่อนโพสต์';
     } else if (_currentStep == 1 && _captionLimitError != null) {
@@ -886,7 +948,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         return;
       }
       final captionMissing =
-          _currentStep == 1 && _captionController.text.trim().isEmpty;
+          _currentStep == 1 && !_hasAnyCaption;
       setState(() {
         _errorMessage = invalidSettings != null || error == _captionLimitError
             ? null : error;
@@ -1183,6 +1245,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Future<void> _rememberCaptionEdit(
       String caption, String source, int generation) async {
+    if (_platformSettings.usePlatformCaptions) return;
     final owner = _captionStyleOwner;
     bool stillCurrent() =>
         mounted &&
@@ -2154,14 +2217,75 @@ class _UploaderScreenState extends State<UploaderScreen>
     );
   }
 
+  void _setAdvancedCaptions(bool enabled) {
+    if (_formBusy) return;
+    FocusScope.of(context).unfocus();
+    final previousTikTokCaption = _effectiveCaption(SocialPlatform.tiktok);
+    setState(() {
+      _invalidateAiCaption(clearPlatformUndo: false);
+      final captions = _platformSettings.platformCaptions;
+      _platformSettings = _platformSettings.copyWith(
+        usePlatformCaptions: enabled,
+        platformCaptions: enabled && captions.isEmpty
+            ? {for (final platform in captionPlatforms)
+                platform: _captionController.text}
+            : captions,
+      );
+      if (_effectiveCaption(SocialPlatform.tiktok) != previousTikTokCaption) {
+        _clearTikTokFreshness();
+      }
+      _errorMessage = null;
+    });
+  }
+
+  void _editPlatformCaption(SocialPlatform platform, String text) {
+    final previousTikTokCaption = _effectiveCaption(SocialPlatform.tiktok);
+    setState(() {
+      _clearCaptionLearningBaseline();
+      _clearCaptionValidation();
+      _clearDraftSavedFeedback();
+      _platformSettings = _platformSettings.copyWith(platformCaptions: {
+        ..._platformSettings.platformCaptions,
+        platform: text,
+      });
+      if (_effectiveCaption(SocialPlatform.tiktok) != previousTikTokCaption) {
+        _clearTikTokFreshness();
+      }
+      _errorMessage = null;
+    });
+  }
+
+  void _undoPlatformAiCaption() {
+    final previous = _platformCaptionsBeforeAi;
+    if (previous == null || _formBusy || _isGeneratingCaption) return;
+    setState(() {
+      final previousTikTokCaption = _effectiveCaption(SocialPlatform.tiktok);
+      _platformSettings = _platformSettings.copyWith(platformCaptions: previous);
+      if (_effectiveCaption(SocialPlatform.tiktok) != previousTikTokCaption) {
+        _clearTikTokFreshness();
+      }
+      _platformCaptionsBeforeAi = null;
+      _clearCaptionLearningBaseline();
+      _clearCaptionValidation();
+      _clearDraftSavedFeedback();
+      _captionNeedsReview = _platformCaptionReviewBeforeAi;
+      _aiCaptionFallbackMessage = null;
+      _aiCaptionErrorMessage = null;
+    });
+  }
+
   String _formatRealClipCaption(RealClipCaptionResult result) {
-    final caption = result.caption.trim();
+    return _formatCaptionParts(result.caption, result.hashtags);
+  }
+
+  String _formatCaptionParts(String value, List<String> tags) {
+    final caption = value.trim();
     final seenTags = RegExp(r'#[\p{L}\p{M}\p{N}_]+', unicode: true)
         .allMatches(caption)
         .map((match) => match.group(0)!.toLowerCase())
         .toSet();
     final hashtags = <String>[];
-    for (final rawTag in result.hashtags) {
+    for (final rawTag in tags) {
       final tagBody = rawTag
           .trim()
           .replaceFirst(RegExp(r'^#+'), '')
@@ -2185,6 +2309,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     final sourcePath = _localFilePathController.text;
     final originalCaption = _captionController.text;
     final originalGuidance = _aiGuidanceController.text;
+    final advanced = _platformSettings.usePlatformCaptions;
+    final originalPlatformCaptions = jsonEncode(_platformSettings.toDraftJson());
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     bool stillCurrent() =>
         mounted &&
@@ -2273,6 +2399,9 @@ class _UploaderScreenState extends State<UploaderScreen>
           selectedFrameKeys: selectedFrameKeys,
           deleteAfterUse: true,
           writingStyle: writingStyle,
+          platforms: advanced
+              ? captionPlatforms.map((p) => p.apiValue).toList()
+              : const [],
         ),
       );
       final nextCaption = _formatRealClipCaption(caption);
@@ -2282,9 +2411,65 @@ class _UploaderScreenState extends State<UploaderScreen>
       }
 
       if (_captionController.text != originalCaption ||
-          _aiGuidanceController.text != originalGuidance) {
+          _aiGuidanceController.text != originalGuidance ||
+          advanced != _platformSettings.usePlatformCaptions ||
+          (advanced && originalPlatformCaptions !=
+              jsonEncode(_platformSettings.toDraftJson()))) {
         setState(() => _aiCaptionErrorMessage =
             'คุณแก้ข้อความระหว่างที่ AI ทำงาน จึงเก็บข้อความที่คุณเขียนไว้');
+        return;
+      }
+      if (advanced) {
+        final captions = <SocialPlatform, String>{};
+        for (final platform in captionPlatforms) {
+          final generated = caption.platformCaptions[platform.apiValue];
+          if (generated == null || generated.caption.trim().isEmpty) {
+            throw const ApiException(
+                'ระบบ AI ยังส่งแคปชั่นแยกไม่ครบทั้ง 4 ช่องทาง กรุณาลองใหม่ภายหลัง');
+          }
+          captions[platform] =
+              _formatCaptionParts(generated.caption, generated.hashtags);
+        }
+        if (!mounted) return;
+        setState(() => _isGeneratingCaption = false);
+        final accepted = await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (sheetContext) {
+            _platformCaptionPreviewContext = sheetContext;
+            return PlatformCaptionPreviewSheet(
+                captions: captions,
+                isFallback: caption.isFallback,
+                charged: caption.quota.charged);
+          },
+        );
+        _platformCaptionPreviewContext = null;
+        if (accepted != true || !stillCurrent() ||
+            !_platformSettings.usePlatformCaptions ||
+            originalPlatformCaptions != jsonEncode(_platformSettings.toDraftJson())) {
+          return;
+        }
+        setState(() {
+          final previousTikTokCaption = _effectiveCaption(SocialPlatform.tiktok);
+          _platformCaptionsBeforeAi = Map.of(_platformSettings.platformCaptions);
+          _platformCaptionReviewBeforeAi = _captionNeedsReview;
+          _platformSettings = _platformSettings.copyWith(platformCaptions: captions);
+          if (_effectiveCaption(SocialPlatform.tiktok) != previousTikTokCaption) {
+            _clearTikTokFreshness();
+          }
+          _captionNeedsReview = caption.isFallback;
+          _aiCaptionFallbackMessage = caption.isFallback
+              ? 'AI วิเคราะห์คลิปไม่สำเร็จ กรุณาตรวจข้อความสำรองก่อนใช้'
+                  '${caption.quota.charged ? '' : ' · ไม่หักโควตา AI'}'
+              : null;
+          if (!caption.isFallback) {
+            _acceptedAiCaption = jsonEncode(captions.map(
+                (key, value) => MapEntry(key.apiValue, value)));
+            _acceptedAiCaptionOwner = owner;
+            _acceptedAiCaptionSource = sourcePath;
+          }
+        });
         return;
       }
       setState(() {
@@ -2446,6 +2631,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
       final previousCover = _coverResult;
       final previousPath = _localFilePathController.text;
+      final previousCaptionSettings = _platformSettings;
       final sourceChanged = previousPath != video.path;
       _invalidateAiCaption(clearCaptionMetadata: false);
       setState(() {
@@ -2471,13 +2657,16 @@ class _UploaderScreenState extends State<UploaderScreen>
                 PlatformPublishDefaults.fromSettings(platform, sourceSettings)
                     .applyTo(reusable);
           }
-          _platformSettings = reusable;
+          _platformSettings = reusable.copyWith(
+            usePlatformCaptions: previousCaptionSettings.usePlatformCaptions,
+            platformCaptions: previousCaptionSettings.platformCaptions,
+          );
           _platformSettingsFromRestoredDraft = false;
           // Retain where the reusable values came from so switching channels
           // cannot carry the previous channel's preferences into another one.
           _aiCaptionSeoKeywords = const [];
           if (previousPath.isNotEmpty &&
-              _captionController.text.trim().isNotEmpty) {
+              _hasAnyCaption) {
             _captionNeedsReview = true;
           }
         }
@@ -3370,7 +3559,7 @@ class _UploaderScreenState extends State<UploaderScreen>
               _apiClient.recoverPostSubmission)(
           CreatePostRequest(
               clientRequestId: draft.submissionRequestId,
-              caption: draft.caption.trim(),
+              caption: _requestCaption(draft.caption, settings, platforms),
               videoS3Key: receipt.videoS3Key,
               mediaContentFingerprint: receipt.mediaContentFingerprint,
               platforms: draft.platformApiValues.toList(),
@@ -3438,7 +3627,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final scheduledAt = _readScheduledAt();
     final isTikTokDirect = _selectedPlatforms.contains(SocialPlatform.tiktok) &&
         _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost;
-    if (isTikTokDirect && caption.length > 2200) {
+    if (isTikTokDirect && _effectiveCaption(SocialPlatform.tiktok).length > 2200) {
       setState(() {
         _errorMessage = 'แคปชั่น TikTok ต้องไม่เกิน 2,200 ตัวอักษร';
         _successMessage = null;
@@ -3446,7 +3635,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       return null;
     }
     final captionProblem = validatePlatformPublishPreflight(
-        selectedPlatforms: _selectedPlatforms, caption: caption);
+        selectedPlatforms: _selectedPlatforms, caption: caption,
+        platformCaptions: _platformSettings.usePlatformCaptions
+            ? _platformSettings.platformCaptions : const {});
     if (captionProblem != null) {
       setState(() => _errorMessage = captionProblem.message);
       return null;
@@ -3717,6 +3908,8 @@ class _UploaderScreenState extends State<UploaderScreen>
         final problem = validatePlatformPublishPreflight(
             selectedPlatforms: submittedPlatforms,
             caption: caption,
+            platformCaptions: requestSettings.usePlatformCaptions
+                ? requestSettings.platformCaptions : const {},
             media: verifiedMedia,
             requireMedia: true);
         if (problem != null) {
@@ -3817,6 +4010,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           final problem = validatePlatformPublishPreflight(
               selectedPlatforms: submittedPlatforms,
               caption: caption,
+              platformCaptions: requestSettings.usePlatformCaptions
+                  ? requestSettings.platformCaptions : const {},
               media: verifiedMedia,
               requireMedia: true);
           if (problem != null) {
@@ -3960,7 +4155,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       final post = await createPost(
         CreatePostRequest(
           clientRequestId: submittedDraft.submissionRequestId,
-          caption: submittedDraft.caption.trim(),
+          caption: _requestCaption(submittedDraft.caption, requestSettings,
+              submittedPlatforms),
           videoS3Key: uploadedVideoS3Key!,
           mediaContentFingerprint: mediaContentFingerprint,
           platforms:
@@ -4406,7 +4602,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                 initialSettings: settings,
                 memoryMessage: memoryMessage,
                 isCurrent: isCurrent,
-                caption: _captionController.text,
+                caption: _effectiveCaption(platform),
                 connection: _connectionDetails[platform],
                 coverResult: _coverResult,
               )),
@@ -5083,6 +5279,39 @@ class _UploaderScreenState extends State<UploaderScreen>
   Widget _buildCaptionCard(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          PostDeeCard(
+            padding: EdgeInsets.zero,
+            child: SwitchListTile.adaptive(
+              key: const ValueKey('uploader-platform-captions-toggle'),
+              title: const Text('ตั้งค่าขั้นสูง'),
+              subtitle: Text(_platformSettings.usePlatformCaptions
+                  ? 'เขียนเอง หรือให้ AI คิดแคปชั่นแยกทั้ง 4 ช่องทาง'
+                  : 'เขียนแคปชั่นแยกแต่ละช่องทาง'),
+              secondary: const Icon(Icons.tune, color: AppTheme.accent),
+              value: _platformSettings.usePlatformCaptions,
+              onChanged: _formBusy ? null : _setAdvancedCaptions,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_platformSettings.usePlatformCaptions) ...[
+            _buildAiCaptionPanel(),
+            const SizedBox(height: 12),
+            PlatformCaptionFields(
+              captions: _platformSettings.platformCaptions,
+              readOnly: _formBusy,
+              onChanged: _editPlatformCaption,
+              validationMessage: _platformCaptionError,
+            ),
+            if (_platformCaptionsBeforeAi != null)
+              OutlinedButton.icon(
+                key: const ValueKey('uploader-platform-ai-undo'),
+                onPressed: _formBusy || _isGeneratingCaption
+                    ? null : _undoPlatformAiCaption,
+                icon: const Icon(Icons.undo),
+                label: const Text('คืนข้อความก่อนใช้ AI'),
+              ),
+          ],
+          if (!_platformSettings.usePlatformCaptions)
           _UploaderStepEntrance(
             key: const ValueKey('uploader-caption-reveal'),
             animate: _aiCaptionReady && _appIsResumed,
@@ -5107,7 +5336,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                   child: Text(_captionLimitError!)))),
             ),
           ),
-          if (_captionLimits.isNotEmpty) ...[
+          if (!_platformSettings.usePlatformCaptions && _captionLimits.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(_captionLimits.join('\n'),
                 key: const ValueKey('uploader-caption-limits'),
@@ -5162,20 +5391,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                 ),
               ],
             ),
-          _AiCaptionPanel(
-            guidanceController: _aiGuidanceController,
-            selectedVideoName: _selectedVideoName,
-            isGenerating: _isGeneratingCaption,
-            captionReady: _aiCaptionReady,
-            formBusy: _formBusy,
-            errorMessage: _aiCaptionErrorMessage,
-            styleSummary: _captionWritingProfile.style.summary,
-            styleError: _captionStyleError,
-            isSavingStyle: _isSavingCaptionStyle,
-            onOpenStyle: _openCaptionWritingStyle,
-            onGenerate: _generateAiCaption,
-            animate: _uploaderMotionAllowed(context, _appIsResumed),
-          ),
+          if (!_platformSettings.usePlatformCaptions) _buildAiCaptionPanel(),
+          if (!_platformSettings.usePlatformCaptions)
           ExpansionTile(
               key: const ValueKey('uploader-templates-panel'),
               tilePadding: EdgeInsets.zero,
@@ -5249,6 +5466,22 @@ class _UploaderScreenState extends State<UploaderScreen>
                 ],
               ]),
         ],
+      );
+
+  Widget _buildAiCaptionPanel() => _AiCaptionPanel(
+        guidanceController: _aiGuidanceController,
+        selectedVideoName: _selectedVideoName,
+        isGenerating: _isGeneratingCaption,
+        captionReady: _aiCaptionReady,
+        formBusy: _formBusy,
+        errorMessage: _aiCaptionErrorMessage,
+        styleSummary: _captionWritingProfile.style.summary,
+        styleError: _captionStyleError,
+        isSavingStyle: _isSavingCaptionStyle,
+        onOpenStyle: _openCaptionWritingStyle,
+        onGenerate: _generateAiCaption,
+        forAllPlatforms: _platformSettings.usePlatformCaptions,
+        animate: _uploaderMotionAllowed(context, _appIsResumed),
       );
 
   Widget _buildStickyActionBar(BuildContext context) {
@@ -7002,6 +7235,7 @@ class _AiCaptionPanel extends StatelessWidget {
     this.styleError,
     this.errorMessage,
     this.animate = true,
+    this.forAllPlatforms = false,
   });
 
   final TextEditingController guidanceController;
@@ -7016,6 +7250,7 @@ class _AiCaptionPanel extends StatelessWidget {
   final bool isSavingStyle;
   final String? styleError;
   final bool animate;
+  final bool forAllPlatforms;
 
   @override
   Widget build(BuildContext context) {
@@ -7112,11 +7347,19 @@ class _AiCaptionPanel extends StatelessWidget {
                     ? 'กำลังเตรียมแคปชัน...'
                     : isSavingStyle
                         ? 'กำลังบันทึกสไตล์...'
-                        : 'ให้ AI ช่วยเขียน',
+                        : forAllPlatforms
+                            ? 'ให้ AI คิดทั้ง 4 ช่องทาง'
+                            : 'ให้ AI ช่วยเขียน',
                 icon: Icons.auto_awesome,
                 onPressed: isGenerating || isSavingStyle ? null : onGenerate,
               ),
             ),
+            if (forAllPlatforms)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('1 ชุดใช้โควตา AI 1 ครั้ง · ดูก่อนเลือกใช้ได้',
+                    style: TextStyle(fontSize: 12)),
+              ),
             if (isGenerating || captionReady) ...[
               const SizedBox(height: 10),
               Semantics(

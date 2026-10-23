@@ -2,6 +2,36 @@
 
 PostDee backend API reference.
 
+## Per-platform caption contract (2026-10-23, local candidate)
+
+The optional `caption` string in each `platformSettings.<platform>` object
+overrides the shared post caption for that destination. TikTok, Instagram and
+Facebook overrides must be nonempty after trimming. YouTube accepts `""` or
+whitespace, normalized to an explicit empty description; it does not fall back
+to shared text. All required settings for that destination remain required,
+including YouTube's title; a caption-only object does not replace those
+settings. Absence means use the shared `caption`, preserving existing clients
+and historical posts.
+The top-level post `caption` remains part of the existing request and immutable
+intent. Mobile supplies a compatibility summary from the selected effective
+captions in advanced mode, while retaining the original shared text locally.
+
+New-post validation, TikTok Direct validation, immutable replay/recovery,
+JSON persistence, queued execution and provider mapping retain and use the
+effective per-destination text. A changed override conflicts with the original
+accepted submission intent. The optional field does not change visibility,
+disclosures, destination ownership, scheduling, quotas or posting modes.
+`FACEBOOK_REELS` remains the internal compatibility key for Facebook Page
+Video; this feature does not add Facebook Reels support.
+
+The existing `POST /captions/generate-from-clip` additionally accepts optional
+`platforms` and can return `platformCaptions`; its detailed contract is below.
+Both additions use existing JSON/storage paths and require no database
+migration. Deploy the updated API before Mobile sends these fields; old API
+parsers can reject the new settings. Local implementation is not deployment,
+provider or device acceptance. See the
+[feature work record](docs/superpowers/plans/2026-10-23-platform-captions.md).
+
 ## Opt-in Sentry reporting (2026-10-23, Staging Live)
 
 The candidate adds internal error monitoring without changing public routes,
@@ -1805,6 +1835,8 @@ Rules:
   to 100 Unicode code points. An explicit custom title is preserved across
   caption edits and must pass the existing title validation. The full caption
   remains the description, with its existing length/character guards unchanged.
+  In the 2026-10-23 advanced-caption candidate, automatic title derivation and
+  description validation use YouTube's effective override when present.
   No database migration or top-level `youtubeTitle` request field is added.
   Local automated verification passes; [results and delivery limits](docs/superpowers/plans/2026-10-18-unified-platform-settings.md#youtube-title-follow-up-2026-10-18-local-implementation)
   include APK12025 build/install and basic Home launch. Entitlement loading,
@@ -2289,7 +2321,7 @@ Requires Starter or Pro.
   `CAPTION_USAGE_STORE=memory`. Production should use
   `CAPTION_USAGE_STORE=prisma` so monthly usage survives API restarts.
 - It uses `videoS3Key`, optional `guidance`, optional `writingStyle`, optional
-  `selectedFrameKeys`, and optional `deleteAfterUse`.
+  `selectedFrameKeys`, optional `deleteAfterUse`, and optional `platforms`.
 - Mobile creates the clip upload with `purpose: "ai-caption-video"`; its source
   aspect ratio does not change Starter/Pro access, media ownership, generation
   quota or existing server media-processing limits.
@@ -2324,6 +2356,51 @@ Requires Starter or Pro.
   selection. Spoken language is inferred from the clip, while `guidance`
   remains the simple override path when a seller wants a specific language,
   market, or style.
+
+Optional platform-caption generation (2026-10-23 local candidate):
+
+- Omit `platforms` to retain the existing request/result behavior. When supplied,
+  it must contain 1–4 unique values from `TIKTOK`, `YOUTUBE_SHORTS`,
+  `INSTAGRAM_REELS`, `FACEBOOK_REELS`; invalid/empty/duplicate values return
+  `400` before media download or quota reservation.
+- The response adds `platformCaptions`, a map containing every requested key,
+  with `{ "caption": string, "hashtags": string[] }` for each. Existing shared
+  `caption`, `hashtags`, context and quota fields remain present. Unrequested
+  channels are not returned as generated variants.
+- One requested set invokes the provider's generation operation once and
+  reserves one monthly/add-on generation, including when requesting all four.
+  Existing transient HTTP retries remain possible inside that operation.
+- Gemini is instructed to adapt wording for each platform from the same clip
+  evidence and writing style, without inventing prices, products, claims or
+  promotions. YouTube's variant is its description, not its separate title.
+- Missing/malformed variants fail the whole generated set into the transparent
+  local fallback. It returns editable placeholders for every requested channel,
+  `isFallback: true`, and `quota.charged: false` when the reservation is released.
+  Failed refunds retain `charged: true`; no-provider/legacy-template selected
+  sets are also labeled fallback. Existing legacy requests remain unchanged.
+- Paid-plan, owner/media checks, monthly/add-on quota, media limits and requested
+  cleanup continue to apply. Opening advanced settings does not call AI.
+
+Example additional request field (alongside the existing clip fields):
+
+```json
+{
+  "platforms": ["TIKTOK", "YOUTUBE_SHORTS", "INSTAGRAM_REELS", "FACEBOOK_REELS"]
+}
+```
+
+Illustrative additional response field, not evidence of a live generation:
+
+```json
+{
+  "platformCaptions": {
+    "TIKTOK": { "caption": "เมนูนี้มีอะไรให้ดูบ้าง?", "hashtags": ["#เมนูร้าน"] },
+    "YOUTUBE_SHORTS": { "caption": "พาดูข้อมูลในหน้าเมนูร้านแบบสั้น ๆ", "hashtags": [] },
+    "INSTAGRAM_REELS": { "caption": "เก็บบรรยากาศหน้าเมนูร้านมาฝาก", "hashtags": ["#เมนูร้าน"] },
+    "FACEBOOK_REELS": { "caption": "วันนี้พาดูหน้าเมนูร้าน มีตรงไหนที่อยากรู้เพิ่มบ้าง?", "hashtags": [] }
+  }
+}
+```
 
 Caption-quality behavior keeps the existing request/response fields. The prompt
 asks for an evidence-specific natural opening hook in the primary caption, using

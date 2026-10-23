@@ -2,6 +2,46 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Advanced platform-caption boundary (2026-10-23, local candidate)
+
+The existing uploader owns two local caption modes. Shared mode keeps the
+original editor; advanced mode hides it and presents four platform editors.
+The first activation copies shared text into the new fields, and later mode
+switches preserve both sets of edits. Draft `PlatformPublishSettings` retain
+`usePlatformCaptions` and `platformCaptions`; reusable account/channel defaults
+exclude those clip-specific values. Only enabled advanced overrides for selected
+destinations are serialized into publishing settings. Automatic YouTube titles
+resolve against the YouTube effective caption, preserving explicit custom titles.
+
+The server uses `platformSettings.<platform>.caption ?? post.caption` as the
+effective caption through new-post validation and provider delivery. Existing
+`Post.platformSettings` JSON snapshots, normalization and immutable-intent
+comparison carry the optional field, including queued/recovered submissions.
+YouTube permits an explicit empty/whitespace override, normalized to `''` and
+preserved through nullish fallback as an empty description. Missing overrides
+still use shared text; TikTok, Instagram and Facebook reject empty overrides.
+YouTube's existing title and required-settings guards remain enforced.
+There is no new column or migration, and clients without overrides retain the
+shared-caption behavior. Facebook's compatibility key still targets Page Video.
+
+Explicit advanced AI generation adds optional `platforms` to the real-clip
+caption endpoint. One provider operation/one quota reservation produces the
+selected `platformCaptions` map while retaining base result fields. The
+configured primary model's existing transient retry behavior stays intact.
+Every requested variant must be valid; an incomplete set uses a labeled
+template fallback and releases the reservation when supported. Templates use
+editable placeholders rather than inferred clip facts. Owner/media cleanup,
+paid access and quota fences remain at their existing boundaries.
+
+Mobile previews all four results before applying them. Request identity,
+account/clip ownership, mode and edited text guards prevent stale asynchronous
+results replacing current input; dismissing the preview preserves original text.
+Applying a set retains a local undo snapshot; restoring it also invalidates
+TikTok confirmation only if that destination's effective caption changes.
+Deploy API first, then verify the Mobile build/device and actual provider path.
+This feature remains a local candidate; see
+[scope, tests and release gates](docs/superpowers/plans/2026-10-23-platform-captions.md).
+
 ## Optional Sentry error boundary (2026-10-23, candidate verified)
 
 This candidate pins `@sentry/node` to `11.8.0` and `sentry_flutter` to `9.30.1`.
@@ -275,6 +315,9 @@ nonempty line after removing `<`/`>`, capped at 100 Unicode code points. The
 sheet shows a live preview, hides the custom input behind
 `ปรับชื่อเฉพาะ YouTube`, and resets with `ใช้ชื่อจากแคปชัน`. Draft serialization
 keeps the raw choice and reads existing explicit titles without migration.
+The 2026-10-23 advanced-caption candidate resolves that automatic title from
+YouTube's effective caption when advanced mode is enabled; custom titles stay
+explicit across both modes.
 
 The existing nested `platformSettings.YOUTUBE_SHORTS.title` carries the resolved
 title through immutable intent, JSON persistence, queue and provider mapping.

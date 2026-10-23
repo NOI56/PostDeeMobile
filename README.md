@@ -7,6 +7,38 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Four-platform captions (2026-10-23, local candidate)
+
+The post composer's optional advanced caption mode hides the shared input and
+shows separate editable captions for TikTok, YouTube Shorts, Instagram Reels
+and Facebook Page Video. Users can write them manually or explicitly request
+AI for all four, inspect the preview, then apply the set and edit it. An undo
+action restores the text from before applying AI, including across mode toggles.
+Switching back retains the original shared text and saved advanced text; shared
+mode does not send the retained platform overrides. Local drafts retain the mode
+and text. Saved channel defaults do not carry captions into the next post.
+
+The API stores an optional `caption` inside each existing
+`platformSettings.<platform>` JSON snapshot. Missing overrides use the shared
+caption, keeping old clients compatible. Validation and publishing use the
+effective caption for that destination; YouTube's automatic title follows its
+own effective caption while an explicit custom title remains unchanged.
+YouTube alone accepts an explicitly empty/whitespace override, normalized to an
+empty description without falling back to shared text. TikTok, Instagram and
+Facebook overrides must remain nonempty; YouTube's existing title/settings
+requirements still apply.
+`POST /captions/generate-from-clip` accepts optional selected `platforms` and
+returns a matching `platformCaptions` map alongside its existing fields. One
+set reserves one generation and calls the provider once, retaining the existing
+transient retry policy. Incomplete/malformed AI output becomes a labeled local
+fallback, with quota refunded when release succeeds.
+
+Deploy the updated API before an app that sends the new fields. No database
+migration, provider credential or new integration is introduced. This candidate
+has not been merged, pushed, deployed or installed; real AI output and real
+publication have not been tested for this feature. See the
+[implementation and verification record](docs/superpowers/plans/2026-10-23-platform-captions.md).
+
 ## Sentry error reporting (2026-10-23, candidate verified)
 
 The candidate adds opt-in error reporting for Flutter and the Node API/current
@@ -184,6 +216,8 @@ limiting the title to 100 Unicode code points. `ปรับชื่อเฉ�
 an optional custom title; caption edits preserve it and `ใช้ชื่อจากแคปชัน`
 resets it to automatic. The full caption remains the description and keeps its
 existing validation; title cleanup does not alter the description.
+With the 2026-10-23 advanced-caption candidate, these automatic rules use the
+YouTube-specific effective caption; shared mode retains the behavior above.
 
 The local empty `youtubeTitle` means automatic. Before review/submission Mobile
 resolves it into the existing `platformSettings.YOUTUBE_SHORTS.title`; there is

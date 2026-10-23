@@ -1,3 +1,5 @@
+import type { Platform } from '../posts/postStore.js';
+
 const affiliateLinkPlaceholder = '[ใส่ลิงก์ Affiliate ที่นี่]';
 const trendingHashtags = ['#ของดีบอกต่อ', '#ช้อปออนไลน์', '#โปรดีบอกต่อ', '#รีวิวจริง', '#สายช้อป'];
 const captionKeywordMaxLength = 80;
@@ -78,6 +80,7 @@ export type RealClipCaptionWritingStyle = {
 
 export type RealClipCaptionRequest = {
   videoS3Key: string;
+  platforms?: Platform[];
   guidance?: string;
   writingStyle?: RealClipCaptionWritingStyle;
   selectedFrameKeys: string[];
@@ -106,6 +109,7 @@ export type RealClipCaptionResult = {
   captionOptions: string[];
   hooks: string[];
   hashtags: string[];
+  platformCaptions?: RealClipPlatformCaptions;
   seoKeywords: string[];
   searchTitle: string;
   affiliateLinkPlaceholder: string;
@@ -115,6 +119,27 @@ export type RealClipCaptionResult = {
     mode: RealClipCaptionMode;
     selectedFrameCount: number;
   };
+};
+
+export type RealClipPlatformCaptions = Partial<Record<Platform, { caption: string; hashtags: string[] }>>;
+
+const captionPlatforms: readonly Platform[] = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'];
+
+// Require every requested channel. Never silently substitute a shared caption
+// for a missing AI variant or return a partial set as a successful generation.
+export const readRealClipPlatformCaptions = (value: unknown, platforms: readonly Platform[]): RealClipPlatformCaptions | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const captions: RealClipPlatformCaptions = {};
+  for (const platform of platforms) {
+    const entry = input[platform];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+    const { caption, hashtags } = entry as Record<string, unknown>;
+    if (typeof caption !== 'string' || !caption.trim() || !Array.isArray(hashtags) ||
+      !hashtags.every((tag) => typeof tag === 'string' && tag.trim().length > 0)) return undefined;
+    captions[platform] = { caption: caption.trim(), hashtags: hashtags.map((tag: string) => tag.trim()) };
+  }
+  return captions;
 };
 
 const readRequiredString = (value: unknown) => {
@@ -193,10 +218,18 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
   const writingStyle = validateWritingStyle(payload.writingStyle);
   if (!writingStyle.ok) return writingStyle;
 
+  const platforms = payload.platforms;
+  if (platforms !== undefined && (!Array.isArray(platforms) || platforms.length < 1 || platforms.length > 4 ||
+    platforms.some((platform) => typeof platform !== 'string' || !captionPlatforms.includes(platform as Platform)) ||
+    new Set(platforms).size !== platforms.length)) {
+    return { ok: false as const, message: 'platforms must contain 1 to 4 unique supported platforms' };
+  }
+
   return {
     ok: true as const,
     request: {
       videoS3Key,
+      ...(platforms !== undefined ? { platforms: platforms as Platform[] } : {}),
       guidance: readOptionalString(payload.guidance),
       ...(writingStyle.style ? { writingStyle: writingStyle.style } : {}),
       selectedFrameKeys: normalizeStringList(payload.selectedFrameKeys),
@@ -290,6 +323,20 @@ export const generateLocalRealClipCaption = ({
   const clipName = readClipName(request.videoS3Key);
   const modeLabel = mode === 'AUDIO_ONLY' ? 'clip audio' : 'clip audio and selected frames';
   const context = buildRealClipCaptionContext(transcript);
+  if (request.platforms) {
+    // A template has no visual/audio evidence. Keep the fallback visibly blank
+    // for editing instead of presenting seller guidance or filenames as facts.
+    const caption = '[เขียนเรื่องที่เห็นจริงในคลิปของคุณที่นี่]';
+    return {
+      model: 'local-real-clip-template', caption, captionOptions: [caption], hooks: [], hashtags: [],
+      platformCaptions: Object.fromEntries(request.platforms.map((platform) => [platform, {
+        caption, hashtags: []
+      }])) as RealClipPlatformCaptions,
+      seoKeywords: [], searchTitle: '', affiliateLinkPlaceholder, context,
+      source: { videoS3Key: request.videoS3Key, mode,
+        selectedFrameCount: mode === 'AUDIO_WITH_FRAMES' ? request.selectedFrameKeys.length : 0 }
+    };
+  }
   const guidanceText = request.guidance ? ` Extra direction: ${request.guidance}.` : '';
   const transcriptExcerpt = readTranscriptExcerpt(transcript);
   const transcriptText = transcriptExcerpt ? ` Transcript excerpt: ${transcriptExcerpt}.` : '';

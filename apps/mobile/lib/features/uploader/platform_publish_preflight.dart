@@ -125,10 +125,10 @@ class PublishPreflightProblem {
 PublishPreflightProblem? validatePlatformPublishPreflight({
   required Set<SocialPlatform> selectedPlatforms,
   required String caption,
+  Map<SocialPlatform, String> platformCaptions = const {},
   PublishMediaMetadata? media,
   bool requireMedia = false,
 }) {
-  final text = caption.trim();
   PublishPreflightProblem problem(
           SocialPlatform platform, String code, String message) =>
       PublishPreflightProblem(code: code, message: message, platform: platform);
@@ -136,6 +136,7 @@ PublishPreflightProblem? validatePlatformPublishPreflight({
   // Apply limits to the exact trimmed caption that is serialized to the API.
   for (final platform
       in SocialPlatform.values.where(selectedPlatforms.contains)) {
+    final text = (platformCaptions[platform] ?? caption).trim();
     if (platform == SocialPlatform.youtubeShorts) {
       if (utf8.encode(text).length > 5000) {
         return problem(platform, 'YOUTUBE_DESCRIPTION_TOO_LONG',

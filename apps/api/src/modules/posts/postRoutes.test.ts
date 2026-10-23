@@ -63,11 +63,120 @@ describe('post routes', () => {
     return { app, userId, store, queue, reschedule, subscriptionStore, getPlan, ensureUser, platformPublishStore };
   };
 
+  describe('per-platform captions', () => {
+    const platformSettings = {
+      TIKTOK: { publishMode: 'INBOX_DRAFT', caption: 'TikTok text' },
+      YOUTUBE_SHORTS: { title: 'Title', visibility: 'private', madeForKids: false, containsSyntheticMedia: false, communityGuidelinesCertified: true, caption: 'YouTube text' },
+      INSTAGRAM_REELS: { shareToFeed: true, caption: 'Instagram text' },
+      FACEBOOK_REELS: { publishMode: 'PUBLISH', caption: 'Facebook text' }
+    };
+
+    it('persists, queues and publishes each caption once and protects replay/recovery identity', async () => {
+      const { app, userId, store, queue, platformPublishStore } = createPlanScheduleApp('PRO');
+      const body = { clientRequestId: 'four-captions', caption: 'Representative shared text',
+        videoS3Key: ownedUploadKey(userId, 'four-captions.mp4'), platforms: allPlatforms, platformSettings };
+      const first = await request(app).post('/posts').send(body).expect(201);
+      expect(first.body.post.platformSettings).toEqual(platformSettings);
+      expect((await store.list())[0].platformSettings).toEqual(platformSettings);
+      expect((await queue.list())[0].platformSettings).toEqual(platformSettings);
+      const replay = await request(app).post('/posts').send(body).expect(200);
+      expect(replay.body).toMatchObject({ idempotentReplay: true, post: { id: first.body.post.id } });
+      const recovered = await request(app).post('/posts/submissions/recover').send(body).expect(200);
+      expect(recovered.body.post.platformSettings).toEqual(platformSettings);
+      for (const platform of allPlatforms as (keyof typeof platformSettings)[]) {
+        const changed = { ...body, platformSettings: { ...platformSettings,
+          [platform]: { ...platformSettings[platform], caption: 'Changed text' } } };
+        expect((await request(app).post('/posts').send(changed).expect(409)).body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+        expect((await request(app).post('/posts/submissions/recover').send(changed).expect(409)).body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+      }
+      const publish = vi.fn(async ({ platform }: PlatformPublishInput) => ({ platform,
+        status: 'PUBLISHED' as const, deliveryOutcome: 'LIVE' as const, publishedAt: futureNow().toISOString() }));
+      await createPublishScheduler({ postStore: store, platformPublishStore, publisher: { publish },
+        now: () => futureNow().toISOString() }).runOnce();
+      for (const platform of allPlatforms as (keyof typeof platformSettings)[]) {
+        expect(publish).toHaveBeenCalledWith(expect.objectContaining({ platform, caption: platformSettings[platform].caption }));
+      }
+      expect(publish).toHaveBeenCalledTimes(4);
+    });
+
+    it('checks effective captions instead of rejecting shared text unused by selected destinations', async () => {
+      const { app, userId } = createPlanScheduleApp('PRO');
+      await request(app).post('/posts').send({ caption: 'Shared text < allowed only elsewhere >',
+        videoS3Key: ownedUploadKey(userId, 'valid-overrides.mp4'), platforms: allPlatforms, platformSettings }).expect(201);
+    });
+
+    it('keeps destination captions when rescheduling and then publishing a scheduled post now', async () => {
+      const { app, userId, store, queue, platformPublishStore } = createPlanScheduleApp('PRO');
+      const first = await request(app).post('/posts').send({ caption: 'Representative text',
+        videoS3Key: ownedUploadKey(userId, 'rescheduled-captions.mp4'), platforms: allPlatforms,
+        scheduledAt: '2026-06-02T10:00:00.000Z', platformSettings }).expect(201);
+      const postId = first.body.post.id;
+      const changed = await request(app).patch(`/posts/${postId}`).send({ scheduledAt: '2026-06-03T10:00:00.000Z' }).expect(200);
+      expect(changed.body.post.platformSettings).toEqual(platformSettings);
+      expect((await queue.list())[0]).toMatchObject({ runAt: '2026-06-03T10:00:00.000Z', platformSettings });
+      await request(app).post(`/posts/${postId}/publish-now`).expect(200);
+      expect((await queue.list())[0]).toMatchObject({ status: 'READY', platformSettings });
+      expect((await store.list())[0].platformSettings).toEqual(platformSettings);
+      const publish = vi.fn(async ({ platform }: PlatformPublishInput) => ({ platform,
+        status: 'PUBLISHED' as const, deliveryOutcome: 'LIVE' as const, publishedAt: futureNow().toISOString() }));
+      await createPublishScheduler({ postStore: store, platformPublishStore, publisher: { publish },
+        now: () => futureNow().toISOString() }).runOnce();
+      for (const platform of allPlatforms as (keyof typeof platformSettings)[]) {
+        expect(publish).toHaveBeenCalledWith(expect.objectContaining({ platform, caption: platformSettings[platform].caption }));
+      }
+      expect(publish).toHaveBeenCalledTimes(4);
+    });
+
+    it.each([
+      ['YOUTUBE_SHORTS', 'ก'.repeat(1667), 'YOUTUBE_DESCRIPTION_TOO_LONG'],
+      ['YOUTUBE_SHORTS', 'ราคา < 100', 'YOUTUBE_DESCRIPTION_INVALID_CHARACTERS'],
+      ['INSTAGRAM_REELS', 'a'.repeat(2201), 'INSTAGRAM_CAPTION_TOO_LONG'],
+      ['FACEBOOK_REELS', 'a'.repeat(63207), 'FACEBOOK_CAPTION_TOO_LONG']
+    ] as const)('rejects an invalid %s override before storing or queueing', async (platform, caption, reason) => {
+      const { app, userId, store, queue } = createPlanScheduleApp('PRO');
+      const response = await request(app).post('/posts').send({ caption: 'Valid shared text',
+        videoS3Key: ownedUploadKey(userId, 'invalid-override.mp4'), platforms: allPlatforms,
+        platformSettings: { ...platformSettings, [platform]: { ...platformSettings[platform], caption } } }).expect(400);
+      expect(response.body).toMatchObject({ code: 'PLATFORM_CAPTION_INVALID', platform, reason });
+      expect(await store.list()).toEqual([]);
+      expect(await queue.list()).toEqual([]);
+    });
+  });
+
   describe('YouTube title-only submissions', () => {
     const youtubeSettings = {
       title: 'ชื่อคลิปที่เลือกเอง', visibility: 'unlisted' as const,
       madeForKids: false, containsSyntheticMedia: true, communityGuidelinesCertified: true as const
     };
+
+    it.each([false, true])('retains an explicit empty YouTube description in single and mixed submissions (%s)', async (includeTikTok) => {
+      const { app, userId, store, queue, platformPublishStore } = createPlanScheduleApp('PRO');
+      const platformSettings = {
+        YOUTUBE_SHORTS: { ...youtubeSettings, caption: '' },
+        ...(includeTikTok ? { TIKTOK: { publishMode: 'INBOX_DRAFT', caption: 'TikTok text' } } : {})
+      };
+      const body = { clientRequestId: 'explicit-empty-youtube', caption: includeTikTok ? 'TikTok representative text' : '',
+        videoS3Key: ownedUploadKey(userId, 'empty-youtube-description.mp4'),
+        platforms: includeTikTok ? ['YOUTUBE_SHORTS', 'TIKTOK'] : ['YOUTUBE_SHORTS'], platformSettings };
+      const first = await request(app).post('/posts').send(body).expect(201);
+      expect(first.body.post.platformSettings.YOUTUBE_SHORTS.caption).toBe('');
+      expect((await store.list())[0].platformSettings?.YOUTUBE_SHORTS?.caption).toBe('');
+      expect((await queue.list())[0].platformSettings?.YOUTUBE_SHORTS?.caption).toBe('');
+      expect((await request(app).post('/posts').send(body).expect(200)).body.idempotentReplay).toBe(true);
+      const recovery = await request(app).post('/posts/submissions/recover').send(body).expect(200);
+      expect(recovery.body.post.platformSettings.YOUTUBE_SHORTS.caption).toBe('');
+      const changed = { ...body, platformSettings: { ...platformSettings, YOUTUBE_SHORTS: { ...youtubeSettings, caption: 'Changed' } } };
+      for (const path of ['/posts', '/posts/submissions/recover']) {
+        expect((await request(app).post(path).send(changed).expect(409)).body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+      }
+      const publish = vi.fn(async ({ platform }: PlatformPublishInput) => ({ platform,
+        status: 'PUBLISHED' as const, deliveryOutcome: 'LIVE' as const, publishedAt: futureNow().toISOString() }));
+      await createPublishScheduler({ postStore: store, platformPublishStore, publisher: { publish },
+        now: () => futureNow().toISOString() }).runOnce();
+      expect(publish).toHaveBeenCalledWith(expect.objectContaining({ platform: 'YOUTUBE_SHORTS', caption: '' }));
+      if (includeTikTok) expect(publish).toHaveBeenCalledWith(expect.objectContaining({ platform: 'TIKTOK', caption: 'TikTok text' }));
+      expect(publish).toHaveBeenCalledTimes(includeTikTok ? 2 : 1);
+    });
 
     it.each([undefined, '2026-06-02T10:00:00.000Z'])(
       'keeps an empty description and completed YouTube settings through queueing and publishing (%s)', async (scheduledAt) => {
@@ -259,6 +368,20 @@ describe('post routes', () => {
         videoDurationSeconds: 10, musicUsageConfirmed: true, brandedContentPolicyConfirmed: false,
         creatorInfoRevision: buildTikTokConnectionRevision({ userId: 'seller-plan-window', target })
       } }
+    });
+
+    it('validates the effective TikTok override instead of the representative shared text', async () => {
+      const { app, store } = createPlanScheduleApp('PRO', futureNow, {
+        resolvePlatformTarget: async () => target, resolveTikTokCreatorInfo: async () => creatorInfo
+      });
+      const body = directBody();
+      const response = await request(app).post('/posts').send({ ...body, caption: 'a'.repeat(2201),
+        platformSettings: { TIKTOK: { ...body.platformSettings.TIKTOK, caption: 'Short TikTok text' } } }).expect(201);
+      expect(response.body.post.platformSettings.TIKTOK.caption).toBe('Short TikTok text');
+      const invalid = await request(app).post('/posts').send({ ...body, clientRequestId: 'invalid-override',
+        platformSettings: { TIKTOK: { ...body.platformSettings.TIKTOK, caption: 'a'.repeat(2201) } } }).expect(400);
+      expect(invalid.body.code).toBe('TIKTOK_CAPTION_TOO_LONG');
+      expect(await store.list()).toHaveLength(1);
     });
 
     it('rejects unavailable creator choices before any post, quota or queue write', async () => {

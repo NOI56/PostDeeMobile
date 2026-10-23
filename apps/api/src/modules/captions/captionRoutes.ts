@@ -17,6 +17,7 @@ import type { CaptionGenerator } from './captionGeneratorFactory.js';
 import {
   generateLocalAffiliateCaption,
   generateLocalRealClipCaption,
+  readRealClipPlatformCaptions,
   validateCaptionKeywords,
   validateRealClipCaptionRequest,
   type RealClipCaptionResult
@@ -431,6 +432,13 @@ export const registerCaptionRoutes = (
           audio,
           frames
         });
+        if (validation.request.platforms) {
+          const platformCaptions = readRealClipPlatformCaptions(caption.platformCaptions, validation.request.platforms);
+          if (!platformCaptions) {
+            throw new Error('Real-clip AI provider returned incomplete or invalid platform captions');
+          }
+          caption = { ...caption, platformCaptions };
+        }
       } catch (error) {
         if (error instanceof MediaDownloadError) {
           await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
@@ -496,6 +504,11 @@ export const registerCaptionRoutes = (
       }
 
       caption = generateLocalRealClipCaption({ request: validation.request, mode });
+    }
+
+    if (validation.request.platforms && caption.model === 'local-real-clip-template' && !isFallback) {
+      isFallback = true;
+      releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
     }
 
     await cleanupRequestedMedia();

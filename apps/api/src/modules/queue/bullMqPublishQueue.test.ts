@@ -5,6 +5,23 @@ import { createBullMqPublishQueueFromClient } from './bullMqPublishQueue.js';
 import { buildPublishJobId } from './publishQueue.js';
 
 describe('createBullMqPublishQueueFromClient', () => {
+  it('keeps all caption overrides when replacing a rescheduled BullMQ snapshot', async () => {
+    const platformSettings = {
+      TIKTOK: { publishMode: 'INBOX_DRAFT' as const, caption: 'TikTok' },
+      YOUTUBE_SHORTS: { visibility: 'private' as const, caption: 'YouTube' },
+      INSTAGRAM_REELS: { shareToFeed: true, caption: 'Instagram' },
+      FACEBOOK_REELS: { publishMode: 'PUBLISH' as const, caption: 'Facebook' }
+    };
+    const timestamp = Date.parse('2026-06-01T00:00:00.000Z');
+    const queueClient = { add: vi.fn().mockResolvedValue({ id: 'new-job', timestamp }), getJobs: vi.fn().mockResolvedValue([]) };
+    const queue = createBullMqPublishQueueFromClient({ queue: queueClient, now: () => timestamp });
+    const job = await queue.reschedule({ id: 'four-captions', userId: 'owner', caption: 'Representative',
+      videoS3Key: 'uploads/owner/v.mp4', platforms: ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'],
+      platformSettings, scheduledAt: '2026-06-03T10:00:00.000Z', status: 'QUEUED', createdAt: '2026-06-01T00:00:00.000Z' });
+    expect(queueClient.add.mock.calls[0][1]).toMatchObject({ platformSettings, caption: 'Representative', runAt: '2026-06-03T10:00:00.000Z' });
+    expect(job.platformSettings).toEqual(platformSettings);
+  });
+
   it.each([undefined, true, false])('retains historical and explicit Meta AI declarations in BullMQ snapshots (%s)', async (isAiGenerated) => {
     const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };
     const platformSettings = {

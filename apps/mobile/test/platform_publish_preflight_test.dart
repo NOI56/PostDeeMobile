@@ -32,6 +32,43 @@ PublishMediaMetadata _media({
     );
 
 void main() {
+  test('validates destination text instead of an unused shared caption', () {
+    expect(validatePlatformPublishPreflight(
+      selectedPlatforms: {SocialPlatform.youtubeShorts, SocialPlatform.instagramReels},
+      caption: '<unused shared caption>',
+      platformCaptions: const {
+        SocialPlatform.youtubeShorts: 'YouTube description',
+        SocialPlatform.instagramReels: 'Instagram caption',
+      },
+      media: _media(),
+      requireMedia: true,
+    ), isNull);
+    expect(validatePlatformPublishPreflight(
+      selectedPlatforms: {SocialPlatform.youtubeShorts},
+      caption: 'shared caption',
+      platformCaptions: const {SocialPlatform.youtubeShorts: '<invalid>'},
+    )?.code, 'YOUTUBE_DESCRIPTION_INVALID');
+  });
+
+  test('unselected captions do not block media or selected descriptions', () {
+    expect(validatePlatformPublishPreflight(
+      selectedPlatforms: {SocialPlatform.youtubeShorts},
+      caption: 'shared',
+      platformCaptions: {
+        SocialPlatform.youtubeShorts: '',
+        SocialPlatform.instagramReels: 'x' * 2201,
+      },
+      media: _media(),
+      requireMedia: true,
+    ), isNull);
+    expect(validatePlatformPublishPreflight(
+      selectedPlatforms: {SocialPlatform.youtubeShorts},
+      caption: 'shared',
+      platformCaptions: const {SocialPlatform.youtubeShorts: ''},
+      requireMedia: true,
+    )?.code, 'PUBLISH_MEDIA_UNVERIFIED');
+  });
+
   PublishPreflightProblem? check(SocialPlatform platform,
           {String caption = 'caption', PublishMediaMetadata? media}) =>
       validatePlatformPublishPreflight(

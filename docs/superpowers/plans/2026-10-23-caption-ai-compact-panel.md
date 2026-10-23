@@ -127,9 +127,9 @@ the earlier selection record and this plan. Keep the earlier release history.
 - Final source/docs `git diff --check`: passed; no deleted files or unrelated
   runtime/flag/contract changes. Remote main re-fetched and remains at baseline
   `385c949`, 0 ahead/0 behind before candidate changes.
-- Installed-app/native acceptance: not performed for this follow-up. No API
-  runtime or schema changes, so backend test/build and migration revalidation
-  are not required for this presentation-only candidate.
+- Installed-app/native acceptance was deferred at the implementation handoff;
+  it is completed in the authorized delivery receipt below. No API runtime or
+  schema changes belong to this UI follow-up.
 
 Earlier selector test counts, cloud deployment and APK 12043 smoke are historical
 evidence, not results of this compact-panel change. No live AI request, credit
@@ -145,3 +145,63 @@ and any unsaved composer before updating the installed package.
 The API already supports the behavior, so no backend deployment or migration
 is required for the compact UI. Actual provider quality, real handset behavior
 and social publication remain outside this presentation verification.
+
+## Authorized delivery receipt — 2026-10-23
+
+- The user requested `main/push/deploy`. Feature commit
+  `2ef83998d0a1bce52e113a23de18ae4f9a0359bf` was fast-forwarded into canonical
+  main and pushed to origin. Only the twelve intended files were committed;
+  unrelated launcher, Staging-document and generated-Windows work is retained.
+- During release, another task merged billing-security PR #18 as `5313f262`.
+  Both this worktree and canonical main incorporated that descendant without
+  overwriting its work. The existing local Staging-document patch was preserved
+  in a named stash and applied cleanly over the new document. The complete
+  `apps/mobile` Git tree is identical at the UI source and `5313f262`:
+  `64c46731f68f50cdf16b6859a4d4717cd4bea928`. APK 12044 therefore still matches
+  the latest Mobile source; no rebuild or test repeat for an unchanged tree is
+  needed. No billing source or rollout configuration was modified by this task.
+- [Source CI](https://github.com/NOI56/PostDeeMobile/actions/runs/39984007174)
+  **passed** for `2ef8399`: Backend tests, typecheck, build, Prisma validation,
+  dependency audit, Flutter analyzer and full Flutter tests. These API results
+  validate the UI release's original API tree, not the later billing batch.
+- [iOS build](https://github.com/NOI56/PostDeeMobile/actions/runs/39984009024)
+  **passed**, finishing at 16:17:58 UTC. The no-codesign Xcode build, IPA payload
+  and artifact upload all succeeded (job 11m17s). The unsigned IPA artifact is
+  `12515860935`; this is not an App Store/TestFlight distribution.
+- [Subsequent main CI](https://github.com/NOI56/PostDeeMobile/actions/runs/39984512876)
+  also **passed** for `5313f262`, including its Backend and Flutter jobs. This
+  verifies that integrated source; it does not accept the billing batch's live
+  configuration or provider rollout prerequisites.
+- Verified APK 12044 / hash above was installed through the existing
+  `Invoke-PostDeeAndroidApkUpdate` helper with `install -r`. UID **10197** and
+  internal storage volume remained unchanged. The prior UI had no selected clip
+  and zero saved drafts. The authenticated Pro account remained available after
+  cold launch, showing the same 235/250 remaining monthly post quota.
+- Native UI acceptance passed: full four-name 2x2 grid; zero selection disables
+  the one-credit action; selecting only YouTube enables it and leaves the other
+  three targets unselected. The style action exposes the guidance field and all
+  saved-profile controls. Entering a temporary guidance value, Cancel and reopen
+  returns the original empty guidance. No style profile was saved. Final app is
+  open at advanced caption step, zero AI targets, no clip and zero saved drafts.
+- No live AI request, AI credit charge, video upload, post, purchase, OAuth
+  connection, account deletion or existing-draft mutation was performed.
+- Render **My Workspace**, service `srv-d9bb72ojs32c739osa5g`, remains Live on
+  existing `dab94fb` / `dep-dbdl0mbncjis73aihrh0`. `/health` and `/ready` returned
+  HTTP 200 with database/queue `ok`. Its API tree equals the UI release's
+  `2ef8399` API tree (`717151f9c4505e850edf2e28490e01cfba9f853f`), so this Mobile
+  delivery needs no API redeploy, migration or environment change.
+- The billing batch added by another task has a different API tree and explicit
+  rollout prerequisites in its own plan: live Staging SANDBOX subscription
+  environment and RevenueCat TRANSFER/webhook configuration must be verified
+  before that API is deployed. This compact-UI release does not claim to deploy
+  or accept that batch. Production service/configuration remains untouched.
+- Native evidence: `compact-release-preinstall-*`,
+  `compact-release-installed-package.json`, `compact-release-advanced-empty-*`,
+  `compact-release-youtube-selected-*`, `compact-release-style-sheet-*`,
+  `compact-release-guidance-staged-ui.xml`,
+  `compact-release-guidance-cancelled-ui.xml`, `compact-release-final-*` and
+  `compact-release-result.json` in the existing artifact directory.
+- The final receipt commit changes documentation only and uses the repository's
+  established `[skip ci] [skip render]` suffixes. It does not replace the tested
+  runtime or request another deployment. Remaining limits are real-handset,
+  live AI/provider and signed-iOS/store acceptance outside this UI release.

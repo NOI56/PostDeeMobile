@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Compact caption AI controls (2026-10-23, local candidate)
+## Compact caption AI controls (2026-10-23, Staging delivered)
 
 - Replace the advanced target chips with a uniform two-by-two grid under
   `ให้ AI ช่วยเขียน` and `เลือกช่องทางที่ต้องการ`.
@@ -12,9 +12,11 @@ Build roadmap for PostDee.
 - Preserve four manual editors, draft targets, selected-only AI preview/apply/
   undo and one credit per request of 1–4 channels. No API, contract, quota,
   schema or backend change is introduced.
-- Final validation, exact-environment build and delivery are pending. This
-  request does not authorize a new main/push/deploy or app installation. Track
-  actual results in the
+- Source `2ef8399` is merged/pushed to main; Staging APK 12044 is installed
+  with account, UID and internal storage retained. Local Mobile 2,797/6 skipped,
+  analyzer, 35 Staging checks, source CI and native selection/style-cancel
+  acceptance pass. No live AI request, profile save or publication was made.
+  The UI uses the existing API without a backend redeploy. Track results in the
   [compact-panel plan](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
 ## Select AI caption channels (2026-10-23, Staging Live)

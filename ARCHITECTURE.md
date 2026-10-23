@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Compact caption AI presentation (2026-10-23, local candidate)
+## Compact caption AI presentation (2026-10-23, Staging delivered)
 
 The advanced uploader keeps its generation state and request pipeline while
 presenting the target selector as a uniform two-by-two grid. The compact header
@@ -16,9 +16,12 @@ select-all, clear-selection and cost rows are removed from this panel.
 All four manual editors, local target persistence, selected-only preview/apply/
 undo, stale-result checks and publishing destinations remain independent and
 unchanged. There is no API, data contract, schema, migration, quota or backend
-runtime change: a set of 1–4 generated channels still uses one credit. This is
-an uninstalled UI candidate; final checks and delivery remain pending. The
-prior release below does not verify this follow-up. See its
+runtime change: a set of 1–4 generated channels still uses one credit. Source
+`2ef8399` is on main; installed Staging APK 12044 preserves account/storage and
+passes native compact selection and staged-guidance Cancel/reopen checks. Its
+local and source-CI verification is recorded separately from the earlier
+selector release. The deployed API is retained because this UI needs no API
+change. See its
 [scope and acceptance](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
 ## Selective caption-generation boundary (2026-10-23, Staging Live)

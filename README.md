@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Compact caption AI panel (2026-10-23, local candidate)
+## Compact caption AI panel (2026-10-23, Staging delivered)
 
 The advanced caption panel uses the header `ให้ AI ช่วยเขียน`, a `สไตล์`
 action and a uniform two-by-two channel grid beneath `เลือกช่องทางที่ต้องการ`.
@@ -16,8 +16,12 @@ Select-all/clear actions and a separate cost row are removed; writing style and
 clip guidance remain available behind the style action. The four manual
 editors, remembered draft targets, selected-only preview/apply/undo and existing
 one-credit request for 1–4 channels are retained. This changes no API, contract,
-quota or backend runtime. Verification and delivery of this UI follow-up are
-pending; no new release or installation is claimed. See the
+quota or backend runtime. Source `2ef8399` is on main and Staging APK **12044**
+is installed with the existing account and storage retained. The full local
+Mobile suite (2,797 passed / 6 skipped), analysis, 35 Staging-configured checks
+and source CI pass; native selection/style-cancel checks also pass without
+spending AI credit or publishing. The current API already supports this UI, so
+it is retained without a redeploy. See the
 [compact-panel record](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
 ## Choose AI caption channels (2026-10-23, Staging Live)

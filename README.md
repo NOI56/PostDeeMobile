@@ -43,6 +43,25 @@ style-cancel evidence remains recorded separately. No AI credit was spent or
 post published. The current API supports this UI without a redeploy. See the
 [compact-panel record](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
+## Mobile and CI hardening (2026-10-24, security Batch 6)
+
+- **Android:** backup and device-to-device transfer of app data are off
+  (`allowBackup="false"` plus data extraction rules), so a signed-in Firebase
+  session does not move to another device. The unused `postdee://billing`
+  deep link is removed.
+- **iOS:** the CI IPA now passes the production `API_BASE_URL`. A release
+  build with Firebase sign-in refuses any non-HTTPS API base URL before
+  sending a request (`INSECURE_API_BASE_URL`).
+- **AI captions:** frame extraction passes FFmpeg arguments as a list.
+- **Workflows:**
+  - read-only `contents: read` token;
+  - checkouts without persisted credentials;
+  - actions pinned by commit SHA;
+  - a manual `apk_source_ref` must be a commit on a branch of this
+    repository.
+
+See [`2026-10-24-mobile-ci-security-batch6.md`](docs/superpowers/plans/2026-10-24-mobile-ci-security-batch6.md).
+
 ## Choose AI caption channels (2026-10-23, Staging Live)
 
 Advanced mode keeps all four manual caption editors, but AI generation starts

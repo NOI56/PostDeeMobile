@@ -42,6 +42,27 @@ Future<void> cleanupExtractedCaptionFrames(
   }
 }
 
+/// FFmpeg arguments for one JPEG still. Each path stays a single argument, so
+/// quotes or spaces in a file name cannot add options.
+List<String> buildClipFrameArguments({
+  required double seconds,
+  required String inputPath,
+  required String outputPath,
+}) =>
+    [
+      '-y',
+      // Fast-seek before input, grab a single frame as a JPEG.
+      '-ss',
+      seconds.toStringAsFixed(2),
+      '-i',
+      inputPath,
+      '-frames:v',
+      '1',
+      '-q:v',
+      '3',
+      outputPath,
+    ];
+
 class FfmpegClipFrameExtractor {
   FfmpegClipFrameExtractor({VideoDurationProbe? probeDuration})
       : probeDuration = probeDuration ?? const FfprobeVideoDurationProbe().call;
@@ -64,10 +85,13 @@ class FfmpegClipFrameExtractor {
         final output = File(
           '${directory.path}${Platform.pathSeparator}frame_${index + 1}.jpg',
         );
-        // Fast-seek before input, grab a single frame as a JPEG.
-        final command = "-y -ss ${timestamps[index].toStringAsFixed(2)} "
-            "-i '${videoFile.path}' -frames:v 1 -q:v 3 '${output.path}'";
-        final session = await FFmpegKit.execute(command);
+        final session = await FFmpegKit.executeWithArguments(
+          buildClipFrameArguments(
+            seconds: timestamps[index],
+            inputPath: videoFile.path,
+            outputPath: output.path,
+          ),
+        );
         final returnCode = await session.getReturnCode();
 
         if (ReturnCode.isSuccess(returnCode) && await output.exists()) {

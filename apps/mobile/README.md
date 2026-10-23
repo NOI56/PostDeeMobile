@@ -2,6 +2,16 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Release hardening (2026-10-24, security Batch 6)
+
+Android disables backup and device transfer of app data
+(`android:allowBackup="false"` and `res/xml/data_extraction_rules.xml`); after
+a restore or phone transfer, users sign in again. The unused `postdee://billing`
+intent filter is removed. Release builds with `ENABLE_FIREBASE_AUTH=true` throw
+`INSECURE_API_BASE_URL` instead of calling a non-HTTPS `API_BASE_URL`, and the
+iOS CI IPA defines `API_BASE_URL=https://postdee-api.onrender.com`. Caption frame
+extraction uses `FFmpegKit.executeWithArguments`.
+
 ## Profile-link publication dot (2026-10-20)
 
 Home and the link manager share a publication dot beside the status text:

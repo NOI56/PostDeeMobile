@@ -7,7 +7,7 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Choose AI caption channels (2026-10-23, local candidate)
+## Choose AI caption channels (2026-10-23, Staging Live)
 
 Advanced mode keeps all four manual caption editors, but AI generation starts
 with no channels selected. Choose 1–4 channels independently of the publishing
@@ -20,12 +20,16 @@ Existing billing stays at **one AI credit per request/set of 1–4 channels**;
 selecting fewer channels avoids unnecessary variants but does not discount that
 request. The existing fallback/refund rules remain unchanged. The deployed API
 already accepts a selected `platforms` subset; this follow-up introduces no
-backend runtime, schema, migration, configuration or deployment change.
-Candidate checks pass: 2,787 Mobile tests, 2,504 API tests, Mobile analyze,
+backend runtime, schema, migration or configuration change. The user explicitly
+requested a synchronized Staging deployment during release.
+Checks pass: 2,787 Mobile tests, 2,504 API tests, Mobile analyze,
 API static/schema checks and 28 Staging-configured widget smoke tests.
-Staging APK 12043 builds with the selector and intended environment verified
-inside the package. Device installation and actual provider acceptance remain
-unverified; this follow-up is not merged, pushed, deployed or installed. See its
+Feature `dab94fb` is on `main`/GitHub, Backend/Mobile CI passes, and its Staging
+deployment is Live. Verified APK **12043** is installed with account/data
+preserved. Emulator smoke confirms empty initial selection, one-channel mode
+retention, and a two-channel draft restored after a cold restart. No AI request,
+credit spend, purchase or post was made. iOS no-codesign CI also passes;
+actual provider quality and publication remain unverified. See its
 [scope and verification record](docs/superpowers/plans/2026-10-23-caption-target-selection.md).
 
 ## Four-platform captions (2026-10-23, Staging Live)

@@ -133,7 +133,7 @@ choose all four targets, retaining their prior coverage. Final combined results:
   `d9953e089b8e2ae1c88b806edc7d4184614e6fac1b7ed0606bb66b7c92b778d4`
   (292,733,545 bytes). Build and package checks are recorded in
   `mobile-build.log` and `mobile-build-result.json` under the artifact directory.
-- Final remote freshness check still reports HEAD and freshly fetched
+- Pre-release remote freshness check reported HEAD and freshly fetched
   `origin/main` at `eee9e6ae1bdcbb4d465b9a243ee2aed7a93ca83c`, 0/0.
   Diff review and whitespace checks pass, with no deleted files, dependency,
   platform wiring, API runtime or feature-flag changes. The three unrelated
@@ -143,24 +143,112 @@ Additional logs include `uploader-selection-red.log`,
 `uploader-selection-tests.log`, `widget-tests.log`, `mobile-full-tests.log`,
 `mobile-analyze.log`, `staging-widget-smoke.log`, `api-full-tests-node22.log`
 and the API static-check logs in the same ignored artifact directory.
-The new APK has **not** been installed: an ADB read still shows emulator
-`emulator-5554` on **12042**, preserving its currently open app/data. New-device
-selector/draft smoke and actual provider acceptance remain unverified.
-No live AI request, credit consumption, purchase or post was performed.
+At the end of local candidate verification, emulator `emulator-5554` still had
+12042; the separately authorized installation and device results are recorded
+below. Actual provider acceptance remains unverified. No live AI request,
+credit consumption, purchase or post was performed by the candidate checks.
 
-## Release boundary and remaining limits
+## Authorized release and source preservation
 
 The implementation request was followed by explicit `main/push/deploy`
-authorization. Release work is now in progress: commit only this feature's
-files, fast-forward the current main without touching unrelated local changes,
-push, verify CI, deploy the confirmed Staging service, then update the emulator
-with the exact verified APK while preserving its package data/storage. Do not
-claim release until remote commit, live deploy and installed version are read
-back successfully.
+authorization. Feature commit
+`dab94fbf8ff8c3fb7d0bf96e8f42e9f903e29e0b` was fast-forwarded into `main` and
+pushed; remote readback confirmed the same commit and 0 ahead/0 behind. The
+three unrelated generated Windows files were excluded. The canonical main
+checkout's unrelated launcher/Staging tracked edits were preserved byte for
+byte, and its unrelated untracked files were unchanged.
+
+GitHub [CI run 39951902383](https://github.com/NOI56/PostDeeMobile/actions/runs/39951902383)
+**succeeds** for Backend API and Flutter Mobile. The production-matching local
+results above remain valid because runtime source is unchanged by release.
+The separate [iOS no-codesign run 39951902446](https://github.com/NOI56/PostDeeMobile/actions/runs/39951902446)
+also **succeeds**, including compilation and unsigned IPA artifact upload.
+This confirms iOS build compatibility; signed iPhone installation and
+TestFlight acceptance were not tested.
+
+The exact APK's three changed Mobile library source files match the released
+feature commit; the previously verified hash, package and environment values
+remain unchanged.
+The release-record follow-up changes only the five documentation files. Its
+API and Mobile Git trees remain identical to feature `dab94fb`; the CI, Render
+and APK evidence above identifies the executable source for this release.
+
+## Staging deployment verification
+
+The subset contract was already supported, and API runtime source is unchanged.
+The user explicitly authorized synchronizing Staging to the new main commit.
+Render deployment `dep-dbdl0mbncjis73aihrh0` for exact source `dab94fb` is
+**Live**, finished **2026-10-23 19:18:47 GMT+7**
+(`2026-10-23T12:18:47.83003Z`), on confirmed My Workspace
+(`tea-d45nsamuk2gs73cmhol0`), service `postdee-api-staging`
+(`srv-d9bb72ojs32c739osa5g`).
+
+- Auto-deploy remains off. One API instance, `SOCIAL_PUBLISHER=postpeer`, the
+  Prisma-backed in-process scheduler (`PUBLISH_QUEUE=memory`) and the activation
+  guard requiring an empty publish backlog are unchanged and verified at startup.
+- Startup reports **22 existing migrations, none pending**. No database
+  migration, environment/configuration or runtime change was introduced.
+- `/health` and `/ready` return **HTTP 200**, with database and queue ready.
+  Unauthenticated `/billing/subscription` and `/posts` remain **HTTP 401**.
+  These rejected reads make no publish or AI request.
+- The checked post-startup log window, **12:18:46–12:20:24 UTC**, has no error
+  logs. This bounded observation is startup/readiness evidence, not a load test.
+
+## Installed-app selector and draft smoke
+
+The validated Staging helper updated `emulator-5554` from **12042 to 12043**
+using the verified APK SHA-256 above. Package UID **10197**, existing app data,
+storage and signed-in account were preserved, without uninstalling or clearing
+data. The Pro plan and remaining post quota **235/250** still appear unchanged
+after a cold restart. The package/API/Firebase/Test Store/monitoring configuration remains
+the verified build configuration recorded above.
+
+Device checks pass:
+
+- Advanced mode initially selects no AI channels and disables generation.
+- Selecting only YouTube shows one target. Switching to shared mode and back
+  retains that one selection; clearing the targets returns to empty.
+- A pre-existing tiny one-second 540×960 test clip (about 3.4 KB) was used
+  **locally only** to create a native draft with TikTok and YouTube selected.
+  The clip was not uploaded and generation was not invoked.
+- After force-stop, cold reopening and draft restoration, TikTok/YouTube are
+  selected, Instagram/Facebook remain unselected, and the action shows two
+  targets. This verifies actual persisted local draft restoration, rather than
+  only an in-memory screen toggle.
+- Only the test draft created for this release was deleted. The draft list was
+  empty before testing and is empty again. The app is left open in advanced
+  caption mode with zero selected targets and no clip.
+
+No AI request, credit spend, actual post, purchase or provider publication was
+performed. This verifies selector and local-draft behavior on the installed
+emulator; it does not establish Gemini output quality, live selected-caption
+generation, real handset behavior or social publication.
+
+Release evidence under
+`D:\PostDeeMobile\artifacts\caption-target-selection-20261023` includes:
+
+- `main-dirty-before-merge.json`, `post-deploy-health.json`,
+  `release-verification.json`, `ci-main.log`, `ci-ios.log` and the local build /
+  test logs above. Source preservation and exact main/remote/deployment readbacks
+  were additionally checked during the release.
+- `emulator-package-before-install.json`, `emulator-package-after-install.json`,
+  `emulator-after-install.xml` and `emulator-after-cold-start.xml` for the
+  retained package/account and startup checks.
+- `emulator-targets-empty.xml/.png`, `emulator-targets-one.xml`,
+  `emulator-targets-retained.xml` and `emulator-targets-disabled.xml` for empty,
+  one-target, toggle-retained and disabled-state checks.
+- `emulator-smoke-draft-targets.xml`, `emulator-smoke-draft-saved.xml`,
+  `emulator-targets-after-cold-restore.xml`, `emulator-restored-two-count.xml`
+  and `emulator-targets-restored.png` for the saved/restored two-target draft.
+- `emulator-smoke-cleaned.xml`, `emulator-final-selector.xml` and
+  `emulator-final-selector.png` for test-draft cleanup and final app state.
+
+## Remaining limits
 
 The already deployed API supports the subset contract, so this Mobile-only
 runtime change introduces no backend deployment order requirement or migration.
-Any later release must preserve the known Staging environment, existing account,
-Firebase, billing/Test Store and monitoring configuration. No real post or
-purchase is necessary for selector/draft smoke. Automated contract tests and
-mock AI responses do not establish actual Gemini quality or publication.
+The authorized synchronization deployment and Android installation are complete.
+The separate iOS no-codesign CI also passes. Actual Gemini
+quality/selected-target generation and real publication remain untested;
+automated contract tests, mock responses and installed selector/draft checks do
+not establish those results.

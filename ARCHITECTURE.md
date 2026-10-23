@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Selective caption-generation boundary (2026-10-23, local candidate)
+## Selective caption-generation boundary (2026-10-23, Staging Live)
 
 The uploader retains four manual platform-caption editors while keeping a
 separate `Set<SocialPlatform> aiCaptionPlatforms` for generation intent. That
@@ -30,8 +30,15 @@ migration, provider integration, credential or configuration change. Combined
 checks pass 2,787 Mobile tests, 2,504 API tests, static/schema checks and 28
 Staging-configured widget smoke tests. APK 12043 builds with the expected
 package, Firebase project, API URL, monitoring release and selector confirmed.
-Device installation and actual provider acceptance remain unverified; no
-release is asserted. See the
+Feature `dab94fb` is merged/pushed with passing Backend/Mobile CI. Its exact
+source was redeployed to Staging at the user's request, retaining the existing
+one-instance PostPeer publisher, Prisma-backed in-process scheduler, empty
+backlog guard and 22 existing migrations/no pending. No runtime setting changed.
+APK **12043** is installed with UID/data preserved. Emulator smoke verifies
+default-empty targets, one-target mode retention and real local-draft target
+restoration after a cold restart; the account and Pro usage remain unchanged.
+iOS no-codesign CI also passes. Actual AI generation/publication remains
+unverified; no AI credit, purchase or post was consumed by smoke. See the
 [implementation record](docs/superpowers/plans/2026-10-23-caption-target-selection.md).
 
 ## Advanced platform-caption boundary (2026-10-23, Staging Live)

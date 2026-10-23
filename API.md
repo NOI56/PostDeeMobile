@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Mobile AI caption selection (2026-10-23, local candidate)
+## Mobile AI caption selection (2026-10-23, Staging Live)
 
 The advanced composer can request captions for an explicitly chosen subset of
 the four supported channels. The initial AI selection is empty; requesting
@@ -23,11 +23,15 @@ generation selection.
 `aiCaptionPlatforms` is optional local-draft metadata, defaults to an empty set
 for historical drafts, and is never added to post creation/recovery requests
 or reusable account/channel defaults. This work changes no publish settings
-contract, database schema, migration or environment variable. Candidate checks
+contract, database schema, migration or environment variable. Checks
 pass 2,504 API tests, typecheck/build, Prisma validation/helper typecheck and
-the Mobile checks recorded below. APK 12043 builds; delivery, device smoke and
-actual provider acceptance remain unverified. The earlier release below does
-not establish delivery of this follow-up. Track results in the
+the Mobile checks recorded below. Feature `dab94fb` is merged/pushed and its
+Backend/Mobile CI passes. The user-authorized Staging synchronization deploy
+is Live on that exact source, with unchanged runtime settings, 22 migrations
+and none pending. Health/readiness and unauthenticated-route barriers pass.
+APK **12043** is installed; emulator selector/draft smoke passes without any
+AI request, quota spend or post. iOS no-codesign CI also passes; actual
+provider acceptance remains unverified. Track results in the
 [selection work record](docs/superpowers/plans/2026-10-23-caption-target-selection.md).
 
 ## Per-platform caption contract (2026-10-23, Staging Live)

@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Select AI caption channels (2026-10-23, local candidate)
+## Select AI caption channels (2026-10-23, Staging Live)
 
 - Keep four advanced manual caption editors and start AI targets empty. Let
   users explicitly choose 1–4 supported channels before generation, independently
@@ -16,12 +16,16 @@ Build roadmap for PostDee.
   channels, with no discount for requesting fewer. Preserve existing fallback
   refunds and plan/owner/media checks. The API already supports subsets; this
   work needs no backend runtime or deployment change, schema or migration.
-- Candidate passes 2,787 Mobile tests, 2,504 API tests, static/schema checks and
+- Checks pass 2,787 Mobile tests, 2,504 API tests, static/schema checks and
   28 Staging-configured widget smoke tests. Staging APK 12043 builds and package
-  configuration checks pass. Device installation and actual provider acceptance
-  remain unverified. This follow-up is not yet merged, pushed, deployed or
-  installed; earlier release evidence below applies to the prior all-four UI.
-  Record actual results in the
+  configuration checks pass. Feature `dab94fb` is on `main`/GitHub with passing
+  Backend/Mobile CI and an exact-source Live Staging synchronization deployment.
+  APK **12043** is installed, preserving account/data. Emulator smoke passes
+  default-empty/disabled generation, one-target mode retention and two-target
+  local-draft restoration after a cold restart. The created test draft was
+  removed, restoring the original empty draft list. No real AI, credit spend,
+  purchase or post occurred. iOS no-codesign CI also passes; provider quality
+  and real publication remain unverified. Record actual results in the
   [selection plan](docs/superpowers/plans/2026-10-23-caption-target-selection.md).
 
 ## Four-platform advanced captions (2026-10-23, Staging Live)

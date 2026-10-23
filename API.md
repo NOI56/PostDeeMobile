@@ -2189,7 +2189,7 @@ pending responses or transient network failure until expiry. A lost completion
 response can yield an expired/replayed error even though linking succeeded;
 use the ordinary status refresh before reconnecting. A process restart loses
 the nonce. Pre-existing unbound integrations cannot be adopted by starting
-another attempt; provider integration-ID reuse requires operator/provider
+another attempt; an unbound integration with a reused provider ID requires operator/provider
 resolution rather than bypassing the baseline check. Thai conflict guidance
 asks the user to disconnect from the original PostDee account or choose another
 social account. New Mobile rejects a missing/invalid nonce contract before

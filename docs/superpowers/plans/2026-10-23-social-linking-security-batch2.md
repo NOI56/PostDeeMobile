@@ -9,6 +9,13 @@ then a new Batch 2 branch and one PR only. PR #18 is MERGED at
 `[skip render]`. The new `codex/security-batch2-social-linking` branch starts at
 that exact main; the older primary checkout was not modified.
 
+Before opening the PR, main advanced to
+`4a1c0f9c1d77d622460bc9eb0d3d82eaf81f52cf`. The unpublished Batch 2 branch
+was rebased onto it without force-push. Three documentation header conflicts
+were resolved by preserving the new security sections and main's delivered
+compact-caption release notes. Main's Mobile outline-only selector change and
+tests remain intact; full validation is repeated on the rebased branch.
+
 Implement only Social account linking from `CODEX-FIX-BRIEF.md` and the trace
 `apps/api/socialConnections/connect-url-completion-not-bound-to-initiating-user`
 in the user's `run-2/NEEDS-VALIDATION.md`. No other security batch is included.
@@ -106,7 +113,8 @@ Final full-suite counts and static/build checks will be recorded before PR
 creation. Local tests use synthetic users and a dedicated guarded PostgreSQL
 database; they do not contact PostPeer or consume purchases/publishing/AI quota.
 The real database suite is opt-in using
-`POSTDEE_SOCIAL_LINKING_TEST_DATABASE_URL` and accepts only
+`POSTDEE_SOCIAL_LINKING_TEST_DATABASE_URL` and guards the dedicated loopback
+protocol, host, port and database path. The local fixture uses
 `postgresql://postdee_test@127.0.0.1:55482/postdee_batch2_test?schema=public`.
 The unrelated legacy opt-in DB suites remain skipped unless their own fixtures
 are explicitly configured; they are not implied to have run.
@@ -118,8 +126,10 @@ are explicitly configured; they are not implied to have run.
    verify ownership with affected users and PostPeer, and prepare an explicitly
    reviewed repair/reconnect plan. Do not auto-delete or reassign data.
 2. After conflict resolution and backup/maintenance planning, apply the migration
-   and updated API. Render's configured pre-deploy command runs Prisma migrations
-   before startup; a guard failure must stop rollout. If Prisma records a failed
+   and updated API. The checked-in Render Blueprint uses a Prisma pre-deploy
+   command; inspected Staging instead runs Prisma first in its start command.
+   Both must complete migration before the new API starts; a guard failure must
+   stop rollout. If Prisma records a failed
    migration, verify rollback and conflict resolution before any operator-led
    `migrate resolve`; do not mark an unapplied migration as applied.
 3. Check API connectivity and owner-scoped synthetic linking behavior, then
@@ -149,8 +159,9 @@ changed by this task.
   provider IDs and cannot recognize different integrations for the same account.
 - Verify connecting one social account across PostPeer profiles and replacing
   or reconnecting an account. The baseline intentionally rejects pre-existing
-  IDs. If PostPeer reuses an integration ID, operator/provider resolution is
-  required; do not disable the baseline check to make it pass.
+  IDs. An unbound integration whose ID PostPeer reuses needs operator/provider resolution;
+  do not disable the baseline check to make it pass. Already-saved exact
+  identities remain maintainable without a new attempt.
 - Closing/restarting the app loses its in-memory nonce. A provider integration
   completed before that loss is not imported by a new attempt's baseline. Real
   reconnect and cleanup guidance needs owner/provider validation.
@@ -167,3 +178,5 @@ Staging auto-deploy is off and its latest live source remains `dab94fb`;
 Production is suspended. No build/deploy event was observed for the merge.
 The merge's `[skip render]` follows Render's documented auto-deploy skip marker.
 This task did not trigger a deployment or alter any dashboard.
+Read-only service inspection also confirmed PR previews are disabled on both
+services; opening this feature PR does not request a preview deployment.

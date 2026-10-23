@@ -49,18 +49,25 @@ No native crash was triggered. Live entitlement/publish/checkout acceptance
 remains unverified. The user's 2026-10-23 `main/push/deploy` request authorizes
 main integration, GitHub push and Staging API activation. Feature `b486ca3` is
 on `main`/GitHub, followed by lockfile-only CI fix `35512aa`. The first Staging
-build failed at `npm ci`; the repaired source `35512aa` is now Live on Staging
-with health/readiness HTTP 200 and no pending migrations or monitoring-init
-failure. Exact-source CI `39890752750` passes both Backend and Flutter Mobile;
-the unsigned iOS build also passes. A deployed API-to-Sentry event is not yet
-proven; local API and exact Android acceptance remain the ingestion evidence.
+build failed at `npm ci`; `35512aa` repaired that build, then cloud inspection
+found an empty-stack processing warning. The two-file API sanitizer fix
+`12e0589` is now on `main`/GitHub and Live on Staging, with health/readiness
+HTTP 200, 22 migrations/none pending and no monitoring-init failure. Full API
+checks pass 2,422 tests; the latest deployed-module event matches its exact
+source/release/environment and has no processing warning. It is emitted through
+an isolated Render Web Shell process, verifying deployed module/configuration/
+network ingestion without forcing an Express-main-process HTTP failure.
+Local API and exact Android acceptance are retained. Prior Backend/Mobile CI
+and unsigned iOS compilation pass; exact-source CI `39893356044` also passes
+Backend and Flutter Mobile. The API-only correction changes no Mobile code/APK.
 Acceptance scope and remaining device/native limits are recorded in the
 [Sentry work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md).
 Live deployment and remaining acceptance evidence are recorded in the work record.
 Release preflight also updates the CI-only Staging-define validator to accept
 and validate the three Sentry fields; its 21 Python tests pass, including the
-checked-in example with billing disabled/enabled. API/Mobile runtime source and
-APK12041 acceptance are unchanged. iOS compilation uses Sentry disabled and does
+checked-in example with billing disabled/enabled. That CI-only validator change
+does not change runtime code; the later API sanitizer fix changes no Mobile
+source or APK12041. iOS compilation uses Sentry disabled and does
 not establish iOS monitoring runtime acceptance.
 
 ## Calendar selected covers (2026-10-21)

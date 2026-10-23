@@ -21,7 +21,11 @@ migration, entitlement, billing, publishing mode or worker deployment change.
 The user's subsequent 2026-10-23 `main/push/deploy` request authorizes main
 integration, GitHub push and Staging API activation for this feature. Main/GitHub
 delivery and Staging activation are complete with health/runtime checks passed.
-Deployed API-to-Sentry ingestion remains a separate unverified check.
+The user's subsequent explicit cloud API test verifies deployed monitoring-module
+ingestion through an isolated authenticated Render Web Shell process. The initial
+`35512aa` event is accepted with a processing warning; the minimal API fix
+`12e0589` is Live and its repeated event has no processing error. Current-source
+Backend and Flutter Mobile CI both pass; the Mobile tree is unchanged.
 
 ## Account/project setup
 
@@ -153,7 +157,7 @@ Test-first Mobile RED evidence is retained outside tracked source at
 
 | Check | Actual result |
 | --- | --- |
-| API full suite, Node `22.23.3` | 2,420 passed, 25 skipped; 147 test files passed, four skipped. The initial parallel run had four timeouts; a clean sequential one-worker repeat passed with no product-code change for the timeouts. |
+| Initial API full suite, Node `22.23.3` | 2,420 passed, 25 skipped; 147 test files passed, four skipped. The initial parallel run had four timeouts; a clean sequential one-worker repeat passed with no product-code change for the timeouts. |
 | API static/build/schema checks | Typecheck, build, Prisma schema validation and Prisma helper compilation pass. |
 | API fatal regressions | Real child processes preserve fatal uncaught-error and Node-default unhandled-rejection behavior, including named errors. |
 | Intermediate Mobile focused suite | 116 passed before the native Crashlytics preservation fix. |
@@ -210,12 +214,18 @@ work record or the synthetic issue descriptions.
 Final-3 Mobile tests/analysis/build/source checks and exact APK12041
 startup/Sentry event verification pass. Sentry-native crash/ANR,
 new native Crashlytics crash acceptance, iOS, physical-device performance and
-live entitlement/publish/checkout checks remain separate work. There is no claim
-of deployed API-to-Sentry ingestion, tracing/performance monitoring or full production
+live entitlement/publish/checkout checks remain separate work. Initial cloud
+ingestion was accepted with a processing warning; the later API correction and
+repeated isolated-process event pass without that warning. There is
+no claim of forced Express-main-process HTTP-error acceptance, tracing/performance
+monitoring or full production
 readiness. Main/push and Staging API activation are authorized by the user's
-2026-10-23 request. Feature and lockfile fix are on `main`/GitHub; repaired source
-`35512aa` is Live on Staging with health/runtime checks passed. Exact-source
-Backend/Flutter Mobile CI and the unsigned iOS build pass.
+2026-10-23 request. Feature, lockfile repair and minimal sanitizer correction are
+on `main`/GitHub; source `12e0589` is Live with health/runtime checks passed.
+Current-source Backend and Flutter Mobile CI both pass; earlier
+Backend/Mobile CI and unsigned iOS compilation pass. No Mobile edit/rebuild is
+part of the API correction, and Mobile empty/async-stack metadata handling is
+not live-validated by the cloud API result.
 
 ## Authorized release follow-up — 2026-10-23
 
@@ -229,8 +239,10 @@ Backend/Flutter Mobile CI and the unsigned iOS build pass.
   fix is integrated/pushed as `35512aa6d5a2f6fd1fbe9b95e34bcf96925f62d0`.
   Staging deploy `dep-dbdciulg1s2s73b17ss0` is Live on the repaired source,
   with runtime/release/health checks below. Exact-source Backend and Flutter
-  Mobile CI pass. A deployed generic API-to-Sentry event
-  is not proven, distinct from successful local API and APK12041 ingestion.
+  Mobile CI pass. A later explicit cloud test accepts one generic event with a
+  processing warning. The minimal API correction is subsequently pushed as
+  `12e05895755b16d21f7eabb90a75d1824dac0b1e`, Live in
+  `dep-dbdcvlmi0phs739c9m20`; its repeated event has no processing error.
 - Release preflight found a CI-only compatibility gap: the Staging build-define
   validator rejected the new Sentry fields. The targeted fix in
   `scripts/prepare_staging_ci_defines.py` accepts and validates `SENTRY_DSN`,
@@ -295,15 +307,123 @@ Backend/Flutter Mobile CI and the unsigned iOS build pass.
   scheduler started. Sentry introduces no new schema/migration. There is
   no monitoring-init failure or fatal startup diagnostic. No private values or
   raw logs are included in this record.
-- A deployed synthetic API event was not triggered/proven: a read-only SSH
-  probe stopped at an unknown trusted-host key. No host trust, SSH keys or
-  permissions were changed. Live configured startup/health is not proof of
-  cloud API-to-Sentry ingestion; local Node and exact APK12041 accepted events
-  remain the verified ingestion paths.
+- At the initial Live check, a deployed synthetic event was not triggered: a
+  read-only SSH probe stopped at an unknown trusted-host key. No host trust,
+  SSH keys or permissions changed. Configured startup/health alone was not
+  counted as ingestion. The later authenticated Web Shell test below proves
+  deployed monitoring-module ingestion without changing SSH trust.
 - Main/push/Staging delivery and exact-source Backend/Mobile CI are complete at
-  source `35512aa`; deployed API ingestion acceptance remains unverified. The source
+  source `35512aa`; the later isolated deployed-module event is accepted with
+  a processing warning requiring remediation.
+  The source
   Mobile 589-file hashes and APK12041 are unchanged. In the 456-file API source
   inventory, only the lockfile differs from local full checks; the final Linux
   Backend CI pass covers that repair. No real post, purchase or
-  native crash was triggered, and no extra runtime deploy is needed for this
-  documentation follow-up.
+  native crash was triggered. This initial record did not require a runtime
+  change; the later processing correction has its own verified deploy below.
+
+### Explicit cloud ingestion follow-up — 2026-10-23
+
+- The user explicitly requested the cloud API test. This initial probe and its
+  record start from `72c7fd64b09974d1eebff5e22b23ee9d028d1057`, freshly
+  verified against `origin/main` at ahead/behind `0/0`. Preserve the three
+  unrelated generated Windows files. The initial isolated probe itself changed
+  no source/configuration and needed no deployment. The subsequently discovered
+  processing warning led to the separately tested/released correction below.
+- Use the authenticated Render Dashboard Web Shell on current Staging instance
+  `78mh7`, directory `~/project/src/apps/api`. One isolated Node process imports
+  only deployed `dist/monitoring/sentryConfig.js`, `sentryMonitoring.js` and SDK
+  event/close accessors. It does not import the app, server or worker or use the
+  database. No SSH key, host-trust or permission changes are needed.
+- Runtime identity checks match the exact Render service and deployed Git source
+  `35512aa6d5a2f6fd1fbe9b95e34bcf96925f62d0`. Configuration checks match
+  `staging`, release
+  `postdee-api@35512aa6d5a2f6fd1fbe9b95e34bcf96925f62d0` and API project
+  `4512302958706688`. Store only match booleans, never the DSN or raw environment.
+- Capture one handled synthetic `TypeError` with allowlisted operation
+  `server.startup`. This label is a diagnostic test context, not a real startup
+  failure. The returned event is `08fa034ea34e49ffa5afb5a8c7bcd090`; flush and
+  SDK close return true, the child exits and the shell prompt returns.
+- At `2026-10-23T02:58:38Z` (09:58:38 Thailand time), the latest dashboard event
+  is accepted as
+  [POSTDEE-API-2](https://postdeemobile.sentry.io/issues/7807957893/), exact event
+  ID `08fa034ea34e49ffa5afb5a8c7bcd090`. Environment, full release and operation
+  match. The displayed message is generic `PostDee server error`; the raw test
+  message and geography are absent.
+- Subsequent inspection of the event's `Processing Error` button shows
+  `Discarded invalid value` at `exception.values.0.stacktrace.frames`, expected
+  to be nonempty. The event is accepted/grouped, but it is not a warning-free
+  processing result. Preserve its accepted issue/event ID as initial evidence.
+- Health/readiness are HTTP 200 before and after the test. Post-test checks at
+  `2026-10-23T02:56:17Z` confirm database/queue healthy. No post, purchase,
+  customer content, HTTP failure, native crash, service restart or main-process
+  failure is triggered.
+- Scope: this proves the deployed module, runtime configuration and cloud
+  network path to Sentry. It does not prove an error flowing through the running
+  Express main process, its HTTP middleware or native crash handling. Existing
+  local middleware tests and APK12041 acceptance remain separate evidence.
+- Sanitized evidence in
+  `D:\PostDeeMobile\artifacts\sentry-monitoring-20261022\`:
+  `cloud-api-live-smoke.json`, `cloud-api-dashboard-acceptance.json`,
+  `cloud-api-smoke-health.json`, `cloud-api-shell-smoke.png` and
+  `cloud-api-sentry-accepted.png`. The original cloud probe changed no runtime
+  source/configuration; the correction below requires its own verified release.
+
+### Cloud processing warning remediation — Live and repeated event accepted
+
+- Cause: the API sanitizer excludes private/unsafe source frames, including
+  the synthetic cloud error's eval frames, but still emits `stacktrace` with
+  `frames: []` when none remain. Sentry requires a nonempty frame list and
+  discards that invalid value during processing.
+- Regression tests were added first. The minimal correction omits `stacktrace`
+  when no safe frames remain, preserving known-safe nonempty stacks and all
+  privacy restrictions. Private/eval frames are not retained to silence the warning.
+- Runtime scope is only `apps/api/src/monitoring/sentryMonitoring.ts` and its
+  regression tests. Source `12e05895755b16d21f7eabb90a75d1824dac0b1e` is
+  fast-forwarded to `main` and pushed. Targeted 30 tests pass; the full API suite
+  on Node `22.23.3` passes 2,422 tests with 25 skips (147 files passed/four
+  skipped). Typecheck, build, Prisma schema validation and helper compilation
+  all exit zero; source hashes match. No Mobile source changes or rebuild.
+- [CI run 39893356044](https://github.com/NOI56/PostDeeMobile/actions/runs/39893356044)
+  passes Backend and Flutter Mobile on exact source `12e0589`; successful final
+  status is verified at updated time `2026-10-23T03:14:52Z` (10:14:52 Thailand
+  time). Backend completes at 03:08:47Z and Mobile at 03:14:51Z. Evidence is
+  `ci-39893356044.json`. The Mobile tree is unchanged and its earlier acceptance
+  remains as recorded above; this API correction requires no Mobile rebuild.
+- Render deploy `dep-dbdcvlmi0phs739c9m20` is Live on exact source `12e0589`,
+  finished `2026-10-23T03:10:35.988195Z` (10:10:35 Thailand time). Only
+  `SENTRY_RELEASE` changes to
+  `postdee-api@12e05895755b16d21f7eabb90a75d1824dac0b1e`; auto-deploy stays off.
+  Startup finds 22 migrations/none pending and no monitoring-init/fatal failure.
+- `/health` and `/ready` return HTTP 200 with database/queue healthy before
+  the repeated cloud test at 10:10:43 Thailand time and in the initial
+  post-capture check at 10:11:26. The final check after dashboard inspection at
+  `2026-10-23T10:14:47.8292270+07:00` again confirms both endpoints HTTP 200
+  with database/queue healthy.
+- On current instance `dtc4r`, one isolated authenticated Web Shell Node process
+  verifies deployed module/service/source, Staging configuration/full release
+  and API project `4512302958706688`. Capture returns event
+  `1d062ef96a624d039d6f87ccdfa0dc0f`; flush/close return true and the prompt
+  returns. No app/server/worker import, HTTP failure, real post/purchase,
+  customer content or main-process crash is triggered.
+  The dashboard event timestamp is `2026-10-23T03:11:21.435Z`; the smoke
+  record's `verifiedAt` `03:11:48.288Z` records the result after command exit.
+- At `2026-10-23T03:12:47.597Z` (10:12:47 Thailand time), Sentry's latest
+  [POSTDEE-API-2](https://postdeemobile.sentry.io/issues/7807957893/) event exactly
+  matches `1d062ef96a624d039d6f87ccdfa0dc0f`, `staging`, the full `12e0589`
+  release and `server.startup`. The message is generic, raw test text and
+  geography are absent. Full accessibility-tree and visual inspection find
+  neither `Processing Error` nor `Discarded invalid value` on this event.
+- Preserve initial event `08fa034ea34e49ffa5afb5a8c7bcd090` as accepted-with-warning
+  history; the new event verifies the API correction without relaxing privacy.
+  Scope remains deployed monitoring module/configuration/network ingestion,
+  not a forced Express-main-process HTTP error or native crash. Mobile
+  empty/async-stack metadata handling has not been live-validated.
+- Final sanitized evidence under
+  `D:\PostDeeMobile\artifacts\sentry-monitoring-20261022\`:
+  `api-source-empty-stack.json`, `api-checks-empty-stack.json`,
+  `ci-39893356044.json`, `staging-empty-stack-release.json`, `cloud-api-fixed-smoke.json`,
+  `cloud-api-fixed-dashboard-acceptance.json`, `cloud-api-fixed-before-health.json`,
+  `cloud-api-fixed-after-health.json`, `cloud-api-fixed-final-health.json`,
+  `cloud-api-fixed-shell.png` and
+  `cloud-api-fixed-sentry-accepted.png`.

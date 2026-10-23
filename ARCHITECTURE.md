@@ -69,17 +69,31 @@ outbound allowlists and existing default scrubbers. Live entitlement retrieval
 and full publish/checkout acceptance are not verified. The user's 2026-10-23
 `main/push/deploy` request authorizes main integration, GitHub push and Staging
 API activation. Feature `b486ca3` and lockfile-only fix `35512aa` are pushed to
-`main`. The first environment-triggered Staging build failed `npm ci`; the
-subsequent repaired source `35512aa` is Live in `dep-dbdciulg1s2s73b17ss0`.
-Health/readiness return 200; startup confirms no pending migrations, the existing
-in-process scheduler and no monitoring-init failure. Only the Sentry release key
-was updated for the successful environment-triggered deployment. Exact-source
-CI `39890752750` passes Backend and Flutter Mobile; unsigned iOS compilation passes.
-A deployed API event is unproven and iOS compilation uses Sentry disabled, so
-neither establishes those monitoring runtime acceptance paths. The lock fix
+`main`. The first environment-triggered build failed `npm ci`; `35512aa` repaired
+that lockfile. Its initial cloud event exposed an empty stack after all unsafe
+frames were removed. The minimal API fix `12e0589` omits the stacktrace only
+when no safe frames remain, keeping private frames excluded. Its full 2,422-test
+API suite and static checks pass, and it is Live in `dep-dbdcvlmi0phs739c9m20`.
+Health/readiness return 200; startup reports 22 migrations/none pending and no
+monitoring-init/fatal failure. Only the Sentry release key changed; auto-deploy
+remains off. Prior Backend/Mobile CI and unsigned iOS compilation pass; current
+CI `39893356044` also passes Backend and Flutter Mobile; the Mobile tree is unchanged.
+An isolated Node process in the authenticated Render Web Shell loads only the
+deployed monitoring modules and accepts the latest `12e0589` generic event in
+Sentry with exact source/environment/release identity and no processing error.
+This proves the deployed module,
+configuration and network path; it does not load the Express app/server/worker
+or force an HTTP failure in the main process. Health/readiness remain 200 and no
+SSH key/trust or runtime configuration changes are made by the isolated probe.
+The separate deployment's release-key update is recorded above. The iOS build uses
+Sentry disabled and does not establish iOS monitoring runtime acceptance. The lock fix
 preserves the runtime manifest and optional dependency boundary. Track delivery in the
 [work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md). No paid plan,
 GitHub connection, real publication or purchase is needed for these checks.
+The initial `35512aa` event remains accepted-with-warning historical evidence;
+the repeated `12e0589` event verifies the API correction. No Mobile code or APK
+was rebuilt for this fix. Mobile empty/async-stack metadata handling has not
+been live-validated and is not inferred from the API result.
 
 ## Calendar selected-cover reads (2026-10-21)
 
@@ -1433,7 +1447,7 @@ Backend stack:
 - Gemini caption provider with production provider/device verification remaining
 - ElevenLabs Scribe v2 transcription + Gemini AI auto-editing recipe flow with physical-device acceptance remaining
 - RevenueCat webhook and authenticated Restore/resync adapters
-- Opt-in Sentry reporter verified by local API and exact APK12041 events; source 35512aa Live on Staging, native Crashlytics retained/enabled, deployed API ingestion unverified
+- Opt-in Sentry reporter accepted by local API/APK12041 and repeated isolated cloud event at Live source 12e0589 without the processing warning; native Crashlytics retained/enabled
 
 Main route groups:
 

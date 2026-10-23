@@ -42,7 +42,7 @@ token in the repository. Default-off configuration preserves existing deployment
 No Prisma migration or API-first compatibility rollout is needed for this
 internal reporter. Each cloud API/worker still needs an explicitly authorized
 deployment and its own runtime DSN/environment. The final local API checks pass
-on Node `22.23.3`: 2,420 tests pass with 25 skips, plus typecheck/build and Prisma
+on Node `22.23.3`: 2,422 tests pass with 25 skips, plus typecheck/build and Prisma
 validation/helper compilation. A synthetic local Express 500 reached
 `POSTDEE-API-1` in Staging without real social publication or purchases. Sentry's
 inferred coarse geography prompted project-level IP storage prevention and
@@ -56,17 +56,34 @@ only the three Sentry environment keys into `My Workspace`'s
 `postdee-api-staging` triggered an initial build despite auto-deploy being off;
 it failed `npm ci` with lockfile `EUSAGE`, leaving live source `8c957ab` running.
 The Node 22/npm 10 lockfile compatibility fix changes no runtime package manifest
-or API source. Repaired source `35512aa` is now Live in
-`dep-dbdciulg1s2s73b17ss0`, finished 2026-10-23 09:43:57 Thailand time.
+or API source. That repair deployed `35512aa`; later cloud inspection exposed
+an empty-stack processing warning. The minimal sanitizer correction
+`12e05895755b16d21f7eabb90a75d1824dac0b1e` is now on `main`/GitHub and Live in
+`dep-dbdcvlmi0phs739c9m20`, finished 2026-10-23 10:10:35 Thailand time.
 Post-Live `/health` and `/ready` return HTTP 200 with database/queue healthy.
-Startup confirms no pending migrations, the in-process scheduler started and
-no monitoring-init failure. The release label is
-`postdee-api@35512aa6d5a2f6fd1fbe9b95e34bcf96925f62d0` in `staging`.
-Exact-source CI `39890752750` passes Backend and Flutter Mobile. A cloud API
-synthetic event was not triggered/proven, so no deployed ingestion acceptance is
-claimed; a read-only SSH probe stopped at an unknown trusted-host key without
-changing host trust or permissions. Full status is tracked in the
+Startup confirms 22 migrations found/none pending and no monitoring-init or
+fatal startup failure. Only the Sentry release key changed; its value is
+`postdee-api@12e05895755b16d21f7eabb90a75d1824dac0b1e` in `staging`.
+Prior-source CI `39890752750` passes Backend/Mobile; new-source CI `39893356044`
+also passes Backend and Flutter Mobile. The repeated cloud test accepts a
+generic deployed-module event as `POSTDEE-API-2` / `7807957893`,
+event `1d062ef96a624d039d6f87ccdfa0dc0f`,
+matching the deployed source, Staging environment and full release above. An
+isolated Node process in the authenticated Render Web Shell imports only the
+deployed monitoring config/reporter and SDK event/close accessors; flush/close
+succeed, and health/readiness remain 200. It does not load the app/server/worker,
+use the database or force an HTTP failure, so this proves deployed
+module/configuration/network ingestion rather than an Express-main-process error
+path. The earlier SSH probe stopped at host trust without changes; this Web Shell
+check requires no SSH key/trust change. Full status is tracked in the
 [work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md).
+The initial `35512aa` event `08fa034ea34e49ffa5afb5a8c7bcd090` was accepted
+with `Discarded invalid value` at `exception.values.0.stacktrace.frames`.
+The fix omits the stacktrace when no safe frames remain, retaining nonempty safe
+stacks and the privacy allowlist. Targeted 30 tests and the full API/static
+checks pass. The latest `12e0589` event has no `Processing Error` or
+`Discarded invalid value` in the dashboard's full accessibility tree and visual
+inspection; its generic message/release/environment match and geography is absent.
 The API source/results are unchanged by the later Mobile-only native Crashlytics
 preservation fix. Final-3 Mobile tests/analysis and APK12041 build/source checks
 pass. Exact APK12041 startup, enabled native Crashlytics collection and a generic

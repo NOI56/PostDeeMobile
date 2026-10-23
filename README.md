@@ -47,15 +47,21 @@ synthetic error also reaches its own project. Both latest dashboard events have
 no geography after enabling IP storage prevention and scrubbing `$user.**`.
 No native crash was triggered. Live entitlement/publish/checkout acceptance
 remains unverified. The user's 2026-10-23 `main/push/deploy` request authorizes
-main integration, GitHub push and Staging API activation; that release is in
-progress and its cloud outcome is not verified yet.
+main integration, GitHub push and Staging API activation. Feature `b486ca3` is
+on `main`/GitHub, followed by lockfile-only CI fix `35512aa`. The first Staging
+build failed at `npm ci`; the repaired source `35512aa` is now Live on Staging
+with health/readiness HTTP 200 and no pending migrations or monitoring-init
+failure. Exact-source CI `39890752750` passes both Backend and Flutter Mobile;
+the unsigned iOS build also passes. A deployed API-to-Sentry event is not yet
+proven; local API and exact Android acceptance remain the ingestion evidence.
 Acceptance scope and remaining device/native limits are recorded in the
 [Sentry work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md).
-Cloud release evidence will be appended after the authorized deployment passes.
+Live deployment and remaining acceptance evidence are recorded in the work record.
 Release preflight also updates the CI-only Staging-define validator to accept
 and validate the three Sentry fields; its 21 Python tests pass, including the
 checked-in example with billing disabled/enabled. API/Mobile runtime source and
-APK12041 acceptance are unchanged; cloud activation is not verified yet.
+APK12041 acceptance are unchanged. iOS compilation uses Sentry disabled and does
+not establish iOS monitoring runtime acceptance.
 
 ## Calendar selected covers (2026-10-21)
 

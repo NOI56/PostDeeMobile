@@ -7,7 +7,8 @@ project existed. The 2026-10-23 continuation resumes that work. Remote `main`
 freshness and the `ecbc33e940a917896692628cb700a844ab31bc4a` baseline were verified
 before implementation on `codex/sentry-monitoring` in
 `C:\Users\stopp\.codex\worktrees\platform-consent-preserve\PostDeeMobile`.
-The final remote freshness recheck remains at `ecbc33e`, ahead/behind `0/0`.
+The pre-implementation remote freshness recheck used `ecbc33e`, ahead/behind
+`0/0`; the authorized release follow-up below records the later main revisions.
 Preserve unrelated pre-existing generated Windows plugin changes. The stale
 D-drive checkout is not the implementation source; its artifact/test paths do
 not change that baseline.
@@ -18,9 +19,9 @@ log/metric export, Replay, screenshots, view hierarchy, attachments, social
 posting or purchase is required. No endpoint, API contract, database schema,
 migration, entitlement, billing, publishing mode or worker deployment change.
 The user's subsequent 2026-10-23 `main/push/deploy` request authorizes main
-integration, GitHub push and Staging API activation for this feature. Release
-execution and cloud verification are in progress; implementation acceptance
-alone does not establish successful deployment.
+integration, GitHub push and Staging API activation for this feature. Main/GitHub
+delivery and Staging activation are complete with health/runtime checks passed.
+Deployed API-to-Sentry ingestion remains a separate unverified check.
 
 ## Account/project setup
 
@@ -210,9 +211,11 @@ Final-3 Mobile tests/analysis/build/source checks and exact APK12041
 startup/Sentry event verification pass. Sentry-native crash/ANR,
 new native Crashlytics crash acceptance, iOS, physical-device performance and
 live entitlement/publish/checkout checks remain separate work. There is no claim
-of deployed Sentry API, tracing/performance monitoring or full production
+of deployed API-to-Sentry ingestion, tracing/performance monitoring or full production
 readiness. Main/push and Staging API activation are authorized by the user's
-2026-10-23 request and are in progress, with cloud verification still pending.
+2026-10-23 request. Feature and lockfile fix are on `main`/GitHub; repaired source
+`35512aa` is Live on Staging with health/runtime checks passed. Exact-source
+Backend/Flutter Mobile CI and the unsigned iOS build pass.
 
 ## Authorized release follow-up — 2026-10-23
 
@@ -221,10 +224,13 @@ readiness. Main/push and Staging API activation are authorized by the user's
   Sentry-enabled Staging API in the existing Render `My Workspace`, service
   `postdee-api-staging` (`srv-d9bb72ojs32c739osa5g`). Do not provision a separate
   worker or change Production, social posting, billing or unrelated feature flags.
-- Main/push/Staging activation is currently in progress. Exact final source SHA,
-  CI result, deployment ID/status, runtime environment/release, health and a
-  deployed generic API event must be recorded after verification. No cloud
-  release success is claimed at this update.
+- Feature source is integrated/pushed as
+  `b486ca3aee317e79f55b926ef6aed5b422372580`; the subsequent generated-lockfile-only
+  fix is integrated/pushed as `35512aa6d5a2f6fd1fbe9b95e34bcf96925f62d0`.
+  Staging deploy `dep-dbdciulg1s2s73b17ss0` is Live on the repaired source,
+  with runtime/release/health checks below. Exact-source Backend and Flutter
+  Mobile CI pass. A deployed generic API-to-Sentry event
+  is not proven, distinct from successful local API and APK12041 ingestion.
 - Release preflight found a CI-only compatibility gap: the Staging build-define
   validator rejected the new Sentry fields. The targeted fix in
   `scripts/prepare_staging_ci_defines.py` accepts and validates `SENTRY_DSN`,
@@ -232,7 +238,7 @@ readiness. Main/push and Staging API activation are authorized by the user's
   admitting an authentication token. Its Python suite passes 21 tests, including
   the actual checked-in example with billing disabled/enabled. Tests are in
   `scripts/test_prepare_staging_ci_defines.py`. No Mobile/API runtime source or
-  exact APK12041 evidence changes; cloud release remains unverified.
+  exact APK12041 evidence changes; cloud delivery is recorded separately below.
 - Use the API project's DSN only in the target runtime's private configuration,
   with `SENTRY_ENVIRONMENT=staging` and a safe exact release identifier. Do not
   write DSNs, authentication tokens or environment payloads into tracked docs.
@@ -240,3 +246,64 @@ readiness. Main/push and Staging API activation are authorized by the user's
   Sentry-native/actual native-crash/iOS acceptance and live entitlement,
   checkout/publication E2E remain separate work. No real post or purchase is
   required to verify this release.
+
+### First cloud build and lockfile-only repair
+
+- The Render MCP environment merge added only `SENTRY_DSN`,
+  `SENTRY_ENVIRONMENT` and `SENTRY_RELEASE` to the verified existing Staging
+  service. The UI key-name diff was 54 to 57, with no removed keys and no raw
+  environment values read. This update triggered deploy
+  `dep-dbdcfelg1s2s73b0t4j0` despite auto-deploy being off.
+- That build failed at `npm ci` with `EUSAGE`: missing
+  `@emnapi/core`/`@emnapi/runtime` `1.11.3` and a `@emnapi/wasi-threads`
+  lockfile mismatch. Existing live source `8c957ab` was retained; a failed build
+  is not Sentry activation or a change to the serving API binary.
+- The failure was reproduced using Node `22.23.3` and npm `10.9.9`. The generated
+  lockfile-only fix in `35512aa` preserves `package.json`, all 78 optional
+  dependency packages and the intended runtime boundary; only the WASM peer
+  dependency graph is repaired. No API/Mobile runtime source or APK12041 changes.
+- A clean Linux-target dependency installation on Windows with scripts disabled
+  installs 467 packages successfully, with zero npm graph problems and zero
+  production-audit findings. This is dependency-graph evidence, not an actual Linux runtime
+  or hosted CI pass.
+- Backend and Flutter Mobile on actual hosted
+  [CI run 39890752750](https://github.com/NOI56/PostDeeMobile/actions/runs/39890752750)
+  both pass for exact source `35512aa`; success was confirmed at
+  `2026-10-23T02:46:27Z` (09:46:27 Thailand time). Local test counts above are
+  not presented as hosted counts.
+  The original Mobile
+  [run 39890262199](https://github.com/NOI56/PostDeeMobile/actions/runs/39890262199)
+  passes, and its exact Mobile tree is unchanged between `b486ca3` and
+  `35512aa`. The unsigned
+  [iOS run 39890262207](https://github.com/NOI56/PostDeeMobile/actions/runs/39890262207)
+  passes compilation with Sentry disabled. This is not iOS monitoring runtime,
+  native crash or physical-device acceptance.
+- After the Backend CI pass, the Sentry release key alone was updated to
+  `postdee-api@35512aa6d5a2f6fd1fbe9b95e34bcf96925f62d0`, triggering the
+  successful follow-up deploy. The API DSN and `staging` environment were already
+  configured; no other environment key was added or removed for this follow-up.
+
+### Live Staging verification
+
+- Render deploy `dep-dbdciulg1s2s73b17ss0` serves exact source
+  `35512aa6d5a2f6fd1fbe9b95e34bcf96925f62d0` and is Live, finished
+  `2026-10-23T02:43:57.148Z` (09:43:57 Thailand time).
+- Post-Live checks at `2026-10-23T02:44:33Z` return `/health` HTTP 200 and
+  `/ready` HTTP 200, with database and queue healthy.
+- Sanitized startup evidence from 02:42:40Z onward confirms the API is listening,
+  22 migrations were found with none pending and the existing in-process
+  scheduler started. Sentry introduces no new schema/migration. There is
+  no monitoring-init failure or fatal startup diagnostic. No private values or
+  raw logs are included in this record.
+- A deployed synthetic API event was not triggered/proven: a read-only SSH
+  probe stopped at an unknown trusted-host key. No host trust, SSH keys or
+  permissions were changed. Live configured startup/health is not proof of
+  cloud API-to-Sentry ingestion; local Node and exact APK12041 accepted events
+  remain the verified ingestion paths.
+- Main/push/Staging delivery and exact-source Backend/Mobile CI are complete at
+  source `35512aa`; deployed API ingestion acceptance remains unverified. The source
+  Mobile 589-file hashes and APK12041 are unchanged. In the 456-file API source
+  inventory, only the lockfile differs from local full checks; the final Linux
+  Backend CI pass covers that repair. No real post, purchase or
+  native crash was triggered, and no extra runtime deploy is needed for this
+  documentation follow-up.

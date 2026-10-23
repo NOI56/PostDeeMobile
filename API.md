@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Opt-in Sentry reporting (2026-10-22, activation pending)
+## Opt-in Sentry reporting (2026-10-23, Staging Live)
 
 The candidate adds internal error monitoring without changing public routes,
 request/response shapes, authentication, status codes, provider retry rules,
@@ -51,9 +51,21 @@ source `user` did not provide the intended result. A subsequent API event was
 accepted and the latest API/Mobile dashboard events show no geography. Outbound
 allowlist tests cover the absence of customer URL/body/user fields. The cloud API
 release is authorized by the user's 2026-10-23 `main/push/deploy` request.
-Main/GitHub delivery and Staging `postdee-api-staging` activation in `My Workspace`
-are in progress; no successful cloud deployment or deployed Sentry event is
-claimed yet. Full verification and activation status are tracked in the
+Feature `b486ca3` and lockfile-only fix `35512aa` are on `main`/GitHub. Merging
+only the three Sentry environment keys into `My Workspace`'s
+`postdee-api-staging` triggered an initial build despite auto-deploy being off;
+it failed `npm ci` with lockfile `EUSAGE`, leaving live source `8c957ab` running.
+The Node 22/npm 10 lockfile compatibility fix changes no runtime package manifest
+or API source. Repaired source `35512aa` is now Live in
+`dep-dbdciulg1s2s73b17ss0`, finished 2026-10-23 09:43:57 Thailand time.
+Post-Live `/health` and `/ready` return HTTP 200 with database/queue healthy.
+Startup confirms no pending migrations, the in-process scheduler started and
+no monitoring-init failure. The release label is
+`postdee-api@35512aa6d5a2f6fd1fbe9b95e34bcf96925f62d0` in `staging`.
+Exact-source CI `39890752750` passes Backend and Flutter Mobile. A cloud API
+synthetic event was not triggered/proven, so no deployed ingestion acceptance is
+claimed; a read-only SSH probe stopped at an unknown trusted-host key without
+changing host trust or permissions. Full status is tracked in the
 [work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md).
 The API source/results are unchanged by the later Mobile-only native Crashlytics
 preservation fix. Final-3 Mobile tests/analysis and APK12041 build/source checks

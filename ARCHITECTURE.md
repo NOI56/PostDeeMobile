@@ -68,8 +68,16 @@ prevention and the advanced `$user.**` removal rule, in addition to application
 outbound allowlists and existing default scrubbers. Live entitlement retrieval
 and full publish/checkout acceptance are not verified. The user's 2026-10-23
 `main/push/deploy` request authorizes main integration, GitHub push and Staging
-API activation. Execution and exact cloud release verification are in progress;
-no successful deployed Sentry API result is claimed. Track delivery in the
+API activation. Feature `b486ca3` and lockfile-only fix `35512aa` are pushed to
+`main`. The first environment-triggered Staging build failed `npm ci`; the
+subsequent repaired source `35512aa` is Live in `dep-dbdciulg1s2s73b17ss0`.
+Health/readiness return 200; startup confirms no pending migrations, the existing
+in-process scheduler and no monitoring-init failure. Only the Sentry release key
+was updated for the successful environment-triggered deployment. Exact-source
+CI `39890752750` passes Backend and Flutter Mobile; unsigned iOS compilation passes.
+A deployed API event is unproven and iOS compilation uses Sentry disabled, so
+neither establishes those monitoring runtime acceptance paths. The lock fix
+preserves the runtime manifest and optional dependency boundary. Track delivery in the
 [work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md). No paid plan,
 GitHub connection, real publication or purchase is needed for these checks.
 
@@ -1241,7 +1249,7 @@ flowchart LR
   Worker --> Social["PostPeer API (Unified)"]
   Worker --> Storage
   Worker --> DB
-  Mobile -.->|"opt-in Dart errors only"| Sentry["Sentry (candidate; activation pending)"]
+  Mobile -.->|"opt-in Dart errors only"| Sentry["Sentry (errors only)"]
   API -.->|"opt-in errors only"| Sentry
   Worker -.->|"opt-in errors only"| Sentry
 ```
@@ -1425,7 +1433,7 @@ Backend stack:
 - Gemini caption provider with production provider/device verification remaining
 - ElevenLabs Scribe v2 transcription + Gemini AI auto-editing recipe flow with physical-device acceptance remaining
 - RevenueCat webhook and authenticated Restore/resync adapters
-- Opt-in Sentry reporter verified by local API and exact APK12041 events; native Crashlytics retained/enabled, authorized main/push/Staging activation in progress
+- Opt-in Sentry reporter verified by local API and exact APK12041 events; source 35512aa Live on Staging, native Crashlytics retained/enabled, deployed API ingestion unverified
 
 Main route groups:
 

@@ -16,6 +16,7 @@ import type { RunWithActiveOwner } from '../modules/account/ownerOperationQueue.
 import { retainCurrentOwnerOperation } from '../modules/account/prismaOwnerOperationCoordinator.js';
 import { readRequestedDeliveryOutcome } from './platformDeliveryOutcome.js';
 import { PlatformCaptionValidationError } from '../modules/posts/platformCaptionValidation.js';
+import { reportMonitoringError } from '../monitoring/sentryMonitoring.js';
 
 export type PlatformPublishInput = {
   userId?: string;
@@ -165,6 +166,10 @@ const logWorkerError = (
       }
 ) => {
   const { error, ...safeFields } = input;
+  reportMonitoringError(error, {
+    operation: input.category === 'PLATFORM_PUBLISH' ? 'publishing.platform' : 'publishing.cleanup',
+    ...('platform' in input ? { platform: input.platform } : {})
+  });
   console.error('Publish worker operation failed', {
     ...safeFields,
     errorName: readSafeWorkerErrorName(error)

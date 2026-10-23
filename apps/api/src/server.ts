@@ -8,8 +8,10 @@ import {
 } from './startupDiagnostics.js';
 import type { PublishScheduler } from './workers/publishScheduler.js';
 import { createGracefulShutdown } from './shutdown.js';
+import { createSentryMonitoring, reportMonitoringError } from './monitoring/sentryMonitoring.js';
 
 const config = readServerConfig();
+const monitoring = await createSentryMonitoring(config.sentry);
 logSocialPublishingStartupConfiguration({ config });
 const app = createApp({ config });
 
@@ -31,16 +33,21 @@ const shutdown = createGracefulShutdown({
     server.close((error) => { if (error) reject(error); else resolve(); });
   }),
   drainPublishing: async () => { await publishScheduler?.drain?.(); },
-  closeResources: async () => { await app.locals.closeResources(); }
+  closeResources: async () => {
+    try { await app.locals.closeResources(); }
+    finally { await monitoring.flush(); }
+  }
 });
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     void shutdown().then(() => {
       console.log('PostDee API shutdown completed');
       process.exitCode = 0;
-    }, () => {
+    }, async (error: unknown) => {
+      reportMonitoringError(error, { operation: 'server.shutdown' });
       console.error('PostDee API shutdown did not complete', { code: 'SHUTDOWN_FAILED' });
       server.closeAllConnections();
+      await monitoring.flush();
       process.exit(1);
     });
   });

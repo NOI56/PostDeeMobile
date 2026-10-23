@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import sys
+from urllib.parse import urlsplit
 
 
 KEY_ENV = "POSTDEE_REVENUECAT_TEST_STORE_ANDROID_API_KEY"
@@ -15,6 +16,7 @@ ALLOWED_BASE_FIELDS = frozenset({
     "ALLOW_LOCAL_MOCK_AUTH", "GOOGLE_SERVER_CLIENT_ID", "ENABLE_REVENUECAT_BILLING",
     "ENABLE_EXPERIMENTAL_BEAT_SYNC", "ENABLE_EXPERIMENTAL_AI_HOOK",
     "STORE_STARTER_MONTHLY_PRODUCT_ID", "STORE_PRO_MONTHLY_PRODUCT_ID",
+    "SENTRY_DSN", "SENTRY_ENVIRONMENT", "SENTRY_RELEASE",
 })
 
 
@@ -29,6 +31,35 @@ def validate_build_number(value):
             or int(value) > 2100000000):
         raise ConfigError("Build number must be empty or an integer from 1 to 2100000000.")
     return value
+
+
+def validate_sentry_config(config):
+    dsn = config.get("SENTRY_DSN", "")
+    if not isinstance(dsn, str) or len(dsn) > 2048:
+        raise ConfigError("Sentry DSN must be an empty string or a valid HTTPS project DSN.")
+    if "SENTRY_ENVIRONMENT" in config and config["SENTRY_ENVIRONMENT"] != "staging":
+        raise ConfigError("Sentry environment must be staging for a Staging build.")
+    if dsn:
+        try:
+            uri = urlsplit(dsn)
+            hostname = uri.hostname or ""
+            valid = (uri.scheme == "https" and
+                     (hostname == "sentry.io" or hostname.endswith(".sentry.io")) and
+                     re.fullmatch(r"[a-fA-F0-9]{32}", uri.username or "") and
+                     uri.password is None and uri.port in (None, 443) and
+                     re.fullmatch(r"/[0-9]+", uri.path) and
+                     not any(marker in dsn for marker in ("?", "#")) and
+                     not re.search(r"\s", dsn))
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ConfigError("Sentry DSN must be an empty string or a valid HTTPS project DSN.")
+        if config.get("SENTRY_ENVIRONMENT") != "staging":
+            raise ConfigError("An enabled Sentry project requires the staging environment.")
+    release = config.get("SENTRY_RELEASE", "")
+    if (not isinstance(release, str) or
+            (release and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@+\-]{0,99}", release))):
+        raise ConfigError("Sentry release must be empty or a safe release identifier.")
 
 
 def prepare_defines(config, *, test_store_billing=False, sdk_key=None):
@@ -58,6 +89,7 @@ def prepare_defines(config, *, test_store_billing=False, sdk_key=None):
     for field in ("STORE_STARTER_MONTHLY_PRODUCT_ID", "STORE_PRO_MONTHLY_PRODUCT_ID"):
         if field in config and (not isinstance(config[field], str) or not config[field]):
             raise ConfigError("Store product identifiers must be nonempty strings.")
+    validate_sentry_config(config)
 
     result = dict(config)
     if test_store_billing:

@@ -2,6 +2,41 @@
 
 Build roadmap for PostDee.
 
+## Sentry error reporting (2026-10-23, candidate verified)
+
+- Add opt-in, errors-only monitoring to Flutter, the API/in-process publisher
+  and the optional standalone worker. SDK pins are `sentry_flutter: 9.30.1`
+  and `@sentry/node: 11.8.0`; retain the existing iOS CocoaPods build path.
+- Keep `SENTRY_DSN` empty by default and deployment environments explicit.
+  Staging must report as `staging` even though its Node runtime uses
+  `NODE_ENV=production`; `SENTRY_RELEASE` is an optional safe build label.
+- Allowlist outbound error/stack/operation/status fields; exclude customer
+  content, identities, credentials and provider payloads. Retain bounded Mobile
+  OS/manufacturer/model and Dart/Flutter runtime metadata without device IDs,
+  device names, users or arbitrary context maps. Keep tracing,
+  performance data, logs, Replay, screenshots, view hierarchies and attachments
+  disabled. No API contract, schema, migration, billing or publish behavior change.
+- Capture Dart/Flutter errors and safe handled API 5xx failures, plus server,
+  scheduler, publishing and optional worker errors. Disable Flutter's native
+  SDK/crash handling until a separate native-envelope privacy boundary is
+  verified: Sentry-native crashes/ANRs remain out of scope. Preserve existing
+  native Crashlytics collection whenever Firebase monitoring is available.
+- Sentry owns only Dart error hooks after successful initialization; retain
+  Crashlytics Dart hooks as fallback and Firebase Analytics/Auth/FCM in both paths.
+- Full API regression/typecheck/build/schema checks and final-3 Mobile
+  tests/analysis/build pass. APK12041 passes exact-source/native startup checks,
+  retains QA Pixel_8 UID/data and reports a generic API 500 event with matching
+  release/environment. Native Crashlytics collection reads enabled. A local
+  API synthetic error reaches its own project. Both latest dashboard events
+  lack geography after IP storage prevention and the `$user.**` scrub rule.
+  No real post, purchase or native crash was triggered. Live entitlement and
+  full publishing/checkout acceptance were not verified. The 2026-10-23
+  `main/push/deploy` request authorizes main integration, GitHub push and Staging
+  API activation; release execution/verification is in progress. iOS/native-crash
+  acceptance remains separate work. Track
+  actual results in the
+  [work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md).
+
 ## Calendar selected covers (2026-10-21)
 
 - Show each saved selected cover in a 9:16 thumbnail beside the compact post
@@ -1056,7 +1091,9 @@ Core items:
   Android and iPhone share the same policy. A Basic downgrade retains the
   balance until membership is active again. Native purchase/refund acceptance
   on both stores remains pending; no live store availability is implied.
-- Sentry for error tracking and performance monitoring.
+- Sentry for opt-in error reporting; the current candidate excludes performance
+  monitoring and automatic native crash collection pending separate privacy and
+  device acceptance work.
 - Universal uploader for one 9:16 video.
 - Scheduling through Upstash Redis and BullMQ.
 - Unified social posting via PostPeer API (postpeer.dev) for TikTok, YouTube
@@ -1235,7 +1272,7 @@ Primary backend choices:
 | AI auto editing | ElevenLabs Scribe v2 + Gemini 3.5 Flash-Lite + mobile FFmpeg | Pro transcript/highlight planning, optional verified-silence/repeated-speech cleanup, AI-selected sound effects, subtitle burn-in, phone-side review, and video export | `/ai-edits/prepare`, fair quota outcomes, waveform-verified silence, safe repeated-speech review, atomic accepted-source state, subtitle-safe rendering, and local colour compatibility exist. AI SFX uses a separate catalog-only planner: it returns at most eight trusted `soundId + sourceSeconds` anchors; mobile fixes volume, maps through final cuts, and mixes bundled procedural WAVs. Manual SFX selection is removed. Production beat sync and the 3-second hook remain default-off. | Tasks 3–8 and deployed identity/health are verified. Pixel 8 `color-local` passed device/render checks, while the main matrix remains blocked: a new STT-only Staging key still received upstream HTTP `401`, PostDee quota stayed unchanged, and ElevenLabs showed only 6/10,000 workspace credits remaining. Wait for or restore provider quota, rerun the API-dependent matrix, then capture AI SFX Preview/full-export listening, peak, and A/V-sync evidence on Android and iPhone before Production. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
 | Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect uses a native Android Custom Tab bridge with external-only fallback, trusted OAuth-host validation, fixed Android return targets and one authenticated return/resume/manual refresh, and provider-first disconnect; iOS currently uses the external system browser; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; the config-only readiness gate and fail-fast create/reschedule path exist; Staging has an opt-in startup guard whose single atomic aggregate status-in query refuses PostPeer activation when any global `QUEUED` (including future) or `PUBLISHING` row exists, or when inspection fails; YouTube defaults private and TikTok SELF_ONLY for controlled testing; the disabled Mobile fail-fast passed, but the first controlled YouTube attempt stopped at readiness before upload and the runtime mode/guard pass were not observable, so connected-account E2E is still pending | Readiness does not probe PostPeer/accounts. Injected-URI warm return passed on the Staging APK; verify real provider/browser handoff, Open App confirmation, cold-start authentication, the iOS external-browser flow and manual fallback on physical devices. The fixed-target API is Live on Staging; other environments need API before mobile. Generate new links to use the return target. Keep Staging disabled except for a controlled run; require explicit runtime-mode and empty-backlog guard-pass evidence before another single private attempt. Treat `FACEBOOK_REELS` as Page Video. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
-| Error tracking | Sentry | Capture backend, worker, and mobile errors | Planned | Add after build/test stability is restored so production issues are visible from day one. |
+| Error tracking | Sentry | Capture allowlisted backend, publisher/worker and Dart/Flutter errors | Local API and exact APK12041 events accepted; main/push/Staging activation authorized 2026-10-23 and in progress | DSN empty disables reporting. Keep customer data excluded and tracing/logs/Replay off. Native Crashlytics collection is verified enabled; actual native-crash/iOS acceptance and cloud release evidence remain separate gates. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
 
 Render runtime hardening keeps `firebase-admin` Auth/FCM support but removes its
@@ -1298,7 +1335,9 @@ Recommended activation order:
 8. Upload the prepared signed AAB and test Starter/Pro purchase and Restore
    through Google Play internal testing; complete App Store configuration and
    physical-device sandbox testing separately.
-9. Add Sentry to the API, worker, and mobile app.
+9. Verify the opt-in Sentry candidate with synthetic local API and native Mobile
+   events, review the outbound allowlist, then activate each authorized cloud
+   environment. Native crashes/ANRs and performance tracing remain separate work.
 10. While Staging is still disabled, install only its PostPeer key, connect and
     refresh disposable per-user accounts, and cancel old queued/scheduled work.
     Enable PostPeer only for a controlled real publish E2E. Confirm readiness,

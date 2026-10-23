@@ -19,6 +19,7 @@ HELPER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(HELPER)
 KEY_ENV = "POSTDEE_REVENUECAT_TEST_STORE_ANDROID_API_KEY"
 SYNTHETIC_KEY = "test_synthetic_unit_test_key_only"
+SYNTHETIC_DSN = "https://0123456789abcdef0123456789abcdef@o1.ingest.sentry.io/2"
 BASE = {
     "API_BASE_URL": "https://postdee-api-staging.onrender.com",
     "POSTDEE_STAGING_BUILD": True,
@@ -34,6 +35,65 @@ BASE = {
 
 
 class PrepareStagingDefinesTests(unittest.TestCase):
+    def test_checked_in_example_builds_with_sentry_disabled_in_both_billing_modes(self):
+        example = SCRIPT.parents[1] / "apps" / "mobile" / "staging.local.example.json"
+        config = json.loads(example.read_text(encoding="utf-8"))
+        self.assertEqual(config["SENTRY_DSN"], "")
+        self.assertEqual(config["SENTRY_ENVIRONMENT"], "staging")
+        for enabled in (False, True):
+            with self.subTest(billing_enabled=enabled):
+                result, output = self.run_cli(config, enabled=enabled, key=SYNTHETIC_KEY)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                prepared = json.loads(output.read_text(encoding="utf-8"))
+                self.assertEqual(prepared["SENTRY_DSN"], "")
+                self.assertEqual(prepared["SENTRY_ENVIRONMENT"], "staging")
+                self.assertEqual(prepared["ENABLE_REVENUECAT_BILLING"], enabled)
+                self.assertNotIn(SYNTHETIC_KEY, result.stdout + result.stderr)
+
+    def test_explicit_sentry_staging_config_is_preserved_without_logging_it(self):
+        config = {**BASE, "SENTRY_DSN": SYNTHETIC_DSN,
+                  "SENTRY_ENVIRONMENT": "staging",
+                  "SENTRY_RELEASE": "postdee-mobile@0.1.0+12041"}
+        result, output = self.run_cli(config)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(output.read_text(encoding="utf-8")), config)
+        self.assertNotIn(SYNTHETIC_DSN, result.stdout + result.stderr)
+        self.assertNotIn(config["SENTRY_RELEASE"], result.stdout + result.stderr)
+
+    def test_sentry_configuration_requires_safe_staging_values(self):
+        valid = {**BASE, "SENTRY_DSN": SYNTHETIC_DSN,
+                 "SENTRY_ENVIRONMENT": "staging", "SENTRY_RELEASE": ""}
+        cases = [
+            ("SENTRY_DSN", None), ("SENTRY_DSN", 123),
+            ("SENTRY_DSN", "http://0123456789abcdef0123456789abcdef@o1.ingest.sentry.io/2"),
+            ("SENTRY_DSN", SYNTHETIC_DSN + "?token=private"),
+            ("SENTRY_DSN", SYNTHETIC_DSN + "?"),
+            ("SENTRY_DSN", SYNTHETIC_DSN + "#private"),
+            ("SENTRY_DSN", SYNTHETIC_DSN.replace("@", ":private@")),
+            ("SENTRY_DSN", SYNTHETIC_DSN.replace("sentry.io", "sentry.io.other.test")),
+            ("SENTRY_DSN", SYNTHETIC_DSN.replace(".io/", ".io:444/")),
+            ("SENTRY_DSN", SYNTHETIC_DSN + "x" * 2048),
+            ("SENTRY_ENVIRONMENT", "production"), ("SENTRY_ENVIRONMENT", "development"),
+            ("SENTRY_ENVIRONMENT", ""), ("SENTRY_ENVIRONMENT", None),
+            ("SENTRY_RELEASE", "private release"), ("SENTRY_RELEASE", "x" * 101),
+            ("SENTRY_RELEASE", None), ("SENTRY_RELEASE", 123),
+        ]
+        for field, value in cases:
+            with self.subTest(field=field, value_type=type(value).__name__):
+                with self.assertRaises(HELPER.ConfigError) as failure:
+                    HELPER.prepare_defines({**valid, field: value})
+                self.assertNotIn(SYNTHETIC_DSN, str(failure.exception))
+                self.assertNotIn("private", str(failure.exception))
+        with self.assertRaises(HELPER.ConfigError):
+            HELPER.prepare_defines({**BASE, "SENTRY_DSN": SYNTHETIC_DSN})
+
+    def test_invalid_sentry_config_cli_fails_without_writing_or_echoing_values(self):
+        result, output = self.run_cli({**BASE, "SENTRY_DSN": SYNTHETIC_DSN,
+                                      "SENTRY_ENVIRONMENT": "production"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(output.exists())
+        self.assertNotIn(SYNTHETIC_DSN, result.stdout + result.stderr)
+
     def test_default_preserves_disabled_base_without_embedding_a_supplied_key(self):
         original = copy.deepcopy(BASE)
         result = HELPER.prepare_defines(BASE, sdk_key=SYNTHETIC_KEY)
@@ -94,6 +154,7 @@ class PrepareStagingDefinesTests(unittest.TestCase):
         for field in ("GEMINI_API_KEY", "DATABASE_URL", "REVENUECAT_REST_API_V1_KEY",
                       "REVENUECAT_WEBHOOK_AUTH_TOKEN", "GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON",
                       "REVENUECAT_ANDROID_API_KEY", "REVENUECAT_API_KEY",
+                      "SENTRY_AUTH_TOKEN",
                       "untrusted_name_" + SYNTHETIC_KEY):
             with self.subTest(field_type="unsupported"):
                 with self.assertRaises(HELPER.ConfigError) as failure:

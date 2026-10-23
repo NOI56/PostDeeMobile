@@ -1,5 +1,6 @@
 import type { RequestHandler, Response, Router } from 'express';
 import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
+import { reportMonitoringError } from '../../monitoring/sentryMonitoring.js';
 
 import type { TranscriptionProvider } from '../aiEdits/transcriptionProvider.js';
 import { readAuthUser } from '../auth/authTypes.js';
@@ -238,10 +239,11 @@ export const registerCaptionRoutes = (
     try {
       caption = await generator.generate(validation.keywords);
     } catch (error) {
+      reportMonitoringError(error, { operation: 'captions.provider' });
       // Fall back to the local template caption so a transient provider
       // outage (e.g. Gemini returning 503 under high demand) still returns a
       // usable caption instead of surfacing a 500 to the user. Log it so a
-      // persistently broken provider/key is visible in ops (and later Sentry)
+      // persistently broken provider/key is visible in ops and Sentry
       // instead of silently degrading to template captions forever.
       console.error(
         'Caption generation failed; using local fallback:',
@@ -443,6 +445,7 @@ export const registerCaptionRoutes = (
 
         // Fall back to the local template so an AI/provider outage still returns
         // a usable caption. Logged so a broken provider is visible in ops.
+        reportMonitoringError(error, { operation: 'captions.provider' });
         console.error(
           'Real-clip AI caption failed; using local template:',
           error instanceof Error ? error.message : error
@@ -473,6 +476,7 @@ export const registerCaptionRoutes = (
         }
 
         await cleanupRequestedMedia();
+        reportMonitoringError(error, { operation: 'ai.transcription' });
         response.status(502).json({
           status: 'error',
           code: 'AI_CAPTION_TRANSCRIPTION_FAILED',

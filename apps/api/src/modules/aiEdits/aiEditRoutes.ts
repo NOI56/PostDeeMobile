@@ -1,4 +1,5 @@
 import type { RequestHandler, Response, Router } from 'express';
+import { reportMonitoringError } from '../../monitoring/sentryMonitoring.js';
 
 import { readAuthUser } from '../auth/authTypes.js';
 import type { RealClipMediaPart } from '../captions/realClipCaptionProvider.js';
@@ -398,6 +399,7 @@ const sendTranscriptionProviderErrorResponse = (
   response: Response,
   error: unknown
 ) => {
+  reportMonitoringError(error, { operation: 'ai.transcription' });
   console.error(
     'AI transcription provider failed:',
     error instanceof Error ? error.message : error
@@ -1089,6 +1091,7 @@ export const registerAiEditRoutes = (
             cutCount: plan.cuts.length
           });
         } catch (error) {
+          reportMonitoringError(error, { operation: 'ai.planning' });
           console.error(
             'AI visual edit planning failed; falling back to audio:',
             error instanceof Error ? error.message : error

@@ -5,6 +5,28 @@ import 'package:postdee_mobile/core/monitoring/postdee_analytics.dart';
 import 'package:postdee_mobile/core/monitoring/postdee_firebase_monitoring.dart';
 
 void main() {
+  test('Sentry owns Dart hooks while native Crashlytics and Analytics stay enabled', () async {
+    final analytics = PostDeeAnalytics();
+    final events = <RecordedAnalyticsEvent>[];
+    final collections = <bool>[];
+    var hooks = 0;
+    await configurePostDeeFirebaseMonitoring(
+      enableFirebaseAuth: true,
+      enableDartCrashReporting: false,
+      firebaseBootstrapResult: FirebaseBootstrapResult.initialized,
+      analytics: analytics,
+      logAnalyticsEvent: (event) async => events.add(event),
+      setCrashCollectionEnabled: (enabled) async => collections.add(enabled),
+      setFlutterErrorHandler: (_) => hooks++,
+      setPlatformErrorHandler: (_) => hooks++,
+    );
+    await analytics.logSignInStarted('google');
+    expect(analytics.isEnabled, isTrue);
+    expect(events.single.name, 'auth_sign_in_started');
+    expect(collections, [true]);
+    expect(hooks, 0);
+  });
+
   test('keeps monitoring disabled when Firebase is unavailable', () async {
     final analyticsEvents = <RecordedAnalyticsEvent>[];
     final crashEvents = <Object>[];

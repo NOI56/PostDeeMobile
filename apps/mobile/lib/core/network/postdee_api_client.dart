@@ -7,6 +7,7 @@ import '../auth/auth_session.dart';
 import '../config/app_config.dart';
 import '../models/caption_writing_style.dart';
 import '../models/link_in_bio_appearance.dart';
+import '../monitoring/postdee_sentry_monitoring.dart';
 
 const socialPublishingUnavailableCode = 'SOCIAL_PUBLISHING_UNAVAILABLE';
 const platformSettingsUnsupportedCode = 'PLATFORM_SETTINGS_UNSUPPORTED';
@@ -29,6 +30,10 @@ class ApiException implements Exception {
 }
 
 typedef AuthTokenProvider = Future<String?> Function();
+typedef ApiServerErrorReporter = Future<void> Function({
+  required String operation,
+  required int statusCode,
+});
 
 // Owns only this request, so timing out never closes a shared HTTP client.
 class _ApiRequestScope {
@@ -2959,6 +2964,7 @@ class PostDeeApiClient {
     PostDeeApiAuthHeaders? authHeaders,
     AuthSessionBinding? sessionBinding,
     Future<void> Function(Duration)? multipartCompletionPollDelay,
+    ApiServerErrorReporter? reportServerError,
     this.requestTimeout = const Duration(seconds: 20),
     this.aiRequestTimeout = const Duration(seconds: 120),
     this.uploadRequestTimeout = const Duration(seconds: 180),
@@ -2967,6 +2973,7 @@ class PostDeeApiClient {
         assert(uploadRequestTimeout > Duration.zero),
         _customHttpClient = httpClient,
         _baseUri = Uri.parse(baseUrl),
+        _reportServerError = reportServerError ?? reportPostDeeApiServerError,
         _sessionBinding = sessionBinding,
         _authHeaders = authHeaders ??
             PostDeeApiAuthHeaders(
@@ -2995,6 +3002,7 @@ class PostDeeApiClient {
   }
 
   final Uri _baseUri;
+  final ApiServerErrorReporter _reportServerError;
   final PostDeeApiAuthHeaders _authHeaders;
   final AuthSessionBinding? _sessionBinding;
   final Future<void> Function(Duration) _multipartCompletionPollDelay;
@@ -4176,13 +4184,20 @@ class PostDeeApiClient {
       if (body != null) request.write(jsonEncode(body));
       _sessionBinding?.ensureCurrent();
       scope.checkActive();
-      return _readJsonResponse(request, scope);
+      return _readJsonResponse(request, scope,
+          operation: _monitoringOperation(method, path));
     });
   }
 
   Future<Map<String, Object?>> _readJsonResponse(
-      HttpClientRequest request, _ApiRequestScope scope) async {
+      HttpClientRequest request, _ApiRequestScope scope,
+      {required String operation}) async {
     final response = await request.close();
+    if (response.statusCode >= 500 && response.statusCode < 600) {
+      unawaited(Future<void>.sync(() => _reportServerError(
+          operation: operation, statusCode: response.statusCode))
+          .catchError((Object _) {}));
+    }
     final responseBody = await scope.readBody(response);
     Object? decoded;
 
@@ -4229,5 +4244,21 @@ class PostDeeApiClient {
     }
 
     return decoded;
+  }
+
+  // Never report the path itself: it may contain owner IDs or query values.
+  String _monitoringOperation(String method, String path) {
+    final resource = path.split('?').first.split('/').elementAtOrNull(1);
+    if (method == 'POST' && resource == 'posts') return 'publish';
+    return switch (resource) {
+      'posts' || 'scheduled-posts' => 'calendar',
+      'uploads' => 'publish',
+      'captions' => 'caption',
+      'ai-edits' => 'ai_edit',
+      'subscriptions' || 'billing' => 'billing',
+      'link-in-bio' || 'profile' => 'profile',
+      'social' => 'social',
+      _ => 'api',
+    };
   }
 }

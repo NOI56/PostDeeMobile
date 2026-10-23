@@ -6,6 +6,7 @@ import {
 } from '../modules/notifications/publishNotifier.js';
 import type { PostStore } from '../modules/posts/postStore.js';
 import { reconcileInterruptedPublishes } from './interruptedPublishRecovery.js';
+import { reportMonitoringError } from '../monitoring/sentryMonitoring.js';
 import {
   type PlatformPublisher,
   type VideoStorageCleaner,
@@ -121,10 +122,11 @@ export const createPublishScheduler = ({
           requiresReconciliation = true;
         }
         return;
-      } catch {
+      } catch (error) {
         // Once a provider call starts, its outcome can be ambiguous. The worker
         // already fails the post closed; never create another provider post.
         if (externalPublishStarted) {
+          reportMonitoringError(error, { operation: 'scheduler.process' });
           // Persistence may have failed after provider acceptance. Keep readiness
           // unavailable until restart/reconciliation examines the saved receipts.
           requiresReconciliation = true;
@@ -132,6 +134,7 @@ export const createPublishScheduler = ({
         }
 
         if (attempt === attemptLimit) {
+          reportMonitoringError(error, { operation: 'scheduler.process' });
           await postStore.updateStatus({ postId: post.id, status: 'FAILED' });
 
           try {
@@ -169,15 +172,17 @@ export const createPublishScheduler = ({
           if (stopped) break;
           try {
             await publishDuePost(post);
-          } catch {
+          } catch (error) {
             // Preserve an uncertain provider outcome. A later healthy poll can
             // retry only rows that remain safely QUEUED before provider intake.
             persistenceFailed = true;
+            reportMonitoringError(error, { operation: 'scheduler.process' });
           }
         }
         pollHealthy = !persistenceFailed;
       } catch (error) {
         pollHealthy = false;
+        reportMonitoringError(error, { operation: 'scheduler.poll' });
         throw error;
       }
     }).finally(() => { activeRun = undefined; });

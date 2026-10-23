@@ -24,6 +24,7 @@ typedef PlatformErrorHandlerSetter = void Function(
 Future<void> configurePostDeeFirebaseMonitoring({
   required FirebaseBootstrapResult firebaseBootstrapResult,
   bool enableFirebaseAuth = AppConfig.enableFirebaseAuth,
+  bool enableDartCrashReporting = true,
   PostDeeAnalytics? analytics,
   AnalyticsEventLogger? logAnalyticsEvent,
   CrashErrorRecorder? recordCrashError,
@@ -54,8 +55,13 @@ Future<void> configurePostDeeFirebaseMonitoring({
     return;
   }
 
-  final recordError = recordCrashError ?? _recordFirebaseCrashError;
+  // Keep the existing native crash coverage even when Sentry owns Dart errors.
+  // Sentry's Dart-only setup must not remove the baseline native collector.
   await (setCrashCollectionEnabled ?? _setFirebaseCrashCollectionEnabled)(true);
+  if (!enableDartCrashReporting) {
+    return;
+  }
+  final recordError = recordCrashError ?? _recordFirebaseCrashError;
 
   (setFlutterErrorHandler ?? _setFlutterErrorHandler)(
     (details) {

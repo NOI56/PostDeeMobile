@@ -1,4 +1,5 @@
 import { readAdminConsoleConfig, type AdminConsoleConfig } from '../modules/admin/adminConfig.js';
+import { readSentryConfig, type SentryMonitoringConfig } from '../monitoring/sentryConfig.js';
 type EnvSource = Record<string, string | undefined>;
 export type TemplateStoreKind = 'memory' | 'prisma';
 export type PostStoreKind = 'memory' | 'prisma';
@@ -22,6 +23,7 @@ export type EditPlanProviderKind = 'mock' | 'openai' | 'gemini';
 export type AppleAppStoreEnvironmentKind = 'sandbox' | 'production';
 
 export type ServerConfig = {
+  sentry?: SentryMonitoringConfig;
   adminConsole?: AdminConsoleConfig;
   trialAccessEnabled?: boolean;
   port: number;
@@ -488,7 +490,9 @@ const assertPostPeerLegacyRecoveryConfig = (config: ServerConfig) => {
 };
 
 export const readServerConfig = (env: EnvSource = process.env): ServerConfig => {
+  const sentry = readSentryConfig(env);
   const config: ServerConfig = {
+    ...(sentry ? { sentry } : {}),
     adminConsole: readAdminConsoleConfig(env),
     trialAccessEnabled: env.TRIAL_ACCESS_ENABLED === 'true',
     port: readPort(env),

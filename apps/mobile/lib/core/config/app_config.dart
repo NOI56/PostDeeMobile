@@ -12,6 +12,12 @@ class AppConfig {
     defaultValue: 'http://localhost:4000',
   );
 
+  static const sentryDsn = String.fromEnvironment('SENTRY_DSN');
+  static const sentryEnvironment = String.fromEnvironment(
+    'SENTRY_ENVIRONMENT', defaultValue: 'development',
+  );
+  static const sentryRelease = String.fromEnvironment('SENTRY_RELEASE');
+
   static const storeProMonthlyProductId = String.fromEnvironment(
     'STORE_PRO_MONTHLY_PRODUCT_ID',
     defaultValue: 'postdee_pro_monthly',

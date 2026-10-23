@@ -2,6 +2,65 @@
 
 PostDee backend API reference.
 
+## Opt-in Sentry reporting (2026-10-22, activation pending)
+
+The candidate adds internal error monitoring without changing public routes,
+request/response shapes, authentication, status codes, provider retry rules,
+quotas or database schema. `@sentry/node` is pinned to `11.8.0`. The API and
+its in-process publisher use the reporter; the optional BullMQ worker initializes
+the same boundary when run separately.
+
+| Environment variable | Default / requirement |
+| --- | --- |
+| `SENTRY_DSN` | Empty disables reporting. Use the API project's HTTPS ingest DSN only in the target environment's untracked configuration. |
+| `SENTRY_ENVIRONMENT` | Set explicitly when a DSN is enabled: `development`, `staging` or `production`. Do not derive Staging from `NODE_ENV=production`. |
+| `SENTRY_RELEASE` | Optional safe build identifier, for example `postdee-api@<commit-sha>`; no customer details, URL/query or credentials. |
+
+Malformed enabled server configuration is rejected at startup. SDK/transport
+failure is contained and does not change API responses or publishing safeguards;
+shutdown flush is bounded. Expected 4xx responses are not reported. Unexpected
+5xx responses and unhandled request errors use safe method/route-template/status
+labels, and handled provider, publisher, scheduler and worker failures use
+allowlisted operation/platform labels. These reports do not retry or resend a
+post, repair its history or consume quota.
+
+The only automatic fatal integration is the SDK's
+`onUncaughtExceptionIntegration`. Node's default unhandled-rejection path is
+preserved, including fatal exit for rejected named errors; a separate Sentry
+rejection handler is not installed. Real child-process regressions cover this
+fatal behavior. That targeted result does not replace final full-suite checks.
+
+The final outbound sanitizer and transport rebuild error events/envelopes using
+allowlisted error types, repository-relative stack frames and bounded labels.
+They remove raw exception
+messages, provider payloads, request bodies/headers/cookies/URLs, customer
+captions/media keys, user/account identifiers and credentials. No tracing,
+performance spans, breadcrumbs, logs, Replay or attachments are enabled. There
+is no public test-error endpoint, DSN discovery route or Sentry authentication
+token in the repository. Default-off configuration preserves existing deployments.
+
+No Prisma migration or API-first compatibility rollout is needed for this
+internal reporter. Each cloud API/worker still needs an explicitly authorized
+deployment and its own runtime DSN/environment. The final local API checks pass
+on Node `22.23.3`: 2,420 tests pass with 25 skips, plus typecheck/build and Prisma
+validation/helper compilation. A synthetic local Express 500 reached
+`POSTDEE-API-1` in Staging without real social publication or purchases. Sentry's
+inferred coarse geography prompted project-level IP storage prevention and
+an advanced removal rule using source `$user.**` on both projects; the initial
+source `user` did not provide the intended result. A subsequent API event was
+accepted and the latest API/Mobile dashboard events show no geography. Outbound
+allowlist tests cover the absence of customer URL/body/user fields. The cloud API
+release is authorized by the user's 2026-10-23 `main/push/deploy` request.
+Main/GitHub delivery and Staging `postdee-api-staging` activation in `My Workspace`
+are in progress; no successful cloud deployment or deployed Sentry event is
+claimed yet. Full verification and activation status are tracked in the
+[work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md).
+The API source/results are unchanged by the later Mobile-only native Crashlytics
+preservation fix. Final-3 Mobile tests/analysis and APK12041 build/source checks
+pass. Exact APK12041 startup, enabled native Crashlytics collection and a generic
+production-reporter Sentry event are verified; no actual native crash was forced.
+The APK12040 event remains intermediate evidence, superseded by APK12041.
+
 ## Local remembered settings boundary (2026-10-20, YouTube native restart verified)
 
 Remembered channel settings are Mobile-only local preferences. No new endpoint,
@@ -3700,5 +3759,7 @@ The following work is still required before production launch:
 - Add full RevenueCat renewal, cancel, refund, billing-issue, and notification
   replay coverage.
 - Replace mock analytics with real platform analytics fetchers.
-- Add audit logging and production monitoring (per-IP rate limiting is live via
+- Verify and activate the opt-in Sentry error reporter separately for each
+  authorized API/worker environment. Audit logging and production monitoring
+  beyond errors remain separate work (per-IP rate limiting is live via
   `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`).

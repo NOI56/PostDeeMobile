@@ -2,6 +2,77 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Optional Sentry error boundary (2026-10-23, candidate verified)
+
+This candidate pins `@sentry/node` to `11.8.0` and `sentry_flutter` to `9.30.1`.
+The existing CocoaPods path is retained. Reporting is enabled only by a valid
+project `SENTRY_DSN`; empty configuration preserves current runtime behavior.
+`SENTRY_ENVIRONMENT` is a deliberate deployment label (`development`, `staging`
+or `production`), independent of Node's production optimization mode. Optional
+`SENTRY_RELEASE` carries a safe source/build identifier. API and Mobile use their
+own Sentry projects and configuration; no DSN or authentication token is tracked.
+
+The Node reporter is initialized before creating the app/scheduler, with explicit
+request/error boundaries and handled publisher/provider/scheduler reports. The
+optional standalone worker initializes the same reporter. Capture and transport
+failures are contained; final flush is bounded. Reporting observes failures and
+never changes response shapes, retries, receipts, quota or publication outcomes.
+No Express auto-instrumentation, tracing, breadcrumbs or log export is enabled.
+The only automatic fatal integration is `onUncaughtExceptionIntegration`;
+Node's default unhandled-rejection path remains intact, including named errors
+and fatal exit. A separate Sentry rejection handler is not installed. Both the
+event sanitizer and final Node transport rebuild allowlisted error envelopes.
+
+Flutter startup wraps the existing application runner with a single-start
+guard. Invalid/absent configuration leaves Sentry disabled; SDK setup failure
+falls back before starting the app, without launching it twice. Successful
+Sentry startup owns Dart/Flutter error reporting and disables duplicate Firebase
+Crashlytics Dart hooks only. Existing native Crashlytics collection stays enabled
+whenever Firebase monitoring is available, even when Sentry is enabled. With
+Sentry disabled/unavailable, Crashlytics owns Dart `FlutterError` and
+`PlatformDispatcher` hooks as before. Firebase Analytics, Auth and FCM remain
+connected. Safe handled API 5xx reports contain operation
+and status labels only, with no URL, body or exception message.
+
+Both event sanitizers reconstruct an allowlisted event rather than blacklisting
+known secrets. Keep bounded error types, safe source locations, deployment/build
+labels and fixed operation/status labels; discard raw messages, customer
+captions/media, signed URLs, user identifiers, request/provider payloads,
+credentials and unknown maps. Mobile reconstructs only bounded technical
+contexts: manufacturer/model, OS name/version/build and Dart/Flutter runtime.
+Device IDs/names, user records and arbitrary context maps are not retained.
+Mobile's final Dart HTTP transport also rebuilds
+event envelopes, dropping non-event items, attachments and header baggage.
+Performance/tracing, trace propagation, logs, metrics, Replay, screenshots and
+view hierarchies are disabled. This does not provide a cross-service trace.
+
+Automatic native SDK initialization, native crash/ANR handling and native scope
+sync are deliberately disabled: native envelopes bypass the Dart sanitizer.
+Consequently Sentry covers Dart/Flutter errors but does not collect native
+crashes/ANRs. The existing native Crashlytics collector is retained without a
+new native bridge. Sentry-native collection requires a separate verified native
+privacy boundary and device acceptance. Neither retained Crashlytics wiring nor
+iOS CocoaPods configuration alone is a new native crash/iOS acceptance result.
+
+No public API/schema/migration changes or new cloud worker are required. The
+current deployed publisher remains inside the single API instance. Full API
+checks and final-3 Mobile tests/analysis/build/source checks pass. A local API
+synthetic error and exact APK12041 production-reporter event reach their own
+Sentry projects with matching Staging environment/releases. The guarded
+12040-to-12041 update retains QA Pixel_8 UID/data; Home opens, native Crashlytics
+collection reads enabled and the debugger detaches with the app still running.
+The intermediate APK12040 collector regression is fixed; no native crash was
+forced and no new native crash/iOS acceptance is claimed.
+Both latest dashboard events lack geography after enabling IP storage
+prevention and the advanced `$user.**` removal rule, in addition to application
+outbound allowlists and existing default scrubbers. Live entitlement retrieval
+and full publish/checkout acceptance are not verified. The user's 2026-10-23
+`main/push/deploy` request authorizes main integration, GitHub push and Staging
+API activation. Execution and exact cloud release verification are in progress;
+no successful deployed Sentry API result is claimed. Track delivery in the
+[work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md). No paid plan,
+GitHub connection, real publication or purchase is needed for these checks.
+
 ## Calendar selected-cover reads (2026-10-21)
 
 Calendar continues its full metadata-only `GET /posts` read without
@@ -1170,8 +1241,9 @@ flowchart LR
   Worker --> Social["PostPeer API (Unified)"]
   Worker --> Storage
   Worker --> DB
-  API -.-> PlannedSentry["Sentry (planned)"]
-  Worker -.-> PlannedSentry
+  Mobile -.->|"opt-in Dart errors only"| Sentry["Sentry (candidate; activation pending)"]
+  API -.->|"opt-in errors only"| Sentry
+  Worker -.->|"opt-in errors only"| Sentry
 ```
 
 Production และ Staging ต้องเป็นคนละ data boundary: `render.yaml` ชี้ไป
@@ -1353,7 +1425,7 @@ Backend stack:
 - Gemini caption provider with production provider/device verification remaining
 - ElevenLabs Scribe v2 transcription + Gemini AI auto-editing recipe flow with physical-device acceptance remaining
 - RevenueCat webhook and authenticated Restore/resync adapters
-- Sentry error tracking is planned; it is not integrated yet
+- Opt-in Sentry reporter verified by local API and exact APK12041 events; native Crashlytics retained/enabled, authorized main/push/Staging activation in progress
 
 Main route groups:
 

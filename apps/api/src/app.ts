@@ -2,6 +2,11 @@ import cors from 'cors';
 import express, { type RequestHandler, type ErrorRequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import {
+  createSentryErrorMiddleware,
+  createSentryRequestMiddleware,
+  type MonitoringReporter
+} from './monitoring/sentryMonitoring.js';
 import type { PrismaClient } from '@prisma/client';
 import { registerAdminConsole } from './modules/admin/adminRoutes.js';
 import { createPrismaAdminDataSource, type AdminDataSource } from './modules/admin/adminDataSource.js';
@@ -183,6 +188,7 @@ type AppOptions = {
   adminFirebaseVerifier?: FirebaseTokenVerifier;
   adminTestPreviewToken?: string;
   config?: ServerConfig;
+  monitoringReporter?: MonitoringReporter;
   prisma?: AppPrismaClient;
   s3Client?: S3VideoStorageClient;
   r2Client?: S3VideoStorageClient;
@@ -394,6 +400,7 @@ export const createApp = (options: AppOptions = {}) => {
   // Render terminates TLS at a single proxy layer; trust it so req.ip (and the
   // per-IP rate limit key) is the real client address, not the proxy's.
   app.set('trust proxy', 1);
+  app.use(createSentryRequestMiddleware(options.monitoringReporter));
   app.use(helmet());
   app.use(cors());
   app.use(
@@ -955,5 +962,6 @@ export const createApp = (options: AppOptions = {}) => {
     next(error);
   };
   app.use(handleOwnerLifecycleError);
+  app.use(createSentryErrorMiddleware(options.monitoringReporter));
   return app;
 };

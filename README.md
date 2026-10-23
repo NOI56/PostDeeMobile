@@ -7,6 +7,56 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Sentry error reporting (2026-10-23, candidate verified)
+
+The candidate adds opt-in error reporting for Flutter and the Node API/current
+in-process publisher, with the same reporting boundary in the optional standalone
+worker. `SENTRY_DSN` is empty and disabled by default. Set
+`SENTRY_ENVIRONMENT` explicitly to `development`, `staging` or `production`;
+the Staging API still uses `staging` when `NODE_ENV=production`. An optional
+`SENTRY_RELEASE` identifies the deployed build without customer information.
+
+Outbound events retain allowlisted error types, safe source locations and
+bounded operation/status labels. Mobile also retains bounded nonidentifying
+manufacturer/model, OS name/version/build and Dart/Flutter runtime metadata;
+device identifiers/names, user records and arbitrary context maps are excluded.
+Customer captions, media URLs/keys, request
+bodies, credentials, user/account identifiers and raw provider errors are not
+sent. Tracing, performance monitoring, log export, Replay, screenshots, view
+hierarchies and attachments are off. This is error reporting, not a complete
+cross-service performance or native crash monitoring rollout.
+
+Flutter's automatic native SDK/crash collection is disabled because native
+envelopes bypass the Dart sanitizer. Dart/Flutter unhandled failures and safe
+handled API 5xx reports use Sentry. Existing native Crashlytics collection stays
+enabled whenever Firebase monitoring is available, including when Sentry is on.
+Sentry owns only the Dart `FlutterError`/`PlatformDispatcher` error hooks; when
+Sentry is absent/unavailable, Crashlytics retains those hooks too. Firebase
+Analytics, Auth and FCM remain connected. Sentry-native crash/ANR and iOS
+acceptance remain separate work; retained native Crashlytics is not a new native
+crash acceptance result.
+
+The pinned SDKs are `sentry_flutter: 9.30.1` and `@sentry/node: 11.8.0`; iOS
+remains on its existing CocoaPods integration. No endpoint, schema, migration,
+publishing or billing change is required. No real post or purchase is needed to
+verify reporting. Full API checks and final-3 Mobile tests/analysis/build pass.
+The exact APK12041 is installed on QA Pixel_8 with UID/data retained; Home opens,
+native Crashlytics collection reads enabled, and a generic production-reporter
+API 500 event reaches Sentry with the correct build/environment. A local API
+synthetic error also reaches its own project. Both latest dashboard events have
+no geography after enabling IP storage prevention and scrubbing `$user.**`.
+No native crash was triggered. Live entitlement/publish/checkout acceptance
+remains unverified. The user's 2026-10-23 `main/push/deploy` request authorizes
+main integration, GitHub push and Staging API activation; that release is in
+progress and its cloud outcome is not verified yet.
+Acceptance scope and remaining device/native limits are recorded in the
+[Sentry work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md).
+Cloud release evidence will be appended after the authorized deployment passes.
+Release preflight also updates the CI-only Staging-define validator to accept
+and validate the three Sentry fields; its 21 Python tests pass, including the
+checked-in example with billing disabled/enabled. API/Mobile runtime source and
+APK12041 acceptance are unchanged; cloud activation is not verified yet.
+
 ## Calendar selected covers (2026-10-21)
 
 Calendar post cards add the saved selected cover as a small portrait thumbnail,
@@ -2512,6 +2562,7 @@ public SDK key, and signed AAB are prepared, but Play Console app/subscriptions,
 internal testing, service credentials, and a real Google Play purchase remain
 blocked until the developer account is verified with a physical Android device;
 the Emulator cannot complete that verification. Platform
-views/likes ingestion, Sentry, beat/hook rendering, and AI minute top-ups are not
+views/likes ingestion, Sentry activation/native-crash acceptance, beat/hook
+rendering, and AI minute top-ups are not
 complete production features yet. See `docs/GO_LIVE.md` and
 `LAUNCH_CHECKLIST.md` for the operational truth.

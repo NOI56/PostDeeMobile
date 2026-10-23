@@ -27,6 +27,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1061.0",
     "@google/genai": "^2.13.0",
     "@prisma/client": "^6.19.0",
+    "@sentry/node": "11.8.0",
     "bullmq": "^5.64.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

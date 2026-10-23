@@ -2,6 +2,7 @@ import 'dotenv/config';
 
 import { Worker } from 'bullmq';
 import { createGracefulShutdown } from '../shutdown.js';
+import { createSentryMonitoring, reportMonitoringError } from '../monitoring/sentryMonitoring.js';
 
 import { readServerConfig } from '../config/env.js';
 import { createPrismaClient } from '../config/prisma.js';
@@ -37,6 +38,7 @@ import {
 } from './publishWorkerRunnerPolicy.js';
 
 const config = readServerConfig();
+const monitoring = await createSentryMonitoring(config.sentry, { component: 'worker' });
 const storage = createVideoStorageFromConfig({ config });
 // Create Prisma when a configured store needs it, when real PostPeer publishing
 // needs user connections, or when the worker must enforce deletion barriers.
@@ -112,6 +114,7 @@ worker.on('completed', (job, result) => {
 });
 
 worker.on('failed', (job, error) => {
+  reportMonitoringError(error, { operation: 'worker.failure' });
   console.error(
     'Publish worker failed:',
     buildPublishWorkerFailedLog({
@@ -130,9 +133,13 @@ const shutdown = createGracefulShutdown({
   stopAcceptingRequests: async () => undefined,
   // BullMQ stops claiming new jobs and waits for the active job by default.
   drainPublishing: async () => { await worker.close(); },
-  closeResources: async () => { await prisma?.$disconnect(); }
+  closeResources: async () => {
+    try { await prisma?.$disconnect(); }
+    finally { await monitoring.flush(); }
+  }
 });
-worker.on('error', () => {
+worker.on('error', (error: unknown) => {
+  reportMonitoringError(error, { operation: 'worker.connection' });
   console.error('Publish worker connection failed', { code: 'PUBLISH_WORKER_UNAVAILABLE' });
 });
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
@@ -140,8 +147,10 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     void shutdown().then(() => {
       console.log('PostDee publish worker shutdown completed');
       process.exitCode = 0;
-    }, () => {
+    }, async (error: unknown) => {
+      reportMonitoringError(error, { operation: 'server.shutdown' });
       console.error('PostDee publish worker shutdown did not complete', { code: 'SHUTDOWN_FAILED' });
+      await monitoring.flush();
       process.exit(1);
     });
   });

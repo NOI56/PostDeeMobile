@@ -31,6 +31,66 @@ void _writeJsonResponse(
 }
 
 void main() {
+  test('handled API failures report bounded labels without request content', () async {
+    for (final status in [200, 401, 403, 429, 500, 503]) {
+      final reports = <({String operation, int status})>[];
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final task = () async {
+        final request = await server.first;
+        _writeJsonResponse(request.response,
+            status == 200 ? {'status': 'ok', 'posts': <Object>[]}
+                : {'message': 'private customer caption', 'code': 'PRIVATE_DATA'},
+            statusCode: status);
+        await request.response.close();
+      }();
+      try {
+        final client = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+          authTokenProvider: () async => 'private-token',
+          reportServerError: ({required operation, required statusCode}) async {
+            reports.add((operation: operation, status: statusCode));
+          },
+        );
+        if (status == 200) {
+          expect(await client.listCalendarPosts(), isEmpty);
+        } else {
+          await expectLater(client.listCalendarPosts(), throwsA(isA<ApiException>()
+              .having((error) => error.statusCode, 'original status', status)));
+        }
+        await task;
+        await Future<void>.delayed(Duration.zero);
+        expect(reports, status >= 500
+            ? [(operation: 'calendar', status: status)] : isEmpty);
+        expect(jsonEncode(reports.map((report) => report.operation).toList()),
+            isNot(contains('private')));
+      } finally {
+        await server.close(force: true);
+      }
+    }
+  });
+
+  test('a failed monitoring callback never changes an API failure', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final task = () async {
+      final request = await server.first;
+      request.response..statusCode = 503..write('invalid-json-private-body');
+      await request.response.close();
+    }();
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        reportServerError: ({required operation, required statusCode}) =>
+            throw StateError('monitor unavailable'),
+      );
+      await expectLater(client.listCalendarPosts(), throwsA(isA<ApiException>()
+          .having((error) => error.statusCode, 'original status', 503)));
+      await task;
+      await Future<void>.delayed(Duration.zero);
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
   Map<String, Object?> tikTokOptions() => {
         'status': 'ok',
         'connectionId': 'local-connection',

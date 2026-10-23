@@ -48,6 +48,7 @@ class PlatformPublishSettings {
   const PlatformPublishSettings({
     this.usePlatformCaptions = false,
     this.platformCaptions = const {},
+    this.aiCaptionPlatforms = const {},
     this.tiktokPublishMode = TikTokPublishMode.inboxDraft,
     this.tiktokPrivacyLevel,
     this.tiktokCreatorInfoRevision,
@@ -74,6 +75,9 @@ class PlatformPublishSettings {
   /// Per-post caption drafts stay available when the shared editor is active.
   final bool usePlatformCaptions;
   final Map<SocialPlatform, String> platformCaptions;
+
+  /// Per-post generation targets are separate from publishing destinations.
+  final Set<SocialPlatform> aiCaptionPlatforms;
   final TikTokPublishMode tiktokPublishMode;
   final TikTokPrivacyLevel? tiktokPrivacyLevel;
   final String? tiktokCreatorInfoRevision;
@@ -115,6 +119,7 @@ class PlatformPublishSettings {
   PlatformPublishSettings copyWith({
     bool? usePlatformCaptions,
     Map<SocialPlatform, String>? platformCaptions,
+    Set<SocialPlatform>? aiCaptionPlatforms,
     TikTokPublishMode? tiktokPublishMode,
     Object? tiktokPrivacyLevel = _keepSetting,
     Object? tiktokCreatorInfoRevision = _keepSetting,
@@ -140,6 +145,7 @@ class PlatformPublishSettings {
       PlatformPublishSettings(
         usePlatformCaptions: usePlatformCaptions ?? this.usePlatformCaptions,
         platformCaptions: platformCaptions ?? this.platformCaptions,
+        aiCaptionPlatforms: aiCaptionPlatforms ?? this.aiCaptionPlatforms,
         tiktokPublishMode: tiktokPublishMode ?? this.tiktokPublishMode,
         tiktokPrivacyLevel: identical(tiktokPrivacyLevel, _keepSetting)
             ? this.tiktokPrivacyLevel
@@ -413,6 +419,11 @@ class PlatformPublishSettings {
 
   Map<String, Object?> toDraftJson() => {
         if (usePlatformCaptions) 'usePlatformCaptions': true,
+        if (_captionPlatforms.any(aiCaptionPlatforms.contains))
+          'aiCaptionPlatforms': [
+            for (final platform in _captionPlatforms)
+              if (aiCaptionPlatforms.contains(platform)) platform.apiValue,
+          ],
         if (platformCaptions.isNotEmpty)
           'platformCaptions': {
             for (final platform in _captionPlatforms)
@@ -482,6 +493,9 @@ class PlatformPublishSettings {
       platformCaptions: json.containsKey('platformCaptions')
           ? _readPlatformCaptionDrafts(json['platformCaptions'])
           : const {},
+      aiCaptionPlatforms: json.containsKey('aiCaptionPlatforms')
+          ? _readAiCaptionPlatforms(json['aiCaptionPlatforms'])
+          : const {},
       tiktokPublishMode: _enumByName(
         TikTokPublishMode.values,
         json['tiktokPublishMode'],
@@ -536,6 +550,7 @@ class PlatformPublishSettings {
       other is PlatformPublishSettings &&
           other.usePlatformCaptions == usePlatformCaptions &&
           mapEquals(other.platformCaptions, platformCaptions) &&
+          setEquals(other.aiCaptionPlatforms, aiCaptionPlatforms) &&
           other.tiktokPublishMode == tiktokPublishMode &&
           other.tiktokPrivacyLevel == tiktokPrivacyLevel &&
           other.tiktokCreatorInfoRevision == tiktokCreatorInfoRevision &&
@@ -568,6 +583,10 @@ class PlatformPublishSettings {
           for (final platform in _captionPlatforms)
             if (platformCaptions.containsKey(platform))
               Object.hash(platform, platformCaptions[platform]),
+        ]),
+        Object.hashAll([
+          for (final platform in SocialPlatform.values)
+            if (aiCaptionPlatforms.contains(platform)) platform,
         ]),
         tiktokPublishMode,
         tiktokPrivacyLevel,
@@ -620,6 +639,23 @@ Map<SocialPlatform, String> _readPlatformCaptionDrafts(Object? value) {
     captions[platform] = entry.value as String;
   }
   return Map.unmodifiable(captions);
+}
+
+Set<SocialPlatform> _readAiCaptionPlatforms(Object? value) {
+  if (value is! List) {
+    throw const FormatException('aiCaptionPlatforms must be an array');
+  }
+  final platforms = <SocialPlatform>{};
+  for (final target in value) {
+    final platform = _captionPlatforms
+        .where((platform) => platform.apiValue == target)
+        .firstOrNull;
+    if (platform == null) {
+      throw const FormatException('Invalid AI caption platform');
+    }
+    platforms.add(platform);
+  }
+  return Set.unmodifiable(platforms);
 }
 
 final _tikTokRevisionPattern = RegExp(r'^[0-9a-f]{64}$');

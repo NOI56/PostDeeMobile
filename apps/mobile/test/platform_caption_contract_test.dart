@@ -16,6 +16,10 @@ void main() {
   const settings = PlatformPublishSettings(
     usePlatformCaptions: true,
     platformCaptions: captions,
+    aiCaptionPlatforms: {
+      SocialPlatform.tiktok,
+      SocialPlatform.instagramReels,
+    },
     youtubeMadeForKids: false,
     youtubeContainsSyntheticMedia: false,
     youtubeCommunityGuidelinesCertified: true,
@@ -27,6 +31,7 @@ void main() {
     final shared = settings.copyWith(usePlatformCaptions: false);
     expect(shared.effectiveCaption(SocialPlatform.tiktok, 'หลัก'), 'หลัก');
     expect(shared.platformCaptions, captions);
+    expect(shared.aiCaptionPlatforms, settings.aiCaptionPlatforms);
     final json = shared.resolvedForCaption('หลัก').toApiJson(
           selectedPlatforms: captions.keys.toSet(),
         );
@@ -50,6 +55,7 @@ void main() {
     expect((json['YOUTUBE_SHORTS'] as Map)['caption'],
         captions[SocialPlatform.youtubeShorts]);
     expect(resolved.toRecoveryApiJson(selectedPlatforms: selected), json);
+    expect(jsonEncode(json), isNot(contains('aiCaptionPlatforms')));
     expect(resolved.youtubeTitle, 'ชื่อ Shorts!');
     expect(resolved.platformCaptions, captions);
     expect(resolved.effectiveCaption(SocialPlatform.facebookReels, 'หลัก'),
@@ -87,13 +93,16 @@ void main() {
       final savedJson = preferences.toJson();
       expect(jsonEncode(savedJson), isNot(contains('platformCaptions')));
       expect(jsonEncode(savedJson), isNot(contains('usePlatformCaptions')));
+      expect(jsonEncode(savedJson), isNot(contains('aiCaptionPlatforms')));
       final applied = PlatformPublishDefaults.fromJson(savedJson)!
           .applyTo(const PlatformPublishSettings());
       expect(applied.platformCaptions, isEmpty);
       expect(applied.usePlatformCaptions, isFalse);
+      expect(applied.aiCaptionPlatforms, isEmpty);
       final samePost = preferences.applyTo(settings);
       expect(samePost.platformCaptions, captions);
       expect(samePost.usePlatformCaptions, isTrue);
+      expect(samePost.aiCaptionPlatforms, settings.aiCaptionPlatforms);
     }
   });
 
@@ -108,14 +117,74 @@ void main() {
     expect(settings.copyWith(usePlatformCaptions: false), isNot(settings));
   });
 
+  test('AI target selection round trips in stable order independently of mode',
+      () {
+    final reordered = settings.copyWith(aiCaptionPlatforms: {
+      SocialPlatform.instagramReels,
+      SocialPlatform.tiktok,
+    });
+    expect(reordered, settings);
+    expect(reordered.hashCode, settings.hashCode);
+    expect(reordered.toDraftJson()['aiCaptionPlatforms'],
+        ['TIKTOK', 'INSTAGRAM_REELS']);
+    for (final active in [true, false]) {
+      final draft = reordered.copyWith(usePlatformCaptions: active);
+      final restored = PlatformPublishSettings.fromDraftJson(
+        jsonDecode(jsonEncode(draft.toDraftJson())),
+        strict: true,
+      );
+      expect(restored, draft);
+      expect(restored.aiCaptionPlatforms, settings.aiCaptionPlatforms);
+    }
+    expect(settings.copyWith(aiCaptionPlatforms: const {}), isNot(settings));
+    expect(settings.copyWith(aiCaptionPlatforms: const {}).aiCaptionPlatforms,
+        isEmpty);
+  });
+
+  test('AI target draft serialization only includes supported destinations',
+      () {
+    final unsupported = settings.copyWith(aiCaptionPlatforms: {
+      SocialPlatform.shopeeVideo,
+      SocialPlatform.instagramReels,
+      SocialPlatform.lazadaVideo,
+    });
+    expect(
+        unsupported.toDraftJson()['aiCaptionPlatforms'], ['INSTAGRAM_REELS']);
+  });
+
   test('historical draft shape defaults to shared mode', () {
     final historical = const PlatformPublishSettings().toDraftJson()
       ..remove('usePlatformCaptions')
-      ..remove('platformCaptions');
+      ..remove('platformCaptions')
+      ..remove('aiCaptionPlatforms');
     final restored =
         PlatformPublishSettings.fromDraftJson(historical, strict: true);
     expect(restored.usePlatformCaptions, isFalse);
     expect(restored.platformCaptions, isEmpty);
+    expect(restored.aiCaptionPlatforms, isEmpty);
+    expect(restored.toDraftJson(), isNot(contains('aiCaptionPlatforms')));
+  });
+
+  test('draft parser rejects malformed or unsupported AI target selections',
+      () {
+    for (final invalid in <Object?>[
+      null,
+      'TIKTOK',
+      {'TIKTOK': true},
+      [1],
+      ['TIKTOK', null],
+      ['SHOPEE_VIDEO'],
+      ['LAZADA_VIDEO'],
+      ['UNKNOWN'],
+    ]) {
+      expect(
+        () => PlatformPublishSettings.fromDraftJson({
+          ...settings.toDraftJson(),
+          'aiCaptionPlatforms': invalid,
+        }),
+        throwsFormatException,
+      );
+    }
   });
 
   test('draft parser rejects malformed caption mode or platform entries', () {

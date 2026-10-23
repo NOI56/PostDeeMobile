@@ -2,6 +2,34 @@
 
 PostDee backend API reference.
 
+## Mobile AI caption selection (2026-10-23, local candidate)
+
+The advanced composer can request captions for an explicitly chosen subset of
+the four supported channels. The initial AI selection is empty; requesting
+generation requires 1–4 selections. These are generation targets, independent
+of destinations selected for publishing. The client sends only their existing
+API enum values in `POST /captions/generate-from-clip`'s optional `platforms`
+array. The deployed contract already supports this subset; no backend runtime
+or deployment change is required for this Mobile follow-up.
+
+One request/set still reserves **one monthly/add-on AI credit**, whether it
+contains one, two, three or four channels. There is no per-channel discount or
+new pricing rule. Missing/malformed output retains the existing whole-request
+fallback and refund behavior; `quota.charged` reflects whether release succeeded.
+The client previews/applies/undoes only the requested captions and preserves all
+unselected text. The four manual editors remain available regardless of the
+generation selection.
+
+`aiCaptionPlatforms` is optional local-draft metadata, defaults to an empty set
+for historical drafts, and is never added to post creation/recovery requests
+or reusable account/channel defaults. This work changes no publish settings
+contract, database schema, migration or environment variable. Candidate checks
+pass 2,504 API tests, typecheck/build, Prisma validation/helper typecheck and
+the Mobile checks recorded below. APK 12043 builds; delivery, device smoke and
+actual provider acceptance remain unverified. The earlier release below does
+not establish delivery of this follow-up. Track results in the
+[selection work record](docs/superpowers/plans/2026-10-23-caption-target-selection.md).
+
 ## Per-platform caption contract (2026-10-23, Staging Live)
 
 The optional `caption` string in each `platformSettings.<platform>` object
@@ -2372,6 +2400,9 @@ Optional platform-caption generation (2026-10-23, Staging Live):
   channels are not returned as generated variants.
 - One requested set invokes the provider's generation operation once and
   reserves one monthly/add-on generation, including when requesting all four.
+  Requesting fewer channels still uses one credit; there is no per-channel
+  price reduction. Mobile's selection starts empty and the user chooses which
+  channels to request before generation, independently of publish destinations.
   Existing transient HTTP retries remain possible inside that operation.
 - Gemini is instructed to adapt wording for each platform from the same clip
   evidence and writing style, without inventing prices, products, claims or

@@ -2,6 +2,28 @@
 
 Build roadmap for PostDee.
 
+## Select AI caption channels (2026-10-23, local candidate)
+
+- Keep four advanced manual caption editors and start AI targets empty. Let
+  users explicitly choose 1–4 supported channels before generation, independently
+  of the destinations they later publish to.
+- Request only the chosen channels. Preview, apply and undo only those variants,
+  retaining unselected caption text and guarding against stale results.
+- Remember targets in the current local draft across mode switches and reopening;
+  exclude them from reusable channel/account preferences and post/recovery API
+  settings. Historical drafts without target metadata remain readable.
+- Keep existing pricing: one monthly/add-on AI credit per request/set of 1–4
+  channels, with no discount for requesting fewer. Preserve existing fallback
+  refunds and plan/owner/media checks. The API already supports subsets; this
+  work needs no backend runtime or deployment change, schema or migration.
+- Candidate passes 2,787 Mobile tests, 2,504 API tests, static/schema checks and
+  28 Staging-configured widget smoke tests. Staging APK 12043 builds and package
+  configuration checks pass. Device installation and actual provider acceptance
+  remain unverified. This follow-up is not yet merged, pushed, deployed or
+  installed; earlier release evidence below applies to the prior all-four UI.
+  Record actual results in the
+  [selection plan](docs/superpowers/plans/2026-10-23-caption-target-selection.md).
+
 ## Four-platform advanced captions (2026-10-23, Staging Live)
 
 - Add optional advanced caption settings in Create Post: hide the shared editor,

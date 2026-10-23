@@ -122,6 +122,70 @@ describe('platform-specific real-clip captions', () => {
     expect(deleteObject).toHaveBeenCalledExactlyOnceWith({ bucket: 'caption-test-bucket', key: videoS3Key });
   });
 
+  it.each([
+    { selected: ['YOUTUBE_SHORTS'] as Platform[] },
+    { selected: ['TIKTOK', 'INSTAGRAM_REELS'] as Platform[] }
+  ])('returns only selected $selected captions and charges one generation for the request', async ({ selected }) => {
+    const usage = createInMemoryRealClipCaptionUsageStore();
+    const reserve = vi.spyOn(usage, 'reserve');
+    const release = vi.spyOn(usage, 'release');
+    const { provider, fetchImpl } = makeProvider({ ...providerPayload, platformCaptions });
+    const generate = vi.spyOn(provider, 'generate');
+    const app = createApp({ realClipCaptionProvider: provider, fetchClipMedia: async () => media, realClipCaptionUsageStore: usage });
+
+    const response = await request(app).post('/captions/generate-from-clip')
+      .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'STARTER')
+      .send({ videoS3Key, platforms: selected }).expect(200);
+
+    expect(response.body.platformCaptions).toEqual(Object.fromEntries(selected.map(platform => [platform, platformCaptions[platform]])));
+    expect(Object.keys(response.body.platformCaptions)).toEqual(selected);
+    expect(response.body.quota).toMatchObject({ limit: 50, usedThisMonth: 1, remainingThisMonth: 49 });
+    expect(response.body.isFallback).toBeUndefined();
+    expect(reserve).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
+    expect(generate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      request: expect.objectContaining({ platforms: selected })
+    }));
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { selected: ['YOUTUBE_SHORTS'] as Platform[] },
+    { selected: ['TIKTOK', 'INSTAGRAM_REELS'] as Platform[] }
+  ])('refunds selected $selected fallback once without returning unrequested captions or removing prior usage', async ({ selected }) => {
+    const usage = createInMemoryRealClipCaptionUsageStore();
+    const monthKey = new Date().toISOString().slice(0, 7);
+    await usage.record({ userId: 'platform-caption-owner', monthKey });
+    const reserve = vi.spyOn(usage, 'reserve');
+    const release = vi.spyOn(usage, 'release');
+    const { provider, fetchImpl } = makeProvider({
+      ...providerPayload, platformCaptions: { FACEBOOK_REELS: platformCaptions.FACEBOOK_REELS }
+    });
+    const generate = vi.spyOn(provider, 'generate');
+    const app = createApp({ realClipCaptionProvider: provider, fetchClipMedia: async () => media, realClipCaptionUsageStore: usage });
+
+    const response = await request(app).post('/captions/generate-from-clip')
+      .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'STARTER')
+      .send({ videoS3Key, platforms: selected }).expect(200);
+
+    expect(response.body).toMatchObject({
+      isFallback: true, model: 'local-real-clip-template',
+      quota: { charged: false, usedThisMonth: 1, remainingThisMonth: 49 }
+    });
+    expect(Object.keys(response.body.platformCaptions)).toEqual(selected);
+    for (const entry of Object.values(response.body.platformCaptions) as Array<{ caption: string; hashtags: string[] }>) {
+      expect(entry.caption).toBeTruthy();
+      expect(entry.hashtags).toEqual([]);
+    }
+    expect(reserve).toHaveBeenCalledOnce();
+    const reservation = await reserve.mock.results[0].value;
+    expect(reservation.ok).toBe(true);
+    if (reservation.ok) expect(release).toHaveBeenCalledExactlyOnceWith(reservation.record);
+    expect(await usage.countForMonth({ userId: 'platform-caption-owner', monthKey })).toBe(1);
+    expect(generate).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
   it('returns complete transparent uncharged fallback variants when the provider omits a channel', async () => {
     const usage = createInMemoryRealClipCaptionUsageStore();
     const { provider } = makeProvider({ ...providerPayload, platformCaptions: { TIKTOK: platformCaptions.TIKTOK } });

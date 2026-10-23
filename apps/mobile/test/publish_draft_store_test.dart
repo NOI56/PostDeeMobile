@@ -104,6 +104,10 @@ void main() {
     final video = await fixture('source.mp4', [1, 2, 3, 4]);
     final store = storeFor('firebase-user-a');
     const settings = PlatformPublishSettings(
+      aiCaptionPlatforms: {
+        SocialPlatform.tiktok,
+        SocialPlatform.instagramReels,
+      },
       platformCaptions: {
         SocialPlatform.tiktok: 'TikTok ของฉัน',
         SocialPlatform.youtubeShorts: 'Shorts ของฉัน',
@@ -114,6 +118,8 @@ void main() {
     await store.saveDraft(request(video: video, platformSettings: settings));
     final restored = (await store.loadDraft('draft-1'))!;
     expect(restored.platformSettings, settings);
+    expect(restored.platformSettings.aiCaptionPlatforms,
+        {SocialPlatform.tiktok, SocialPlatform.instagramReels});
     expect(restored.caption, 'แคปชันร่าง');
     final active =
         restored.platformSettings.copyWith(usePlatformCaptions: true);

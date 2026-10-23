@@ -294,7 +294,17 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(430, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final fixture = _Fixture();
-    final draft = await fixture.seed();
+    final draft = await fixture.seed(
+      settings: const PlatformPublishSettings(
+        usePlatformCaptions: true,
+        platformCaptions: _captions,
+        aiCaptionPlatforms: {
+          SocialPlatform.tiktok,
+          SocialPlatform.youtubeShorts,
+        },
+        facebookPublishMode: FacebookPublishMode.publish,
+      ),
+    );
     await tester.pumpWidget(fixture.app(draft.id));
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 0);
@@ -302,6 +312,19 @@ void main() {
         tester, find.byKey(const ValueKey('uploader-video-preview-picker')));
     await goToUploaderStep(tester, 1);
     expect(find.byKey(const ValueKey('uploader-caption-field')), findsNothing);
+    for (final platform in [
+      SocialPlatform.tiktok,
+      SocialPlatform.youtubeShorts,
+      SocialPlatform.instagramReels,
+      SocialPlatform.facebookReels,
+    ]) {
+      final chip = tester.widget<FilterChip>(
+          find.byKey(ValueKey('ai-caption-target-${platform.apiValue}')));
+      expect(
+          chip.selected,
+          platform == SocialPlatform.tiktok ||
+              platform == SocialPlatform.youtubeShorts);
+    }
     for (final entry in _captions.entries) {
       final field =
           find.byKey(ValueKey('uploader-caption-${entry.key.apiValue}'));
@@ -318,6 +341,8 @@ void main() {
     final saved = (await fixture.store.loadDraft(draft.id))!;
     expect(saved.platformSettings.usePlatformCaptions, isTrue);
     expect(saved.platformSettings.platformCaptions, _captions);
+    expect(saved.platformSettings.aiCaptionPlatforms,
+        {SocialPlatform.tiktok, SocialPlatform.youtubeShorts});
     expect(saved.captionNeedsReview, isTrue);
     expect(saved.caption, 'แคปชั่นหลักที่ซ่อนไว้');
     expect(saved.videoName, 'replacement.mp4');
@@ -380,7 +405,7 @@ void main() {
         fixture.recovered.single.platformSettings, submitted.platformSettings);
   });
 
-  testWidgets('editing Facebook preserves TikTok consent until TikTok changes',
+  testWidgets('AI targets and Facebook edits preserve TikTok consent',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(430, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -411,13 +436,32 @@ void main() {
     await tester.tap(save);
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);
+    await _tap(tester, find.byKey(const ValueKey('ai-caption-target-TIKTOK')));
+    await _tap(
+        tester, find.byKey(const ValueKey('ai-caption-target-YOUTUBE_SHORTS')));
+    expect(
+        tester
+            .widget<FilterChip>(
+                find.byKey(const ValueKey('ai-caption-target-TIKTOK')))
+            .selected,
+        isTrue);
+    expect(
+        tester
+            .widget<FilterChip>(
+                find.byKey(const ValueKey('ai-caption-target-YOUTUBE_SHORTS')))
+            .selected,
+        isTrue);
+    await goToUploaderStep(tester, 3);
+    final confirm = find.byKey(const ValueKey('publish-review-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull,
+        reason: 'AI caption targets do not change TikTok publishing intent');
+    await goToUploaderStep(tester, 1);
     final facebook =
         find.byKey(const ValueKey('uploader-caption-FACEBOOK_REELS'));
     await tester.scrollUntilVisible(facebook, 250,
         scrollable: uploaderMainScroll);
     await tester.enterText(facebook, 'แก้ข้อความเฉพาะ Facebook');
     await goToUploaderStep(tester, 3);
-    final confirm = find.byKey(const ValueKey('publish-review-confirm'));
     expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull,
         reason: 'Facebook text does not change TikTok publishing intent');
     await goToUploaderStep(tester, 1);

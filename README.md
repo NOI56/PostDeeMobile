@@ -7,6 +7,27 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Choose AI caption channels (2026-10-23, local candidate)
+
+Advanced mode keeps all four manual caption editors, but AI generation starts
+with no channels selected. Choose 1–4 channels independently of the publishing
+destinations, then explicitly request AI for that selection. The preview,
+application and undo cover only those channels; other captions remain intact.
+Local post drafts remember the selection through mode switches and reopening.
+It is not a reusable channel/account preference or a field in post submissions.
+
+Existing billing stays at **one AI credit per request/set of 1–4 channels**;
+selecting fewer channels avoids unnecessary variants but does not discount that
+request. The existing fallback/refund rules remain unchanged. The deployed API
+already accepts a selected `platforms` subset; this follow-up introduces no
+backend runtime, schema, migration, configuration or deployment change.
+Candidate checks pass: 2,787 Mobile tests, 2,504 API tests, Mobile analyze,
+API static/schema checks and 28 Staging-configured widget smoke tests.
+Staging APK 12043 builds with the selector and intended environment verified
+inside the package. Device installation and actual provider acceptance remain
+unverified; this follow-up is not merged, pushed, deployed or installed. See its
+[scope and verification record](docs/superpowers/plans/2026-10-23-caption-target-selection.md).
+
 ## Four-platform captions (2026-10-23, Staging Live)
 
 The post composer's optional advanced caption mode hides the shared input and

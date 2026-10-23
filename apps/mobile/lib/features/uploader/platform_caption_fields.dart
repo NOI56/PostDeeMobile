@@ -14,6 +14,83 @@ const captionPlatforms = [
   SocialPlatform.facebookReels,
 ];
 
+class PlatformCaptionAiTargets extends StatelessWidget {
+  const PlatformCaptionAiTargets({
+    super.key,
+    required this.selectedPlatforms,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final Set<SocialPlatform> selectedPlatforms;
+  final ValueChanged<Set<SocialPlatform>> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = captionPlatforms.where(selectedPlatforms.contains).toSet();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('เลือกช่องทางให้ AI เขียน',
+            style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final platform in captionPlatforms)
+              FilterChip(
+                key: ValueKey('ai-caption-target-${platform.apiValue}'),
+                avatar: SocialPlatformLogo(platform: platform, size: 18),
+                label: Text(platform == SocialPlatform.facebookReels
+                    ? 'Facebook Page Video'
+                    : platform.label),
+                selected: selected.contains(platform),
+                onSelected: enabled
+                    ? (value) {
+                        final updated = {...selected};
+                        if (value) {
+                          updated.add(platform);
+                        } else {
+                          updated.remove(platform);
+                        }
+                        onChanged(updated);
+                      }
+                    : null,
+              ),
+          ],
+        ),
+        Wrap(
+          spacing: 8,
+          children: [
+            TextButton(
+              key: const ValueKey('ai-caption-select-all'),
+              onPressed: enabled && selected.length != captionPlatforms.length
+                  ? () => onChanged(captionPlatforms.toSet())
+                  : null,
+              child: const Text('เลือกทั้งหมด'),
+            ),
+            TextButton(
+              key: const ValueKey('ai-caption-clear-selection'),
+              onPressed:
+                  enabled && selected.isNotEmpty ? () => onChanged({}) : null,
+              child: const Text('ล้างที่เลือก'),
+            ),
+          ],
+        ),
+        Text('เลือกแล้ว ${selected.length} ช่องทาง · ใช้ 1 เครดิต AI ต่อครั้ง',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+        if (selected.isEmpty) ...[
+          const SizedBox(height: 4),
+          Text('เลือกอย่างน้อย 1 ช่องทาง',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+        ],
+      ],
+    );
+  }
+}
+
 class PlatformCaptionFields extends StatefulWidget {
   const PlatformCaptionFields({
     super.key,
@@ -128,75 +205,87 @@ class PlatformCaptionPreviewSheet extends StatelessWidget {
   final bool charged;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        key: const ValueKey('uploader-platform-ai-preview'),
-        height: MediaQuery.sizeOf(context).height * .85,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
-              child: Row(children: [
-                Expanded(
-                  child: Text(
-                      isFallback
-                          ? 'ตรวจข้อความสำรองทั้ง 4 ช่องทาง'
-                          : 'แคปชั่นจาก AI ทั้ง 4 ช่องทาง',
-                      style: Theme.of(context).textTheme.titleMedium),
-                ),
-                IconButton(
-                    tooltip: 'กลับไปเขียนเอง',
-                    onPressed: () => Navigator.pop(context, false),
-                    icon: const Icon(Icons.close)),
-              ]),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Text(
-                  isFallback
-                      ? 'AI วิเคราะห์คลิปไม่สำเร็จ กรุณาตรวจข้อความก่อนใช้'
-                          '${charged ? '' : ' · ไม่หักโควตา AI'}'
-                      : 'เลือกใช้แล้วแก้ต่อได้ ข้อความเดิมจะยังอยู่จนกดใช้',
-                  style: TextStyle(color: AppTheme.textSecondary)),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(children: [
-                  for (final platform in captionPlatforms)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: PostDeeCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(children: [
-                              SocialPlatformLogo(platform: platform, size: 24),
-                              const SizedBox(width: 8),
-                              Expanded(child: Text(platform.label)),
-                            ]),
-                            const SizedBox(height: 10),
-                            Text(captions[platform] ?? ''),
-                          ],
-                        ),
+  Widget build(BuildContext context) {
+    final platforms = captionPlatforms.where(captions.containsKey).toList();
+    final count = platforms.length;
+    final countLabel = count == 4 ? 'ทั้ง 4 ช่องทาง' : '$count ช่องทาง';
+    return SizedBox(
+      key: const ValueKey('uploader-platform-ai-preview'),
+      height: MediaQuery.sizeOf(context).height * .85,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
+            child: Row(children: [
+              Expanded(
+                child: Text(
+                    isFallback
+                        ? 'ตรวจข้อความสำรอง${count == 4 ? countLabel : ' $countLabel'}'
+                        : 'แคปชั่นจาก AI $countLabel',
+                    style: Theme.of(context).textTheme.titleMedium),
+              ),
+              IconButton(
+                  tooltip: 'กลับไปเขียนเอง',
+                  onPressed: () => Navigator.pop(context, false),
+                  icon: const Icon(Icons.close)),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Text(
+                isFallback
+                    ? 'AI วิเคราะห์คลิปไม่สำเร็จ กรุณาตรวจข้อความ $count ช่องทางก่อนใช้'
+                        '${charged ? '' : ' · ไม่หักโควตา AI'}'
+                    : 'เลือกใช้แล้วแก้ต่อได้ ข้อความเดิมจะยังอยู่จนกดใช้',
+                style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(children: [
+                for (final platform in platforms)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: PostDeeCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(children: [
+                            SocialPlatformLogo(platform: platform, size: 24),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                  platform == SocialPlatform.facebookReels
+                                      ? 'Facebook Page Video'
+                                      : platform.label),
+                            ),
+                          ]),
+                          const SizedBox(height: 10),
+                          Text(captions[platform]!),
+                        ],
                       ),
                     ),
-                ]),
+                  ),
+              ]),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+              child: FilledButton.icon(
+                key: const ValueKey('uploader-platform-ai-apply'),
+                onPressed:
+                    count > 0 ? () => Navigator.pop(context, true) : null,
+                icon: const Icon(Icons.check),
+                label: Text(
+                    count == 4 ? 'ใช้ทั้ง 4 แคปชั่น' : 'ใช้ $count แคปชั่น'),
               ),
             ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                child: FilledButton.icon(
-                  key: const ValueKey('uploader-platform-ai-apply'),
-                  onPressed: () => Navigator.pop(context, true),
-                  icon: const Icon(Icons.check),
-                  label: const Text('ใช้ทั้ง 4 แคปชั่น'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
+  }
 }

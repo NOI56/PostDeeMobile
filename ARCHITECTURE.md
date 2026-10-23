@@ -2,6 +2,38 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Selective caption-generation boundary (2026-10-23, local candidate)
+
+The uploader retains four manual platform-caption editors while keeping a
+separate `Set<SocialPlatform> aiCaptionPlatforms` for generation intent. That
+set starts empty, accepts 1–4 supported selections before an explicit request,
+and is independent of selected publishing destinations. Only the selected
+targets enter the existing real-clip request's `platforms` list. Preview and
+application merge just those variants into current caption drafts; selective
+undo restores those previous values without replacing unselected captions.
+Account/clip, selection, mode and selected-caption edit checks reject stale
+results. Unselected-caption edits during generation remain available and survive
+application and undo.
+
+`PlatformPublishSettings` includes the set in value equality and local-draft
+round trips, retaining it through mode changes and reopening. Optional
+`aiCaptionPlatforms` draft metadata serializes supported values in stable order;
+legacy drafts default to empty. Post/recovery API settings and reusable
+channel/account defaults exclude the metadata. Effective caption delivery,
+YouTube titles and existing TikTok consent invalidation keep their boundaries.
+
+The deployed endpoint already accepts a subset. Its one-operation/one-credit
+reservation per request of 1–4 channels, ownership/plan/cleanup checks and
+fallback/refund behavior remain unchanged. Fewer requested channels do not
+reduce the one-credit charge. This follow-up has no backend runtime, database,
+migration, provider integration, credential or configuration change. Combined
+checks pass 2,787 Mobile tests, 2,504 API tests, static/schema checks and 28
+Staging-configured widget smoke tests. APK 12043 builds with the expected
+package, Firebase project, API URL, monitoring release and selector confirmed.
+Device installation and actual provider acceptance remain unverified; no
+release is asserted. See the
+[implementation record](docs/superpowers/plans/2026-10-23-caption-target-selection.md).
+
 ## Advanced platform-caption boundary (2026-10-23, Staging Live)
 
 The existing uploader owns two local caption modes. Shared mode keeps the

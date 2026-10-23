@@ -404,6 +404,11 @@ and optional `maxLength`/`unit` (`utf8_bytes` or `utf16_units`). Reasons are
 the guard before account/media/provider work. Matching already accepted
 idempotent requests recover the original intent before new-request validation;
 TikTok's existing Direct-only caption rule and Inbox behavior are unchanged.
+Since 2026-10-24 (security Batch 5) new posts also reject any shared or
+per-platform caption longer than 63,206 UTF-16 units, the largest supported
+platform cap, with reason `CAPTION_TOO_LONG`. This bounds TikTok Inbox captions,
+which had no ceiling below the 1 MiB body limit. The check runs only when a post
+is created; already queued posts are not re-checked by the publisher.
 
 `POST /posts/submissions/recover` is an authenticated, strictly read-only lookup;
 POST keeps the private caption and original intent out of URLs/access logs. Send
@@ -1485,8 +1490,15 @@ Request:
 
 Validation:
 
-- `fileName` is required.
-- `contentType` must start with `video/` or `image/`.
+- `fileName` is required and at most 255 characters (2026-10-24).
+- `contentType` must be exactly `video/mp4`, `video/quicktime`, `image/jpeg`,
+  `image/png` or `image/webp` (2026-10-24; previously any `video/` or `image/`
+  prefix). The purpose-specific uploads below keep their own exact types.
+- A managed multipart session is refused with `409` and
+  `code: "UPLOAD_SESSION_LIMIT_REACHED"` when the owner already holds 10
+  unexpired `UPLOADING` sessions; the provider upload created for that request
+  is aborted. Expired sessions do not count. No sweeper retires expired
+  session rows or aborts their R2 uploads yet; account deletion still does.
 - `sizeBytes` must be positive and no larger than `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
 - For generic uploads, provided `width` and `height` must describe vertical
   9:16 media within a 2 percent tolerance.
@@ -1725,6 +1737,11 @@ safe HTTP(S) URLs, and bounds each signing attempt to 1.5 seconds. A missing,
 unsafe or failed URL is omitted while retaining the post. A successful cover
 does not also sign the clip. Neither query grants access to another owner's
 keys. These previews do not add cursor pagination to the legacy full history.
+Since 2026-10-24 (security Batch 5) limited and media requests ask the store for
+only that many newest posts (`take` in Postgres) instead of reading the whole
+history first. Plain `GET /posts`, used by Calendar, still returns the full
+history until the app supports pagination. The Prisma post store refuses a list
+without a `userId`.
 
 Response:
 
@@ -2039,7 +2056,9 @@ Post limit reached:
 ### `PATCH /posts/:id`
 
 Reschedules an authenticated user's queued post. Body:
-`{ "scheduledAt": "<ISO-8601 date>" }`. The route returns the updated `post`,
+`{ "scheduledAt": "<ISO-8601 date>" }`. Since 2026-10-24 this route and
+`POST /posts/:id/publish-now` read only the one owned post, not the owner's
+history. The route returns the updated `post`,
 returns `404` for a missing/non-queued user-owned post, and returns `503` when
 the publish queue cannot be rescheduled. The timestamp uses the same strict RFC
 3339 contract as post creation, must be in the future, and must be no more than
@@ -2065,6 +2084,11 @@ so queued or scheduled records can be removed safely.
 
 Registers the authenticated user's FCM token. Body:
 `{ "token": "...", "platform": "IOS|ANDROID|WEB" }`; `platform` is optional.
+
+Since 2026-10-24 (security Batch 5) `token` must be at most 4096 characters of
+`A-Z a-z 0-9 : _ . -`, otherwise `400` with `code: "DEVICE_TOKEN_INVALID"`.
+Each owner keeps the 10 most recently registered tokens; registering an
+eleventh removes the oldest, and the publish notifier reads at most those 10.
 
 Publish-result pushes include `data: { postId, type: "publish_result", userId }`,
 using the same owner as device-token selection. Mobile clears its in-app list
@@ -3134,7 +3158,8 @@ on-device render pipeline used by silence/segment cuts. Returns `400` when
 
 ### `GET /templates`
 
-Returns saved text templates for the authenticated user.
+Returns saved text templates for the authenticated user, newest first. Since
+2026-10-24 (security Batch 5) the list returns at most 200 templates.
 
 Response:
 
@@ -3148,6 +3173,12 @@ Response:
 ### `POST /templates`
 
 Creates a saved text template for the authenticated user.
+
+Limits (2026-10-24): `title` up to 120 characters and `body` up to 5000 after
+trimming, otherwise `400` with `code: "TEMPLATE_FIELD_TOO_LONG"`. One owner
+can keep up to 200 templates; the next create returns `409` with
+`code: "TEMPLATE_LIMIT_REACHED"`. The count check is not transactional, so a
+burst of concurrent creates can end slightly above 200.
 
 Request:
 

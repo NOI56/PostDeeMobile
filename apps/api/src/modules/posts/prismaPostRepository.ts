@@ -62,6 +62,7 @@ type PostDelegate = {
       OR?: Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>;
     };
     orderBy?: { createdAt: 'desc' } | { scheduledAt: 'asc' };
+    take?: number;
     select?: { createdAt: true; selectedPlatforms: true; addonPostUnits?: true } | { id: true; selectedPlatforms: true };
   }) => Promise<PrismaPost[]>;
   create: (args: {
@@ -338,10 +339,13 @@ export const createPrismaPostRepository = ({
   countMonthlyPostUnits: async (input) => countMonthlyUnits(prisma.post, input),
   countAddonPostUnits: async ({ userId }) => countAddonUnits(prisma.post, userId),
   list: async (filter) => {
-    const scheduledOnly = filter?.scheduledOnly ?? false;
+    // An unscoped list would read every owner's history in the shared process.
+    if (!filter?.userId) throw new Error('PostStore.list requires userId');
+    const scheduledOnly = filter.scheduledOnly ?? false;
+    const limited = filter.limit !== undefined;
     const posts = await prisma.post.findMany({
       where: {
-        userId: filter?.userId,
+        userId: filter.userId,
         ...(scheduledOnly
           ? {
               scheduledAt: {
@@ -350,7 +354,8 @@ export const createPrismaPostRepository = ({
             }
           : {})
       },
-      orderBy: scheduledOnly ? { scheduledAt: 'asc' } : { createdAt: 'desc' }
+      orderBy: scheduledOnly && !limited ? { scheduledAt: 'asc' } : { createdAt: 'desc' },
+      ...(limited ? { take: filter.limit } : {})
     });
 
     return posts.map(mapPost);

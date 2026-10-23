@@ -206,7 +206,7 @@ and social publication remain outside this presentation verification.
   runtime or request another deployment. Remaining limits are real-handset,
   live AI/provider and signed-iOS/store acceptance outside this UI release.
 
-## Outline-only selection follow-up — local candidate
+## Outline-only selection follow-up — implementation verification
 
 The user requested removing the green checkmarks over platform logos and using
 only a green outline for selected AI targets. Baseline `34076ef` was fetched and
@@ -238,3 +238,53 @@ not merge, push or install; the user subsequently requested `main/push/deploy`.
 The authorized delivery results are recorded below after verification. There
 were no live AI requests, charges, publications or account-data changes during
 local implementation.
+
+## Outline-only authorized delivery — 2026-10-23
+
+- The user authorized `main/push/deploy`. Feature source
+  `4a1c0f9c1d77d622460bc9eb0d3d82eaf81f52cf` was fast-forwarded into canonical
+  main and pushed to origin. The commit contains only the selector, its existing
+  regression test and this plan. Unrelated launcher, Staging-document and
+  generated-Windows edits are preserved and excluded.
+- [Current source CI](https://github.com/NOI56/PostDeeMobile/actions/runs/39987082397)
+  passed for exact head `4a1c0f9`: full Flutter tests **2,797 passed / 6 skipped**,
+  Flutter analysis and Staging configuration guards; Backend tests **2,566
+  passed / 25 skipped**, typecheck, build, Prisma validation and dependency audit.
+  The Backend result covers current main's integrated code, including the later
+  billing batch. It does not establish its live rollout prerequisites or deploy
+  that API. Local presentation checks above remain separately scoped evidence.
+- [iOS CI](https://github.com/NOI56/PostDeeMobile/actions/runs/39987082402) also
+  passed for `4a1c0f9`, including the no-codesign Xcode build, IPA payload and
+  artifact upload. This is an unsigned CI artifact, not an App Store or
+  TestFlight release.
+- Exact-source Staging APK **12045** was updated using the existing
+  `Invoke-PostDeeAndroidApkUpdate` helper with `install -r`. Package
+  `com.postdee.postdee_mobile.staging`, UID **10197** and internal volume are
+  retained. APK SHA-256 is
+  `56928fffd7236d7685ba52f3d86c0e22e1da876058093a41d32344ba5b023b4d`
+  (292,736,825 bytes), release `postdee-mobile@caption-target-border+12045`.
+  Embedded selector source matches the committed source. Firebase auth remains
+  enabled, local mock auth disabled and RevenueCat uses the existing Test Store.
+- After launch, the existing authenticated Pro account still showed 235/250
+  remaining monthly posts. Native checks confirm zero targets disable the AI
+  action and TikTok/YouTube can be selected. The final read-only screenshot shows
+  TikTok selected with a green outline, no checkmark and unobscured logos.
+- Complete four-target native interaction was not accepted: the emulator screen
+  changed independently during inspection, so all automated input was stopped.
+  Current advanced-caption state is preserved with one TikTok target selected.
+  Full four-target behavior remains covered by the selector/widget tests;
+  partial native smoke must not be reported as complete four-target acceptance.
+- No live AI request, credit charge, upload, post, purchase, draft save or writing
+  profile save was performed. No uninstall, app-data clearing or volume move was
+  used. Evidence includes `border-release-native-acceptance.json`,
+  `border-release-native-final.png` and `border-release-installed-package.json`
+  in the existing artifact directory.
+- Render My Workspace's Staging API remains Live at `dab94fb` /
+  `dep-dbdl0mbncjis73aihrh0`; `/health` and `/ready` return HTTP 200 with database
+  and queue `ok`. This UI-only change needs no backend deployment, schema or
+  environment change. The later billing-security API batch retains its separate
+  rollout prerequisites; it was not deployed or accepted by this task.
+- The final receipt updates only README, ROADMAP, ARCHITECTURE and this plan,
+  using the established `[skip ci] [skip render]` suffixes. The tested Mobile
+  runtime is unchanged. Remaining limits are full native four-target interaction,
+  real handsets, live AI/provider behavior and signed iOS/store delivery.

@@ -16,12 +16,15 @@ Select-all/clear actions and a separate cost row are removed; writing style and
 clip guidance remain available behind the style action. The four manual
 editors, remembered draft targets, selected-only preview/apply/undo and existing
 one-credit request for 1–4 channels are retained. This changes no API, contract,
-quota or backend runtime. Source `2ef8399` is on main and Staging APK **12044**
-is installed with the existing account and storage retained. The full local
-Mobile suite (2,797 passed / 6 skipped), analysis, 35 Staging-configured checks
-and source CI pass; native selection/style-cancel checks also pass without
-spending AI credit or publishing. The current API already supports this UI, so
-it is retained without a redeploy. See the
+quota or backend runtime. Follow-up source `4a1c0f9` is on main and Staging APK
+**12045** is installed with the existing account and storage retained. Selected
+channels now use only a green outline, with no checkmark covering their logos.
+The follow-up passes analysis, 35 Staging-configured checks and light/dark
+real-font rendering checks. Native checks confirm the new appearance and
+zero/two-target behavior; complete four-target native interaction was stopped
+when the screen changed independently. Earlier compact-panel full-suite and
+style-cancel evidence remains recorded separately. No AI credit was spent or
+post published. The current API supports this UI without a redeploy. See the
 [compact-panel record](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
 ## Choose AI caption channels (2026-10-23, Staging Live)

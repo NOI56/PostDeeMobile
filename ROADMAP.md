@@ -12,10 +12,13 @@ Build roadmap for PostDee.
 - Preserve four manual editors, draft targets, selected-only AI preview/apply/
   undo and one credit per request of 1–4 channels. No API, contract, quota,
   schema or backend change is introduced.
-- Source `2ef8399` is merged/pushed to main; Staging APK 12044 is installed
-  with account, UID and internal storage retained. Local Mobile 2,797/6 skipped,
-  analyzer, 35 Staging checks, source CI and native selection/style-cancel
-  acceptance pass. No live AI request, profile save or publication was made.
+- Follow-up source `4a1c0f9` is merged/pushed to main; Staging APK 12045 is
+  installed with account, UID and internal storage retained. Selected targets
+  show only a green border and unobscured logos. Analyzer, 35 Staging checks,
+  semantics and light/dark rendering pass. Native zero/two-target checks pass;
+  all-four native interaction was stopped after independent screen changes.
+  Earlier compact-panel full-suite/style-cancel evidence is recorded separately.
+  No live AI request, profile save or publication was made.
   The UI uses the existing API without a backend redeploy. Track results in the
   [compact-panel plan](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 

@@ -11,17 +11,19 @@ full saved writing-profile controls. Those values retain their current owner,
 draft and request boundaries rather than becoming a second profile system.
 The helper is `เลือกช่องทางที่ต้องการ`; the single generation action shows
 `สร้างแคปชั่น · 1 เครดิต` and is disabled for an empty target set. Separate
-select-all, clear-selection and cost rows are removed from this panel.
+select-all, clear-selection and cost rows are removed from this panel. Selected
+targets retain the normal surface and use a green outline without a checkmark;
+the accessible selected state remains intact.
 
 All four manual editors, local target persistence, selected-only preview/apply/
 undo, stale-result checks and publishing destinations remain independent and
 unchanged. There is no API, data contract, schema, migration, quota or backend
 runtime change: a set of 1–4 generated channels still uses one credit. Source
-`2ef8399` is on main; installed Staging APK 12044 preserves account/storage and
-passes native compact selection and staged-guidance Cancel/reopen checks. Its
-local and source-CI verification is recorded separately from the earlier
-selector release. The deployed API is retained because this UI needs no API
-change. See its
+`4a1c0f9` is on main; installed Staging APK 12045 preserves account/storage.
+The outline-only follow-up has local light/dark, semantics and Staging suite
+coverage plus partial native selection checks. Earlier compact-panel full-suite
+and staged-guidance Cancel/reopen checks remain historical evidence. The
+deployed API is retained because this UI needs no API change. See its
 [scope and acceptance](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
 ## Selective caption-generation boundary (2026-10-23, Staging Live)

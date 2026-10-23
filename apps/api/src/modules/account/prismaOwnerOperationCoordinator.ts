@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { lockActiveOwner, type PrismaOwnerLifecycleTransaction } from './ownerLifecycle.js';
 import { createOwnerOperationQueue, OwnerOperationBusyError, type RunWithActiveOwner } from './ownerOperationQueue.js';
+import { retryOwnerSerializationConflict } from './ownerSerializationRetry.js';
 import type { UploadOwnerStatus } from '../uploads/uploadSessionStore.js';
 
 type OwnerOperationContext = {
@@ -96,15 +97,9 @@ export const assertOwnerDrained = async (transaction: Pick<PrismaOwnerOperationT
 };
 
 const runSerializable = async <T>(prisma: PrismaOwnerOperationClient, operation: (transaction: PrismaOwnerOperationTransaction) => Promise<T>) => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await prisma.$transaction(operation, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 10000 });
-    } catch (error) {
-      const conflict = typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034';
-      if (!conflict || attempt === 2) throw error;
-    }
-  }
-  throw new Error('Owner operation transaction retry exhausted');
+  return retryOwnerSerializationConflict(() => prisma.$transaction(operation, {
+    isolationLevel: 'Serializable', maxWait: 5000, timeout: 10000
+  }));
 };
 
 export const createPrismaOwnerOperationCoordinator = ({

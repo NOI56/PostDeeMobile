@@ -1,4 +1,5 @@
 import { UploadSessionConflictError, type UploadOwnerStatus } from '../uploads/uploadSessionStore.js';
+import { retryOwnerSerializationConflict } from './ownerSerializationRetry.js';
 
 export type PrismaOwnerLifecycleTransaction = {
   managedUploadOwner: {
@@ -39,16 +40,8 @@ export const runActiveOwnerTransaction = async <T, Transaction extends PrismaOwn
   ownerId: string,
   operation: (transaction: Transaction) => Promise<T>
 ): Promise<T> => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await prisma.$transaction(async (transaction) => {
-        await lockActiveOwner(transaction, ownerId);
-        return operation(transaction);
-      }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 10000 });
-    } catch (error) {
-      const conflict = typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034';
-      if (!conflict || attempt === 2) throw error;
-    }
-  }
-  throw new Error('Owner lifecycle transaction retry exhausted');
+  return retryOwnerSerializationConflict(() => prisma.$transaction(async (transaction) => {
+    await lockActiveOwner(transaction, ownerId);
+    return operation(transaction);
+  }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 10000 }));
 };

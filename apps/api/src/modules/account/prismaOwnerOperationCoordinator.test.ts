@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPrismaOwnerOperationCoordinator, retainCurrentOwnerOperation, type PrismaOwnerOperationClient } from './prismaOwnerOperationCoordinator.js';
+import { runActiveOwnerTransaction } from './ownerLifecycle.js';
 import { createInMemoryUploadSessionStore } from '../uploads/uploadSessionStore.js';
 
 const createFixture = () => {
@@ -33,6 +34,140 @@ const createFixture = () => {
 };
 
 describe('durable owner operation lifetime', () => {
+  it('backs off serialization conflicts before admitting once and running remote work once', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const fixture = createFixture();
+      const conflict = Object.assign(new Error('write conflict'), { code: 'P2034' });
+      vi.mocked(fixture.prisma.managedUploadOwner.updateMany)
+        .mockRejectedValueOnce(conflict).mockRejectedValueOnce(conflict);
+      const operation = vi.fn(async () => 'provider finished');
+      const result = fixture.coordinator().runWithOwnerLifetime('owner-a', operation);
+      const assertion = expect(result).resolves.toBe('provider finished');
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fixture.prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(operation).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(24);
+      expect(fixture.prisma.$transaction).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fixture.prisma.$transaction).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(49);
+      expect(fixture.prisma.$transaction).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      await assertion;
+
+      expect(fixture.prisma.$transaction).toHaveBeenCalledTimes(3);
+      expect(operation).toHaveBeenCalledTimes(1);
+      expect(fixture.prisma.managedOwnerOperation.create).toHaveBeenCalledTimes(1);
+      expect(fixture.operations.size).toBe(0);
+      for (const [, options] of vi.mocked(fixture.prisma.$transaction).mock.calls) {
+        expect(options).toEqual({ isolationLevel: 'Serializable', maxWait: 5000, timeout: 10000 });
+      }
+    } finally { vi.useRealTimers(); vi.restoreAllMocks(); }
+  });
+
+  it('spreads a startup burst across retries without serializing their remote callbacks', async () => {
+    vi.useFakeTimers();
+    let randomCall = 0;
+    vi.spyOn(Math, 'random').mockImplementation(() => (randomCall++ % 8) / 8);
+    try {
+      const fixture = createFixture();
+      const originalTransaction = vi.mocked(fixture.prisma.$transaction).getMockImplementation()!;
+      const conflict = Object.assign(new Error('write conflict'), { code: 'P2034' });
+      let transactionOpen = false;
+      vi.spyOn(fixture.prisma, '$transaction').mockImplementation(async (action, options) => {
+        if (transactionOpen) throw conflict;
+        transactionOpen = true;
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return await originalTransaction(action, options);
+        } finally { transactionOpen = false; }
+      });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const startupWrite = vi.fn(async () => 'profile loaded');
+      const operation = vi.fn(async () => {
+        await runActiveOwnerTransaction(fixture.prisma, 'owner-a', startupWrite);
+        await gate;
+        return 'provider finished';
+      });
+      const coordinator = fixture.coordinator();
+      const result = Promise.all(Array.from({ length: 8 }, () => coordinator.runWithOwnerLifetime('owner-a', operation)))
+        .then((value) => ({ value }), (error: unknown) => ({ error }));
+
+      await vi.runAllTimersAsync();
+      expect(operation).toHaveBeenCalledTimes(8);
+      expect(startupWrite).toHaveBeenCalledTimes(8);
+      expect(fixture.operations.size).toBe(8);
+      expect(vi.mocked(fixture.prisma.$transaction).mock.calls.length).toBeLessThanOrEqual(96);
+      release();
+      expect(await result).toEqual({ value: Array(8).fill('provider finished') });
+      expect(fixture.operations.size).toBe(0);
+    } finally { vi.useRealTimers(); vi.restoreAllMocks(); }
+  });
+
+  it('returns the last conflict after six admissions without running remote work', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const fixture = createFixture();
+      const conflict = Object.assign(new Error('write conflict'), { code: 'P2034' });
+      vi.mocked(fixture.prisma.managedUploadOwner.updateMany).mockRejectedValue(conflict);
+      const operation = vi.fn();
+      const startedAt = Date.now();
+      const result = fixture.coordinator().runWithOwnerLifetime('owner-a', operation);
+      const assertion = expect(result).rejects.toBe(conflict);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fixture.prisma.$transaction).toHaveBeenCalledTimes(1);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(fixture.prisma.$transaction).toHaveBeenCalledTimes(6);
+      expect(Date.now() - startedAt).toBe(575);
+      expect(operation).not.toHaveBeenCalled();
+      expect(fixture.operations.size).toBe(0);
+    } finally { vi.useRealTimers(); vi.restoreAllMocks(); }
+  });
+
+  it('allows another owner to finish while the conflicting owner waits to retry', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const fixture = createFixture();
+      const updateMany = fixture.prisma.managedUploadOwner.updateMany;
+      let conflicts = 0;
+      fixture.prisma.managedUploadOwner.updateMany = vi.fn(async (input) => {
+        if (input.where.ownerId === 'owner-a' && conflicts++ < 2) {
+          throw Object.assign(new Error('write conflict'), { code: 'P2034' });
+        }
+        return updateMany(input);
+      });
+      const coordinator = fixture.coordinator();
+      const firstOperation = vi.fn(async () => 'first');
+      const secondOperation = vi.fn(async () => 'second');
+      const first = coordinator.runWithOwnerLifetime('owner-a', firstOperation);
+      const second = coordinator.runWithOwnerLifetime('owner-b', secondOperation);
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(second).resolves.toBe('second');
+      expect(firstOperation).not.toHaveBeenCalled();
+      expect(secondOperation).toHaveBeenCalledTimes(1);
+      await vi.runAllTimersAsync();
+      await expect(first).resolves.toBe('first');
+      expect(firstOperation).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); vi.restoreAllMocks(); }
+  });
+
+  it('does not replay an external callback whose error happens to carry P2034', async () => {
+    const fixture = createFixture();
+    const conflict = Object.assign(new Error('remote error'), { code: 'P2034' });
+    const operation = vi.fn(async () => { throw conflict; });
+    await expect(fixture.coordinator().runWithOwnerLifetime('owner-a', operation)).rejects.toBe(conflict);
+    expect(fixture.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(fixture.operations.size).toBe(1);
+  });
+
   it('keeps memory lifetime admission concurrent while deletion waits for both callbacks', async () => {
     const store = createInMemoryUploadSessionStore({ ownerOperationOptions: { maxWaitMs: 100, pollIntervalMs: 1 } });
     let release!: () => void; let bothEntered!: () => void; let entered = 0;

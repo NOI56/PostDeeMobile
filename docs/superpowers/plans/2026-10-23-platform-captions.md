@@ -166,3 +166,46 @@ AI preview cancel/apply, owner/clip switching, actual Gemini output and
 destination-specific publishing. No real posts, purchases, remote AI generation
 or customer quota mutations were performed by the automated tests documented
 above. UI/contract tests do not establish live provider quality or publication.
+
+## Release smoke finding: startup owner conflicts
+
+The initial release commit `6b06c63fba5504437b7f3577f1d3c7cf1a5ac467`
+passed GitHub API/Flutter CI run `39945496579` and iOS no-codesign build
+`39945497035`. Render deployment `dep-dbdka3jrjlhs73djk010` became Live at
+2026-10-23 18:30:45 GMT+7. Node 22.23.3, all 22 existing migrations/no pending,
+the empty-backlog guard, scheduler, health/readiness and authentication barriers
+passed. APK 12042 was then installed over 12041, preserving the package UID,
+storage and app data, with no uninstall or data clearing.
+
+Installed-app smoke found the Home subscription failed with HTTP 503 during
+concurrent startup requests. Runtime logs at 11:32:22Z show `P2034` on
+`managedUploadOwner.updateMany()` in `lockActiveOwner`, called from coordinator
+admission. The pre-existing policy immediately retried Serializable transactions
+only three times. No caption code or migration introduced that shared marker
+row, but the release cannot be treated as ready while this normal flow fails.
+
+The narrow follow-up shares one bounded `P2034` retry helper between coordinator
+admission/deletion and `runActiveOwnerTransaction`. It keeps Serializable
+isolation, row locks, deletion checks, error propagation and external-operation
+lifetimes unchanged. Six attempts add positive randomized waits of 25–49,
+50–99, 100–199, 200–399 and 200–399ms after failed transactions, at most
+1,145ms of backoff; other errors never retry. Existing billing outer retries
+can therefore make 18 failed transaction attempts, with at most 3,495ms of total
+backoff including their existing outer waits; production billing code is unchanged.
+No provider call, purchase, queue acknowledgement or publication is replayed by
+this transaction-only helper.
+
+Red/green regressions reproduce eight simultaneous admissions and combined
+admission/store contention, preserving eight concurrently running callbacks.
+Three attempts with delays still recovered only four of eight admissions;
+six recover the tested burst. Tests retain bounded exhaustion/original errors,
+zero failed add-on grants, other-owner progress and deletion/tombstone fences.
+Follow-up validation passed on Node 22.23.3: **2,500 tests passed, 25 skipped**
+(**150 suites passed, 4 skipped**, 70.94s), plus typecheck, build, Prisma schema
+validation and Prisma helper checks. The focused owner/billing regressions pass
+**33 tests**. No API contract, schema, environment variable or Mobile source
+changed in this follow-up; APK 12042 remains the exact verified Mobile candidate.
+Evidence: `owner-conflict-targeted.log`,
+`owner-conflict-full-tests-final.log` and `owner-conflict-check-results.json`
+in the ignored artifact directory. The replacement deploy and installed-app
+dashboard verification will be recorded after they pass.

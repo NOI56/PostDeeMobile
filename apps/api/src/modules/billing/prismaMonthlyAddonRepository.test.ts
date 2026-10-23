@@ -16,17 +16,28 @@ const fixture = () => {
 describe('Prisma monthly add-on ledger', () => {
   it('retries an exhausted inner serialization race at the bounded purchase-ledger boundary', async () => {
     const { store, tx, $transaction } = fixture();
-    $transaction.mockRejectedValueOnce({ code: 'P2034' }).mockRejectedValueOnce({ code: 'P2034' })
-      .mockRejectedValueOnce({ code: 'P2034' });
+    for (let attempt = 0; attempt < 6; attempt += 1) $transaction.mockRejectedValueOnce({ code: 'P2034' });
     await expect(store.applyPurchase(input)).resolves.toMatchObject({ applied: true });
-    expect($transaction).toHaveBeenCalledTimes(4);
+    expect($transaction).toHaveBeenCalledTimes(7);
     expect(tx.monthlyAddonPurchase.create).toHaveBeenCalledTimes(1);
   });
   it('keeps persistent serialization failures bounded without granting any credit', async () => {
-    const { store, tx, $transaction } = fixture(); $transaction.mockRejectedValue({ code: 'P2034' });
-    await expect(store.applyPurchase(input)).rejects.toMatchObject({ code: 'P2034' });
-    expect($transaction).toHaveBeenCalledTimes(9);
-    expect(tx.monthlyAddonPurchase.create).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.999999);
+    try {
+      const { store, tx, $transaction } = fixture();
+      const conflict = Object.assign(new Error('persistent write conflict'), { code: 'P2034' });
+      $transaction.mockRejectedValue(conflict);
+      const startedAt = Date.now();
+      const assertion = expect(store.applyPurchase(input)).rejects.toBe(conflict);
+      await vi.runAllTimersAsync();
+      await assertion;
+      // Three owner retry budgets plus the existing 20ms and 40ms ledger pauses.
+      expect(Date.now() - startedAt).toBe(3 * 1145 + 20 + 40);
+      expect($transaction).toHaveBeenCalledTimes(18);
+      expect(tx.monthlyAddonPurchase.create).not.toHaveBeenCalled();
+      expect(tx.monthlyAddonPurchase.update).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); vi.restoreAllMocks(); }
   });
   it('reads all-time valid grants from the same supplied transaction', async () => {
     const { tx } = fixture();

@@ -16,6 +16,7 @@ import '../shared/postdee_notice.dart';
 import '../shared/postdee_press_feedback.dart';
 import '../shared/postdee_publishing_motion.dart';
 import '../shared/postdee_skeleton.dart';
+import '../shared/postdee_time_picker.dart';
 import '../shared/publishing_availability.dart';
 import 'calendar_cover_preview_cache.dart';
 
@@ -585,9 +586,10 @@ class _CalendarScreenState extends State<CalendarScreen>
       return;
     }
 
-    final time = await showTimePicker(
+    final time = await showPostDeeTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
+      date: date,
     );
     if (time == null || !mounted || !_loadStillOwned(generation, ownerUserId)) {
       return;

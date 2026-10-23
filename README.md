@@ -7,6 +7,22 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Wheel time selection (2026-10-24)
+
+Create Post and Calendar rescheduling share a 24-hour Flutter wheel picker.
+Hours and minutes loop independently (`23 → 00 → 01`, `59 → 00 → 01`), without
+changing the chosen date. Existing time is preselected; a new uploader schedule
+keeps its 18:30 default. Cancel leaves the previous time intact. The selected
+time uses the device's local timezone and the existing UTC request serialization.
+Future-time checks, Starter's 14-day/Pro's 30-day rolling limits, quotas and
+account safeguards remain unchanged. No API, schema or backend change is needed.
+The full Mobile suite (2,819 passed / 6 skipped), analysis, 93 Staging-configured
+checks and exact-source Staging APK 12046 pass. Real-font checks cover both
+themes and narrow enlarged text. The user authorized main/push after verifying
+the implementation. APK installation and native acceptance remain pending;
+the installed app is unchanged. See the
+[wheel-picker work record](docs/superpowers/plans/2026-10-24-wheel-time-picker.md).
+
 ## Compact caption AI panel (2026-10-23, Staging delivered)
 
 The advanced caption panel uses the header `ให้ AI ช่วยเขียน`, a `สไตล์`

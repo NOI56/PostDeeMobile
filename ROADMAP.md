@@ -2,6 +2,20 @@
 
 Build roadmap for PostDee.
 
+## Looping wheel time picker (2026-10-24)
+
+- Share one 24-hour Flutter wheel picker between Create Post and Calendar
+  rescheduling. Loop hours/minutes independently without altering the date.
+- Preserve the initial existing time, uploader 18:30 fallback, Cancel semantics,
+  device-local display and UTC request serialization.
+- Keep future-time/Starter 14-day/Pro 30-day rolling limits, monthly quota,
+  auth/owner checks and queue safeguards unchanged. No API or migration change.
+- Full Mobile tests (2,819 passed / 6 skipped), analyzer, 93 Staging-configured
+  checks, real-font light/dark rendering and exact-source APK 12046 pass.
+  The user subsequently authorized main/push. Native installation/acceptance
+  and backend deployment are not part of that Git delivery. Record results in the
+  [wheel-picker plan](docs/superpowers/plans/2026-10-24-wheel-time-picker.md).
+
 ## Compact caption AI controls (2026-10-23, Staging delivered)
 
 - Replace the advanced target chips with a uniform two-by-two grid under

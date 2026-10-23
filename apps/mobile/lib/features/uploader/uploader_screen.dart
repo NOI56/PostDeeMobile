@@ -23,6 +23,7 @@ import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_press_feedback.dart';
 import '../shared/postdee_status_sheet.dart';
+import '../shared/postdee_time_picker.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
@@ -1910,17 +1911,22 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _pickCustomScheduleTime() async {
+    final session = PostDeeAuthSessionStore.instance.captureSession();
+    final generation = _draftLoadGeneration;
+    bool stillCurrent() =>
+        mounted && session.isCurrent && generation == _draftLoadGeneration;
     if (_scheduleSubscription == null && await _loadSchedulePolicy() == null) {
       return;
     }
-    if (!mounted) return;
-    final picked = await showTimePicker(
+    if (!mounted || !stillCurrent()) return;
+    final picked = await showPostDeeTimePicker(
       context: context,
       initialTime:
           _selectedScheduleTime ?? const TimeOfDay(hour: 18, minute: 30),
+      date: _selectedScheduleDate ?? _scheduleDateFromToday(1),
     );
 
-    if (picked == null || !mounted) {
+    if (picked == null || !stillCurrent()) {
       return;
     }
 

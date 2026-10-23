@@ -2,6 +2,26 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Shared wheel time picker (2026-10-24)
+
+`features/shared/postdee_time_picker.dart` provides a 24-hour Flutter
+`CupertinoPicker` presentation for uploader schedule time and Calendar
+rescheduling, replacing their `showTimePicker` calls. Separate looping hour and
+minute wheels return a confirmed `TimeOfDay`; Cancel/dismissal returns no change.
+The caller retains its selected date, existing time or uploader 18:30 default.
+Wheel wrap does not carry into the other column or advance/reverse the date.
+
+Callers keep the device-local date/time composition and downstream API client's
+UTC serialization. Existing future/rolling-instant checks, Starter 14-day/Pro
+30-day limits, plan/monthly quota rules, owner/auth guards and queue mutation
+boundaries remain authoritative. This adds no API contract, database, migration,
+provider or backend runtime change. Uploader also binds the pending choice to
+the captured auth session and draft generation, rejecting an old result after
+an account A-to-B-to-A change. Candidate tests, analysis and exact-source APK
+12046 pass. The user authorized main/push; installation and native acceptance
+remain pending. See the
+[scope and checks](docs/superpowers/plans/2026-10-24-wheel-time-picker.md).
+
 ## Compact caption AI presentation (2026-10-23, Staging delivered)
 
 The advanced uploader keeps its generation state and request pipeline while

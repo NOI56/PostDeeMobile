@@ -660,7 +660,7 @@ void main() {
     plan = 'STARTER';
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
     await tester.pumpAndSettle();
     expect(checks, 2);
     expect(calls, 0);
@@ -703,6 +703,108 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(CalendarDatePicker), findsNothing);
     expect(calls, 0);
+  });
+
+  testWidgets('cancelling the reschedule wheel keeps the queue without PATCH',
+      (tester) async {
+    final now = DateTime(2026, 10, 8, 12);
+    final post = _queuedFixture(now);
+    var calls = 0;
+    var planChecks = 0;
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => now,
+      loadScheduledPosts: () async => [post],
+      loadSubscription: () async {
+        planChecks++;
+        return _scheduleSubscription('PRO');
+      },
+      reschedulePost: (_, __) async {
+        calls++;
+        return post;
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text(post.caption));
+    await tester.tap(find.text(post.caption));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('postdee-time-picker')), findsOneWidget);
+    final summary = find.byKey(const ValueKey('postdee-time-summary'));
+    Finder summaryText() => find.descendant(of: summary, matching: find.byType(Text));
+    final previousSummary = tester.widgetList<Text>(summaryText())
+        .map((text) => text.data).toList();
+    await tester.drag(find.byKey(const ValueKey('postdee-time-minute-picker')),
+        const Offset(0, -100));
+    await tester.pumpAndSettle();
+    expect(tester.widgetList<Text>(summaryText()).map((text) => text.data).toList(),
+        isNot(previousSummary));
+    await tester.ensureVisible(find.byKey(const ValueKey('postdee-time-cancel')));
+    await tester.tap(find.byKey(const ValueKey('postdee-time-cancel')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('postdee-time-picker')), findsNothing);
+    expect(calls, 0);
+    expect(planChecks, 1);
+    expect(post.scheduledAt, now.add(const Duration(days: 20)));
+    expect(find.text(post.caption), findsOneWidget);
+    await tester.ensureVisible(find.text(post.caption));
+    await tester.tap(find.text(post.caption));
+    await tester.pumpAndSettle();
+    expect(find.text('เลื่อนเวลา'), findsOneWidget,
+        reason: 'Cancelling the wheel must release the queued-post action lock');
+  });
+
+  testWidgets('an old reschedule wheel cannot PATCH after owner A to B to A',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final previous = sessions.session;
+    sessions.signIn(AuthSession.authenticated(
+        userId: 'wheel-owner-a', idToken: 'test-a'));
+    addTearDown(() => sessions.signIn(previous));
+    final now = DateTime(2026, 10, 8, 12);
+    final post = _queuedFixture(now);
+    var calls = 0;
+    var planChecks = 0;
+    await tester.pumpWidget(_calendarApp(CalendarScreen(
+      now: () => now,
+      loadScheduledPosts: () async =>
+          sessions.session.stableUserId == 'wheel-owner-a' ? [post] : [],
+      loadSubscription: () async {
+        planChecks++;
+        return _scheduleSubscription('PRO');
+      },
+      reschedulePost: (_, __) async {
+        calls++;
+        return post;
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text(post.caption));
+    await tester.tap(find.text(post.caption));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('เลื่อนเวลา'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('postdee-time-picker')), findsOneWidget);
+
+    sessions.signIn(AuthSession.authenticated(
+        userId: 'wheel-owner-b', idToken: 'test-b'));
+    await tester.pumpAndSettle();
+    sessions.signIn(AuthSession.authenticated(
+        userId: 'wheel-owner-a', idToken: 'test-a-new'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(calls, 0);
+    expect(planChecks, 1,
+        reason: 'A stale wheel must stop before fresh-plan or PATCH requests');
+    expect(post.scheduledAt, now.add(const Duration(days: 20)));
+    expect(tester.takeException(), isNull);
   });
 
   for (final plan in ['STARTER', 'PRO']) {
@@ -978,7 +1080,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
     await tester.pump();
 
     expect(
@@ -1103,7 +1205,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
     await tester.pump();
 
     staleRefresh.complete([originalPost]);
@@ -1171,7 +1273,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
     await tester.pump();
 
     staleRefresh.complete([originalPost]);
@@ -1371,7 +1473,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
     await tester.pumpAndSettle();
 
     expect(rescheduleCalls, 1);
@@ -1472,7 +1574,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
     await tester.pumpAndSettle();
 
     expect(rescheduleCalls, 0);

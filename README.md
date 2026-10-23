@@ -1860,6 +1860,11 @@ access requires an isolated server configured as `SANDBOX`; missing purchase
 provenance cannot grant paid access. Mismatched subscription lifecycle webhooks
 are acknowledged with HTTP 202 without changing access or the ordering cursor.
 
+RevenueCat promotional grants do not unlock paid access. A fresh resync with
+only promotional entitlements lacking verified purchase provenance cancels the
+matching RevenueCat subscription. Use PostDee's audited admin-console trial
+flow instead; an independent valid admin trial remains available.
+
 `TRANSFER` re-reads both source and destination subscribers for existing active
 PostDee users, then reconciles each through the same durable per-user cursor.
 It does not grant from the transfer payload alone or create unknown users.

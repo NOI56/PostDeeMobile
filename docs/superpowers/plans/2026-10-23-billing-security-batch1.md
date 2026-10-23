@@ -1,6 +1,9 @@
 # Billing security remediation: Batch 1
 
-Baseline: latest `origin/main` at `6b06c63fba5504437b7f3577f1d3c7cf1a5ac467`.
+Original reproduction baseline: `6b06c63fba5504437b7f3577f1d3c7cf1a5ac467`.
+Current integration baseline after rebase: latest verified `origin/main` at
+`a391bc47cc8158a38e14041ee9723ba0ebf97ef9` (2026-10-23). The owner-transaction
+retry/backoff and startup fixes from this newer main are preserved.
 Implementation branch: `codex/security-batch1-billing`, in its own clean worktree.
 Only audit run-2 Batch 1 is in scope. Existing API request/response contracts,
 mobile purchase readiness, trials, add-on quantities and non-expiry policy remain.
@@ -18,6 +21,30 @@ mock authentication, memory stores and injected subscriber responses:
 These are local development reproductions, not deployed/provider acceptance
 tests. No live customers, purchases, credentials or dashboards were used.
 
+Independent RED confirmation repeated the committed regression test files on
+both original main `6b06c63` and latest pre-fix runtime main `a391bc4`, with
+unchanged Git blob hashes. Both runs exited 1 with five behavioral assertion
+failures (50 other cases filtered out), with no import/setup failure:
+
+| Exact failing test title | Expected | Before-fix result |
+| --- | --- | --- |
+| `does not restore a sandbox Test Store starter subscription into production` | BASIC | STARTER |
+| `does not restore a sandbox Test Store pro subscription into production` | BASIC | PRO |
+| `acknowledges a sandbox subscription webhook without activating a production plan` | HTTP 202 | HTTP 200 |
+| `does not grant production add-on credits from the Test Store` | Purchase rejected | Granted with `applied: true` |
+| `revokes the source after restore transfers its subscription to another existing account` | Source BASIC, destination PRO | Both PRO |
+
+Reproduce by adding the two committed regression files to an isolated worktree
+at either pre-fix baseline and running:
+
+```powershell
+npm.cmd run test -- --maxWorkers=1 --no-file-parallelism src/modules/billing/revenueCatSubscriptionEnvironment.test.ts src/modules/billing/revenueCatTransferRoutes.test.ts -t '(does not restore a sandbox Test Store (starter|pro) subscription into production|acknowledges a sandbox subscription webhook without activating a production plan|does not grant production add-on credits from the Test Store|revokes the source after restore transfers its subscription to another existing account)$'
+```
+
+Local evidence is retained in the separate detached
+`security-batch1-red-confirmation` worktree: `red-evidence.log`,
+`red-evidence-a391bc4.log` and `RED-CONFIRMATION.md` in its parent folder.
+
 ## Change boundaries
 
 - `REVENUECAT_SUBSCRIPTION_ENVIRONMENT` accepts `PRODUCTION` (default) or
@@ -26,6 +53,10 @@ tests. No live customers, purchases, credentials or dashboards were used.
   including lifetime purchases. Filter eligibility before choosing the paid plan.
 - Production accepts App Store/Play Store only. Test Store requires SANDBOX for
   both subscription and add-on purchases. Missing proof fails closed.
+- RevenueCat promotional entitlements without purchase provenance cannot grant
+  paid access. A fresh promotional-only resync cancels an existing matching
+  RevenueCat subscription; use the audited PostDee admin-console trial flow
+  instead. Separately valid admin trials remain independent.
 - Subscription lifecycle mismatch is ignored without advancing the cursor.
 - TRANSFER uses source/destination arrays, re-reads existing active owners and
   reconciles through the shared owner barrier and durable per-user cursor.
@@ -46,11 +77,13 @@ TRANSFER environment/store are optional; subscriber readback supplies proof.
 Deliver as one reviewable PR; do not merge/push main, deploy, or change dashboards.
 When separately authorized to release:
 
-1. Confirm separate production/test project and webhook configuration, matching
-   product/entitlement IDs and restore/transfer behavior in RevenueCat.
-2. Set subscription environment explicitly before the API rollout: SANDBOX for
-   isolated Staging, PRODUCTION for production. Verify the separate add-on
-   environment too. Keep the REST v1 key server-only and available for TRANSFER.
+1. **Before deploying**, set `REVENUECAT_SUBSCRIPTION_ENVIRONMENT=SANDBOX` in
+   the **Render dashboard for Staging**. The Blueprint declaration alone is not
+   evidence that a live service has the value. Production must use PRODUCTION.
+   Verify the separate add-on environment and server-only REST v1 key too.
+2. Enable the **TRANSFER event** in the **RevenueCat webhook** that delivers
+   to the target API. Confirm its URL/authentication, project/environment/app
+   filters, matching product/entitlement IDs and restore/transfer behavior.
 3. Deploy the API first, with no schema/mobile migration. Verify Staging sandbox
    purchase/restore, transfer source loss/destination access, independent source
    purchases, duplicate/out-of-order delivery and provider-failure retry behavior.

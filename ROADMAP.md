@@ -1163,9 +1163,12 @@ Current status:
 - Backend RevenueCat webhook and authenticated subscriber resync paths are
   hardened in the Batch 1 source change with explicit subscription environment/
   store validation, production Test Store rejection and TRANSFER reconciliation
-  through existing owner/cursor guards. This work does not deploy changes or
-  establish live production billing acceptance; owner configuration and staged
-  validation remain required. See
+  through existing owner/cursor guards. RevenueCat promotional grants do not
+  unlock paid access; trial access uses the existing audited
+  admin-console trial flow. Promotional-only resync cancellation has explicit
+  regression coverage. This work does not establish live production billing
+  acceptance or deploy changes; owner configuration and staged validation remain
+  required. See
   `docs/superpowers/plans/2026-10-23-billing-security-batch1.md`.
 - Backend RevenueCat webhook and authenticated subscriber resync paths are
   prepared; mobile `purchases_flutter` purchase/restore is wired behind

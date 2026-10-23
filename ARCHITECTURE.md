@@ -2004,6 +2004,12 @@ same checks before any subscription/cursor mutation; mismatches receive 202.
 Add-on confirmation, webhooks and both ledger adapters also disallow production
 Test Store grants.
 
+RevenueCat promotional grants are ineligible paid access. If only promotional
+entitlements without purchase provenance remain, a fresh resync cancels the
+matching RevenueCat subscription through the normal cursor fence. Trial grants
+belong to the existing audited admin-console trial store, which is separate
+from purchased subscriptions and is not canceled by subscriber reconciliation.
+
 Authenticated webhook `TRANSFER` has a separate parser and reuses the same
 subscriber client as Restore. It admits mutations only for existing active
 owners, loads all participating subscriber snapshots before writing, then

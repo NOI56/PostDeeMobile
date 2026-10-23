@@ -3523,6 +3523,21 @@ entitlement, only the matching `revenuecat:<uid>` subscription is deactivated;
 paid access from another provider is left unchanged. A result containing only
 ineligible purchases is treated as no eligible paid access. An eligible active but unmapped
 entitlement is treated as configuration drift and never downgrades the user.
+
+RevenueCat promotional grants do **not** grant Starter/Pro access in PostDee.
+They are not a substitute for a verified store purchase: an entitlement lacking
+boolean `is_sandbox` or a supported `store` is ineligible, even when its ID maps
+to Pro/Starter or it has no expiry. If a fresh subscriber snapshot contains only
+such promotional entitlements and no eligible purchase, resync applies
+`CANCELED` to the existing matching `revenuecat:<uid>` subscription and returns
+`plan: BASIC`; this is a cancellation, not an unmapped-entitlement 409. Existing
+ordering protection still ignores stale/equal observations. Other-provider
+subscriptions and separately granted admin trials are not canceled by this path.
+Grant trial access through the PostDee admin console instead, using the existing
+trial-access configuration and audited owner-only trial command; do not grant
+trials as promotional entitlements in the RevenueCat dashboard. `effectivePlan`
+continues to report any valid admin trial separately from purchased access.
+
 The subscriber response's positive integer `request_date_ms` advances the same
 per-user ordering cursor used by webhooks, in the same serializable transaction
 as the subscription change. A snapshot older than, or equal to, the stored

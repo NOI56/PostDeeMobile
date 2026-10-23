@@ -115,6 +115,32 @@ describe('RevenueCat production purchase isolation', () => {
     expect((await restore(app).expect(200)).body.plan).toBe('PRO');
   });
 
+  it.each([
+    { missing: 'is_sandbox and store', metadata: undefined },
+    { missing: 'is_sandbox', metadata: { store: 'play_store' } },
+    { missing: 'store', metadata: { is_sandbox: false } }
+  ])('cancels an existing RevenueCat subscription when only a promotional entitlement lacks $missing', async ({ metadata }) => {
+    const userId = 'promotional-entitlement-owner';
+    const promotionalProductId = 'rc_promo_pro_lifetime';
+    const app = createApp({ config: config(), revenueCatSubscriberClient: subscriberClient({
+      pro: { product_identifier: promotionalProductId, expires_date: null }
+    }, metadata ? { [promotionalProductId]: metadata } : {}) });
+    await request(app).get('/billing/subscription').set('x-postdee-user-id', userId).expect(200);
+    await webhook(app, { id: 'verified-purchase-before-promotion', type: 'INITIAL_PURCHASE',
+      app_user_id: userId, entitlement_ids: ['pro'], product_id: 'postdee_pro_monthly',
+      environment: 'PRODUCTION', store: 'PLAY_STORE', event_timestamp_ms: observedAtMs - 1,
+      expiration_at_ms: Date.parse(expiration) }).expect(200);
+    const before = await request(app).get('/billing/subscription').set('x-postdee-user-id', userId).expect(200);
+    expect(before.body.subscription.plan).toBe('PRO');
+
+    const restored = await restore(app, userId).expect(200);
+
+    expect(restored.body).toMatchObject({ plan: 'BASIC', effectivePlan: 'BASIC',
+      subscription: { billingSubscriptionId: `revenuecat:${userId}`, status: 'CANCELED' } });
+    const after = await request(app).get('/billing/subscription').set('x-postdee-user-id', userId).expect(200);
+    expect(after.body.subscription.plan).toBe('BASIC');
+  });
+
   it('selects a permitted Starter entitlement before an ineligible sandbox Pro entitlement', async () => {
     const app = createApp({ config: config(), revenueCatSubscriberClient: subscriberClient({
       pro: { product_identifier: 'postdee_pro_monthly', expires_date: expiration },

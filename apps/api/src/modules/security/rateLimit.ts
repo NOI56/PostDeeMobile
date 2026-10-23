@@ -5,8 +5,12 @@ export type RateLimitOptions = {
   bucket: string;
   windowMs: number;
   maxRequests: number;
+  // Upper bound on remembered client addresses; the oldest is evicted first.
+  maxTrackedClients?: number;
   now?: () => number;
 };
+
+const DEFAULT_MAX_TRACKED_CLIENTS = 10_000;
 
 type RateBucket = {
   count: number;
@@ -30,21 +34,38 @@ export const createRateLimitMiddleware = ({
   bucket,
   windowMs,
   maxRequests,
+  maxTrackedClients = DEFAULT_MAX_TRACKED_CLIENTS,
   now = Date.now
 }: RateLimitOptions): RequestHandler => {
   const buckets = new Map<string, RateBucket>();
+  let nextSweepAt = 0;
 
   return (request, response, next) => {
     const currentTime = now();
-    deleteExpiredBuckets(buckets, currentTime);
+
+    // Sweep at most once per window instead of scanning every bucket on every
+    // request; an expired bucket that is still stored is replaced below.
+    if (currentTime >= nextSweepAt) {
+      deleteExpiredBuckets(buckets, currentTime);
+      nextSweepAt = currentTime + windowMs;
+    }
 
     const clientKey = `${bucket}:${readClientAddress(request)}`;
-    const currentBucket = buckets.get(clientKey) ?? {
-      count: 0,
-      resetAt: currentTime + windowMs
-    };
+    let currentBucket = buckets.get(clientKey);
+
+    if (!currentBucket || currentBucket.resetAt <= currentTime) {
+      buckets.delete(clientKey);
+
+      if (buckets.size >= maxTrackedClients) {
+        const oldestKey = buckets.keys().next().value;
+        if (oldestKey !== undefined) buckets.delete(oldestKey);
+      }
+
+      currentBucket = { count: 0, resetAt: currentTime + windowMs };
+      buckets.set(clientKey, currentBucket);
+    }
+
     currentBucket.count += 1;
-    buckets.set(clientKey, currentBucket);
 
     const remaining = Math.max(maxRequests - currentBucket.count, 0);
     const retryAfterSeconds = Math.max(

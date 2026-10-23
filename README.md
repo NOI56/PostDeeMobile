@@ -7,6 +7,17 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Identity and pre-auth hardening (2026-10-24, security Batch 4)
+
+The API stores a Firebase email only when the ID token marks it verified;
+unverified accounts keep `firebase-<uid>@postdee.local`. A verified address
+still held by another PostDee row also falls back instead of failing with `500`.
+The built-in Firebase verifier shares one certificate refresh, times out after
+5 seconds and briefly reuses a failed refresh. Per-IP rate limiters sweep at
+most once per window and cap remembered addresses at 10,000. No schema change,
+migration or mobile change. See
+[`2026-10-24-identity-preauth-security-batch4.md`](docs/superpowers/plans/2026-10-24-identity-preauth-security-batch4.md).
+
 ## Wheel time selection (2026-10-24)
 
 Create Post and Calendar rescheduling share a 24-hour Flutter wheel picker.

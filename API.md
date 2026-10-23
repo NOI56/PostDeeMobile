@@ -1297,6 +1297,21 @@ Authorization: Bearer <firebase-id-token>
 
 The backend reads `phone_number` from the verified Firebase ID token and treats it as phone verification for the Basic free quota.
 
+Since 2026-10-24 (security Batch 4) the backend stores the token's `email` only
+when the token also carries `email_verified: true`. Otherwise the account keeps
+the fallback address `firebase-<uid>@postdee.local`, so an unverified sign-up
+cannot occupy another person's address in the unique `User.email` column. If a
+verified address is still held by a different PostDee row (for example a
+deleted Firebase identity whose PostDee data remains), the new account also
+gets the fallback address instead of a `500`. Admin search and member trial
+confirmation therefore show the fallback address for unverified accounts.
+
+The built-in verifier (used when no Firebase service account is configured)
+shares one certificate refresh between concurrent requests, aborts the Google
+certificate fetch after 5 seconds, and reuses a failed refresh for 5 seconds.
+Per-IP rate limiters sweep expired entries at most once per window and remember
+at most 10,000 client addresses each, evicting the oldest first.
+
 ## Plans And Entitlements
 
 This table records the intended package contract, not a claim that every listed

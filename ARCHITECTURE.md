@@ -1461,6 +1461,16 @@ Express retains its single-hop `trust proxy = 1` setting. Its compatible
 dependency patch changes no route, authentication policy, custom rate limiter,
 database schema, or environment setting.
 
+Security Batch 4 (2026-10-24) keeps the same proxy setting and narrows the
+identity and pre-auth paths. Both Firebase verifiers pass `email` to the user
+store only when `email_verified === true`; the Prisma user repository retries
+an email unique conflict once with the per-UID fallback address and never
+rewrites the other row. The built-in verifier single-flights certificate
+refreshes with a 5-second fetch timeout and a 5-second failure cache. The
+in-process rate limiter sweeps once per window and caps each limiter at
+10,000 remembered client keys, evicting the oldest. See
+`docs/superpowers/plans/2026-10-24-identity-preauth-security-batch4.md`.
+
 ## Mobile App
 
 Path:

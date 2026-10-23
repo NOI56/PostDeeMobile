@@ -1150,6 +1150,11 @@ confirmation and cold callback remain unverified.
 - Remove editing-minute benefits, quota cards, and top-up promotion from the
   active product. Legacy editing code/API contracts remain for compatibility and
   shared media helpers; historical editing milestones below are not active TODOs.
+  Since 2026-10-24 (security Batch 3) the API answers every `/ai-edits/*`
+  request with `410 AI_EDITING_RETIRED` unless the `AI_EDITING_ENABLED=true`
+  rollback switch is set, so direct callers can no longer spend editing
+  provider work. See
+  `docs/superpowers/plans/2026-10-24-ai-editing-retirement-security-batch3.md`.
 - Staging now includes customization migration
   `20261005193000_customize_link_in_bio_profile`, the generated client/API and
   bundled fonts at `9195211f16519fd58c9cc01d6949dd8486190d01`. Real gallery logo

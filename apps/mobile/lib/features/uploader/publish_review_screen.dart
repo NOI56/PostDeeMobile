@@ -48,10 +48,7 @@ String? publishReviewOutcomeFor(
   }
 }
 
-String publishReviewPlatformLabel(SocialPlatform platform) =>
-    platform == SocialPlatform.facebookReels
-        ? 'Facebook Page Video'
-        : platform.label;
+String publishReviewPlatformLabel(SocialPlatform platform) => platform.label;
 
 bool publishReviewCanConfirm({
   required List<SocialPlatform> platforms,

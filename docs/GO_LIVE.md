@@ -251,14 +251,24 @@ user-owned PostPeer connections.
 - Phase 2 exact intent is TikTok `INBOX_DRAFT`; YouTube title,
   Private/Unlisted/Public, made-for-kids, realistic synthetic-media answer, and
   community-guidelines certification; Instagram share-to-feed; and Facebook
-  Page Video `PUBLISH|PAGE_DRAFT`. TikTok `DIRECT_POST/SELF_ONLY` remains only
+  Page Reels `PUBLISH|PAGE_DRAFT`. TikTok `DIRECT_POST/SELF_ONLY` remains only
   for legacy persisted work and must stay unavailable to new users until current
   creator-info, privacy/interaction choices, consent, and TikTok audit pass.
 - Use empty disposable accounts: Instagram has no per-post Private mode, and
   YouTube may keep requested Unlisted/Public uploads Private until API audit.
-- `FACEBOOK_REELS` is retained internally for compatibility, but PostPeer
-  currently publishes Facebook Page Video, not Facebook Reels. Store copy and
-  screenshots must use the real capability.
+- `FACEBOOK_REELS` retains its existing value and always sends PostPeer
+  `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`. A video
+  is required and there is no Page feed fallback. Existing `PUBLISH|PAGE_DRAFT`
+  (`published: false` for the draft) and optional explicit `isAiGenerated` remain
+  unchanged. Real-account Page Reel and Page-draft E2E is still pending.
+  Optional signed `videoThumbnailUrl` remains best effort; display on a Reel
+  needs real-account verification, and the provider may choose the cover. Do not
+  apply Page Video duration/width limits to Page Reels.
+- Deployment note: updated publishers also route existing queued/scheduled
+  `FACEBOOK_REELS` jobs to Page Reels, preserving their accepted settings and
+  target snapshots. No new client fields, environment variables or migrations
+  are required. Deploy every publisher before treating the new route as active;
+  deployment/health alone does not prove Reel delivery or production readiness.
 - Mobile publish drafts are app-owned Application Support files scoped by the
   stable authenticated user ID. Saving one must not create an API post, upload to R2,
   contact the provider, enqueue work, or consume post quota; the backend has no
@@ -553,7 +563,7 @@ volume, and voice-ducking settings in the prepare recipe. This is setup only:
 there are no licensed catalog tracks in production yet, and the current FFmpeg
 renderer does not analyze beats, mix the chosen music, or apply ducking. A
 catalog track must carry verified rights for TikTok, YouTube Shorts, Instagram
-Reels, Facebook Page Video (and any future Reels integration), Shopee Video,
+Reels, Facebook Page Reels, Shopee Video,
 and Lazada Video before the app enables it.
 Production builds must keep `ENABLE_EXPERIMENTAL_BEAT_SYNC` absent or `false`;
 the app then locks beat sync and labels it `เร็ว ๆ นี้`. Internal QA may build

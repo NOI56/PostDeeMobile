@@ -6901,7 +6901,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
             PlatformSettingsSection(
                 title: 'วิธีเผยแพร่บนเพจ',
                 description:
-                    'ส่งเป็น Facebook Page Video ไปยังเพจที่แสดงด้านบน',
+                    'ส่งเป็น Facebook Reels ไปยังเพจที่แสดงด้านบน',
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [

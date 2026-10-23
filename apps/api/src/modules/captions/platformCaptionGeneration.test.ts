@@ -77,7 +77,9 @@ describe('platform-specific real-clip captions', () => {
     const instruction = body.contents[0].parts.at(-1).text as string;
     for (const platform of platforms) expect(instruction).toContain(platform);
     expect(instruction).toContain('platformCaptions');
-    expect(instruction).toContain('Facebook Page Video');
+    expect(instruction).toContain('Facebook Reels บนเพจ Facebook');
+    expect(instruction).not.toContain('Facebook Page Video');
+    expect(instruction).not.toContain('ไม่เรียกว่า Facebook Reels');
     expect(instruction).toContain('คุยเป็นกันเอง');
     expect(instruction).toContain('ลองดูตรงนี้กันนะ');
     expect(body.systemInstruction.parts[0].text).toContain('ห้ามแต่งประโยชน์ สินค้า ราคา ส่วนลด');

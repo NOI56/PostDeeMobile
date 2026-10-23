@@ -216,23 +216,34 @@ void main() {
         isNull);
   });
 
-  test('Facebook uses actual hard limits without enforcing recommendations',
+  test('Facebook Reels does not reuse Facebook Feed Video media ceilings',
       () {
-    expect(
-        check(SocialPlatform.facebookReels,
-            media: _media(duration: 14400, width: 4000, fps: 29.97)),
-        isNull);
-    expect(
-        check(SocialPlatform.facebookReels, media: _media(duration: 14400.01))
-            ?.code,
-        'FACEBOOK_DURATION_INVALID');
-    expect(
-        check(SocialPlatform.facebookReels, media: _media(width: 4001))?.code,
-        'FACEBOOK_WIDTH_INVALID');
+    // Passing local preflight does not guarantee provider acceptance.
+    for (final media in [
+      _media(duration: 14400.01),
+      _media(width: 4001),
+    ]) {
+      expect(check(SocialPlatform.facebookReels, media: media), isNull);
+    }
     expect(
         check(SocialPlatform.facebookReels,
             media: _media(width: 1079, fps: 25)),
         isNull);
+  });
+
+  test('Facebook Reels still requires verified media metadata', () {
+    for (final media in [
+      null,
+      _media(duration: null),
+      _media(duration: 0),
+      _media(width: null),
+      _media(height: 0),
+      _media(size: 0),
+      _media(hasVideo: false),
+    ]) {
+      expect(check(SocialPlatform.facebookReels, media: media)?.code,
+          'PUBLISH_MEDIA_UNVERIFIED');
+    }
   });
 
   test('Instagram requires a probed MOV or MP4 container token', () {

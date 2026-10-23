@@ -222,16 +222,8 @@ PublishPreflightProblem? validatePlatformPublishPreflight({
             'เสียง Instagram ต้องเป็น AAC แบบโมโนหรือสเตอริโอ และไม่เกิน 48 kHz');
       }
     }
-    if (platform == SocialPlatform.facebookReels) {
-      if (duration > 14400) {
-        return problem(platform, 'FACEBOOK_DURATION_INVALID',
-            'วิดีโอบนเพจ Facebook ต้องยาวไม่เกิน 240 นาที');
-      }
-      if (media.width! > 4000) {
-        return problem(platform, 'FACEBOOK_WIDTH_INVALID',
-            'วิดีโอบนเพจ Facebook ต้องกว้างไม่เกิน 4,000 พิกเซล');
-      }
-    }
+    // Facebook Reels uses the provider's final media checks. The Facebook Feed
+    // Video duration/width limits do not establish Reel compatibility.
   }
   return null;
 }

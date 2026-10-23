@@ -325,8 +325,8 @@ void main() {
             .widget<Text>(_key('uploader-platform-account-INSTAGRAM_REELS'))
             .data,
         contains('ยังยืนยัน'));
-    expect(find.text('Facebook Page Video'), findsOneWidget);
-    expect(find.text('Facebook Reels'), findsNothing);
+    expect(find.text('Facebook Reels'), findsOneWidget);
+    expect(find.text('Facebook Page Video'), findsNothing);
     await _show(tester, _key('uploader-platform-INSTAGRAM_REELS'));
     await tester.tap(_key('uploader-platform-INSTAGRAM_REELS'));
     await tester.pumpAndSettle();

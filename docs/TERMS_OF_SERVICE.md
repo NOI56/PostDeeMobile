@@ -79,7 +79,7 @@ PostDee พึ่งพา Firebase, Render, Cloudflare R2, Gemini, ElevenLabs, 
 
 รูปแบบที่แสดงก่อนยืนยันในปัจจุบันคือ TikTok ส่งเป็นร่างเข้า TikTok, YouTube Shorts
 แบบ Private/Unlisted/Public พร้อมคำตอบด้านเด็ก สื่อสังเคราะห์ และการยืนยันกฎชุมชน,
-Instagram พร้อมตัวเลือกแชร์ไปฟีด และ Facebook Page Video แบบเผยแพร่หรือเก็บเป็นร่าง
+Instagram พร้อมตัวเลือกแชร์ไปฟีด และ Facebook Reels แบบเผยแพร่หรือเก็บเป็นร่าง
 บนเพจ TikTok โพสต์ตรงยังไม่เปิดใช้ ทั้งนี้ผลจริงยังขึ้นกับบัญชี การตรวจ API และ
 แพลตฟอร์มปลายทาง
 

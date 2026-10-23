@@ -101,7 +101,8 @@ Keep existing 9:16 checks, future/30-day scheduling limits, Basic phone and
 package gates, paid AI rules, cover/watermark cleanup, per-user local draft
 copies, automatic pre-submission persistence, stable request ID retries and
 truthful queued/partial/provider-draft results. TikTok remains inbox draft,
-Facebook remains Page Video with publish/page-draft choices, and YouTube's
+Facebook now targets Page Reels with the same publish/page-draft choices under
+the 2026-10-24 `contentType: 'reel'` contract; real-account E2E remains pending. YouTube's
 required visibility/compliance settings remain explicit. No provider mapping,
 endpoint, request/response contract, schema, flag, price or entitlement changes;
 no database migration is required.

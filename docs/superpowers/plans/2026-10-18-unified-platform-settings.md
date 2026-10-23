@@ -41,8 +41,11 @@ stale dirty `D:/PostDeeMobile` checkout and canonical untracked artifacts remain
   certification are preserved, with a visible reason when Save is disabled.
 - Instagram retains feed sharing; Facebook retains explicit publish/Page-draft
   selection. Both show the selected cover context and optional AI-media answers.
-  Cover selection remains in the clip step. Facebook is Page Video, with no
-  unsupported Reels claim. Page drafts still upload/use quota; local drafts do not.
+  Cover selection remains in the clip step. Under the 2026-10-24 contract,
+  Facebook always requests Page Reels via `contentType: 'reel'`, with no Page
+  feed fallback. Real-account Reel/draft/thumbnail E2E remains pending; thumbnails
+  are best effort and the provider may choose the cover. Page drafts still
+  upload/use quota; local drafts do not.
 - Review includes explicit Meta AI answers and all TikTok Direct interactions,
   commercial/AI/music/branded declarations, alongside existing destination,
   schedule, YouTube answers and cover context.
@@ -131,7 +134,8 @@ recovery protections remain intact.
   build/configuration checks, not a new authenticated emulator session.
 - Actual Flutter widget previews use bundled Anuphan fonts and platform assets,
   with fixture accounts and no real publishing. Inspected all five: compact
-  TikTok Inbox, grouped Direct, YouTube, Instagram and Facebook Page Video.
+  TikTok Inbox, grouped Direct, YouTube, Instagram and the historical Facebook
+  Page Video UI (before the 2026-10-24 Page Reels contract update).
   Short-phone tests use 360×640 with a 220-pixel keyboard and 1.5× text.
   Dropdowns expand to available width; the last real controls and fixed actions
   remain reachable. The preview-only run passes separately.
@@ -333,7 +337,7 @@ recovery protections remain intact.
 ## Primary provider evidence
 
 - [Instagram AI-media declaration, feed and cover](https://www.postpeer.dev/docs/platforms/instagram)
-- [Facebook Page Video declaration, drafts and cover](https://www.postpeer.dev/docs/platforms/facebook)
+- [Facebook Page Reels routing, declaration, drafts and thumbnail options](https://www.postpeer.dev/docs/platforms/facebook)
 
 These optional fields are provider-supported according to current docs. Mocked
 mapper/route tests do not prove a real connected account's publication or label.

@@ -22,8 +22,9 @@ this new UI candidate.
 - Compact header: `ให้ AI ช่วยเขียน`, with a `สไตล์` action.
 - Helper: `เลือกช่องทางที่ต้องการ`.
 - Four equal channel choices in a uniform two-by-two grid: TikTok, YouTube
-  Shorts, Instagram Reels and Facebook Page Video. The internal compatibility
-  value `FACEBOOK_REELS` still means Page Video, not supported Facebook Reels.
+  Shorts, Instagram Reels and Facebook Page Reels. The existing `FACEBOOK_REELS`
+  value now always requests PostPeer `contentType: 'reel'` with no Page feed
+  fallback under the 2026-10-24 contract; real-account E2E remains pending.
 - Remove the visible select-all/clear actions and separate selected-count/cost
   row from this advanced panel. Each channel remains individually toggleable.
 - Keep one primary action, `สร้างแคปชั่น · 1 เครดิต`, disabled with zero

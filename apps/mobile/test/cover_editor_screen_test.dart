@@ -143,6 +143,11 @@ void main() {
     expect(find.textContaining('TikTok: ใช้เฉพาะเฟรมที่เลือก'), findsOneWidget);
     expect(find.textContaining('YouTube Shorts: แต่งต่อในแอป YouTube'),
         findsOneWidget);
+    expect(
+        find.textContaining(
+            'Facebook Reels: การแสดงหน้าปกขึ้นอยู่กับ Facebook'),
+        findsOneWidget);
+    expect(find.textContaining('Facebook Video'), findsNothing);
 
     await tester.ensureVisible(find.byKey(const ValueKey('cover-save-button')));
     await tester.tap(find.byKey(const ValueKey('cover-save-button')));

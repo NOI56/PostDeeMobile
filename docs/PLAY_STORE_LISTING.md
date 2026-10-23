@@ -93,7 +93,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | ความสามารถ | สถานะจริง | เงื่อนไขก่อนเพิ่มใน Store copy/ภาพ |
 | --- | --- | --- |
 | ฉบับร่างโพสต์ในเครื่อง | Source implementation คัดลอกวิดีโอ/หน้าปก/manifest ไป Application Support แยกตาม stable authenticated UID โดยไม่มี server `DRAFT` หรือ publish-side effect | รัน automated suites และทดสอบ save/restore/delete, สลับบัญชี, พื้นที่เต็ม, queue success/pre-queue failure และ Android/iOS backup บน release candidate ก่อนใช้เป็นคำรับรอง |
-| โพสต์ TikTok, YouTube Shorts, Instagram Reels และ Facebook Page Video | PostPeer per-user connection/publisher, async polling และผลรายแพลตฟอร์มมีในโค้ด; `FACEBOOK_REELS` เป็นชื่อภายในเท่านั้น | เชื่อมบัญชี disposable จริงและทดสอบตั้งแต่อัปโหลดถึง provider URL/ID และ `GET /posts.platformResults`; ห้ามเรียก Facebook ว่า Reels จน provider รองรับจริง |
+| โพสต์ TikTok, YouTube Shorts, Instagram Reels และ Facebook Page Reels | PostPeer per-user connection/publisher, async polling และผลรายแพลตฟอร์มมีในโค้ด; `FACEBOOK_REELS` ส่ง `platform: 'facebook'` กับ `contentType: 'reel'` เสมอ คง publish/Page-draft และ AI disclosure ไม่มี Page feed fallback | เชื่อมบัญชี disposable จริงและทดสอบตั้งแต่อัปโหลดถึง provider URL/ID และ `GET /posts.platformResults`; ยืนยัน Facebook Page Reel/draft จริงก่อนใช้เป็นคำรับรอง production |
 | ตั้งเวลาโพสต์บน Cloud | ตัวประมวลผลใน API แบบหนึ่ง instance และ Prisma ใช้งานอยู่; BullMQ/Redis adapter มีในโค้ด | ทดสอบ delayed job/restart/retry/cancel ของแบบปัจจุบัน และเปิด Upstash + worker แยกก่อนเพิ่มหลาย instance หรือต้องการ durable queue |
 | Firebase Email/Google/Phone Auth | gateway มีในแอปและ API; release SHA/OAuth ตรงกับ APK ที่เซ็นแล้ว | ทดสอบ Email/Google/Phone บน Internal testing AAB และมือถือจริง |
 | Starter/Pro | Paywall, RevenueCat gateway, Play products/entitlements/default offering และ production Android public SDK key เตรียมแล้ว | สร้าง Play Console app/subscriptions และ service credentials จากนั้นทดสอบซื้อ ต่ออายุ ยกเลิก คืนเงิน และ restore ผ่าน Internal Testing บนมือถือจริง |
@@ -106,7 +106,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 ### ห้ามนำไปใส่ Store listing หรือ screenshots ตอนนี้
 
 - Shopee Video และ Lazada Video ในฐานะปลายทางที่โพสต์ได้จริง
-- Facebook Reels (PostPeer path ปัจจุบันรองรับ Facebook Page Video เท่านั้น)
+- Facebook Page Reels ในฐานะฟีเจอร์ที่พร้อมใช้จริง จนกว่าจะผ่าน controlled publish/draft E2E ด้วยบัญชีจริง
 - ตัดคลิปเป็น EP อัตโนมัติ
 - Hashtag Radar, ศูนย์คอมเมนต์ AI และแจ้งเตือนไวรัล
 - Link in Bio ที่เผยแพร่เป็นเว็บไซต์จริง
@@ -293,7 +293,8 @@ Privacy policy ต้องมี URL ทั้งใน Play Console และ�
 - [ ] ทดสอบ purchase, renewal, cancel, refund, billing issue และ restore บน Internal testing
 - [ ] เปิด/test PostPeer per-user connections และ controlled publish ทุกแพลตฟอร์ม
       ที่กล่าวใน Store โดย YouTube เริ่ม `private`, TikTok เริ่ม `SELF_ONLY`,
-      Facebook ใช้ Page Video และตรวจ `platformResults`/provider URL จริง
+      Facebook ต้องเป็น Page Reel (`contentType: 'reel'`) หรือ provider-confirmed
+      Page draft ตามที่เลือก ไม่มี Page feed fallback และตรวจ `platformResults`/provider URL จริง
 - [ ] ทดสอบ `202` polling และ outcome-unknown UX ว่าไม่รายงานสำเร็จก่อนเวลา,
       ไม่สร้าง external id ปลอม และไม่ยิงโพสต์ซ้ำโดยยังไม่ตรวจปลายทาง
 - [ ] เปิด/test Upstash worker และ scheduling หลัง restart/retry

@@ -46,7 +46,9 @@ migration แบบ API-first และทดสอบ release candidate บน�
     `private|unlisted|public`, made-for-kids, realistic synthetic-media และ
     `communityGuidelinesCertified: true`
   - Instagram: `shareToFeed: true|false`; ไม่มี Private รายโพสต์
-  - Facebook Page Video: `PUBLISH|PAGE_DRAFT`; ห้ามเรียกความสามารถนี้ว่า Reels
+  - Facebook Page Reels: คง `PUBLISH|PAGE_DRAFT` และ optional AI disclosure แต่ส่ง
+    PostPeer `contentType: 'reel'` เสมอตาม contract 2026-10-24 ไม่มี Page feed fallback;
+    ยังต้องผ่าน Reel/draft E2E ด้วยบัญชีจริงก่อนรับรอง production
 - ปลายทางที่ยังระบุรูปแบบเผยแพร่ไม่ได้หรือไม่มี identity ต้องปิดปุ่มยืนยัน ไม่เดา
   เป้าหมายหรือใช้ค่าเริ่มต้นแทน; API ยัง resolve/snapshot/revalidate target จริงเอง
 - ค่าเริ่มต้น Mobile คือ TikTok inbox draft, YouTube Private แต่คำตอบบังคับยังว่าง,

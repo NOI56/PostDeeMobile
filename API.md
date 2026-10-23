@@ -53,8 +53,8 @@ JSON persistence, queued execution and provider mapping retain and use the
 effective per-destination text. A changed override conflicts with the original
 accepted submission intent. The optional field does not change visibility,
 disclosures, destination ownership, scheduling, quotas or posting modes.
-`FACEBOOK_REELS` remains the internal compatibility key for Facebook Page
-Video; this feature does not add Facebook Reels support.
+`FACEBOOK_REELS` retains its existing key; the 2026-10-24 contract below routes
+it to Facebook Page Reels only. Real-account E2E remains pending.
 
 The existing `POST /captions/generate-from-clip` additionally accepts optional
 `platforms` and can return `platformCaptions`; its detailed contract is below.
@@ -203,8 +203,9 @@ deployment or database migration is needed; see the
 `platformSettings.INSTAGRAM_REELS` accepts `{shareToFeed: boolean,
 isAiGenerated?: boolean}`; `FACEBOOK_REELS` accepts `{publishMode:
 "PUBLISH" | "PAGE_DRAFT", isAiGenerated?: boolean}`. The Facebook internal key
-still targets Page Video. A present disclosure must be a boolean; null, strings,
-numbers and unknown fields are rejected. Absence preserves the old exact shape,
+now targets Page Reels using `contentType: 'reel'`; these existing delivery and
+disclosure choices are preserved. A present disclosure must be a boolean; null,
+strings, numbers and unknown fields are rejected. Absence preserves the old exact shape,
 including persisted snapshots, queue messages, accepted request replay and
 read-only submission recovery. Absent, false and true are distinct immutable
 intents; changing a declaration cannot reuse an accepted request ID.
@@ -1246,9 +1247,11 @@ The backend currently supports:
 
 The backend must not publish through shared PostPeer account ids in production
 (startup rejects them). Production publishing resolves per-user social
-connections. The internal `FACEBOOK_REELS` value currently maps to PostPeer's
-Facebook Page Video capability, not Facebook Reels. Provider-level approval is
-still blocked on broader per-user platform, scheduling, failure-recovery, and
+connections. The existing `FACEBOOK_REELS` value requests Facebook Page Reels
+through PostPeer `platform: 'facebook'` with
+`platformSpecificData.contentType: 'reel'`; there is no Page feed fallback.
+Provider-level approval is still blocked on broader per-user platform,
+scheduling, failure-recovery, and
 Production tests. One controlled Staging YouTube Shorts Private immediate E2E
 passed on 2026-08-10 with a real non-mock external reference; this is not launch
 approval for other paths. The repository's Production Blueprint nevertheless
@@ -1716,9 +1719,19 @@ INSTAGRAM_REELS
 FACEBOOK_REELS
 ```
 
-`FACEBOOK_REELS` is retained for mobile/API compatibility. With the current
-PostPeer adapter it publishes a Facebook Page Video; it must not be presented as
-Facebook Reels in Store copy.
+`FACEBOOK_REELS` is retained for mobile/API compatibility. From the 2026-10-24
+contract update, the server always sets PostPeer `platform: 'facebook'` with
+`platformSpecificData.contentType: 'reel'`. It requires a video and never falls
+back to a Page feed video. Existing `publishMode: PUBLISH|PAGE_DRAFT` and
+explicit optional `isAiGenerated` remain unchanged; `PAGE_DRAFT` still sends
+`published: false` and requires provider-confirmed draft delivery. Real-account
+E2E must verify Page Reel delivery before production claims.
+
+No new client fields, environment variables, or database migrations are needed.
+After deploying the updated publisher, existing queued/scheduled
+`FACEBOOK_REELS` jobs also request Page Reels while retaining their accepted
+settings and immutable target snapshots. Page Video duration/width limits must
+not be treated as Reel limits; the provider validates the actual media.
 
 ### `GET /posts`
 
@@ -1934,9 +1947,11 @@ Worker behavior:
   cleanup failure is returned in the worker result, but the post stays
   `PUBLISHED`.
 - Cover delivery follows platform capability: Instagram receives the signed
-  cover image or frame offset, Facebook Page Video receives the signed image,
-  TikTok Direct Post receives the selected frame time, and YouTube Shorts does
-  not receive a custom thumbnail.
+  cover image or frame offset. Facebook Page Reels optionally receives the
+  signed image as `videoThumbnailUrl` alongside `contentType: 'reel'` on a
+  best-effort basis; display on a Reel still needs real-account verification,
+  and the provider may choose the cover. TikTok Direct Post receives the selected
+  frame time, and YouTube Shorts does not receive a custom thumbnail.
 - Create is database-first. The API commits one deterministic, owner-scoped
   `QUEUED` post for a supplied `clientRequestId`, then enqueues it. If enqueue
   fails, the API returns `503 PUBLISH_QUEUE_UNAVAILABLE` but deliberately keeps
@@ -3917,7 +3932,7 @@ PostgreSQL.
 | `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Operator PostPeer TikTok integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Operator PostPeer YouTube Shorts integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Operator PostPeer Instagram Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
-| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Page Video integration id (internal `FACEBOOK_REELS` compatibility value) used only when no per-user connection resolver is wired; forbidden in production |
+| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Page integration id for `FACEBOOK_REELS` (Page Reels only via `contentType: 'reel'`) used only when no per-user connection resolver is wired; forbidden in production |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps

@@ -1,5 +1,13 @@
 # PostPeer User Social Connections Design
 
+> **Security Batch 2 addendum (2026-10-23, review candidate):** The current
+> polling flow admits new accounts only with a hashed, one-use attempt bound to
+> owner/platform/profile and a 15-minute expiry; pre-existing integration IDs
+> are excluded. Safe uniqueness conflicts and duplicate-guarded migration are
+> described in the [Batch 2 record](../plans/2026-10-23-social-linking-security-batch2.md).
+> This is an application admission gate, not provider-signed OAuth completion
+> or proof of which human consented through a shared connect URL.
+
 > Historical design note (superseded by the implemented flow): the runtime now
 > uses a PostPeer profile plus explicit `POST /social-connections/refresh`
 > polling after connect. It does not expose the signed-state callback routes

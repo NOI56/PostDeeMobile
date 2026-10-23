@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from 'node:crypto';
+
 import type { RequestHandler, Response, Router } from 'express';
 
 import { readAuthUser, type AuthUser } from '../auth/authTypes.js';
@@ -10,6 +12,7 @@ import {
 } from './postPeerConnectClient.js';
 import {
   PostPeerProfileOwnershipConflictError,
+  SocialAccountAlreadyLinkedError,
   isSocialConnectionPlatform,
   supportedSocialConnectionPlatforms,
   type SocialConnectionStore
@@ -19,6 +22,19 @@ export type SocialConnectionRouteDependencies = {
   store: SocialConnectionStore;
   connectClient: PostPeerConnectClient;
   userStore: UserStore;
+  now?: () => Date;
+};
+
+const connectAttemptLifetimeMs = 15 * 60 * 1_000;
+const hashNonce = (nonce: string): string =>
+  createHash('sha256').update(nonce).digest('hex');
+
+const sendAttemptExpired = (response: Response) => {
+  response.status(409).json({
+    status: 'error',
+    code: 'SOCIAL_CONNECTION_ATTEMPT_EXPIRED',
+    message: 'This connection attempt is no longer available. Please connect again.'
+  });
 };
 
 const sendUnauthorized = (response: Response) => {
@@ -37,6 +53,15 @@ const sendUnsupportedPlatform = (response: Response) => {
 
 // Maps PostPeer connect failures to API responses. Returns true when handled.
 const sendConnectError = (response: Response, error: unknown): boolean => {
+  if (error instanceof SocialAccountAlreadyLinkedError) {
+    response.status(409).json({
+      status: 'error',
+      code: 'SOCIAL_ACCOUNT_ALREADY_LINKED',
+      message: 'This social account is already linked to another user.'
+    });
+    return true;
+  }
+
   if (error instanceof PostPeerProfileOwnershipConflictError) {
     response.status(409).json({
       status: 'error',
@@ -120,7 +145,7 @@ const ensureProfileId = async (
 export const registerSocialConnectionRoutes = (
   router: Router,
   authMiddleware: RequestHandler,
-  { store, connectClient, userStore }: SocialConnectionRouteDependencies
+  { store, connectClient, userStore, now = () => new Date() }: SocialConnectionRouteDependencies
 ) => {
   // Coalesce same-user connect requests inside this API instance. This avoids
   // duplicate external profiles when a user double-taps or two platforms are
@@ -188,13 +213,35 @@ export const registerSocialConnectionRoutes = (
           authUser,
           inFlightProfileCreations
         );
-        const { connectUrl } = await connectClient.createConnectUrl({
+        // Snapshot before issuing the URL. Pre-existing integrations cannot
+        // prove completion of this authenticated user's new connect attempt.
+        const integrations = await connectClient.listIntegrations({ profileId });
+        const nonce = randomBytes(32).toString('base64url');
+        const nonceHash = hashNonce(nonce);
+        const expiresAt = new Date(now().getTime() + connectAttemptLifetimeMs).toISOString();
+        await store.beginConnectAttempt({
+          userId: authUser.id,
           platform,
           profileId,
-          ...(redirectUri === undefined ? {} : { redirectUri })
+          nonceHash,
+          expiresAt,
+          baselineIntegrationIds: [...new Set(integrations.map(({ id }) => id))]
         });
 
-        response.json({ status: 'ok', connectUrl });
+        try {
+          const { connectUrl } = await connectClient.createConnectUrl({
+            platform,
+            profileId,
+            ...(redirectUri === undefined ? {} : { redirectUri })
+          });
+
+          response.set('Cache-Control', 'private, no-store');
+          response.json({ status: 'ok', connectUrl, nonce, expiresAt });
+        } catch (error) {
+          // A failed older request must not cancel a newer concurrent attempt.
+          await store.cancelConnectAttempt({ userId: authUser.id, platform, nonceHash });
+          throw error;
+        }
       } catch (error) {
         if (sendConnectError(response, error)) {
           return;
@@ -205,10 +252,9 @@ export const registerSocialConnectionRoutes = (
     }
   );
 
-  // Called after the user returns from PostPeer OAuth. A browser return URI
-  // only signals completion; authenticated reconciliation verifies the
-  // owner's profile integrations before saving connected account ids.
-  router.post('/social-connections/refresh', authMiddleware, async (_request, response) => {
+  // The app retains the nonce from connect in its authenticated session. A
+  // browser return URI alone never authorizes importing an integration.
+  router.post('/social-connections/refresh', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
 
     if (!authUser) {
@@ -216,7 +262,30 @@ export const registerSocialConnectionRoutes = (
       return;
     }
 
+    const payload = request.body && typeof request.body === 'object'
+      ? request.body as Record<string, unknown> : {};
+    const nonce = payload.nonce;
+    if (nonce !== undefined &&
+        (typeof nonce !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(nonce))) {
+      response.status(400).json({
+        status: 'error',
+        code: 'SOCIAL_CONNECTION_ATTEMPT_INVALID',
+        message: 'A valid connection attempt nonce is required.'
+      });
+      return;
+    }
+
     try {
+      const nonceHash = typeof nonce === 'string' ? hashNonce(nonce) : undefined;
+      const attempt = nonceHash === undefined ? undefined :
+        await store.getConnectAttempt({ userId: authUser.id, nonceHash });
+      if (nonceHash !== undefined &&
+          (!attempt || !Number.isFinite(Date.parse(attempt.expiresAt)) ||
+            Date.parse(attempt.expiresAt) <= now().getTime())) {
+        sendAttemptExpired(response);
+        return;
+      }
+
       let profileId = await store.getProfileId(authUser.id);
 
       if (!profileId && connectClient.findProfile) {
@@ -231,36 +300,95 @@ export const registerSocialConnectionRoutes = (
         }
       }
 
+      if (attempt && attempt.profileId !== profileId) {
+        sendAttemptExpired(response);
+        return;
+      }
+
+      let connectAttemptConsumed = false;
       if (profileId) {
+        // Capture known identities before polling. A provider response can be
+        // stale by the time it arrives; never apply it to a connection that
+        // completed while this refresh was awaiting PostPeer.
+        const existingConnections = await Promise.all(
+          supportedSocialConnectionPlatforms.map((platform) =>
+            store.getConnection({ userId: authUser.id, platform })
+          )
+        );
         const integrations = (await connectClient.listIntegrations({ profileId })).filter(
           (integration) => integration.platform !== undefined
         );
-        const connectedPlatforms = new Set(integrations.map(({ platform }) => platform));
-
-        for (const integration of integrations) {
-          if (!integration.platform) {
-            continue;
+        if (attempt && nonceHash) {
+          const candidates = integrations.filter((integration) =>
+            integration.platform === attempt.platform &&
+            !attempt.baselineIntegrationIds.includes(integration.id)
+          );
+          if (candidates.length > 1) {
+            response.status(409).json({
+              status: 'error',
+              code: 'SOCIAL_CONNECTION_COMPLETION_AMBIGUOUS',
+              message: 'More than one new social account was found. Please connect again.'
+            });
+            return;
           }
 
-          await store.upsert({
-            userId: authUser.id,
-            platform: integration.platform,
-            postPeerAccountId: integration.id,
-            displayName: integration.displayName,
-            externalAccountId: integration.platformUserId
-          });
+          const integration = candidates[0];
+          if (integration) {
+            const completed = await store.completeConnectAttempt({
+              userId: authUser.id,
+              platform: attempt.platform,
+              profileId,
+              nonceHash,
+              integration: {
+                postPeerAccountId: integration.id,
+                displayName: integration.displayName,
+                externalAccountId: integration.platformUserId
+              },
+              now: now().toISOString()
+            });
+            if (!completed) {
+              sendAttemptExpired(response);
+              return;
+            }
+            connectAttemptConsumed = true;
+          }
         }
 
-        for (const platform of supportedSocialConnectionPlatforms) {
-          if (!connectedPlatforms.has(platform)) {
-            await store.disconnect({ userId: authUser.id, platform });
+        // Legacy refreshes remain useful for known connections, but cannot
+        // import or silently replace any provider/external account identity.
+        for (const existing of existingConnections) {
+          if (!existing || (connectAttemptConsumed && existing.platform === attempt?.platform)) {
+            continue;
           }
+          const integration = integrations.find((candidate) =>
+            candidate.platform === existing.platform &&
+            candidate.id === existing.postPeerAccountId &&
+            candidate.platformUserId === existing.externalAccountId
+          );
+          // The store compares the current identity atomically. An older
+          // refresh cannot overwrite/remove a newer completed connection or
+          // cancel a pending connect attempt during ordinary reconciliation.
+          await store.reconcileExistingConnection({
+            userId: authUser.id,
+            platform: existing.platform,
+            expectedPostPeerAccountId: existing.postPeerAccountId,
+            expectedExternalAccountId: existing.externalAccountId,
+            ...(integration ? {
+              integration: {
+                postPeerAccountId: existing.postPeerAccountId,
+                externalAccountId: existing.externalAccountId,
+                displayName: integration.displayName
+              }
+            } : {})
+          });
         }
       }
 
+      response.set('Cache-Control', 'private, no-store');
       response.json({
         status: 'ok',
-        connections: await store.listForUser(authUser.id)
+        connections: await store.listForUser(authUser.id),
+        ...(nonceHash === undefined ? {} : { connectAttemptConsumed })
       });
     } catch (error) {
       if (sendConnectError(response, error)) {
@@ -289,12 +417,20 @@ export const registerSocialConnectionRoutes = (
       }
 
       const connectionInput = { userId: authUser.id, platform };
-      const integrationId = await store.getAccountId(connectionInput);
+      // Snapshot both identities before waiting for the provider. Conditional
+      // cleanup below cannot remove a later connection or connect attempt.
+      const { connection, nonceHash } = await store.getDisconnectSnapshot(connectionInput);
+      const cancelCapturedAttempt = async () => {
+        if (nonceHash) {
+          await store.cancelConnectAttempt({ ...connectionInput, nonceHash });
+        }
+      };
 
       // A repeated DELETE is a successful no-op. More importantly, do not
       // remove a saved connection until PostPeer confirms that the external
       // integration is gone; otherwise the next refresh can recreate it.
-      if (!integrationId) {
+      if (!connection) {
+        await cancelCapturedAttempt();
         response.json({ status: 'ok' });
         return;
       }
@@ -308,8 +444,13 @@ export const registerSocialConnectionRoutes = (
       }
 
       try {
-        await connectClient.disconnectIntegration({ integrationId });
-        await store.disconnect(connectionInput);
+        await connectClient.disconnectIntegration({ integrationId: connection.postPeerAccountId });
+        await store.reconcileExistingConnection({
+          ...connectionInput,
+          expectedPostPeerAccountId: connection.postPeerAccountId,
+          expectedExternalAccountId: connection.externalAccountId
+        });
+        await cancelCapturedAttempt();
       } catch (error) {
         if (sendConnectError(response, error)) {
           return;

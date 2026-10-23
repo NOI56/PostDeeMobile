@@ -7,6 +7,31 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Social linking security Batch 2 (2026-10-23, review candidate)
+
+Connecting TikTok, YouTube Shorts, Instagram Reels or Facebook Page Video now
+requires a 15-minute, single-use attempt tied to the signed-in user, platform
+and provider profile. Refresh cannot silently import integrations without that
+attempt. Atomic database uniqueness prevents an account already claimed by
+another connection from being linked twice, and Mobile explains conflicts in
+Thai. Saved connection listing and publishing retain their existing contracts.
+
+One migration adds hashed attempts and account uniqueness indexes. Run the
+[read-only duplicate preflight](apps/api/prisma/social-linking-preflight.sql),
+resolve any ownership conflicts with affected owners and PostPeer, then apply
+migration/API before updated Mobile. Do not delete or move customer records
+automatically. Older apps cannot finish new connections until updated. Hosted
+duplicate counts and real PostPeer OAuth behavior are unverified; Staging's
+database blocks external access and Production is suspended. Neither setting
+was changed.
+
+The local nonce does not prove which human consented through a shared OAuth
+URL. Provider URL/browser binding, stable external IDs and integration-ID reuse
+on reconnect still need owner validation. This is a separate review candidate
+based on merged Batch 1 (`5313f26`); no Batch 2 merge, deployment, dashboard
+change or app installation is authorized. Details and validation are in the
+[Batch 2 work record](docs/superpowers/plans/2026-10-23-social-linking-security-batch2.md).
+
 ## Compact caption AI panel (2026-10-23, Staging delivered)
 
 The advanced caption panel uses the header `ให้ AI ช่วยเขียน`, a `สไตล์`

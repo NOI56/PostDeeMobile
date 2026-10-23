@@ -1,5 +1,9 @@
 import {
   PostPeerProfileOwnershipConflictError,
+  SocialAccountAlreadyLinkedError,
+  isMatchingSocialConnectAttempt,
+  isExpectedSocialConnection,
+  type SocialConnectAttempt,
   type SocialConnection,
   type SocialConnectionPlatform,
   type SocialConnectionStatus,
@@ -10,6 +14,7 @@ import {
 } from './socialConnectionStore.js';
 import { buildPlatformTarget } from '../posts/platformTargets.js';
 import { buildTikTokConnectionRevision } from '../posts/tikTokDirectSettings.js';
+import { runActiveOwnerTransaction, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
 
 type PrismaSocialConnection = {
   id?: string;
@@ -94,9 +99,31 @@ type PostPeerProfileDelegate = {
   }) => Promise<{ count: number }>;
 };
 
-export type PrismaSocialConnectionClient = {
+type PrismaSocialConnectAttempt = Omit<SocialConnectAttempt, 'expiresAt' | 'platform'> & {
+  platform: string;
+  expiresAt: Date;
+};
+
+type SocialConnectAttemptDelegate = {
+  findUnique: (args: { where: { nonceHash: string } | { userId_platform: { userId: string; platform: SocialConnectionPlatform } } }) => Promise<PrismaSocialConnectAttempt | null>;
+  upsert: (args: {
+    where: { userId_platform: { userId: string; platform: SocialConnectionPlatform } };
+    create: PrismaSocialConnectAttempt;
+    update: Omit<PrismaSocialConnectAttempt, 'userId' | 'platform'>;
+  }) => Promise<PrismaSocialConnectAttempt>;
+  deleteMany: (args: { where: { userId: string; platform?: SocialConnectionPlatform; profileId?: string; nonceHash?: string; expiresAt?: { gt: Date } } }) => Promise<{ count: number }>;
+};
+
+export type PrismaSocialConnectionTransaction = PrismaOwnerLifecycleTransaction & {
   socialConnection: SocialConnectionDelegate;
   postPeerProfile: PostPeerProfileDelegate;
+  socialConnectAttempt: SocialConnectAttemptDelegate;
+};
+
+export type PrismaSocialConnectionClient = PrismaSocialConnectionTransaction & {
+  $transaction: <Result>(operation: (transaction: PrismaSocialConnectionTransaction) => Promise<Result>, options: {
+    isolationLevel: 'Serializable'; maxWait: number; timeout: number;
+  }) => Promise<Result>;
 };
 
 const socialConnectionSelect = {
@@ -177,6 +204,29 @@ const isUniqueConstraintError = (error: unknown): boolean => {
   return (error as { code?: unknown }).code === 'P2002';
 };
 
+const mapAttempt = (record: PrismaSocialConnectAttempt | null): SocialConnectAttempt | undefined =>
+  record && isSocialConnectionPlatform(record.platform)
+    ? { ...record, platform: record.platform, expiresAt: record.expiresAt.toISOString(), baselineIntegrationIds: [...record.baselineIntegrationIds] }
+    : undefined;
+
+const upsertConnection = async (transaction: PrismaSocialConnectionTransaction, input: UpsertSocialConnectionInput) => {
+  const data = writeData(input);
+  const record = await transaction.socialConnection.upsert({
+    where: { userId_platform: { userId: input.userId, platform: input.platform } },
+    update: data,
+    create: { userId: input.userId, platform: input.platform, ...data },
+    select: socialConnectionSelect
+  });
+  const connection = mapConnection(record);
+  if (!connection) throw new Error('Unsupported social connection platform returned from Prisma');
+  return connection;
+};
+
+const mapAccountConflict = (error: unknown): never => {
+  if (isUniqueConstraintError(error)) throw new SocialAccountAlreadyLinkedError();
+  throw error;
+};
+
 export const createPrismaSocialConnectionRepository = ({
   prisma
 }: {
@@ -234,41 +284,44 @@ export const createPrismaSocialConnectionRepository = ({
     return record && 'platform' in record ? mapConnection(record) : undefined;
   },
   upsert: async (input) => {
-    const data = writeData(input);
-    const record = await prisma.socialConnection.upsert({
-      where: {
-        userId_platform: {
-          userId: input.userId,
-          platform: input.platform
+    try {
+      return await runActiveOwnerTransaction(prisma, input.userId, (transaction) => upsertConnection(transaction, input));
+    } catch (error) { return mapAccountConflict(error); }
+  },
+  reconcileExistingConnection: async (input) => {
+    try {
+      return await runActiveOwnerTransaction(prisma, input.userId, async (transaction) => {
+        const record = await transaction.socialConnection.findUnique({
+          where: { userId_platform: { userId: input.userId, platform: input.platform } },
+          select: socialConnectionSelect
+        });
+        const current = record && 'platform' in record ? mapConnection(record) : undefined;
+        if (!isExpectedSocialConnection(current, input)) return undefined;
+        if (!input.integration) {
+          await transaction.socialConnection.deleteMany({ where: { userId: input.userId, platform: input.platform } });
+          return undefined;
         }
-      },
-      update: data,
-      create: {
-        userId: input.userId,
-        platform: input.platform,
-        ...data
-      },
-      select: socialConnectionSelect
-    });
-
-    const connection = mapConnection(record);
-
-    if (!connection) {
-      throw new Error('Unsupported social connection platform returned from Prisma');
-    }
-
-    return connection;
+        return upsertConnection(transaction, { userId: input.userId, platform: input.platform, ...input.integration });
+      });
+    } catch (error) { return mapAccountConflict(error); }
   },
-  disconnect: async ({ userId, platform }) => {
-    const result = await prisma.socialConnection.deleteMany({
-      where: {
-        userId,
-        platform
-      }
+  disconnect: async ({ userId, platform }) => runActiveOwnerTransaction(prisma, userId, async (transaction) => {
+    await transaction.socialConnectAttempt.deleteMany({ where: { userId, platform } });
+    const result = await transaction.socialConnection.deleteMany({
+      where: { userId, platform }
     });
-
     return result.count > 0;
-  },
+  }),
+  getDisconnectSnapshot: async ({ userId, platform }) => runActiveOwnerTransaction(prisma, userId, async (transaction) => {
+    const where = { userId_platform: { userId, platform } };
+    const record = await transaction.socialConnection.findUnique({ where, select: socialConnectionSelect });
+    const attempt = await transaction.socialConnectAttempt.findUnique({ where });
+    const connection = record && 'platform' in record ? mapConnection(record) : undefined;
+    return {
+      ...(connection ? { connection } : {}),
+      ...(attempt ? { nonceHash: attempt.nonceHash } : {})
+    };
+  }),
   getProfileId: async (userId) => {
     const record = await prisma.postPeerProfile.findUnique({
       where: { userId },
@@ -305,7 +358,38 @@ export const createPrismaSocialConnectionRepository = ({
       throw new PostPeerProfileOwnershipConflictError();
     }
   },
+  beginConnectAttempt: async (input) => runActiveOwnerTransaction(prisma, input.userId, async (transaction) => {
+    const { userId, platform, ...metadata } = input;
+    const data = { ...metadata, expiresAt: new Date(input.expiresAt), baselineIntegrationIds: [...input.baselineIntegrationIds] };
+    await transaction.socialConnectAttempt.upsert({
+      where: { userId_platform: { userId, platform } },
+      create: { userId, platform, ...data }, update: data
+    });
+  }),
+  getConnectAttempt: async ({ userId, nonceHash }) => {
+    const attempt = mapAttempt(await prisma.socialConnectAttempt.findUnique({ where: { nonceHash } }));
+    return attempt?.userId === userId ? attempt : undefined;
+  },
+  completeConnectAttempt: async (input) => {
+    try {
+      return await runActiveOwnerTransaction(prisma, input.userId, async (transaction) => {
+        const attempt = mapAttempt(await transaction.socialConnectAttempt.findUnique({ where: { nonceHash: input.nonceHash } }));
+        if (!isMatchingSocialConnectAttempt(attempt, input)) return undefined;
+        const consumed = await transaction.socialConnectAttempt.deleteMany({ where: {
+          userId: input.userId, platform: input.platform, profileId: input.profileId,
+          nonceHash: input.nonceHash, expiresAt: { gt: new Date(input.now) }
+        } });
+        if (consumed.count !== 1) return undefined;
+        // A uniqueness conflict rolls back the conditional nonce consumption.
+        return upsertConnection(transaction, { userId: input.userId, platform: input.platform, ...input.integration });
+      });
+    } catch (error) { return mapAccountConflict(error); }
+  },
+  cancelConnectAttempt: async (input) => runActiveOwnerTransaction(prisma, input.userId, async (transaction) => {
+    await transaction.socialConnectAttempt.deleteMany({ where: input });
+  }),
   deleteAllForUser: async (userId) => {
+    await prisma.socialConnectAttempt.deleteMany({ where: { userId } });
     await prisma.socialConnection.deleteMany({
       where: {
         userId

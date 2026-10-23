@@ -2,6 +2,48 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Social connection admission boundary (2026-10-23, review candidate)
+
+Batch 2 replaces profile-only import with a durable, single-use attempt. The
+authenticated connect route snapshots provider integration IDs and creates a
+15-minute, owner/platform/profile-bound nonce. Only its SHA-256 hash is stored.
+`SocialConnectAttempt` has one row per user/platform, a unique nonce hash and a
+cascading User foreign key. Starting a new attempt replaces that platform's old
+one; expiry is checked at admission and rows remain bounded to four per user.
+Mobile keeps the raw nonce in memory within the current owner's screen and
+submits it only to authenticated refresh. A browser/deep-link return remains
+a refresh hint, never ownership evidence.
+
+Refresh can admit exactly one new integration matching an unexpired attempt;
+nonce consumption and connection write share a serializable, active-owner
+transaction. Database constraints enforce unique `(platform, externalAccountId)`
+for non-null external IDs and globally unique `postPeerAccountId`; collisions
+roll back nonce consumption and map to a non-identifying 409. Memory stores
+perform equivalent uniqueness and one-use checks without an intervening await.
+Existing lifecycle fences prevent durable mutations for deleting owners.
+Ordinary refresh snapshots exact saved identities before awaiting PostPeer and
+uses conditional reconciliation so stale results cannot mutate a newer link.
+It cannot import unbound integrations or silently replace external identities.
+Explicit disconnect captures account/nonce together before provider cleanup
+and conditionally retires only that snapshot after success, preserving newer
+connections/attempts and leaving local state intact when provider cleanup fails.
+
+The migration includes a locked duplicate guard; the separate preflight query
+is read-only. Neither resolves ownership or deletes records. Hosted database
+duplicate inspection remains blocked by Staging's external access restriction
+and Production suspension. Migration/API must precede Mobile, and older Mobile
+cannot complete new links without the nonce. Existing listing/publishing remain
+compatible. No target database was migrated and no dashboard or deployment was
+changed for Batch 2.
+
+This boundary does not attest the consenting human behind a forwarded provider
+URL. Stable external identifiers, signed completion state/browser binding,
+profile isolation and fresh integration IDs on reconnect remain provider-owner
+validation requirements. Missing external IDs still allow the provider-ID
+constraint, but cannot detect the same physical account represented by different
+provider IDs. Lost in-memory nonces or reused IDs intentionally fail closed.
+See the [scope, RED evidence and release gates](docs/superpowers/plans/2026-10-23-social-linking-security-batch2.md).
+
 ## Compact caption AI presentation (2026-10-23, Staging delivered)
 
 The advanced uploader keeps its generation state and request pipeline while

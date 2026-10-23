@@ -78,6 +78,7 @@ model User {
   aiEditUsages       AiEditUsage[]
   deviceTokens       DeviceToken[]
   socialConnections  SocialConnection[]
+  socialConnectAttempts SocialConnectAttempt[]
   postPeerProfile    PostPeerProfile?
   linkInBioProfile   LinkInBioProfile?
   linkInBioImages    LinkInBioImage[]
@@ -289,7 +290,23 @@ model SocialConnection {
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, platform])
+  @@unique([platform, externalAccountId])
+  @@unique([postPeerAccountId])
   @@index([userId])
+}
+
+model SocialConnectAttempt {
+  userId                 String
+  platform               Platform
+  profileId              String
+  nonceHash              String   @unique
+  baselineIntegrationIds String[]
+  expiresAt              DateTime
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, platform])
 }
 
 model PostPeerProfile {

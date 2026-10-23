@@ -3,10 +3,175 @@ import { describe, expect, it } from 'vitest';
 import {
   PostPeerProfileOwnershipConflictError,
   createInMemorySocialConnectionStore,
+  type CompleteSocialConnectAttemptInput,
+  type SocialConnectAttempt,
   supportedSocialConnectionPlatforms
 } from './socialConnectionStore.js';
 
+const connectAttempt: SocialConnectAttempt = {
+  userId: 'owner-a', platform: 'TIKTOK', profileId: 'profile-a', nonceHash: 'hash-a',
+  expiresAt: '2026-10-23T10:15:00.000Z', baselineIntegrationIds: ['integration-old']
+};
+const completion: CompleteSocialConnectAttemptInput = {
+  userId: 'owner-a', platform: 'TIKTOK', profileId: 'profile-a', nonceHash: 'hash-a',
+  integration: { postPeerAccountId: 'integration-new', externalAccountId: 'external-new' },
+  now: '2026-10-23T10:01:00.000Z'
+};
+
 describe('createInMemorySocialConnectionStore', () => {
+  it('snapshots the current connection and pending nonce together without changing either', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-old' });
+    await store.beginConnectAttempt(connectAttempt);
+    const snapshot = await store.getDisconnectSnapshot({ userId: 'owner-a', platform: 'TIKTOK' });
+    expect(snapshot).toMatchObject({ connection: { userId: 'owner-a', postPeerAccountId: 'integration-old' }, nonceHash: 'hash-a' });
+    await store.beginConnectAttempt({ ...connectAttempt, nonceHash: 'hash-new' });
+    await store.cancelConnectAttempt({ userId: 'owner-a', platform: 'TIKTOK', nonceHash: snapshot.nonceHash });
+    expect((await store.getConnectAttempt({ userId: 'owner-a', nonceHash: 'hash-new' }))?.nonceHash).toBe('hash-new');
+    expect((await store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' }))?.postPeerAccountId).toBe('integration-old');
+    snapshot.connection!.postPeerAccountId = 'mutated-snapshot';
+    expect((await store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' }))?.postPeerAccountId).toBe('integration-old');
+  });
+
+  it('returns only a pending nonce for an unlinked platform and nothing for another user', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.beginConnectAttempt(connectAttempt);
+    await expect(store.getDisconnectSnapshot({ userId: 'owner-a', platform: 'TIKTOK' })).resolves.toEqual({ nonceHash: 'hash-a' });
+    await expect(store.getDisconnectSnapshot({ userId: 'owner-b', platform: 'TIKTOK' })).resolves.toEqual({});
+  });
+  it.each([false, true])('ignores a stale maintenance snapshot after a newer link completes (missing integration: %s)', async (missing) => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-old', externalAccountId: 'external-old' });
+    await store.beginConnectAttempt(connectAttempt);
+    await store.completeConnectAttempt(completion);
+    await expect(store.reconcileExistingConnection({ userId: 'owner-a', platform: 'TIKTOK', expectedPostPeerAccountId: 'integration-old', expectedExternalAccountId: 'external-old',
+      ...(missing ? {} : { integration: { postPeerAccountId: 'integration-old', externalAccountId: 'external-old', displayName: 'Stale display name' } })
+    })).resolves.toBeUndefined();
+    expect((await store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' }))?.postPeerAccountId).toBe('integration-new');
+  });
+
+  it('retires only the expected missing connection while preserving a pending attempt', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-old', externalAccountId: 'external-old' });
+    await store.beginConnectAttempt(connectAttempt);
+    await store.reconcileExistingConnection({ userId: 'owner-a', platform: 'TIKTOK', expectedPostPeerAccountId: 'integration-old', expectedExternalAccountId: 'external-old' });
+    expect(await store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' })).toBeUndefined();
+    expect(await store.getConnectAttempt({ userId: 'owner-a', nonceHash: 'hash-a' })).toEqual(connectAttempt);
+    expect(await store.completeConnectAttempt(completion)).toBeDefined();
+  });
+
+  it('updates known account metadata but refuses to replace its provider or external identity', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-old', externalAccountId: 'external-old' });
+    const expected = { userId: 'owner-a', platform: 'TIKTOK' as const, expectedPostPeerAccountId: 'integration-old', expectedExternalAccountId: 'external-old' };
+    expect((await store.reconcileExistingConnection({ ...expected, integration: { postPeerAccountId: 'integration-old', externalAccountId: 'external-old', displayName: 'Updated name' } }))?.displayName).toBe('Updated name');
+    expect(await store.reconcileExistingConnection({ ...expected, integration: { postPeerAccountId: 'integration-new', externalAccountId: 'external-old' } })).toBeUndefined();
+    expect(await store.reconcileExistingConnection({ ...expected, integration: { postPeerAccountId: 'integration-old', externalAccountId: 'external-new' } })).toBeUndefined();
+    expect((await store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' }))?.displayName).toBe('Updated name');
+  });
+  it('consumes a matching connect attempt exactly once under concurrent refreshes', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.beginConnectAttempt(connectAttempt);
+    const results = await Promise.all([store.completeConnectAttempt(completion), store.completeConnectAttempt(completion)]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    await expect(store.getConnectAttempt({ userId: 'owner-a', nonceHash: 'hash-a' })).resolves.toBeUndefined();
+    expect((await store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' }))?.postPeerAccountId).toBe('integration-new');
+  });
+
+  it.each([
+    ['wrong owner', { userId: 'owner-b' }],
+    ['wrong platform', { platform: 'YOUTUBE_SHORTS' }],
+    ['wrong profile', { profileId: 'profile-b' }],
+    ['wrong nonce', { nonceHash: 'hash-b' }],
+    ['expired attempt', { now: '2026-10-23T10:15:00.000Z' }],
+    ['invalid clock', { now: 'invalid' }],
+    ['pre-existing integration', { integration: { postPeerAccountId: 'integration-old' } }]
+  ] as const)('does not complete or consume an attempt for %s', async (_label, override) => {
+    const store = createInMemorySocialConnectionStore();
+    await store.beginConnectAttempt(connectAttempt);
+    await expect(store.completeConnectAttempt({ ...completion, ...override })).resolves.toBeUndefined();
+    await expect(store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' })).resolves.toBeUndefined();
+    await expect(store.getConnectAttempt({ userId: 'owner-a', nonceHash: 'hash-a' })).resolves.toEqual(connectAttempt);
+  });
+
+  it('never exposes another owner attempt and returns copies of baseline identifiers', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.beginConnectAttempt(connectAttempt);
+    await expect(store.getConnectAttempt({ userId: 'owner-b', nonceHash: 'hash-a' })).resolves.toBeUndefined();
+    const first = await store.getConnectAttempt({ userId: 'owner-a', nonceHash: 'hash-a' });
+    first!.baselineIntegrationIds.push('integration-new');
+    expect((await store.getConnectAttempt({ userId: 'owner-a', nonceHash: 'hash-a' }))?.baselineIntegrationIds).toEqual(['integration-old']);
+  });
+
+  it('replacing an attempt makes an old completion and stale failure cleanup harmless', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.beginConnectAttempt(connectAttempt);
+    await store.beginConnectAttempt({ ...connectAttempt, nonceHash: 'hash-new' });
+    await expect(store.completeConnectAttempt(completion)).resolves.toBeUndefined();
+    await store.cancelConnectAttempt({ userId: 'owner-a', platform: 'TIKTOK', nonceHash: 'hash-a' });
+    expect((await store.getConnectAttempt({ userId: 'owner-a', nonceHash: 'hash-new' }))?.nonceHash).toBe('hash-new');
+    expect(await store.completeConnectAttempt({ ...completion, nonceHash: 'hash-new' })).toBeDefined();
+  });
+
+  it('keeps the attempt unconsumed if completing it conflicts with an existing owner', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-b', platform: 'TIKTOK', postPeerAccountId: 'integration-b', externalAccountId: 'external-new' });
+    await store.beginConnectAttempt(connectAttempt);
+    await expect(store.completeConnectAttempt(completion)).rejects.toMatchObject({ name: 'SocialAccountAlreadyLinkedError' });
+    expect(await store.getConnectAttempt({ userId: 'owner-a', nonceHash: 'hash-a' })).toEqual(connectAttempt);
+    await expect(store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' })).resolves.toBeUndefined();
+  });
+
+  it.each(['disconnect', 'deleteAllForUser'] as const)('%s cancels pending attempts before they can recreate a link', async (operation) => {
+    const store = createInMemorySocialConnectionStore();
+    await store.beginConnectAttempt(connectAttempt);
+    if (operation === 'disconnect') await store.disconnect({ userId: 'owner-a', platform: 'TIKTOK' });
+    else await store.deleteAllForUser?.('owner-a');
+    await expect(store.completeConnectAttempt(completion)).resolves.toBeUndefined();
+  });
+
+  it('releases both uniqueness claims when updating, disconnecting or deleting an owner', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-old', externalAccountId: 'external-old' });
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-new', externalAccountId: 'external-new' });
+    await expect(store.upsert({ userId: 'owner-b', platform: 'TIKTOK', postPeerAccountId: 'integration-old', externalAccountId: 'external-old' })).resolves.toBeDefined();
+    await store.disconnect({ userId: 'owner-b', platform: 'TIKTOK' });
+    await expect(store.upsert({ userId: 'owner-c', platform: 'TIKTOK', postPeerAccountId: 'integration-old', externalAccountId: 'external-old' })).resolves.toBeDefined();
+    await store.deleteAllForUser?.('owner-a');
+    await expect(store.upsert({ userId: 'owner-d', platform: 'TIKTOK', postPeerAccountId: 'integration-new', externalAccountId: 'external-new' })).resolves.toBeDefined();
+  });
+
+  it('rejects a global provider integration collision across platforms', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-shared' });
+    await expect(store.upsert({ userId: 'owner-a', platform: 'YOUTUBE_SHORTS', postPeerAccountId: 'integration-shared' })).rejects.toMatchObject({ name: 'SocialAccountAlreadyLinkedError' });
+  });
+  it('rejects claiming another owner external social account', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-a', externalAccountId: 'external-shared' });
+
+    await expect(store.upsert({ userId: 'owner-b', platform: 'TIKTOK', postPeerAccountId: 'integration-b', externalAccountId: 'external-shared' }))
+      .rejects.toMatchObject({ name: 'SocialAccountAlreadyLinkedError' });
+    await expect(store.getConnection({ userId: 'owner-b', platform: 'TIKTOK' })).resolves.toBeUndefined();
+    expect((await store.getConnection({ userId: 'owner-a', platform: 'TIKTOK' }))?.postPeerAccountId).toBe('integration-a');
+  });
+
+  it('rejects claiming another owner PostPeer integration even with a different external id', async () => {
+    const store = createInMemorySocialConnectionStore();
+    await store.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-shared', externalAccountId: 'external-a' });
+
+    await expect(store.upsert({ userId: 'owner-b', platform: 'TIKTOK', postPeerAccountId: 'integration-shared', externalAccountId: 'external-b' }))
+      .rejects.toMatchObject({ name: 'SocialAccountAlreadyLinkedError' });
+    await expect(store.getConnection({ userId: 'owner-b', platform: 'TIKTOK' })).resolves.toBeUndefined();
+  });
+
+  it('allows exactly one owner when two users race to claim a social account', async () => {
+    const store = createInMemorySocialConnectionStore();
+    const results = await Promise.allSettled(['owner-a', 'owner-b'].map((userId) => store.upsert({ userId, platform: 'TIKTOK', postPeerAccountId: `integration-${userId}`, externalAccountId: 'external-shared' })));
+
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    expect(results.find(({ status }) => status === 'rejected')).toMatchObject({ status: 'rejected', reason: { name: 'SocialAccountAlreadyLinkedError' } });
+  });
   it.each(['YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const)('revisions bind %s to the owner and current provider account', async (platform) => {
     const store = createInMemorySocialConnectionStore({ now: () => '2026-10-15T10:00:00.000Z' });
     const original = await store.upsert({ userId: 'owner', platform, postPeerAccountId: 'provider-secret-old' });
@@ -16,6 +181,7 @@ describe('createInMemorySocialConnectionStore', () => {
     const next = (await store.listForUser('owner')).find((entry) => entry.platform === platform)!;
     expect(replacement.id).toBe(original.id);
     expect(next.connectionRevision).not.toBe(first.connectionRevision);
+    await store.disconnect({ userId: 'owner', platform });
     await store.upsert({ userId: 'other-owner', platform, postPeerAccountId: 'provider-secret-new' });
     expect((await store.listForUser('other-owner')).find((entry) => entry.platform === platform)?.connectionRevision).not.toBe(next.connectionRevision);
     expect(JSON.stringify(next)).not.toContain('provider-secret');

@@ -205,3 +205,36 @@ and social publication remain outside this presentation verification.
   established `[skip ci] [skip render]` suffixes. It does not replace the tested
   runtime or request another deployment. Remaining limits are real-handset,
   live AI/provider and signed-iOS/store acceptance outside this UI release.
+
+## Outline-only selection follow-up — local candidate
+
+The user requested removing the green checkmarks over platform logos and using
+only a green outline for selected AI targets. Baseline `34076ef` was fetched and
+matches origin/main. The existing unrelated generated-Windows edits are retained.
+Only `PlatformCaptionAiTargets` changes: hide the checkmark and use the normal
+surface for selected tiles. The existing selected border, logos, accessible
+selected state, independent toggling, generation, drafts and pricing stay intact.
+No other checkboxes or platform confirmations are changed.
+
+Updated existing selector regressions verify outline-only presentation in both
+themes and selected semantics before/select/clear. Selector plus real-font
+rendering checks pass (15); the final selector file passes all 13 tests after
+updating the semantics matcher. Staging-configured selector/composer/submission/
+rendering suites pass all 35 tests. Full analyzer passes with no issues. The
+rendered light/dark cards were inspected, including 320px / 1.7x text; logos are
+unobscured. This local presentation change is not cross-cutting, so the earlier
+2,797-case full Mobile result remains historical and is not claimed as a new run.
+
+Exact-source Staging APK **12045** builds and its package, release and embedded
+selector source match the candidate. Existing Firebase auth, mock-auth boundary,
+API URL and RevenueCat Test Store setup are retained. Evidence is under
+`D:\PostDeeMobile\artifacts\caption-target-selection-20261023\border-only*`.
+The clean preview is `border-only/compact-ai-panel-light-card.png`.
+
+README, ROADMAP, API and ARCHITECTURE were checked; there is no product-plan,
+quota, contract, schema or architecture change requiring further edits. No
+backend rebuild/deploy or migration is needed. The implementation handoff did
+not merge, push or install; the user subsequently requested `main/push/deploy`.
+The authorized delivery results are recorded below after verification. There
+were no live AI requests, charges, publications or account-data changes during
+local implementation.

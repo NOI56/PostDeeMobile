@@ -22,16 +22,22 @@ void main() {
     for (final platform in captionPlatforms) {
       expect(_chip(tester, platform).selected, isFalse);
     }
+    expect(tester.getSemantics(_target(SocialPlatform.tiktok)),
+        isSemantics(isSelected: false));
 
     await tester.tap(_target(SocialPlatform.tiktok));
     await tester.pump();
     expect(selected, {SocialPlatform.tiktok});
     expect(_chip(tester, SocialPlatform.tiktok).selected, isTrue);
+    expect(tester.getSemantics(_target(SocialPlatform.tiktok)),
+        isSemantics(isSelected: true));
 
     await tester.tap(_target(SocialPlatform.tiktok));
     await tester.pump();
     expect(selected, isEmpty);
     expect(_chip(tester, SocialPlatform.tiktok).selected, isFalse);
+    expect(tester.getSemantics(_target(SocialPlatform.tiktok)),
+        isSemantics(isSelected: false));
   });
 
   testWidgets('AI targets update independently without mutating the input set',
@@ -120,8 +126,11 @@ void main() {
         expect(textBox.top, greaterThanOrEqualTo(chipBox.top));
         expect(textBox.bottom, lessThanOrEqualTo(chipBox.bottom));
       }
-      expect(_chip(tester, SocialPlatform.tiktok).showCheckmark, isTrue);
-      expect(_chip(tester, SocialPlatform.facebookReels).showCheckmark, isTrue);
+      for (final platform in captionPlatforms) {
+        final chip = _chip(tester, platform);
+        expect(chip.showCheckmark, isFalse);
+        expect(chip.selectedColor, chip.backgroundColor);
+      }
       final selectedSide = _chip(tester, SocialPlatform.tiktok).side!;
       final unselectedSide = _chip(tester, SocialPlatform.youtubeShorts).side!;
       expect(selectedSide.width, greaterThan(unselectedSide.width));

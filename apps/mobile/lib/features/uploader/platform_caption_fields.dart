@@ -78,9 +78,8 @@ class PlatformCaptionAiTargets extends StatelessWidget {
               width: isSelected ? 1.5 : 1,
             ),
             backgroundColor: colors.surface,
-            selectedColor: colors.primary.withValues(alpha: .10),
-            showCheckmark: true,
-            checkmarkColor: colors.primary,
+            selectedColor: colors.surface,
+            showCheckmark: false,
             selected: isSelected,
             onSelected: enabled
                 ? (value) {

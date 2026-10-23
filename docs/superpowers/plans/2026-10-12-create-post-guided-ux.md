@@ -86,7 +86,7 @@ draft/media ownership, connection identities, scheduling/entitlement และ t
 | Style learning | profile แบบ owner-local, preset/emoji/length, learned examples สูงสุด 3; เรียนรู้เฉพาะ human-edited accepted non-fallback caption ตาม trigger เดิม |
 | Draft/exit | ไฟล์ owner/device-local, explicit save, restore video/cover/caption/settings/schedule, continue/discard/save-and-exit; เปลี่ยนขั้นไม่ submit หรือ save |
 | Media/cover | local player/poster และ cover editor เดิม, verified metadata, cover cleanup; ไม่เพิ่ม media upload เพื่อวาด UI |
-| Destination | ชื่อจาก confirmed connection identities, loading/error/owner mismatch ไม่แสดงชื่อเก่า; owner/request-generation guard ไม่รับ late response หรือจบ loading ใหม่; missing/unknown/required settings บล็อกตามเดิม; TikTok inbox draft, YouTube Shorts, Instagram Reels, Facebook Page Video |
+| Destination | ชื่อจาก confirmed connection identities, loading/error/owner mismatch ไม่แสดงชื่อเก่า; owner/request-generation guard ไม่รับ late response หรือจบ loading ใหม่; missing/unknown/required settings บล็อกตามเดิม; TikTok inbox draft, YouTube Shorts, Instagram Reels, Facebook Page Reels ตาม contract 2026-10-24 (real-account E2E ยัง pending) |
 | Schedule | Calendar date handoff/injected local clock, ไม่ทับ restored draft, future/14-day Starter/30-day Pro/Free guard เดิม |
 | Submit/result | phone/package/readiness/publisher guards, owned pre-submission receipt, stable clientRequestId replay, queue acceptance, partial/unknown/provider-draft truth และ draft cleanup เดิม |
 | Ownership | stale owner/session results และ current-only actions/semantics; shell ปิด composer/child routes เมื่อบัญชีเปลี่ยน |

@@ -53,8 +53,8 @@ export type PlatformSettings = Partial<{
     isAiGenerated?: boolean;
   } & PlatformCaptionSettings;
   FACEBOOK_REELS: {
-    // FACEBOOK_REELS is the legacy internal key. The provider target is a
-    // Facebook Page Video; PAGE_DRAFT means an unpublished Page draft.
+    // Facebook Reels publish to Pages. Keep the internal key for stored posts;
+    // PAGE_DRAFT means an unpublished Reel on the Page.
     publishMode: 'PUBLISH' | 'PAGE_DRAFT';
     isAiGenerated?: boolean;
   } & PlatformCaptionSettings;

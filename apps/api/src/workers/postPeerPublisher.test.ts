@@ -58,6 +58,7 @@ describe('createPostPeerPublisher', () => {
       const baseSettings = platform === 'INSTAGRAM_REELS' ? { shareToFeed: true }
         : platform === 'FACEBOOK_REELS' ? { publishMode: 'PUBLISH' } : { visibility: 'private' };
       await publisher.publish({ userId: 'owner', postId: 'post', platform, caption: 'unused < shared >',
+        videoS3Key: 'https://cdn.test/video.mp4',
         platformSettings: { [platform]: { ...baseSettings, caption: 'Destination text' } } });
       expect(calls[0].content).toBe('Destination text');
       const tooLong = platform === 'YOUTUBE_SHORTS' ? 'ก'.repeat(1667)
@@ -110,12 +111,13 @@ describe('createPostPeerPublisher', () => {
       const aiSetting = isAiGenerated === undefined ? {} : { isAiGenerated };
       await publisher.publish({
         userId: 'owner', postId: 'meta-post', platform,
+        videoS3Key: 'https://cdn.test/video.mp4',
         platformSettings: platform === 'INSTAGRAM_REELS'
           ? { INSTAGRAM_REELS: { shareToFeed: false, ...aiSetting } }
           : { FACEBOOK_REELS: { publishMode: 'PUBLISH', ...aiSetting } }
       });
       const data = calls[0].platforms[0].platformSpecificData;
-      expect(data).toEqual({ ...(platform === 'INSTAGRAM_REELS' ? { shareToFeed: false } : { published: true }), ...aiSetting });
+      expect(data).toEqual({ ...(platform === 'INSTAGRAM_REELS' ? { shareToFeed: false } : { contentType: 'reel', published: true }), ...aiSetting });
       if (isAiGenerated === undefined) expect(data).not.toHaveProperty('isAiGenerated');
     });
   }
@@ -694,7 +696,132 @@ describe('createPostPeerPublisher', () => {
     });
   });
 
-  it('uses a signed Facebook video thumbnail URL for a custom cover image', async () => {
+  it.each([
+    { publishMode: 'PUBLISH', withCover: false },
+    { publishMode: 'PUBLISH', withCover: true },
+    { publishMode: 'PAGE_DRAFT', withCover: false },
+    { publishMode: 'PAGE_DRAFT', withCover: true }
+  ] as const)('always sends Facebook Reels while preserving owner, mode and AI settings: %j', async ({
+    publishMode, withCover
+  }) => {
+    const calls: Record<string, unknown>[] = [];
+    const resolveAccountId = vi.fn(async () => 'seller-facebook-page');
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { FACEBOOK_REELS: 'operator-facebook-page' },
+      resolveAccountId,
+      resolveVideoUrl: async (key) => `https://cdn.test/${key}`,
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(String(init.body)));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            postId: 'postpeer-reel-123',
+            status: publishMode === 'PUBLISH' ? 'published' : 'draft',
+            platforms: [{
+              platform: 'facebook',
+              success: true,
+              platformPostUrl: 'https://www.facebook.com/reel/123'
+            }]
+          })
+        };
+      }
+    });
+
+    const result = await publisher.publish({
+      userId: 'seller-1',
+      postId: 'post-1',
+      caption: 'รีวิวสินค้าใหม่',
+      videoS3Key: 'uploads/videos/post-1.mp4',
+      ...(withCover ? { coverImageS3Key: 'uploads/covers/post-1.jpg' } : {}),
+      platform: 'FACEBOOK_REELS',
+      platformSettings: { FACEBOOK_REELS: { publishMode, isAiGenerated: true } }
+    });
+
+    expect(resolveAccountId).toHaveBeenCalledWith({
+      userId: 'seller-1', platform: 'FACEBOOK_REELS'
+    });
+    expect(calls).toEqual([{
+      content: 'รีวิวสินค้าใหม่',
+      platforms: [{
+        platform: 'facebook',
+        accountId: 'seller-facebook-page',
+        platformSpecificData: {
+          contentType: 'reel',
+          published: publishMode === 'PUBLISH',
+          isAiGenerated: true,
+          ...(withCover ? { videoThumbnailUrl: 'https://cdn.test/uploads/covers/post-1.jpg' } : {})
+        }
+      }],
+      mediaItems: [{ type: 'video', url: 'https://cdn.test/uploads/videos/post-1.mp4' }],
+      publishNow: true
+    }]);
+    expect(result).toMatchObject({
+      platform: 'FACEBOOK_REELS',
+      status: 'PUBLISHED',
+      deliveryOutcome: publishMode === 'PUBLISH' ? 'LIVE' : 'DRAFT'
+    });
+  });
+
+  it('does not fall back to a Facebook feed video when Reel publishing fails', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'failed',
+        platforms: [{ platform: 'facebook', success: false, error: 'Reel rejected' }]
+      })
+    }));
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { FACEBOOK_REELS: 'postpeer-facebook' },
+      fetchImpl
+    });
+
+    await expect(publisher.publish({
+      postId: 'post-1',
+      videoS3Key: 'https://cdn.test/video.mp4',
+      platform: 'FACEBOOK_REELS'
+    })).rejects.toThrow(/Reel rejected/);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { videoS3Key: undefined, resolvedUrl: undefined },
+    { videoS3Key: '', resolvedUrl: undefined },
+    { videoS3Key: '  ', resolvedUrl: undefined },
+    { videoS3Key: 'uploads/video.mp4', resolvedUrl: '' },
+    { videoS3Key: 'uploads/video.mp4', resolvedUrl: '  ' }
+  ])('rejects a Facebook Reel without a video before contacting PostPeer: %j', async ({
+    videoS3Key, resolvedUrl
+  }) => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ externalPostId: 'facebook-post-123' })
+    }));
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { FACEBOOK_REELS: 'postpeer-facebook' },
+      ...(resolvedUrl !== undefined ? { resolveVideoUrl: async () => resolvedUrl } : {}),
+      fetchImpl
+    });
+
+    await expect(publisher.publish({
+      postId: 'post-1',
+      videoS3Key,
+      platform: 'FACEBOOK_REELS'
+    })).rejects.toThrow(/video is required to publish Facebook Reels/);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('keeps Facebook Reel mode when sending a best-effort custom thumbnail', async () => {
     const calls: { body: Record<string, unknown> }[] = [];
     const resolveVideoUrl = vi.fn(async (key: string) => `https://cdn.test/${key}`);
     const publisher = createPostPeerPublisher({
@@ -707,7 +834,7 @@ describe('createPostPeerPublisher', () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ externalPostId: 'facebook-video-123' })
+          json: async () => ({ externalPostId: 'facebook-reel-123' })
         };
       }
     });
@@ -726,6 +853,7 @@ describe('createPostPeerPublisher', () => {
       platforms: [
         {
           platformSpecificData: {
+            contentType: 'reel',
             videoThumbnailUrl: 'https://cdn.test/uploads/covers/post-1.jpg'
           }
         }

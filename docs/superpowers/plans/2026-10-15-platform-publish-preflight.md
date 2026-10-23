@@ -82,9 +82,11 @@ it does not depend on global callbacks from another Flutter engine.
 - Instagram Reels: MOV/MP4 container, 3–900 seconds, maximum 300,000,000 bytes, width at most 1,920,
   23–60 FPS, H.264 or HEVC; when audio is present, AAC mono/stereo at at most
   48 kHz. Missing required measurements remain unverified and block upload.
-- Facebook Page Video: duration at most 14,400 seconds and width at most 4,000.
-  Recommendations such as 30 FPS, dimensions divisible by 16 and preferred
-  encoders are not introduced as mandatory rejection rules.
+- Facebook Page Reels (2026-10-24 contract): remove the Page Video duration and
+  width caps; do not invent Reel limits. Preserve verified media metadata and
+  general upload validation; the provider validates the actual Reel. Recommendations
+  such as 30 FPS, dimensions divisible by 16 and preferred encoders are not
+  introduced as mandatory rejection rules.
 
 These are Mobile preflight checks, not new trusted server media validation. The
 provider still validates the actual upload. Optional `videoMetadata` is retained
@@ -132,8 +134,10 @@ removal and a 100-character boundary; an edited title is never overwritten. Priv
 made-for-kids, realistic synthetic-media disclosure and community certification
 remain explicit user decisions. Review displays all YouTube answers, the selected
 Instagram feed choice, and YouTube's linked Terms notice with copyright/privacy
-guidance beside confirmation. Facebook remains Page Video; unsupported Reels,
-Shopee and Lazada are not advertised as working destinations.
+guidance beside confirmation. Facebook now requests Page Reels only through
+PostPeer `contentType: 'reel'`, preserving publish/Page-draft and AI disclosure
+with no Page feed fallback. Real-account Reel E2E remains pending; Shopee and
+Lazada are not advertised as working destinations.
 
 The generic old YouTube audit warning is not proof of a particular PostPeer
 account's visibility. Current Google endpoint prose and its generated page summary
@@ -324,4 +328,4 @@ separate checks. This delivery does not certify provider public-post approval.
 - [PostPeer YouTube settings](https://www.postpeer.dev/docs/platforms/youtube)
 - [PostPeer Instagram capabilities and media requirements](https://www.postpeer.dev/docs/platforms/instagram)
 - [PostPeer Instagram Reels scheduler caption limit](https://www.postpeer.dev/free-tools/instagram-reels-scheduler)
-- [PostPeer Facebook Page Video limits and reconnect flag](https://www.postpeer.dev/docs/platforms/facebook)
+- [PostPeer Facebook Page Reels routing and reconnect flag](https://www.postpeer.dev/docs/platforms/facebook)

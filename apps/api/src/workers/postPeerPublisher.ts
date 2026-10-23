@@ -524,6 +524,8 @@ const buildPlatformTarget = ({
       throw new Error('Facebook publish settings are required');
     }
     target.platformSpecificData = {
+      // Facebook destinations always use Page Reels, including Page drafts.
+      contentType: 'reel',
       published: facebookSettings.publishMode === 'PUBLISH',
       ...(facebookSettings.isAiGenerated !== undefined
         ? { isAiGenerated: facebookSettings.isAiGenerated }
@@ -631,6 +633,9 @@ export const createPostPeerPublisher = ({
         ? await resolveVideoUrl(videoS3Key)
         : videoS3Key
       : undefined;
+    if (platform === 'FACEBOOK_REELS' && !videoUrl?.trim()) {
+      throw new Error('A video is required to publish Facebook Reels');
+    }
     // PostPeer accepts custom cover image URLs only for Instagram and
     // Facebook. TikTok selects a frame timestamp, while YouTube thumbnails
     // require a separate authenticated API flow and must not be sent here.

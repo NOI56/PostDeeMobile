@@ -2,6 +2,18 @@
 
 Build roadmap for PostDee.
 
+## Facebook Page Reels only (2026-10-24)
+
+- Retain `FACEBOOK_REELS` and always send PostPeer `platform: 'facebook'` with
+  `platformSpecificData.contentType: 'reel'`; never fall back to a Page feed video.
+- Preserve `PUBLISH|PAGE_DRAFT`, optional `isAiGenerated`, per-platform captions,
+  immutable target snapshots, existing TikTok Direct and billing safeguards.
+- Remove feed-specific Facebook media limits without inventing Reel limits;
+  keep actual-media verification and provider validation. Signed thumbnails
+  remain best effort, with Reel display and real-account publish/draft E2E pending.
+- No new client fields, environment variables or migrations. Updated publishers
+  also route existing queued/scheduled Facebook jobs to Page Reels.
+
 ## Looping wheel time picker (2026-10-24)
 
 - Share one 24-hour Flutter wheel picker between Create Post and Calendar
@@ -72,7 +84,7 @@ Build roadmap for PostDee.
 - Store optional per-post captions inside the existing platform-settings JSON;
   validate and deliver each selected destination's effective text. Retain old
   clients, immutable recovery, existing disclosure/visibility/target settings and
-  platform-specific limits. Facebook remains Page Video.
+  platform-specific limits. Facebook now targets Page Reels under the contract above.
   Preserve YouTube's explicit empty description (`caption: ""`, including
   trimmed whitespace) without falling back to shared text, while retaining
   title/settings requirements and rejecting empty overrides for the other three.
@@ -308,7 +320,7 @@ Build roadmap for PostDee.
 - Keep TikTok Inbox short and independent of Direct capability loading; fetch
   fresh capabilities for Direct, reject stale results and preserve manual consent.
 - Keep YouTube title, audience, realistic synthetic-media and certification
-  choices explicit; show Instagram feed/cover and Facebook Page Video/draft intent.
+  choices explicit; show Instagram feed/cover and Facebook Page Reels/draft intent.
 - Add optional IG/FB AI-media disclosure through draft, review, immutable intent,
   API validation and PostPeer mapping, preserving absent legacy declarations.
 - API regression suite passes 127 files / 2,207 tests with typecheck/build/Prisma.
@@ -395,7 +407,7 @@ Build roadmap for PostDee.
   preflight guards, without creating or enqueueing another post.
 - Keep YouTube title suggestion editable and blank-only; display every selected
   YouTube declaration, Instagram feed choice and YouTube Terms notice at review.
-  Facebook remains Page Video rather than an unverified Reels destination.
+  Facebook now targets Page Reels; real-account Reel E2E remains pending.
 - Backend **2,163 tests**, Mobile **2,351 tests** (one optional preview skipped),
   typecheck/build, schema/helper checks, analysis and the exact Staging APK build
   pass. Diagnostic runtime evidence and remaining external checks are in the
@@ -1200,9 +1212,10 @@ Core items:
 - Universal uploader for one 9:16 video.
 - Scheduling through Upstash Redis and BullMQ.
 - Unified social posting via PostPeer API (postpeer.dev) for TikTok, YouTube
-  Shorts, Instagram Reels, and Facebook Page Video. `FACEBOOK_REELS` remains an
-  internal compatibility value only; PostPeer's current path is not Facebook
-  Reels. Direct platform API integrations are deferred until post-launch.
+  Shorts, Instagram Reels, and Facebook Page Reels. `FACEBOOK_REELS` always sends
+  `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, with no
+  Page feed fallback. Real-account E2E remains pending. Direct platform API
+  integrations are deferred until post-launch.
 - Unified analytics summary for Pro users, with backend-backed date ranges and
   a publish-date daily series.
 
@@ -1302,7 +1315,7 @@ Current status:
   filling the main Upload page with every field: selecting a destination reveals
   one summary/settings action and opens that platform's sheet. New intent is
   TikTok inbox draft; complete YouTube title/visibility/kids/synthetic-media/
-  certification; Instagram share-to-feed; and an explicit Facebook Page Video
+  certification; Instagram share-to-feed; and an explicit Facebook Page Reels
   publish/page-draft choice. The new TikTok Direct flow adds creator-info,
   consent and revision checks and is delivered to Staging API/Android; provider
   audit/public publication, iOS and other-environment rollout still need
@@ -1384,7 +1397,7 @@ Primary backend choices:
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends the clip to configured-primary Gemini 2.5 Flash-Lite, retries transient failures, then falls back directly to the local template; media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; the mobile app extracts and uploads frames for Pro (`selectedFrameKeys`) | Verify the Pro frame flow on a real device, plus Gemini quota/tier and the Prisma usage ledger, before selling as production AI. |
 | AI auto editing | ElevenLabs Scribe v2 + Gemini 3.5 Flash-Lite + mobile FFmpeg | Pro transcript/highlight planning, optional verified-silence/repeated-speech cleanup, AI-selected sound effects, subtitle burn-in, phone-side review, and video export | `/ai-edits/prepare`, fair quota outcomes, waveform-verified silence, safe repeated-speech review, atomic accepted-source state, subtitle-safe rendering, and local colour compatibility exist. AI SFX uses a separate catalog-only planner: it returns at most eight trusted `soundId + sourceSeconds` anchors; mobile fixes volume, maps through final cuts, and mixes bundled procedural WAVs. Manual SFX selection is removed. Production beat sync and the 3-second hook remain default-off. | Tasks 3–8 and deployed identity/health are verified. Pixel 8 `color-local` passed device/render checks, while the main matrix remains blocked: a new STT-only Staging key still received upstream HTTP `401`, PostDee quota stayed unchanged, and ElevenLabs showed only 6/10,000 workspace credits remaining. Wait for or restore provider quota, rerun the API-dependent matrix, then capture AI SFX Preview/full-export listening, peak, and A/V-sync evidence on Android and iPhone before Production. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
-| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video through one provider | Per-user connect uses a native Android Custom Tab bridge with external-only fallback, trusted OAuth-host validation, fixed Android return targets and one authenticated return/resume/manual refresh, and provider-first disconnect; iOS currently uses the external system browser; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; the config-only readiness gate and fail-fast create/reschedule path exist; Staging has an opt-in startup guard whose single atomic aggregate status-in query refuses PostPeer activation when any global `QUEUED` (including future) or `PUBLISHING` row exists, or when inspection fails; YouTube defaults private and TikTok SELF_ONLY for controlled testing; the disabled Mobile fail-fast passed, but the first controlled YouTube attempt stopped at readiness before upload and the runtime mode/guard pass were not observable, so connected-account E2E is still pending | Readiness does not probe PostPeer/accounts. Injected-URI warm return passed on the Staging APK; verify real provider/browser handoff, Open App confirmation, cold-start authentication, the iOS external-browser flow and manual fallback on physical devices. The fixed-target API is Live on Staging; other environments need API before mobile. Generate new links to use the return target. Keep Staging disabled except for a controlled run; require explicit runtime-mode and empty-backlog guard-pass evidence before another single private attempt. Treat `FACEBOOK_REELS` as Page Video. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
+| Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels through one provider | Per-user connect uses a native Android Custom Tab bridge with external-only fallback, trusted OAuth-host validation, fixed Android return targets and one authenticated return/resume/manual refresh, and provider-first disconnect; iOS currently uses the external system browser; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; the config-only readiness gate and fail-fast create/reschedule path exist; Staging has an opt-in startup guard whose single atomic aggregate status-in query refuses PostPeer activation when any global `QUEUED` (including future) or `PUBLISHING` row exists, or when inspection fails; YouTube defaults private and TikTok SELF_ONLY for controlled testing; the disabled Mobile fail-fast passed, but the first controlled YouTube attempt stopped at readiness before upload and the runtime mode/guard pass were not observable, so connected-account E2E is still pending | Readiness does not probe PostPeer/accounts. Injected-URI warm return passed on the Staging APK; verify real provider/browser handoff, Open App confirmation, cold-start authentication, the iOS external-browser flow and manual fallback on physical devices. The fixed-target API is Live on Staging; other environments need API before mobile. Generate new links to use the return target. Keep Staging disabled except for a controlled run; require explicit runtime-mode and empty-backlog guard-pass evidence before another single private attempt. `FACEBOOK_REELS` always requests Page Reels via `contentType: 'reel'`, retaining publish/Page-draft choices with no Page feed fallback; real-account E2E remains pending. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture allowlisted backend, publisher/worker and Dart/Flutter errors | Clean Staging a0540a3 serves the CI-tested 12e0589 API tree; isolated ingestion and actual drained-main-process fatal/restart are verified, temporary hook removed | Native Crashlytics/APK12041 remain accepted. Crash during active publishing, forced HTTP-500 middleware and native/iOS runtime remain separate; tracing/logs/Replay stay off. |
 | Push notifications | Firebase Cloud Messaging | Notify users about scheduled publish results and failures | Mobile registration, `POST /devices`, notifier, and firebase-admin sender exist; mock remains default | Add the service account, set `PUSH_SENDER=firebase`, enable APNs/iOS capabilities, and test on a real device. |
 
@@ -1454,7 +1467,7 @@ Recommended activation order:
 10. While Staging is still disabled, install only its PostPeer key, connect and
     refresh disposable per-user accounts, and cancel old queued/scheduled work.
     Enable PostPeer only for a controlled real publish E2E. Confirm readiness,
-    YouTube `private`, TikTok `SELF_ONLY`, Instagram Reels, Facebook Page Video,
+    YouTube `private`, TikTok `SELF_ONLY`, Instagram Reels, Facebook Page Reels,
     the bounded async poll, and `GET /posts.platformResults`; then restore
     `disabled` and verify readiness returns `503` before enabling public claims.
 11. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
@@ -1809,8 +1822,9 @@ To ensure the app passes store review guidelines, the following must be implemen
 6. Verify the per-user PostPeer connect/refresh flow while Staging remains
    disabled, cancel old queued/scheduled records, then run controlled real
    publishing with disposable connected accounts. Confirm readiness returns to
-   `503` after restoring `disabled`. Treat `FACEBOOK_REELS` as Facebook Page
-   Video, verify uncertain outcomes before retrying, and defer individual social
+   `503` after restoring `disabled`. Verify `FACEBOOK_REELS` delivers Facebook
+   Page Reels via `contentType: 'reel'` with no Page feed fallback, verify
+   uncertain outcomes before retrying, and defer individual social
    API app reviews.
 7. Finish the remaining live customization checks for published appearance,
    public images, browser copy/open and unpublishing on the deployed Staging

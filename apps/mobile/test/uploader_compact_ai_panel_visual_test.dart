@@ -190,7 +190,7 @@ void main() {
         'TikTok',
         'YouTube Shorts',
         'Instagram Reels',
-        'Facebook Page Video',
+        'Facebook Reels',
         'สร้างแคปชั่น · 1 เครดิต',
       ]) {
         final text = inside(find.text(label));

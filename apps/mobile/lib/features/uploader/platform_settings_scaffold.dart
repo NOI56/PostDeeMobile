@@ -53,10 +53,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
                           child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                              platform == SocialPlatform.facebookReels
-                                  ? 'Facebook Page Video'
-                                  : platform.label,
+                          Text(platform.label,
                               style: TextStyle(
                                   color: AppTheme.textPrimary,
                                   fontSize: 16,

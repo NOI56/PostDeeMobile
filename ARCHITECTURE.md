@@ -105,7 +105,9 @@ preserved through nullish fallback as an empty description. Missing overrides
 still use shared text; TikTok, Instagram and Facebook reject empty overrides.
 YouTube's existing title and required-settings guards remain enforced.
 There is no new column or migration, and clients without overrides retain the
-shared-caption behavior. Facebook's compatibility key still targets Page Video.
+shared-caption behavior. Facebook retains the `FACEBOOK_REELS` key and now
+requests Page Reels only through `contentType: 'reel'`; real-account E2E remains
+pending.
 
 Explicit advanced AI generation adds optional `platforms` to the real-clip
 caption endpoint. One provider operation/one quota reservation produces the
@@ -1379,8 +1381,10 @@ Target platforms:
 - TikTok
 - YouTube Shorts
 - Instagram Reels
-- Facebook Page Video through PostPeer (the internal compatibility value remains
-  `FACEBOOK_REELS`; Reels are not currently supported by this provider path)
+- Facebook Page Reels through PostPeer (`FACEBOOK_REELS` retains its existing
+  value; PostPeer always receives `platform: 'facebook'` with
+  `platformSpecificData.contentType: 'reel'`, with no Page feed fallback;
+  real-account E2E remains pending)
 
 ## Project Layout
 
@@ -1723,7 +1727,7 @@ delivery visibility cannot be reconstructed.
 | AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | ElevenLabs Scribe v2 transcribes; `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite` plans from visual proxy/transcript with structured JSON and provider-default sampling (no explicit `temperature`); PostDee rules are the final fallback; FFmpeg export stays on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
-| Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` currently targets Facebook Page Video; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
+| Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` always requests Facebook Page Reels with `contentType: 'reel'`, preserving `PUBLISH` / `PAGE_DRAFT` and optional `isAiGenerated`, with no Page feed fallback; real-account E2E remains pending; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
 
 The authenticated `GET /publishing/readiness` route is deliberately only a
 configuration gate: `acceptingPosts: true` means the API process is not using
@@ -1955,7 +1959,7 @@ sequenceDiagram
     A-->>M: videoS3Key + uploadUrl
     M->>S: PUT full video file
   end
-  opt Instagram or Facebook uses the custom cover image
+  opt Instagram custom cover or Facebook best-effort thumbnail requested
     M->>A: POST /uploads for JPEG/PNG cover
     M->>S: Upload rendered cover image
   end
@@ -2022,9 +2026,12 @@ Rules:
   Both storage keys remain owner-scoped and must be completed before queueing.
 - Managed cover uploads accept JPEG or PNG up to 2 MiB. Mobile avoids uploading
   an unused image for TikTok/YouTube-only posts.
-- Platform adapters send only supported controls: Instagram uses the signed
-  image or frame offset, Facebook Page Video receives the signed image, TikTok
-  receives the frame time, and YouTube Shorts receives no custom thumbnail.
+- Platform adapters send controls per destination: Instagram uses the signed
+  image or frame offset. Facebook Page Reels always sends `contentType: 'reel'`
+  and optionally sends the signed image as best-effort `videoThumbnailUrl`;
+  display on the Reel still needs real-account verification, and the provider
+  may choose the cover. TikTok receives the frame time, and YouTube Shorts
+  receives no custom thumbnail.
 - New clients opt in with `multipart-v1`. `UPLOAD_PROTOCOL_MODE` defaults to
   `legacy`; production uses `dual` during rollout, and moves to strict
   `multipart` only after old clients are retired.
@@ -2901,7 +2908,13 @@ cd apps/mobile
   compliance/visibility, immutable-target, migration/backlog, and redaction E2E
   remain required. Shared
   `POSTPEER_*_ACCOUNT_ID` values are rejected in production. The internal
-  `FACEBOOK_REELS` key currently means Facebook Page Video, not Reels.
+  `FACEBOOK_REELS` key requests Facebook Page Reels only through
+  `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`; missing
+  video fails before submission and there is no Page feed fallback. Existing
+  `PUBLISH|PAGE_DRAFT`, explicit optional `isAiGenerated`, immutable target
+  snapshots and unknown-outcome safeguards are preserved. Real-account E2E is
+  still pending; deployment also changes existing queued/scheduled Facebook
+  jobs to this route without new client fields, environment variables or migrations.
 - `render.yaml` currently selects `SOCIAL_PUBLISHER=postpeer` while broader
   connected-account E2E and Production verification remain pending. Repository
   configuration cannot prove the live Render value or provider health; resolve this fail-closed policy

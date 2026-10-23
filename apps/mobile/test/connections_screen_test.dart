@@ -343,13 +343,13 @@ void main() {
               ),
       ));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Facebook Video'), 250);
+      await tester.scrollUntilVisible(find.text('Facebook Reels'), 250);
       await tester.pumpAndSettle();
 
       expect(find.text('TikTok'), findsOneWidget);
       expect(find.text('YouTube Shorts'), findsOneWidget);
       expect(find.text('Instagram Reels'), findsOneWidget);
-      expect(find.text('Facebook Video'), findsOneWidget);
+      expect(find.text('Facebook Reels'), findsOneWidget);
       expect(
         tester
             .widgetList<SocialPlatformLogo>(find.byType(SocialPlatformLogo))

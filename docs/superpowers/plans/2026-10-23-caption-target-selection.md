@@ -27,8 +27,9 @@ as delivery or verification of the new selector.
 ## Intended behavior
 
 - Advanced mode still hides the main caption and shows all four manual editors:
-  TikTok, YouTube Shorts, Instagram Reels and Facebook Page Video. The internal
-  `FACEBOOK_REELS` key remains Page Video, not Facebook Reels support.
+  TikTok, YouTube Shorts, Instagram Reels and Facebook Page Reels. The existing
+  `FACEBOOK_REELS` key now always requests `contentType: 'reel'` with no Page
+  feed fallback under the 2026-10-24 contract; real-account E2E remains pending.
 - AI targets start empty. Users choose 1–4 supported channels, with select-all
   and clear-selection actions, before explicitly requesting generation. Empty
   selection must make no AI request and consume no credit.

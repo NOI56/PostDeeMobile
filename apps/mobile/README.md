@@ -136,8 +136,11 @@ manual audience/synthetic-media answers and certification.
 Instagram/Facebook show cover context and optional AI-generated video disclosure.
 Null is unanswered and serializes without a key; true/false are explicit choices,
 can be cleared, survive draft round trips and appear in review. AI captions alone
-do not imply AI-generated media. Facebook remains Page Video, with a clear
-distinction between sending a Page draft and saving a local PostDee draft.
+do not imply AI-generated media. Under the 2026-10-24 contract, Facebook targets
+Page Reels via PostPeer `contentType: 'reel'`, preserving publish/Page-draft and
+AI disclosure with no Page feed fallback. Sending a Page draft remains distinct
+from saving a local PostDee draft. Real-account Reel/draft/thumbnail E2E remains
+pending; optional thumbnails are best effort and the provider may choose the cover.
 
 Source `866f0e3`, based on main `c813eef`, is merged/pushed to main and Live on
 Staging deploy `dep-dba2oieq1p3s73a3g6qg`. Exact-source Backend/Flutter CI
@@ -171,8 +174,10 @@ YouTube 5,000 UTF-8 bytes/no angle brackets, Instagram 2,200 conservative UTF-16
 units and Facebook 63,206 conservative UTF-16 units. An owned FFprobe session with
 bounded execution checks the final outgoing file after rendering, rather than
 guessing from the original clip. YouTube Shorts is limited to 180 seconds;
-Instagram checks MOV/MP4 container/duration/size/dimensions/FPS/codecs/audio, and Facebook keeps its
-Page Video limits. Unknown metadata blocks the affected media check.
+Instagram checks MOV/MP4 container/duration/size/dimensions/FPS/codecs/audio.
+Facebook Page Reels no longer inherits Page Video duration/width caps; do not
+invent Reel limits. Verified metadata and general upload safeguards remain,
+and the provider validates the actual Reel. Unknown metadata blocks the affected media check.
 
 Channel-readiness loads at channel selection and is refreshed before upload and
 post creation. Explicit reconnect/permission problems block submission; unknown

@@ -788,10 +788,16 @@ authenticated readiness `200` พร้อม header `private, no-store` จา�
 pseudonymous ที่ PostPeer กำหนดให้มี, poll ผล `202 pending/publishing` ประมาณ 2 นาที
 โดยไม่สร้าง external id ปลอม และคืน `platformResults` ใน `GET /posts` แล้ว ค่า
 Phase 2 ใหม่คือ TikTok `INBOX_DRAFT`; YouTube title + Private/Unlisted/Public +
-kids/synthetic/certification; Instagram share-to-feed; Facebook Page Video แบบ
+kids/synthetic/certification; Instagram share-to-feed; Facebook Page Reels แบบ
 publish/page-draft. TikTok direct/`SELF_ONLY` เป็น legacy compatibility และยังห้าม
 เปิดให้ client ใหม่จน creator-info/consent/audit ครบ.
-`FACEBOOK_REELS` เป็นชื่อภายในที่ตอนนี้ส่ง Facebook Page Video ไม่ใช่ Reels.
+`FACEBOOK_REELS` คง enum เดิม แต่ส่ง PostPeer `platform: 'facebook'` กับ
+`platformSpecificData.contentType: 'reel'` เสมอ ไม่มี Page feed fallback; คง
+`PUBLISH|PAGE_DRAFT`, optional `isAiGenerated`, captions และ target snapshots เดิม.
+ยังต้องผ่าน Page Reel/draft E2E ด้วยบัญชีจริง หน้าปกที่ส่งเป็น best effort และ
+ต้องตรวจการแสดงจริง โดย provider อาจเลือกหน้าปกเอง หลัง deploy publisher ใหม่
+งาน queued/scheduled Facebook เดิมจะใช้เส้นทาง Page Reels ด้วย ไม่มี migration
+หรือ client field/environment variable ใหม่ และไม่ใช้เพดาน Page Video กับ Reels
 Instagram ไม่มี Private รายโพสต์ และ Facebook `PUBLISH` อาจเผยแพร่จริง จึงต้องใช้
 เฉพาะบัญชี disposable ที่ไม่มีผู้ติดตามหรือข้อมูลจริง ส่วน `PAGE_DRAFT` ต้องมี
 หลักฐาน final draft จาก provider ก่อนถือว่าสำเร็จ
@@ -904,7 +910,7 @@ candidate ขึ้น Staging ต้อง manual deploy ชุดที่ต�
       `เลือกทั้งหมด`; เลือกแล้วจึงเห็นปุ่มสรุป/ตั้งค่าของช่องนั้น ไม่วางทุก field บน
       หน้า main. Review ต้องแสดง TikTok inbox draft, YouTube visibility หลังกรอก
       title/kids/synthetic/certification ครบ, Instagram share-to-feed และ Facebook
-      Page Video publish/page-draft พร้อมชื่อ/id ของบัญชี/channel/page ทุกปลายทาง;
+      Page Reels publish/page-draft พร้อมชื่อ/id ของบัญชี/channel/page ทุกปลายทาง;
       TikTok direct, identity ที่หาย, ค่าที่ไม่ครบ และ outcome ที่ไม่รู้ต้อง block
 - [ ] Apply migration `20260811130000_add_platform_publish_configuration`, deploy API
       ก่อน Mobile และตรวจ readiness `platformSettingsVersion: 1`; ตรวจ Prisma JSON
@@ -995,7 +1001,7 @@ candidate ขึ้น Staging ต้อง manual deploy ชุดที่ต�
         URL/id จริง (เก็บแบบ private), ปลายทางระบุวิดีโอเป็น Private และโควตาสด
         เปลี่ยน `249/250` เป็น `248/250`
       - [ ] TikTok inbox draft, YouTube Phase 2 compliance/visibility, Instagram
-        Reels, Facebook Page Video publish/page-draft, scheduling,
+        Reels, Facebook Page Reels publish/page-draft, scheduling,
         ambiguous-outcome/retry และ exact-account/isolation/disposable proof
 - [x] คืน Staging เป็น `SOCIAL_PUBLISHER=disabled` หลังทดสอบ โดย deploy
       `dep-d9socgon74is7393uedg` แสดง runtime `disabled` / publisher `disabled` /

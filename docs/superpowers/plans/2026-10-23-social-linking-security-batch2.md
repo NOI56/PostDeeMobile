@@ -15,6 +15,10 @@ was rebased onto it without force-push. Three documentation header conflicts
 were resolved by preserving the new security sections and main's delivered
 compact-caption release notes. Main's Mobile outline-only selector change and
 tests remain intact; full validation is repeated on the rebased branch.
+Main subsequently added documentation-only release notes at
+`4f2242000d0b49bae9bdbfaa04a27be107474991`; those were also rebased before
+the first feature push. Runtime, schema and test files are byte-for-byte
+unchanged by that final documentation-only rebase.
 
 Implement only Social account linking from `CODEX-FIX-BRIEF.md` and the trace
 `apps/api/socialConnections/connect-url-completion-not-bound-to-initiating-user`
@@ -109,9 +113,25 @@ are a release gate, not evidence that duplicates are absent.
 
 ## Validation record
 
-Final full-suite counts and static/build checks will be recorded before PR
-creation. Local tests use synthetic users and a dedicated guarded PostgreSQL
-database; they do not contact PostPeer or consume purchases/publishing/AI quota.
+Final checks on the rebased runtime, using Node 22.23.3:
+
+| Check | Observed result |
+| --- | --- |
+| API `npm run test -- --maxWorkers=2 --no-file-parallelism` | 2,652 passed / 25 skipped; 154 files passed / 4 legacy DB suites skipped. |
+| Focused social linking suites | 141 passed, including 12 real PostgreSQL cases. |
+| API `npm run typecheck`, `npm run build` | Passed. |
+| Prisma schema validation, seed/config standalone TypeScript | Passed. |
+| Fresh local migrations, migration status, schema diff | All 23 applied; up to date; no schema difference. |
+| Compiled API loopback smoke | Health, no-attempt rejection, same-user completion, replay, ownership collision and provider-first disconnect passed. |
+| Flutter `analyze --no-pub` | No issues. |
+| Flutter `test --no-pub --concurrency=2` | 2,815 passed / 6 skipped. |
+| Independent source review and `git diff --check` | Passed within the Batch 2 scope; known provider limitations remain below. |
+
+Local tests use synthetic users and a dedicated guarded PostgreSQL database;
+they do not contact PostPeer or consume purchases/publishing/AI quota. The
+scratch PostgreSQL instance was stopped after verification; the host's existing
+database service was not modified. No APK/native-device or live provider
+verification is claimed.
 The real database suite is opt-in using
 `POSTDEE_SOCIAL_LINKING_TEST_DATABASE_URL` and guards the dedicated loopback
 protocol, host, port and database path. The local fixture uses

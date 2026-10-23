@@ -2,8 +2,10 @@
 
 Original reproduction baseline: `6b06c63fba5504437b7f3577f1d3c7cf1a5ac467`.
 Current integration baseline after rebase: latest verified `origin/main` at
-`a391bc47cc8158a38e14041ee9723ba0ebf97ef9` (2026-10-23). The owner-transaction
-retry/backoff and startup fixes from this newer main are preserved.
+`eee9e6ae1bdcbb4d465b9a243ee2aed7a93ca83c` (2026-10-23), including requested
+runtime main `a391bc47cc8158a38e14041ee9723ba0ebf97ef9` and its subsequent
+documentation-only release record. The owner-transaction retry/backoff and
+startup fixes from a391bc4 are preserved.
 Implementation branch: `codex/security-batch1-billing`, in its own clean worktree.
 Only audit run-2 Batch 1 is in scope. Existing API request/response contracts,
 mobile purchase readiness, trials, add-on quantities and non-expiry policy remain.
@@ -21,7 +23,8 @@ mock authentication, memory stores and injected subscriber responses:
 These are local development reproductions, not deployed/provider acceptance
 tests. No live customers, purchases, credentials or dashboards were used.
 
-Independent RED confirmation repeated the committed regression test files on
+Independent RED confirmation repeated the regression test files from original
+implementation commit `9717e7a` on
 both original main `6b06c63` and latest pre-fix runtime main `a391bc4`, with
 unchanged Git blob hashes. Both runs exited 1 with five behavioral assertion
 failures (50 other cases filtered out), with no import/setup failure:
@@ -101,7 +104,7 @@ Owner decisions recorded from the brief, intentionally not changed here:
 Other batches and queued-post expiry, slug recycling and `listDue` investigation
 remain separate work. Final command results belong in this batch's PR.
 
-## Local verification receipt, 2026-10-23
+## Initial verification receipt before follow-up, 2026-10-23
 
 - Initial regression run against the unmodified baseline: five expected
   assertion failures across environment isolation and transfer source revocation.
@@ -125,3 +128,32 @@ PostgreSQL integration tests require `POSTDEE_TEST_DATABASE_URL` and were not
 run. Live RevenueCat/store behavior, project topology, dashboard settings and
 Staging/production acceptance remain unverified. No deployment, dashboard
 mutation, live purchase, main push or merge was performed.
+
+## Follow-up verification after rebase, 2026-10-23
+
+- Rebased onto requested runtime main `a391bc4`, preserving its owner-transaction
+  retry/backoff and startup changes. Full API tests, typecheck, build and compiled
+  loopback smoke passed again.
+- Included the subsequent documentation-only main `eee9e6a`, then repeated all
+  three requested API commands on that final baseline:
+  `npm run test -- --maxWorkers=2 --no-file-parallelism`, `npm run typecheck`,
+  and `npm run build` all passed under Node 22.23.3. Final full suite: 152 files
+  passed / four opt-in database files skipped; 2,562 tests passed / 25 skipped.
+- Added three explicit promotional-only resync cases: missing both provenance
+  fields, missing `is_sandbox`, and missing `store`. Each verifies prior PRO,
+  then a fresh lifetime promotional snapshot causing the matching subscription
+  to become CANCELED and the purchased/effective plan to become BASIC. The
+  environment/transfer regression files now cover 58 cases in total.
+- Compiled API smoke passed after the final rebase. Independent review confirmed
+  the tests, API policy, preserved main behavior and explicit rollout order.
+- Updated API.md and related docs: RevenueCat promotional grants do not unlock
+  paid access; grant trials through the audited PostDee admin console instead.
+- PR description lists all five exact RED titles and before-fix assertions on
+  both pre-fix baselines. It requires Render Staging dashboard SANDBOX first,
+  then RevenueCat webhook TRANSFER enablement, before an authorized API deploy.
+- Mobile source, Prisma schema and helpers, and dependency lockfile are unchanged
+  by this follow-up. The earlier Flutter/Prisma/dependency-audit results above
+  are retained as earlier checks, not described as new runs.
+
+No dashboard values, deployments, production purchases, main push or merge were
+performed. PostgreSQL opt-in and live provider/store acceptance remain unverified.

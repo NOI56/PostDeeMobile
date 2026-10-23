@@ -51,15 +51,22 @@ main integration, GitHub push and Staging API activation. Feature `b486ca3` is
 on `main`/GitHub, followed by lockfile-only CI fix `35512aa`. The first Staging
 build failed at `npm ci`; `35512aa` repaired that build, then cloud inspection
 found an empty-stack processing warning. The two-file API sanitizer fix
-`12e0589` is now on `main`/GitHub and Live on Staging, with health/readiness
+`12e0589` is on `main`/GitHub; its unchanged API tree is now served by Staging
+source `a0540a3` after the separately authorized main-process drill, with health/readiness
 HTTP 200, 22 migrations/none pending and no monitoring-init failure. Full API
-checks pass 2,422 tests; the latest deployed-module event matches its exact
-source/release/environment and has no processing warning. It is emitted through
+checks pass 2,422 tests; the earlier isolated `12e0589` module event matched its
+own source/release/environment and had no processing warning. It was emitted through
 an isolated Render Web Shell process, verifying deployed module/configuration/
 network ingestion without forcing an Express-main-process HTTP failure.
 Local API and exact Android acceptance are retained. Prior Backend/Mobile CI
 and unsigned iOS compilation pass; exact-source CI `39893356044` also passes
 Backend and Flutter Mobile. The API-only correction changes no Mobile code/APK.
+The later controlled drill records an actual uncaught fatal in the API's own
+process after graceful drain, Sentry's matching Fatal/Unhandled event, exit code
+1 and Render recovery. The temporary hook is removed and the clean redeploy is
+healthy. Observed 502s last about 33 seconds. This does not test a crash during
+active publishing or a forced HTTP-500 middleware path; no real post/purchase
+is submitted.
 Acceptance scope and remaining device/native limits are recorded in the
 [Sentry work record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md).
 Live deployment and remaining acceptance evidence are recorded in the work record.

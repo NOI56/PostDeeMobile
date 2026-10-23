@@ -24,8 +24,12 @@ delivery and Staging activation are complete with health/runtime checks passed.
 The user's subsequent explicit cloud API test verifies deployed monitoring-module
 ingestion through an isolated authenticated Render Web Shell process. The initial
 `35512aa` event is accepted with a processing warning; the minimal API fix
-`12e0589` is Live and its repeated event has no processing error. Current-source
+`12e0589` was released and its repeated event has no processing error. Its
 Backend and Flutter Mobile CI both pass; the Mobile tree is unchanged.
+The user's later explicit main-process drill is complete after cleanup: clean
+source `a0540a3` serves the same API tree as `12e0589`, with actual drained-main
+fatal/restart and exact Sentry event accepted. Temporary instrumentation is
+removed. The final follow-up below records scope and recovery evidence.
 
 ## Account/project setup
 
@@ -221,7 +225,8 @@ no claim of forced Express-main-process HTTP-error acceptance, tracing/performan
 monitoring or full production
 readiness. Main/push and Staging API activation are authorized by the user's
 2026-10-23 request. Feature, lockfile repair and minimal sanitizer correction are
-on `main`/GitHub; source `12e0589` is Live with health/runtime checks passed.
+on `main`/GitHub; source `12e0589` passed Live health/runtime checks. The later
+clean main-process-drill deployment serves identical API code at `a0540a3`.
 Current-source Backend and Flutter Mobile CI both pass; earlier
 Backend/Mobile CI and unsigned iOS compilation pass. No Mobile edit/rebuild is
 part of the API correction, and Mobile empty/async-stack metadata handling is
@@ -427,3 +432,89 @@ not live-validated by the cloud API result.
   `cloud-api-fixed-after-health.json`, `cloud-api-fixed-final-health.json`,
   `cloud-api-fixed-shell.png` and
   `cloud-api-fixed-sentry-accepted.png`.
+
+### Authorized main-process fatal drill — completed and cleaned up
+
+- The user explicitly asks to test the real API main process. The controlled
+  check is drain-first: no crash during active publishing is tested. Source
+  `a0540a3589bd8760343191993140c92e607af67f` is on `main`/GitHub, matches
+  `origin/main` ahead/behind `0/0` before this record update, and its API tree is
+  identical to CI-tested `12e0589`. Mobile/APK12041 remain unchanged.
+- Seventeen local tests pass on Node `22.23.3` using the compiled Sentry
+  reporter/shutdown modules and recorded hashes. Local Windows signal tests use
+  `process.emit`, not OS signal delivery; the actual cloud step below validates
+  OS delivery separately. This temporary drill adds no repository runtime code,
+  endpoint, inspector or listening port.
+- Initial/pre-trigger checks find `NODE_OPTIONS` absent, the original 57
+  environment keys, and zero global queued posts, publishing posts and
+  publishing platforms. Temporary preload arming changes only `NODE_OPTIONS`
+  and the Sentry release label. It is gated by exact Staging service/source/
+  release/main entry, a private signal and a 15-minute expiry. No raw preload
+  value, DSN or environment payload is included in this record.
+- Arming deploy `dep-dbdda5cs728c73bhojf0` is Live on exact `a0540a3`, finished
+  `2026-10-23T03:33:02.620156Z`. A controller revalidates source, release,
+  payload hash, PID/cwd and all zero publish counts, then requests `SIGUSR2`
+  once for main PID `146` on instance `l8pbm`. Probe identity is
+  `postdee-fatal-a76102f25d6444cb`; its expiry is 03:46:21Z.
+- Actual main-process evidence on 2026-10-23:
+  - 03:35:54.324Z: existing SIGTERM drain begins in PID `146`.
+  - 03:35:54.327Z: graceful shutdown completes, then an uncaught `RangeError`
+    occurs in that same PID through the drain-first `beforeExit` hook.
+  - 03:35:54.330Z: the existing SDK fatal integration records event
+    `fc21ccb5e45c4c32924a15473b098931`; no second uncaught handler substitutes
+    a separate synthetic capture for the actual main-process exception.
+  - 03:35:54.482Z: that process exits with code `1`.
+  - 03:36:07.768Z: Render automatically starts new main PID `128` on the same
+    instance; API listening/scheduler startup follow at 03:36:11.747Z.
+- The 68 health observations first see gateway 502 at 03:35:54.193Z, last at
+  03:36:26.052Z and first HTTP 200 at 03:36:27.208Z, then three healthy samples.
+  This is an observed roughly 33-second unavailable interval, not a general
+  recovery-time guarantee. Recovery health/readiness at 03:37:30Z are 200 with
+  database/queue healthy. The 03:37:58.956Z recovery read shows PID `128`,
+  matching source/release and all global publish counts zero; it sends no signal.
+- At `2026-10-23T03:39:50.867Z`, latest
+  [POSTDEE-API-3](https://postdeemobile.sentry.io/issues/7808001505/) matches
+  exact event `fc21ccb5e45c4c32924a15473b098931` from main PID `146`.
+  Sentry verifies Fatal, Unhandled, `RangeError`, `handled: false`, environment
+  `staging` and full release
+  `postdee-api@a0540a3589bd8760343191993140c92e607af67f`. The message is generic;
+  raw test text, geography and processing errors are absent. The screenshot is
+  `sentry-fatal-accepted.png`.
+- Cleanup deletes only `NODE_OPTIONS` with Save only at 03:39:02Z. The original
+  57-key set is restored with no additions/removals relative to the baseline;
+  the exact `a0540a3` release label is retained. Removal precedes the 03:46:21Z
+  expiry, proving explicit cleanup rather than relying on TTL. No SSH host
+  trust/key change or database write is performed by the drill; zero publish
+  counts are not proof that every database row is unchanged.
+- Normal clean deploy `dep-dbdddq3rjlhs73ct61hg` is Live on exact `a0540a3`,
+  finished `2026-10-23T03:40:38.748568Z`. Clean startup has no armed marker or
+  monitoring-init failure, finds 22 migrations/none pending and is listening.
+  Health/readiness at `2026-10-23T03:41:35.342Z` return 200 with database/queue
+  healthy. Final runtime at `03:42:22.168Z` is instance `69lln`, main PID `146`,
+  Node `22.23.3`, matching service/source/release and zero queued/publishing/
+  platform counts. Both the `NODE_OPTIONS` key and value are absent.
+  The 03:42:22Z runtime check precedes the 03:46:21Z expiry, independently
+  confirming active removal from the running service rather than TTL alone.
+  This final PID `146` is on new instance `69lln`, distinct from fatal PID
+  `146` on `l8pbm`; process identity is not inferred from the PID number alone.
+- Render's UI independently shows instance `l8pbm` failed with exit status 1
+  at 10:35 Thailand time, service recovery at 10:36 and the clean deployment
+  Live. `render-events.json` verifies these observations at
+  `2026-10-23T03:43:32.908Z`; the screenshot is `render-clean-live.png`.
+  Trigger stdout is not captured because Web Shell reconnected. Proof instead
+  joins the exact probe identity, main PID/instance, SDK event ID, exit code and
+  Render recovery; no repeated signal is sent.
+- Acceptance scope: an actual same-process uncaught fatal **after** graceful
+  drain, the SDK's fatal capture/exit and Render restart/recovery are proven.
+  This is not a crash during active publishing, a forced HTTP-500 middleware
+  test, native crash/iOS acceptance or Mobile empty/async-stack live metadata
+  validation. No real publishing/purchase or customer content is used.
+- Sanitized proof under
+  `D:\PostDeeMobile\artifacts\sentry-monitoring-20261022\fatal-drill\` includes
+  `green-final.log`, `tested-modules.json`, `initial-preflight.json`,
+  `ready-preflight.json`, `execution-proof.json`, `health-observation.json`,
+  `recovered-health.json`, `recovered-queue.json`, `dashboard-acceptance.json`,
+  `cleanup-env-keys.json`, `clean-final-health.json`, `clean-runtime.json` and
+  `sentry-fatal-accepted.png`, plus `render-events.json` and
+  `render-clean-live.png` and full `release-proof.json`. Temporary builder/options artifacts remain outside
+  tracked source; the instrumentation is absent from the final running service.

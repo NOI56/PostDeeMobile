@@ -58,11 +58,12 @@ it failed `npm ci` with lockfile `EUSAGE`, leaving live source `8c957ab` running
 The Node 22/npm 10 lockfile compatibility fix changes no runtime package manifest
 or API source. That repair deployed `35512aa`; later cloud inspection exposed
 an empty-stack processing warning. The minimal sanitizer correction
-`12e05895755b16d21f7eabb90a75d1824dac0b1e` is now on `main`/GitHub and Live in
+`12e05895755b16d21f7eabb90a75d1824dac0b1e` is on `main`/GitHub and was Live in
 `dep-dbdcvlmi0phs739c9m20`, finished 2026-10-23 10:10:35 Thailand time.
 Post-Live `/health` and `/ready` return HTTP 200 with database/queue healthy.
 Startup confirms 22 migrations found/none pending and no monitoring-init or
-fatal startup failure. Only the Sentry release key changed; its value is
+fatal startup failure. For that `12e0589` deployment, only the Sentry release key
+changed; its value was
 `postdee-api@12e05895755b16d21f7eabb90a75d1824dac0b1e` in `staging`.
 Prior-source CI `39890752750` passes Backend/Mobile; new-source CI `39893356044`
 also passes Backend and Flutter Mobile. The repeated cloud test accepts a
@@ -89,6 +90,27 @@ preservation fix. Final-3 Mobile tests/analysis and APK12041 build/source checks
 pass. Exact APK12041 startup, enabled native Crashlytics collection and a generic
 production-reporter Sentry event are verified; no actual native crash was forced.
 The APK12040 event remains intermediate evidence, superseded by APK12041.
+
+The user's later main-process drill runs source
+`a0540a3589bd8760343191993140c92e607af67f`, whose API tree is identical to
+CI-tested `12e0589`. A temporary Staging-only preload and private OS signal
+request call the actual main process's existing SIGTERM drain, then cause one
+uncaught `RangeError` after shutdown completes. Main PID `146` emits matching
+Sentry event `fc21ccb5e45c4c32924a15473b098931` as Fatal/Unhandled and exits 1;
+Render restarts it as PID `128`. The captured event is generic and has no
+geography or processing error. Gateway health samples observe roughly 33
+seconds of 502s before recovery. All queued/publishing/platform counts are zero.
+
+Cleanup removes only temporary `NODE_OPTIONS`, restores the original 57-key
+set and retains release
+`postdee-api@a0540a3589bd8760343191993140c92e607af67f`. Normal deploy
+`dep-dbdddq3rjlhs73ct61hg` is Live on exact `a0540a3`; final health/readiness
+are 200 with database/queue healthy, and clean runtime confirms no
+`NODE_OPTIONS`, no armed marker, matching source/release and zero publish
+counts. No repository runtime code, endpoint, inspector, port, database write
+or real post/purchase is added by the drill. This proves a real main-process
+fatal after drain and restart, not a crash during active publishing or a forced
+HTTP-500 middleware error. Full chronology/evidence is in the work record.
 
 ## Local remembered settings boundary (2026-10-20, YouTube native restart verified)
 

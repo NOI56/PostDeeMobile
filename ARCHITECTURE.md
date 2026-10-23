@@ -73,7 +73,7 @@ API activation. Feature `b486ca3` and lockfile-only fix `35512aa` are pushed to
 that lockfile. Its initial cloud event exposed an empty stack after all unsafe
 frames were removed. The minimal API fix `12e0589` omits the stacktrace only
 when no safe frames remain, keeping private frames excluded. Its full 2,422-test
-API suite and static checks pass, and it is Live in `dep-dbdcvlmi0phs739c9m20`.
+API suite and static checks pass, and it was delivered in `dep-dbdcvlmi0phs739c9m20`.
 Health/readiness return 200; startup reports 22 migrations/none pending and no
 monitoring-init/fatal failure. Only the Sentry release key changed; auto-deploy
 remains off. Prior Backend/Mobile CI and unsigned iOS compilation pass; current
@@ -94,6 +94,25 @@ The initial `35512aa` event remains accepted-with-warning historical evidence;
 the repeated `12e0589` event verifies the API correction. No Mobile code or APK
 was rebuilt for this fix. Mobile empty/async-stack metadata handling has not
 been live-validated and is not inferred from the API result.
+
+A separately authorized Staging drill verifies an actual uncaught fatal in the
+API main process after its existing graceful shutdown drains work. Temporary
+`NODE_OPTIONS` instrumentation accepts one private OS signal only after exact
+service/source/release/main-process/expiry checks and zero global publish
+counts; it does not add a repository endpoint, inspector or new port. The main
+PID drains, records an uncaught `RangeError` through the existing Sentry fatal
+integration and exits 1. Render restarts the API. This is distinct from the
+earlier isolated Node ingestion test and from a crash during active publishing,
+which remains untested. No real post/purchase or database write is triggered.
+
+The temporary hook is removed and the original 57-key environment set restored.
+Clean deploy `dep-dbdddq3rjlhs73ct61hg` serves `a0540a3`, with the same API tree
+as CI-tested `12e0589` and release `postdee-api@a0540a3589bd8760343191993140c92e607af67f`.
+Final runtime checks show `NODE_OPTIONS` absent, no armed startup marker,
+healthy database/queue and zero queued/publishing/platform counts. The observed
+gateway 502 interval is about 33 seconds. Forced HTTP-500 middleware failures,
+active-publish crashes, native/iOS acceptance and Mobile empty/async-stack live
+metadata validation are not inferred from this drained-process drill.
 
 ## Calendar selected-cover reads (2026-10-21)
 
@@ -1447,7 +1466,7 @@ Backend stack:
 - Gemini caption provider with production provider/device verification remaining
 - ElevenLabs Scribe v2 transcription + Gemini AI auto-editing recipe flow with physical-device acceptance remaining
 - RevenueCat webhook and authenticated Restore/resync adapters
-- Opt-in Sentry reporter accepted by local API/APK12041 and repeated isolated cloud event at Live source 12e0589 without the processing warning; native Crashlytics retained/enabled
+- Opt-in Sentry reporter verified by local API/APK12041 ingestion, isolated cloud event and actual drained-main-process fatal/restart; clean Staging a0540a3, temporary hook removed, native Crashlytics retained/enabled
 
 Main route groups:
 

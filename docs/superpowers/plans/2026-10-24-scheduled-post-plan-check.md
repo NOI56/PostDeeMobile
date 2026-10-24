@@ -74,9 +74,10 @@ These guards passed before and after:
   or trials need it.
 
 No schema change, migration, environment variable or API request change. The
-app already treats `FAILED` as a failure and parses but does not display
-`errorMessage`. A Thai explanation for `PAID_PLAN_REQUIRED` would be an
-optional follow-up in the app.
+app already treats `FAILED` as a failure. Its post detail screen shows each
+platform's `errorMessage` as `สาเหตุ: …`, so an app build without the companion
+mobile change shows the raw code `PAID_PLAN_REQUIRED` there. The companion app
+PR maps it to a Thai explanation.
 
 ## Docs
 

@@ -104,6 +104,15 @@ no API, database, dependency, configuration or backend deployment change and
 does not change exported audio or perform publication. See the
 [preview work record](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
 
+## Expired-plan reason on post detail (2026-10-24)
+
+A scheduled post that the API stopped because the owner's Starter/Pro plan
+ended before its time (platform reason `PAID_PLAN_REQUIRED`, see PR #29) now
+shows a Thai reason on post detail instead of the raw code: "แพ็กเกจหมดอายุก่อนถึงเวลาโพสต์
+จึงยังไม่ได้ส่งโพสต์นี้ ต่ออายุแพ็กเกจ Starter หรือ Pro แล้วสร้างโพสต์ใหม่". The
+channel-review button is hidden for that reason. No API or schema change. See
+[`2026-10-24-paid-plan-failure-message.md`](docs/superpowers/plans/2026-10-24-paid-plan-failure-message.md).
+
 ## Wheel time selection (2026-10-24)
 
 Create Post and Calendar rescheduling share a 24-hour Flutter wheel picker.

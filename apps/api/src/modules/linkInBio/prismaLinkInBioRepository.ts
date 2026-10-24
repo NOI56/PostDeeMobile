@@ -3,6 +3,11 @@ import {
   type PublishLinkInBioInput, slugTakenError
 } from './linkInBioStore.js';
 import { createDefaultLinkInBioAppearance, normalizeStoredLinkInBioAppearance } from './linkInBioAppearance.js';
+import {
+  isReservedLinkInBioSlug,
+  linkInBioSlugReservationMs,
+  maxLinkInBioSlugReservationsPerOwner
+} from './linkInBioSlugPolicy.js';
 
 type PrismaLinkInBioProfile = {
   storeName: string;
@@ -17,10 +22,21 @@ type ProfileData = Omit<PublishLinkInBioInput, 'userId'> & {
   isPublished: boolean; publishedAt: Date; updatedAt: Date;
 };
 
-export type PrismaLinkInBioClient = {
+type PrismaSlugReservation = {
+  slug: string;
+  ownerId: string | null;
+  releasedAt: Date;
+  reservedUntil: Date;
+};
+type SlugReservationData = Omit<PrismaSlugReservation, 'slug'>;
+
+type PrismaLinkInBioTransaction = {
   linkInBioProfile: {
     findUnique: (args: { where: { userId: string } }) => Promise<PrismaLinkInBioProfile | null>;
-    findFirst: (args: { where: { slug: string; isPublished: true } }) => Promise<PrismaLinkInBioProfile | null>;
+    findFirst: {
+      (args: { where: { slug: string; isPublished: true } }): Promise<PrismaLinkInBioProfile | null>;
+      (args: { where: { slug: string }; select: { userId: true } }): Promise<{ userId: string } | null>;
+    };
     upsert: (args: {
       where: { userId: string };
       create: ProfileData & { userId: string };
@@ -32,6 +48,64 @@ export type PrismaLinkInBioClient = {
     }) => Promise<{ count: number }>;
     deleteMany: (args: { where: { userId: string } }) => Promise<{ count: number }>;
   };
+  linkInBioSlugReservation: {
+    findUnique: (args: { where: { slug: string } }) => Promise<PrismaSlugReservation | null>;
+    findMany: (args: {
+      where: { ownerId: string };
+      orderBy: { releasedAt: 'desc' };
+      skip: number;
+      select: { slug: true };
+    }) => Promise<Array<{ slug: string }>>;
+    upsert: (args: {
+      where: { slug: string };
+      create: PrismaSlugReservation;
+      update: SlugReservationData;
+    }) => Promise<unknown>;
+    updateMany: (args: {
+      where: { ownerId: string };
+      data: { ownerId: null };
+    }) => Promise<{ count: number }>;
+    deleteMany: (args: { where: { slug: string | { in: string[] } } }) => Promise<{ count: number }>;
+  };
+};
+
+export type PrismaLinkInBioClient = PrismaLinkInBioTransaction & {
+  $transaction: <T>(action: (transaction: PrismaLinkInBioTransaction) => Promise<T>) => Promise<T>;
+};
+
+const assertSlugClaimable = async (
+  transaction: PrismaLinkInBioTransaction,
+  { userId, slug, now }: { userId: string; slug: string; now: Date }
+) => {
+  if (isReservedLinkInBioSlug(slug)) throw slugTakenError();
+  // Read the holder before the reservation. A rename commits the profile
+  // change and the reservation together, so one of these two reads always
+  // sees the slug as taken.
+  if (await transaction.linkInBioProfile.findFirst({ where: { slug }, select: { userId: true } })) {
+    throw slugTakenError();
+  }
+  const reservation = await transaction.linkInBioSlugReservation.findUnique({ where: { slug } });
+  if (!reservation) return;
+  if (reservation.ownerId !== userId && reservation.reservedUntil > now) throw slugTakenError();
+  await transaction.linkInBioSlugReservation.deleteMany({ where: { slug } });
+};
+
+const reserveReleasedSlug = async (
+  transaction: PrismaLinkInBioTransaction,
+  { ownerId, slug, now }: { ownerId: string | null; slug: string; now: Date }
+) => {
+  const data = { ownerId, releasedAt: now, reservedUntil: new Date(now.getTime() + linkInBioSlugReservationMs) };
+  await transaction.linkInBioSlugReservation.upsert({ where: { slug }, create: { slug, ...data }, update: data });
+  if (!ownerId) return;
+  const surplus = await transaction.linkInBioSlugReservation.findMany({
+    where: { ownerId }, orderBy: { releasedAt: 'desc' },
+    skip: maxLinkInBioSlugReservationsPerOwner, select: { slug: true }
+  });
+  if (surplus.length > 0) {
+    await transaction.linkInBioSlugReservation.deleteMany({
+      where: { slug: { in: surplus.map((reservation) => reservation.slug) } }
+    });
+  }
 };
 
 const mapProfile = (profile: PrismaLinkInBioProfile | null): LinkInBioProfile | null => profile ? ({
@@ -56,10 +130,20 @@ export const createPrismaLinkInBioRepository = ({
     const timestamp = now();
     const data = { ...input, isPublished: true, publishedAt: timestamp, updatedAt: timestamp };
     try {
-      return mapProfile(await prisma.linkInBioProfile.upsert({
-        where: { userId },
-        create: { userId, ...data, appearance: input.appearance ?? createDefaultLinkInBioAppearance() },
-        update: data
+      return mapProfile(await prisma.$transaction(async (transaction) => {
+        const current = await transaction.linkInBioProfile.findUnique({ where: { userId } });
+        if (current?.slug !== input.slug) {
+          await assertSlugClaimable(transaction, { userId, slug: input.slug, now: timestamp });
+        }
+        const profile = await transaction.linkInBioProfile.upsert({
+          where: { userId },
+          create: { userId, ...data, appearance: input.appearance ?? createDefaultLinkInBioAppearance() },
+          update: data
+        });
+        if (current && current.slug !== input.slug) {
+          await reserveReleasedSlug(transaction, { ownerId: userId, slug: current.slug, now: timestamp });
+        }
+        return profile;
       }))!;
     } catch (error) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
@@ -75,6 +159,15 @@ export const createPrismaLinkInBioRepository = ({
     return mapProfile(await prisma.linkInBioProfile.findUnique({ where: { userId } }));
   },
   deleteAllForUser: async (userId) => {
-    await prisma.linkInBioProfile.deleteMany({ where: { userId } });
+    await prisma.$transaction(async (transaction) => {
+      const profile = await transaction.linkInBioProfile.findUnique({ where: { userId } });
+      // Old links stay protected after deletion, but no reservation keeps the
+      // deleted owner's id.
+      await transaction.linkInBioSlugReservation.updateMany({ where: { ownerId: userId }, data: { ownerId: null } });
+      if (profile) {
+        await reserveReleasedSlug(transaction, { ownerId: null, slug: profile.slug, now: now() });
+      }
+      await transaction.linkInBioProfile.deleteMany({ where: { userId } });
+    });
   }
 });

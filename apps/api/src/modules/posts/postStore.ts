@@ -153,9 +153,6 @@ export type RemovePostInput = {
 export type ClaimPostForPublishInput = {
   postId: string;
   expectedRunAt: string;
-  // 'scheduled': only while still scheduled at expectedRunAt. 'immediate':
-  // only a row the owner switched to Publish now. Omitted: either.
-  schedule?: 'scheduled' | 'immediate';
 };
 
 export type PostStore = {
@@ -195,6 +192,12 @@ export type PostStore = {
   // Atomically moves a still-queued post into PUBLISHING before calling an
   // external publisher. Returns false for missing, already-running, or finished posts.
   claimForPublish: (input: ClaimPostForPublishInput) => Promise<boolean>;
+  // Same claim as claimForPublish in one atomic step, reporting whether the
+  // claimed row was still scheduled at expectedRunAt or had been switched to
+  // Publish now. Undefined when nothing was claimed.
+  claimForPublishWithSchedule: (
+    input: ClaimPostForPublishInput
+  ) => Promise<'scheduled' | 'immediate' | undefined>;
   updateStatus: (input: UpdatePostStatusInput) => Promise<void>;
   // Move a still-queued post (owned by userId) to a new time. Returns the
   // updated post, or undefined if it is missing, not owned, or already publishing.
@@ -379,19 +382,25 @@ export const createPostStore = ({
         )
         .slice(0, limit);
     },
-    claimForPublish: async ({ postId, expectedRunAt, schedule }) => {
+    claimForPublishWithSchedule: async ({ postId, expectedRunAt }) => {
+      const post = posts.find((candidate) => candidate.id === postId);
+
+      if (!post || post.status !== 'QUEUED' ||
+        (post.scheduledAt !== undefined && post.scheduledAt !== expectedRunAt)) {
+        return undefined;
+      }
+
+      post.status = 'PUBLISHING';
+      return post.scheduledAt === undefined ? 'immediate' : 'scheduled';
+    },
+    claimForPublish: async ({ postId, expectedRunAt }) => {
       const post = posts.find((candidate) => candidate.id === postId);
 
       if (!post || post.status !== 'QUEUED') {
         return false;
       }
 
-      const matches = schedule === 'scheduled'
-        ? post.scheduledAt === expectedRunAt
-        : schedule === 'immediate'
-          ? post.scheduledAt === undefined
-          : post.scheduledAt === undefined || post.scheduledAt === expectedRunAt;
-      if (!matches) {
+      if (post.scheduledAt && post.scheduledAt !== expectedRunAt) {
         return false;
       }
 

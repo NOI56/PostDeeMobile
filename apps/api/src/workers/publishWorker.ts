@@ -433,16 +433,20 @@ export const processPublishJobForPost = async ({
       await assertOwnerActive(jobData.userId);
     }
 
-    // With an ended plan, a row still scheduled at its run time is claimed to
-    // be failed. A row the owner switched to Publish now is claimed as post-now
-    // (not plan-checked) and published in this same run, so no row is left
-    // QUEUED without a job. Each claim is one atomic update.
+    // With an ended plan, one atomic claim also reports whether the row was
+    // still scheduled (fail it) or switched to Publish now (publish it as
+    // post-now, which is not plan-checked). A single step leaves no gap in
+    // which a schedule rollback could strand the row without a job.
     const claimInput = { postId: jobData.postId, expectedRunAt: jobData.runAt };
-    const claimedAsScheduled = ownerPlanEnded
-      && await postStore.claimForPublish({ ...claimInput, schedule: 'scheduled' });
-    const claimed = claimedAsScheduled || await postStore.claimForPublish(
-      ownerPlanEnded ? { ...claimInput, schedule: 'immediate' } : claimInput
-    );
+    let claimed: boolean;
+    let claimedAsScheduled = false;
+    if (ownerPlanEnded) {
+      const claimedSchedule = await postStore.claimForPublishWithSchedule(claimInput);
+      claimed = claimedSchedule !== undefined;
+      claimedAsScheduled = claimedSchedule === 'scheduled';
+    } else {
+      claimed = await postStore.claimForPublish(claimInput);
+    }
 
     if (!claimed) {
       return createSkippedPublishResult(jobData);

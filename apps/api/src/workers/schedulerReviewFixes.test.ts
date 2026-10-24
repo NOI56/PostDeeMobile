@@ -118,6 +118,36 @@ describe('scheduler review fixes (Codex review 2026-10-25)', () => {
     expect((await postStore.findOwned({ postId: post.id, userId: 'seller-plan' }))?.status).toBe('PUBLISHED');
   });
 
+  it('claims an expired-plan post in one atomic step, leaving no gap for a schedule rollback', async () => {
+    const postStore = createPostStore();
+    const post = await createScheduledPost(postStore, 'seller-plan');
+    const publish = vi.fn(published);
+    // Publish now clears the schedule while the plan is read; a route rollback
+    // could restore it between two separate claim attempts.
+    const readOwnerPlan = vi.fn(async (): Promise<SubscriptionPlan> => {
+      await postStore.publishNow({ postId: post.id, userId: 'seller-plan', expectedScheduledAt: post.scheduledAt });
+      return 'BASIC';
+    });
+    const claimCalls: string[] = [];
+    const store = postStore as unknown as Record<string, unknown>;
+    for (const name of ['claimForPublish', 'claimForPublishWithSchedule']) {
+      const original = store[name];
+      if (typeof original !== 'function') continue;
+      store[name] = async (...args: unknown[]) => {
+        claimCalls.push(name);
+        return (original as (...input: unknown[]) => unknown).apply(postStore, args);
+      };
+    }
+
+    await createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher: { publish }, readOwnerPlan
+    }).runOnce();
+
+    expect(claimCalls).toHaveLength(1);
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect((await postStore.findOwned({ postId: post.id, userId: 'seller-plan' }))?.status).toBe('PUBLISHED');
+  });
+
   it('fails an expired-plan scheduled post without extra reads that could hold account deletion', async () => {
     const postStore = createPostStore();
     const uploadSessions = createInMemoryUploadSessionStore({ ownerOperationOptions: { maxWaitMs: 50, pollIntervalMs: 5 } });

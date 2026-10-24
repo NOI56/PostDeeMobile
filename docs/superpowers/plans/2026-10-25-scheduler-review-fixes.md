@@ -102,6 +102,34 @@ Before fix, against round-2 head `f97d8150`:
 - The Prisma claim test for `schedule: 'immediate'` (`scheduledAt: null`):
   the claim mode did not exist.
 
+## Round 4 after the third Codex re-review (2026-10-25)
+
+The third re-review confirmed P1 and P2 still fixed, but found a gap between
+round 3's two claim attempts in BullMQ mode:
+1. Publish now clears the schedule.
+2. The "still scheduled" claim misses.
+3. The route rolls the schedule back.
+4. The "post-now" claim misses.
+
+Both jobs then skip and the post stays `QUEUED` with no job.
+
+Fix: a single atomic claim, `claimForPublishWithSchedule`. In Prisma it is one
+`UPDATE "Post" ... WHERE "status" = 'QUEUED' AND ("scheduledAt" IS NULL OR
+"scheduledAt" = timezone('UTC', $runAt::timestamptz)) RETURNING "scheduledAt"`.
+It returns `scheduled`, `immediate` or nothing, and sets `updatedAt` to
+`timezone('UTC', now())`. The memory store mirrors it. The ended-plan worker
+path makes exactly one claim call. Round 3's `schedule` claim option was
+removed.
+
+Before fix, against round-3 head `ab31c77d`:
+- "Claims an expired-plan post in one atomic step": 2 claim calls instead of 1.
+- The Prisma `UPDATE ... RETURNING` test: the method did not exist.
+
+Real PostgreSQL: a new opt-in `postClaim.database.test.ts` passed 3/3 on a
+throwaway 18.1 fixture (loopback 55441) whose session time zone was
+Asia/Bangkok. It checks the scheduled and immediate results, the refusals,
+and UTC `updatedAt`. No rows were left, and the fixture was deleted.
+
 ## Known limitation (not changed)
 
 In BullMQ mode (not deployed), a plan read that fails on every attempt leaves

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type {
   CreatePostInput,
   CreatePostWithinMonthlyLimitInput,
@@ -125,6 +126,8 @@ type PrismaPostTransaction = PrismaOwnerLifecycleTransaction & Partial<PrismaMon
   post: PostDelegate;
 };
 export type PrismaPostClient = PrismaPostTransaction & {
+  // Used only by claimForPublishWithSchedule's single UPDATE ... RETURNING.
+  $queryRaw?: <T = unknown>(query: Prisma.Sql) => Promise<T>;
   $transaction: <Result>(
     operation: (client: PrismaPostTransaction) => Promise<Result>,
     options: { isolationLevel: 'Serializable'; maxWait?: number; timeout?: number }
@@ -432,16 +435,28 @@ export const createPrismaPostRepository = ({
 
     return posts.map(mapPost);
   },
-  claimForPublish: async ({ postId, expectedRunAt, schedule }: ClaimPostForPublishInput) => {
+  claimForPublishWithSchedule: async ({ postId, expectedRunAt }: ClaimPostForPublishInput) => {
+    if (!prisma.$queryRaw) throw new Error('Atomic publish claim requires raw queries');
+    // One statement claims either a row still scheduled at its run time or a
+    // row switched to Publish now, and returns which. scheduledAt and
+    // updatedAt are UTC timestamps without time zone.
+    const rows = await prisma.$queryRaw<Array<{ scheduledAt: Date | null }>>(Prisma.sql`
+      UPDATE "Post"
+      SET "status" = 'PUBLISHING', "updatedAt" = timezone('UTC', now())
+      WHERE "id" = ${postId}
+        AND "status" = 'QUEUED'
+        AND ("scheduledAt" IS NULL OR "scheduledAt" = timezone('UTC', ${expectedRunAt}::timestamptz))
+      RETURNING "scheduledAt"`);
+    const row = rows[0];
+    if (!row) return undefined;
+    return row.scheduledAt === null ? 'immediate' : 'scheduled';
+  },
+  claimForPublish: async ({ postId, expectedRunAt }: ClaimPostForPublishInput) => {
     const result = await prisma.post.updateMany({
       where: {
         id: postId,
         status: 'QUEUED',
-        ...(schedule === 'scheduled'
-          ? { scheduledAt: new Date(expectedRunAt) }
-          : schedule === 'immediate'
-            ? { scheduledAt: null }
-            : { OR: [{ scheduledAt: null }, { scheduledAt: new Date(expectedRunAt) }] })
+        OR: [{ scheduledAt: null }, { scheduledAt: new Date(expectedRunAt) }]
       },
       data: { status: 'PUBLISHING' }
     });

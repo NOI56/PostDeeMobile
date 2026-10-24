@@ -229,6 +229,11 @@ void main() {
   test('named API reporter delegates to the production positional reporter', () async {
     final transport = _RecordingTransport();
     await Sentry.init((options) {
+      // This checks reporter forwarding, not SDK host discovery. OS enrichment
+      // can synchronously wait on Windows WMI before reaching our transport.
+      for (final integration in options.integrations.toList()) {
+        options.removeIntegration(integration);
+      }
       options
         ..dsn = _testDsn
         ..transport = transport
@@ -253,7 +258,7 @@ void main() {
     } finally {
       await Sentry.close();
     }
-  });
+  }, timeout: const Timeout(Duration(seconds: 20)));
 }
 
 class _RecordingTransport implements Transport {

@@ -14,6 +14,81 @@ Build roadmap for PostDee.
 - No new client fields, environment variables or migrations. Updated publishers
   also route existing queued/scheduled Facebook jobs to Page Reels.
 
+## Preview from final post review (2026-10-24, local candidate)
+
+- Replace clip/caption edit links with one `พรีวิว` button below the thumbnail;
+  keep channel editing and existing wizard Back navigation.
+- Preview the actual local clip in approximate views for selected destinations
+  only, with their effective caption/account identity and resolved YouTube title.
+  Preserve chosen-cover capability and watermark notes.
+- Keep post metadata bound to its captured owner session while preserving plain
+  local playback and owned temporary-network playback. Preview performs no AI,
+  upload, FFmpeg rendering, publication or quota mutation.
+- Add the approved TikTok-style bottom gradient, real caption/identity,
+  decorative heart/comment/save/share rail with no counts, bounded caption
+  expansion and safe narrow/large-text/landscape fallback. Label clip audio
+  without inventing song details.
+- Add playback-only volume 0–100%, committing slider changes on release, with
+  mute/restore and retention across tabs/retry. Preserve owner/lifecycle/timeout
+  guards; change neither system volume nor export audio.
+- Preserve refreshed main `6afe4d6` (runtime `342470f`) and its Facebook routing/media behavior;
+  use generic Facebook in this preview without claiming verified publication.
+- Full Mobile rerun passes **2,867 tests / 6 skipped**. Analyzer, **150** Staging,
+  **187** API/typecheck and **10** real-font visual checks pass. APK **12049**
+  builds with eight source/environment checks passing and is installed with
+  unchanged UID/storage. After manual sign-in, native play/pause/seek and volume
+  100% → 36% → mute → 36% → 62% pass on an existing 45-second draft; Back preserves
+  its clip, empty caption, zero destinations and one draft. An initial transient
+  pause error recovered on explicit resume/pause; its cause is unconfirmed.
+  Current Home shows Free with only YouTube connected, so latest TikTok/Instagram
+  native tabs and the earlier Pro demo draft's restoration remain unverified.
+  Older 12048 TikTok native evidence and final visual tests retain their separate
+  scope. No draft save/field edit/AI/upload/post/purchase occurred in this follow-up.
+  Scope is 14 files; the bounded Sentry fixture changes tests only and
+  process telemetry suppression changes no SDK/OS/production monitoring.
+  No main/push/cloud deployment of this preview feature has occurred.
+  No API/schema/dependency/configuration change is needed. Prior verification
+  history and final results are in the
+  [post-preview plan](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
+
+## Immersive post-preview follow-up (2026-10-24, local APK 12051)
+
+- Follow the supplied full-screen reference: remove the bottom seek/replay/time/
+  volume panel only from post preview, keep the actual video at its natural
+  aspect ratio without cropping, and overlay caption/identity and decorative
+  heart/comment/save/share icons. No social counts or account are fabricated.
+- Tap the canvas to play/pause. Put playback-only volume behind the top speaker
+  button; preserve mute/restoration, command/lifecycle and ownership safeguards.
+  Plain local and authenticated network clip viewing retains its prior controls.
+- Keep selected-platform chips, effective captions and YouTube titles. An empty
+  destination selection still shows the shared caption and generic social rail.
+  Move explanatory notes into an inline information panel that pauses playback
+  and is removed together with the owner-bound preview.
+- Preserve refreshed baseline `8872f0e` and its nine incoming API-security/docs
+  commits. The refresh introduces no Mobile/schema change, and all ten candidate
+  Mobile runtime/test hashes remain unchanged.
+- Before the cosmetic follow-up, 12050 Mobile passes **2,880 tests / 6 skipped**, analysis has no issues
+  and joint preview checks pass **76**. Fresh-baseline API static/build checks
+  and **206 tests across 11 files** pass; this scope is distinct from 12049's 187.
+  Final **163** Staging and **15** exact-color visual checks also pass. APK
+  **12050** builds with eight complete-source and package/Firebase checks
+  matching. Installed 12050 retains account/storage/draft. Native immersive tap
+  play/pause, absent bottom controls and inline volume 100% → 34% → mute → 34%
+  pass on the existing zero-target draft. An initial startup ANR recovered with
+  one app-only restart; its cause is unconfirmed. Connected TikTok tab acceptance
+  remains unverified. Final cosmetic **12051** adjusts Staging status-bar contrast,
+  passes **44** player/**165** Staging checks and analysis, and builds with eight
+  source/package/Firebase checks matching. Installation preserves UID/storage;
+  native play/pause/replay, volume, information, Back and readable status icons
+  pass. Its cold start reaches Home without an app restart. The actual clip is
+  landscape/letterboxed and has zero destinations; native iOS and connected
+  TikTok tabs remain unverified. The subsequent user instruction authorizes
+  `main/push` for the verified UI without a backend deployment.
+  Prior 12049 results are historical
+  and do not establish acceptance of this candidate. No API/schema/dependency/
+  configuration/backend change or publication is introduced. Track results in
+  the [post-preview record](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
+
 ## Looping wheel time picker (2026-10-24)
 
 - Share one 24-hour Flutter wheel picker between Create Post and Calendar

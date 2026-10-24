@@ -3630,9 +3630,14 @@ class PostDeeApiClient {
 
   /// Reads one Calendar page from `GET /posts?pageSize=...`. An older API that
   /// ignores paging returns the full history without `nextCursor`.
-  Future<CalendarPostPage> listCalendarPostsPage({String? cursor}) async {
+  Future<CalendarPostPage> listCalendarPostsPage({
+    String? cursor,
+    DateTime? activeSince,
+  }) async {
     final query = Uri(queryParameters: {
       'pageSize': '$calendarPostPageSize',
+      if (activeSince != null)
+        'activeSince': activeSince.toUtc().toIso8601String(),
       if (cursor != null) 'cursor': cursor,
     }).query;
     final response = await _getJson('/posts?$query');
@@ -3655,25 +3660,25 @@ class PostDeeApiClient {
     );
   }
 
-  /// Loads Calendar activity one bounded page at a time, newest created first.
-  /// Stops at the last page, after the first page that reaches posts created
-  /// before [createdSince], or after [maxPages] pages.
+  /// Loads Calendar activity one bounded page at a time, newest created first,
+  /// until the last page or [maxPages]. With [activeSince] the API returns only
+  /// posts created, scheduled or published at or after it, which covers posts
+  /// rescheduled far beyond their creation date.
   Future<List<CalendarPostResult>> listCalendarPosts({
-    DateTime? createdSince,
+    DateTime? activeSince,
     int maxPages = calendarPostMaxPages,
   }) async {
     final posts = <CalendarPostResult>[];
     final seenIds = <String>{};
     String? cursor;
     for (var page = 0; page < maxPages; page += 1) {
-      final result = await listCalendarPostsPage(cursor: cursor);
+      final result =
+          await listCalendarPostsPage(cursor: cursor, activeSince: activeSince);
       for (final post in result.posts) {
         if (seenIds.add(post.id)) posts.add(post);
       }
       cursor = result.nextCursor;
-      final reachedStart = createdSince != null &&
-          result.posts.any((post) => post.createdAt.isBefore(createdSince));
-      if (cursor == null || reachedStart) break;
+      if (cursor == null) break;
     }
     return posts;
   }

@@ -316,9 +316,12 @@ not establish iOS monitoring runtime acceptance.
 
 Calendar no longer asks the API for the complete post history in one response.
 The app reads `GET /posts?pageSize=100` pages, newest created first, following
-`nextCursor`. It stops after the page that reaches 31 days before the oldest
-month or week the user has viewed, at the last page, or after 20 pages.
-Browsing to an earlier period loads further back. Plain `GET /posts` is
+`nextCursor`. Since 2026-10-25 it asks only for posts active since the start
+of the oldest month or week the user has viewed (`activeSince`: created,
+scheduled or published since then), so posts rescheduled far from their
+creation date are included. It stops at the last page or after 20 pages.
+Browsing to an earlier period, or switching week/month view, loads further
+back. Plain `GET /posts` is
 unchanged for installed apps, and a new app works with an older API, which
 returns everything at once. No schema change or migration. Deploy the API
 before shipping the app build, although either order works. See

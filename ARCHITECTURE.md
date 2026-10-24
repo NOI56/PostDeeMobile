@@ -1092,6 +1092,17 @@ Profile link replaces the AI editing navigation entry. AI caption generation
 remains in Upload; editing modules are retained compatibility code and do not
 have an active mobile entry point or editing-minute offer.
 
+Since 2026-10-24 (security Batch 3) the API registers the AI editing routes
+only when `AI_EDITING_ENABLED=true`. By default `/ai-edits/*` answers `410
+AI_EDITING_RETIRED` and the edit-plan, sound-effect and visual-plan providers are
+not constructed, so no direct caller can spend ElevenLabs or Gemini editing
+work. The transcription provider is still built because the legacy
+real-clip caption fallback can use it, and the AI-edit usage store is still
+built so account deletion clears historical rows. Real-clip captions dedupe
+and type-check frame keys, cap each frame at 5 MiB, stream every download
+against its byte limit, and allow two clip-caption requests per instance to
+hold media at once (`503 AI_MEDIA_BUSY` otherwise).
+
 The 2026-10-06 bottom-navigation revision presents Home, Calendar, Create post,
 Store link, and Account while retaining the existing shell indices and
 callbacks. Visual button order maps to indices 0, 3, 2, 1, 5; Create post (2)

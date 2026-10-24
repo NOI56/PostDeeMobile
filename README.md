@@ -970,6 +970,12 @@ editing and Subtitle Studio no longer have a product entry point, and the
 paywall/profile no longer advertise editing minutes or top-ups. AI captions in
 the upload flow remain available. The editing implementation and shared media
 helpers below are retained as compatibility code, not an active product offer.
+Since 2026-10-24 the API also stops serving it: every `/ai-edits/*` request
+returns `410 AI_EDITING_RETIRED` without provider work unless the
+`AI_EDITING_ENABLED=true` rollback switch is set. Real-clip AI captions now
+accept only image frame keys, cap frames at 5 MiB, and return
+`503 AI_MEDIA_BUSY` when two requests already hold media on the instance. See
+`docs/superpowers/plans/2026-10-24-ai-editing-retirement-security-batch3.md`.
 
 Each authenticated account can publish one profile page with up to 20 enabled
 custom links on every package. The page is hosted by the existing PostDee API at

@@ -869,8 +869,10 @@ apps/api
 
 ## Profile Links (2026-10-05)
 
-Profile links replace AI video editing in the active mobile product. AI editing
-routes documented later remain compatibility contracts, not package benefits.
+Profile links replace AI video editing in the active mobile product. Since
+2026-10-24 the AI editing routes documented later answer `410
+AI_EDITING_RETIRED` unless `AI_EDITING_ENABLED=true`; they are not package
+benefits.
 One profile page per authenticated account is available on every package.
 Production persistence follows `POST_STORE=prisma` and requires the new
 LinkInBioProfile migration; memory mode is development-only scaffolding.
@@ -2402,6 +2404,16 @@ Requires Starter or Pro.
 - Frame sampling itself (extracting `selectedFrameKeys` from the video) is done
   by the mobile app via FFmpeg, which uploads the frames as images before
   calling this endpoint. Pending real-device verification.
+- Media limits (2026-10-24): `selectedFrameKeys` are deduplicated before the
+  first three are used, and each must end in `.jpg`, `.jpeg`, `.png` or `.webp`;
+  otherwise the request returns `400` with `code: "AI_CAPTION_FRAME_INVALID"`
+  before any download. Each frame download must have an `image/*` content type
+  (`415 AI_CAPTION_FRAME_INVALID`) and at most 5 MiB; the clip keeps its
+  200 MiB limit. Limits are enforced while streaming, so a missing or wrong
+  `Content-Length` cannot make the API buffer more (`413 AI_MEDIA_TOO_LARGE`).
+  At most two clip-caption requests per API instance hold media at once; extra
+  requests get `503` with `code: "AI_MEDIA_BUSY"` and `Retry-After: 1`, after
+  the quota pre-check but before any download or quota reservation.
 - The active customer flow should not require manual language or market
   selection. Spoken language is inferred from the clip, while `guidance`
   remains the simple override path when a seller wants a specific language,
@@ -2631,7 +2643,17 @@ frames where useful.
 
 ## AI Auto Editing
 
-All `/ai-edits/*` endpoints require auth. `POST /ai-edits/transcribe`,
+**Retired (2026-10-24).** AI video editing has no mobile entry point, so the
+API no longer serves it by default. Every `/ai-edits/*` request returns `410`
+with `{ "status": "error", "code": "AI_EDITING_RETIRED", "message": "AI video
+editing is no longer available." }` and never reaches the transcription,
+edit-plan, sound-effect or visual-plan providers. Setting
+`AI_EDITING_ENABLED=true` restores the legacy contract below for a controlled
+rollback only. Historical `AiEditUsage` rows are kept and are still removed by
+account deletion. `/captions/generate` and `/captions/generate-from-clip` are
+unaffected.
+
+The legacy contract, when re-enabled: all `/ai-edits/*` endpoints require auth. `POST /ai-edits/transcribe`,
 `POST /ai-edits/prepare`, and `POST /ai-edits/plan` require the `PRO` plan
 (otherwise `402` with `code: "PRO_REQUIRED"`); `GET /ai-edits/quota` is
 available to any authenticated user.
@@ -3907,6 +3929,7 @@ PostgreSQL.
 | `ANALYTICS_STORE` | `memory`, `prisma` | Analytics persistence |
 | `CAPTION_USAGE_STORE` | `memory`, `prisma` | Real-clip AI caption monthly usage persistence |
 | `AI_EDIT_USAGE_STORE` | `memory`, `prisma` | AI editing monthly minute usage persistence |
+| `AI_EDITING_ENABLED` | `false` (default), `true` | Rollback switch for the retired `/ai-edits/*` routes. Leave unset in production and staging; when unset every `/ai-edits/*` request returns `410 AI_EDITING_RETIRED` without provider work |
 | `PUBLISH_QUEUE` | `memory`, `bullmq` | Publish queue adapter; `bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` |
 | `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing. `disabled` makes readiness, post create, post reschedule, and publish-now return `503 SOCIAL_PUBLISHING_UNAVAILABLE`; cancel remains available |
 | `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG` | `false`, `true` | Optional `PUBLISH_QUEUE=memory` activation guard. With `postpeer`, startup runs one atomic global aggregate count with status in `QUEUED` or `PUBLISHING` (including future schedules) before starting the scheduler or listening; a non-zero total or inspection failure blocks startup. Defaults to `false`; Staging sets `true` and Production is unchanged |

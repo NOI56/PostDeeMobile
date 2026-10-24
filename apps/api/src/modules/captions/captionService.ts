@@ -161,12 +161,15 @@ const normalizeStringList = (value: unknown) => {
     return [];
   }
 
-  return value
+  return [...new Set(value
     .filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim())
-    .filter(Boolean)
+    .filter(Boolean))]
     .slice(0, 3);
 };
+
+// The app uploads caption frames as JPEG stills (frame_N.jpg).
+const isCaptionFrameImageKey = (key: string) => /\.(?:jpe?g|png|webp)$/i.test(key);
 
 const readBoolean = (value: unknown) => value === true;
 
@@ -225,6 +228,15 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
     return { ok: false as const, message: 'platforms must contain 1 to 4 unique supported platforms' };
   }
 
+  const selectedFrameKeys = normalizeStringList(payload.selectedFrameKeys);
+  if (!selectedFrameKeys.every(isCaptionFrameImageKey)) {
+    return {
+      ok: false as const,
+      code: 'AI_CAPTION_FRAME_INVALID',
+      message: 'selectedFrameKeys must reference JPEG, PNG or WebP images'
+    };
+  }
+
   return {
     ok: true as const,
     request: {
@@ -232,7 +244,7 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
       ...(platforms !== undefined ? { platforms: platforms as Platform[] } : {}),
       guidance: readOptionalString(payload.guidance),
       ...(writingStyle.style ? { writingStyle: writingStyle.style } : {}),
-      selectedFrameKeys: normalizeStringList(payload.selectedFrameKeys),
+      selectedFrameKeys,
       deleteAfterUse: readBoolean(payload.deleteAfterUse)
     }
   };

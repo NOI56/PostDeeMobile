@@ -2192,9 +2192,11 @@ Rules:
     is claimed. A read failure leaves the post `QUEUED` for the pre-publish
     retry and never keeps the owner's operation ticket, which would otherwise
     block a later account deletion.
-  - After the claim, the post is failed only if it is still scheduled. A post
-    the owner switched to Publish now while the plan was being read is
-    published normally.
+  - With an ended plan, the claim succeeds only while the row is still
+    scheduled at its run time (one atomic update, no extra read inside the
+    owner lifetime). A post the owner switched to Publish now while the plan
+    was being read is left `QUEUED`, and the next poll publishes it as
+    post-now.
   - Local mock auth, whose plan came from a request header, skips the check.
   - The scheduler and the BullMQ worker share the rule.
 
@@ -2282,12 +2284,13 @@ Rules:
 - Provider retries are explicit-safe-only. Unknown network/polling outcomes are
   terminal and tell the user to inspect the destination before trying again.
 - Each in-process scheduler poll reads due posts in batches of 50 across all
-  owners (`take: 50`, ordered by `scheduledAt`), selecting only publish fields
-  (no media fingerprint or add-on allocation). Each next batch excludes the
-  posts already tried in that poll (`id NOT IN`). Posts the scheduler cannot
-  start, for example an owner whose account deletion is in progress, therefore
-  never hide later owners' posts. One poll reads at most 10 batches (500
-  posts); the rest wait for the next poll, about five seconds later.
+  owners (`take: 50`, in `id` order), selecting only publish fields (no media
+  fingerprint or add-on allocation). A cursor kept across polls resumes after
+  the last post tried (`id > cursor`) and wraps to the start at the end of the
+  due list. Posts the scheduler cannot start, for example an owner whose
+  account deletion is in progress, are visited once per cycle and never hide
+  later owners' posts. One poll reads at most 10 batches (500 posts), and the
+  next poll continues about five seconds later.
 
 The mobile HTTP client applies an end-to-end 20-second deadline to ordinary
 JSON requests, including token refresh, connection, and body consumption.

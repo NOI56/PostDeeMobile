@@ -41,6 +41,28 @@ describe('scheduler review fixes (Codex review 2026-10-25)', () => {
     expect((await postStore.list({ userId: 'deleting-owner' })).every((post) => post.status === 'QUEUED')).toBe(true);
   });
 
+  it('reaches posts behind a full poll of posts it cannot start on a later poll', async () => {
+    const postStore = createPostStore();
+    for (let index = 0; index < maxDuePostsPerPoll * maxDueBatchesPerPoll; index += 1) {
+      await createScheduledPost(postStore, 'deleting-owner', `stuck ${index}`);
+    }
+    const healthy = await createScheduledPost(postStore, 'healthy-owner');
+    const publish = vi.fn(published);
+    const runWithActiveOwner: RunWithActiveOwner = async (ownerId, operation) => {
+      if (ownerId === 'deleting-owner') throw new Error('Account deletion is in progress');
+      return operation();
+    };
+    const scheduler = createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher: { publish }, runWithActiveOwner
+    });
+
+    await scheduler.runOnce();
+    await scheduler.runOnce();
+
+    expect((await postStore.findOwned({ postId: healthy.id, userId: 'healthy-owner' }))?.status).toBe('PUBLISHED');
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
   it('still bounds one poll to a fixed number of due-post batches', async () => {
     const postStore = createPostStore();
     for (let index = 0; index < maxDuePostsPerPoll * (maxDueBatchesPerPoll + 1); index += 1) {
@@ -84,12 +106,35 @@ describe('scheduler review fixes (Codex review 2026-10-25)', () => {
       await postStore.publishNow({ postId: post.id, userId: 'seller-plan', expectedScheduledAt: post.scheduledAt });
       return 'BASIC';
     });
-
-    await createPublishScheduler({
+    const scheduler = createPublishScheduler({
       postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher: { publish }, readOwnerPlan
-    }).runOnce();
+    });
+
+    // The stale scheduled job cannot claim the post-now row; the next poll
+    // reads it as post-now, which is not plan-checked.
+    await scheduler.runOnce();
+    expect((await postStore.findOwned({ postId: post.id, userId: 'seller-plan' }))?.status).not.toBe('FAILED');
+    await scheduler.runOnce();
 
     expect(publish).toHaveBeenCalledTimes(1);
     expect((await postStore.findOwned({ postId: post.id, userId: 'seller-plan' }))?.status).toBe('PUBLISHED');
+  });
+
+  it('fails an expired-plan scheduled post without extra reads that could hold account deletion', async () => {
+    const postStore = createPostStore();
+    const uploadSessions = createInMemoryUploadSessionStore({ ownerOperationOptions: { maxWaitMs: 50, pollIntervalMs: 5 } });
+    const post = await createScheduledPost(postStore, 'seller-plan');
+    const findOwned = vi.spyOn(postStore, 'findOwned').mockRejectedValue(new Error('database unavailable'));
+
+    await createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher: { publish: vi.fn(published) },
+      readOwnerPlan: async () => 'BASIC', runWithActiveOwner: uploadSessions.runWithOwnerLifetime,
+      maxPrePublishAttempts: 2, prePublishRetryBackoffMs: 0
+    }).runOnce();
+    findOwned.mockRestore();
+
+    expect((await postStore.findOwned({ postId: post.id, userId: 'seller-plan' }))?.status).toBe('FAILED');
+    await uploadSessions.beginOwnerDeletion('seller-plan');
+    await expect(uploadSessions.acquireOwnerDeletion('seller-plan')).resolves.toBeTypeOf('function');
   });
 });

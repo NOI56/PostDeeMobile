@@ -52,6 +52,33 @@ All 4 cases failed:
 - `README.md`: the scheduler bullet.
 - `API.md` is unchanged because no HTTP contract changed.
 
+## Round 2 after the Codex re-review (2026-10-25)
+
+The re-review rated this PR "partly fixed". Two problems remained, both
+reproduced:
+
+- **500 or more stuck posts still starved later owners.** The skip list reset
+  every poll, so each poll retried the same 500. Fix: replace `excludeIds` with
+  a cursor kept across polls. `listDue({ afterId })` uses Prisma
+  `id > afterId ORDER BY id`, and the memory store uses insertion order. The
+  scheduler resumes after the last post it tried and wraps to the start at the
+  end of the due list.
+- **The post-claim `findOwned` could retain the operation ticket.** It ran
+  inside the nested owner lifetime. Fix: no extra read. With an ended plan,
+  `claimForPublish({ requireSchedule: true })` claims only a row still
+  scheduled at its run time (Prisma `scheduledAt = runAt`). A row switched to
+  Publish now is left `QUEUED`, and the next poll publishes it as post-now.
+
+Before fix, against the round-1 head `57e97ef1`:
+- "Reaches posts behind a full poll of 500 stuck posts on a later poll": the
+  healthy post stayed `QUEUED`.
+- "Fails an expired-plan post without extra reads" (`findOwned` failing):
+  account deletion threw `ACCOUNT_WRITE_DRAIN_FAILED`.
+
+The Publish-now test now checks the post is not failed on the first poll and
+is published on the second. `duePostRead.test.ts` now expects `id` order,
+`afterId` and the schedule-only claim.
+
 ## Known limitation (not changed)
 
 In BullMQ mode (not deployed), a plan read that fails on every attempt leaves

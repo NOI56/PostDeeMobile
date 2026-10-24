@@ -64,7 +64,7 @@ type PostDelegate = {
   }) => Promise<number>;
   findMany: (args: {
     where: {
-      id?: { notIn: string[] };
+      id?: { gt: string };
       userId?: string;
       status?: PrismaPostStatus;
       scheduledAt?: { not: null };
@@ -76,6 +76,7 @@ type PostDelegate = {
     orderBy?:
       | { createdAt: 'desc' }
       | { scheduledAt: 'asc' }
+      | { id: 'asc' }
       | [{ createdAt: 'desc' }, { id: 'desc' }];
     take?: number;
     select?:
@@ -415,27 +416,30 @@ export const createPrismaPostRepository = ({
     return persisted ? mapPost(persisted) : undefined;
   },
   createWithinMonthlyLimit: async (input) => createWithinMonthlyLimit(prisma, input),
-  listDue: async ({ now, limit = maxDuePostsPerPoll, excludeIds = [] }) => {
-    // A global read across owners: keep it to one bounded batch per call.
+  listDue: async ({ now, limit = maxDuePostsPerPoll, afterId }) => {
+    // A global read across owners: one bounded batch per call, in id order so
+    // the scheduler can resume after the last post it tried.
     const posts = await prisma.post.findMany({
       where: {
-        ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
+        ...(afterId ? { id: { gt: afterId } } : {}),
         status: 'QUEUED',
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date(now) } }]
       },
-      orderBy: { scheduledAt: 'asc' },
+      orderBy: { id: 'asc' },
       take: limit,
       select: duePostSelect
     });
 
     return posts.map(mapPost);
   },
-  claimForPublish: async ({ postId, expectedRunAt }: ClaimPostForPublishInput) => {
+  claimForPublish: async ({ postId, expectedRunAt, requireSchedule = false }: ClaimPostForPublishInput) => {
     const result = await prisma.post.updateMany({
       where: {
         id: postId,
         status: 'QUEUED',
-        OR: [{ scheduledAt: null }, { scheduledAt: new Date(expectedRunAt) }]
+        ...(requireSchedule
+          ? { scheduledAt: new Date(expectedRunAt) }
+          : { OR: [{ scheduledAt: null }, { scheduledAt: new Date(expectedRunAt) }] })
       },
       data: { status: 'PUBLISHING' }
     });

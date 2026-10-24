@@ -433,9 +433,13 @@ export const processPublishJobForPost = async ({
       await assertOwnerActive(jobData.userId);
     }
 
+    // With an ended plan, claim only a row that is still scheduled. A row the
+    // owner switched to Publish now is left for the next poll, which reads it
+    // as post-now (not plan-checked).
     const claimed = await postStore.claimForPublish({
       postId: jobData.postId,
-      expectedRunAt: jobData.runAt
+      expectedRunAt: jobData.runAt,
+      ...(ownerPlanEnded ? { requireSchedule: true } : {})
     });
 
     if (!claimed) {
@@ -460,13 +464,7 @@ export const processPublishJobForPost = async ({
         await assertOwnerActive(jobData.userId);
       }
 
-      // The owner may have switched the post to Publish now while the plan was
-      // read; the claim accepts that row, and post-now posts are not re-checked.
-      const paidPlanEnded = ownerPlanEnded && jobData.userId
-        ? (await postStore.findOwned({ postId: jobData.postId, userId: jobData.userId }))
-          ?.scheduledAt !== undefined
-        : false;
-      if (paidPlanEnded) {
+      if (ownerPlanEnded) {
         // Never contact a provider. Units used at creation are not refunded.
         const platformResults: PlatformPublishResult[] = jobData.platforms.map((platform) => ({
           platform,

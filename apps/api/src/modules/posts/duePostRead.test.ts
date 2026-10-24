@@ -23,7 +23,7 @@ describe('due post read for the publish scheduler', () => {
         status: 'QUEUED',
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date('2026-10-24T01:00:00.000Z') } }]
       },
-      orderBy: { scheduledAt: 'asc' },
+      orderBy: { id: 'asc' },
       take: maxDuePostsPerPoll,
       select: {
         id: true, userId: true, caption: true, videoS3Key: true, coverImageS3Key: true,
@@ -42,15 +42,30 @@ describe('due post read for the publish scheduler', () => {
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 5 }));
   });
 
-  it('skips posts the scheduler already tried this poll', async () => {
+  it('resumes after the last post the scheduler tried', async () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const repository = createPrismaPostRepository({ prisma: withPostRepositoryFixture({ post: { findMany } }) });
 
-    await repository.listDue({ now: '2026-10-24T01:00:00.000Z', excludeIds: ['tried-1', 'tried-2'] });
+    await repository.listDue({ now: '2026-10-24T01:00:00.000Z', afterId: 'tried-2' });
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: { notIn: ['tried-1', 'tried-2'] }, status: 'QUEUED' })
+      where: expect.objectContaining({ id: { gt: 'tried-2' }, status: 'QUEUED' }),
+      orderBy: { id: 'asc' }
     }));
+  });
+
+  it('claims an ended-plan post only while it is still scheduled at its run time', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const repository = createPrismaPostRepository({ prisma: withPostRepositoryFixture({ post: { updateMany } }) });
+
+    await expect(repository.claimForPublish({
+      postId: 'post-1', expectedRunAt: '2026-10-24T00:00:00.000Z', requireSchedule: true
+    })).resolves.toBe(false);
+
+    expect(updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'post-1', status: 'QUEUED', scheduledAt: new Date('2026-10-24T00:00:00.000Z') },
+      data: { status: 'PUBLISHING' }
+    });
   });
 
   it('bounds the in-memory store the same way', async () => {

@@ -25,9 +25,10 @@ export type PublishScheduler = {
   sweepUploadsOnce?: () => Promise<void>;
 };
 
-// One poll reads due posts in batches of maxDuePostsPerPoll, skipping posts it
-// already tried this poll, so posts it cannot start (for example an owner whose
-// account deletion is in progress) never hide later owners' posts.
+// One poll reads up to this many batches of maxDuePostsPerPoll due posts. A
+// cursor kept across polls resumes after the last post tried, so posts the
+// scheduler cannot start (for example an owner whose account deletion is in
+// progress) are visited once per cycle and never hide later owners' posts.
 export const maxDueBatchesPerPoll = 10;
 
 const activationBacklogInspectionFailedMessage =
@@ -87,6 +88,7 @@ export const createPublishScheduler = ({
   let sweepTimer: ReturnType<typeof setInterval> | undefined;
   let activeRun: Promise<void> | undefined;
   let activeSweep: Promise<void> | undefined;
+  let dueCursor: string | undefined;
   let stopped = false;
   let pollHealthy = true;
   let requiresReconciliation = false;
@@ -185,16 +187,15 @@ export const createPublishScheduler = ({
     activeRun = Promise.resolve().then(async () => {
       try {
         const pollNow = now();
-        const attempted: string[] = [];
         let persistenceFailed = false;
         for (let batch = 0; batch < maxDueBatchesPerPoll && !stopped; batch += 1) {
           const duePosts = await postStore.listDue({
             now: pollNow,
-            ...(attempted.length > 0 ? { excludeIds: attempted } : {})
+            ...(dueCursor ? { afterId: dueCursor } : {})
           });
           for (const post of duePosts) {
             if (stopped) break;
-            attempted.push(post.id);
+            dueCursor = post.id;
             try {
               await publishDuePost(post);
             } catch (error) {
@@ -204,7 +205,11 @@ export const createPublishScheduler = ({
               reportMonitoringError(error, { operation: 'scheduler.process' });
             }
           }
-          if (duePosts.length < maxDuePostsPerPoll) break;
+          if (duePosts.length < maxDuePostsPerPoll) {
+            // End of the due list: the next batch starts from the beginning.
+            dueCursor = undefined;
+            break;
+          }
         }
         pollHealthy = !persistenceFailed;
       } catch (error) {

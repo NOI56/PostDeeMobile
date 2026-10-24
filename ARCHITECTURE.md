@@ -1899,6 +1899,20 @@ revocation is implemented for those platforms.
 
 ## Upload And Scheduling Flow
 
+Security Batch 5 (2026-10-24) bounds per-owner state in the single shared API
+and scheduler process. Managed upload sessions accept file names up to 255
+characters and exact video/image types, and an owner holds at most 10
+unexpired `UPLOADING` sessions (counted inside the serializable create
+transaction). Templates are capped at 200 per owner with 120/5000-character
+fields and a bounded list. Device tokens are FCM-shaped, capped at 10 per owner
+with oldest-first eviction, and the notifier reads at most 10. Limited post
+lists push `take` into Postgres, single-post reschedule and publish-now read
+one owned row, and new captions stop at 63,206 UTF-16 units. Still open:
+a sweeper for expired upload sessions and abandoned R2 multipart uploads,
+pagination for the full Calendar post list, and owner/post indexing before
+BullMQ is enabled. See
+`docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md`.
+
 The 2026-10-07 composer revision changes Mobile presentation only. A local
 poster/player uses the selected device file; preview and step navigation do not
 publish or consume post quota. AI generation starts only when explicitly

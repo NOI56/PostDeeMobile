@@ -23,6 +23,7 @@ describe('createTemplateStoreFromConfig', () => {
     const createdAt = new Date('2026-06-01T00:00:00.000Z');
     const prisma = {
       template: {
+        count: vi.fn(),
         findMany: vi.fn().mockResolvedValue([
           {
             id: 'template-1',
@@ -51,7 +52,8 @@ describe('createTemplateStoreFromConfig', () => {
     ]);
     expect(prisma.template.findMany).toHaveBeenCalledWith({
       where: { userId: 'user-1' },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      take: 200
     });
   });
 

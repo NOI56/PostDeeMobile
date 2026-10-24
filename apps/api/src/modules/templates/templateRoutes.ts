@@ -2,7 +2,12 @@ import type { RequestHandler, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
 import type { UserStore } from '../users/userStore.js';
-import type { TemplateStore } from './templateStore.js';
+import {
+  maxTemplatesPerOwner,
+  templateBodyMaxLength,
+  templateTitleMaxLength,
+  type TemplateStore
+} from './templateStore.js';
 
 const readRequiredString = (value: unknown) => {
   if (typeof value !== 'string') {
@@ -53,6 +58,26 @@ export const registerTemplateRoutes = (
       response.status(400).json({
         status: 'error',
         message: 'title and body are required'
+      });
+      return;
+    }
+
+    if (title.length > templateTitleMaxLength || body.length > templateBodyMaxLength) {
+      response.status(400).json({
+        status: 'error',
+        code: 'TEMPLATE_FIELD_TOO_LONG',
+        message: `Template titles are limited to ${templateTitleMaxLength} characters and bodies to ${templateBodyMaxLength}.`
+      });
+      return;
+    }
+
+    // The count check is not transactional: concurrent creates by one owner can
+    // pass it together, which still leaves the collection bounded.
+    if ((await store.count({ userId: authUser.id })) >= maxTemplatesPerOwner) {
+      response.status(409).json({
+        status: 'error',
+        code: 'TEMPLATE_LIMIT_REACHED',
+        message: `You can keep up to ${maxTemplatesPerOwner} templates.`
       });
       return;
     }

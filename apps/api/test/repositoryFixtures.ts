@@ -77,6 +77,7 @@ export const withAppPrismaFixture = <T extends {
     template: {
       findMany: vi.fn<AppPrismaClient['template']['findMany']>(fail),
       create: vi.fn<AppPrismaClient['template']['create']>(fail),
+      count: vi.fn<AppPrismaClient['template']['count']>(fail),
       ...prisma.template
     },
     subscription: {
@@ -122,7 +123,8 @@ export const withAppPrismaFixture = <T extends {
       findUnique: vi.fn<AppPrismaClient['managedUploadSession']['findUnique']>(fail),
       findMany: vi.fn<AppPrismaClient['managedUploadSession']['findMany']>(fail),
       update: vi.fn<AppPrismaClient['managedUploadSession']['update']>(fail),
-      deleteMany: vi.fn<AppPrismaClient['managedUploadSession']['deleteMany']>(fail)
+      deleteMany: vi.fn<AppPrismaClient['managedUploadSession']['deleteMany']>(fail),
+      count: vi.fn<AppPrismaClient['managedUploadSession']['count']>(fail)
     }
   }) satisfies AppPrismaClient;
 };

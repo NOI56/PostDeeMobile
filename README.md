@@ -42,6 +42,20 @@ the implementation. APK installation and native acceptance remain pending;
 the installed app is unchanged. See the
 [wheel-picker work record](docs/superpowers/plans/2026-10-24-wheel-time-picker.md).
 
+## Per-owner resource caps (2026-10-24, security Batch 5)
+
+The API now bounds what one account can keep in the shared database and
+process:
+- Templates: 200 per owner, with 120/5000-character title/body.
+- Device tokens: 10 per owner, FCM-shaped, oldest evicted first.
+- Managed upload sessions: 10 open per owner, 255-character file names,
+  exact video/image types.
+- New post captions: at most 63,206 characters.
+
+Limited post lists and single-post reschedule/publish-now no longer read the
+full history. No schema change, migration or mobile change. See
+[`2026-10-24-resource-caps-security-batch5.md`](docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md).
+
 ## Compact caption AI panel (2026-10-23, Staging delivered)
 
 The advanced caption panel uses the header `ให้ AI ช่วยเขียน`, a `สไตล์`

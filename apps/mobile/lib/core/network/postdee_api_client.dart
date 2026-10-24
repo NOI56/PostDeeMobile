@@ -3001,11 +3001,16 @@ class PostDeeApiClient {
     this.requestTimeout = const Duration(seconds: 20),
     this.aiRequestTimeout = const Duration(seconds: 120),
     this.uploadRequestTimeout = const Duration(seconds: 180),
+    bool releaseMode = AppConfig.isReleaseBuild,
+    bool enableFirebaseAuth = AppConfig.enableFirebaseAuth,
   })  : assert(requestTimeout > Duration.zero),
         assert(aiRequestTimeout > Duration.zero),
         assert(uploadRequestTimeout > Duration.zero),
         _customHttpClient = httpClient,
         _baseUri = Uri.parse(baseUrl),
+        _refusesCleartextApi = releaseMode &&
+            enableFirebaseAuth &&
+            Uri.parse(baseUrl).scheme != 'https',
         _reportServerError = reportServerError ?? reportPostDeeApiServerError,
         _sessionBinding = sessionBinding,
         _authHeaders = authHeaders ??
@@ -3035,10 +3040,22 @@ class PostDeeApiClient {
   }
 
   final Uri _baseUri;
+  final bool _refusesCleartextApi;
   final ApiServerErrorReporter _reportServerError;
   final PostDeeApiAuthHeaders _authHeaders;
   final AuthSessionBinding? _sessionBinding;
   final Future<void> Function(Duration) _multipartCompletionPollDelay;
+
+  // Release Firebase builds send ID tokens on every call, so a cleartext base
+  // URL (such as the localhost default) must fail before any request is made.
+  void _ensureSecureApiTransport() {
+    if (_refusesCleartextApi) {
+      throw const ApiException(
+        'API base URL must use HTTPS in release builds.',
+        code: 'INSECURE_API_BASE_URL',
+      );
+    }
+  }
 
   Future<LinkInBioProfileResult?> loadLinkInBioProfile() async {
     final response = await _getJson('/link-in-bio');
@@ -3137,6 +3154,7 @@ class PostDeeApiClient {
           const ApiException('Invalid profile image storage key'));
     }
     return _withRequestDeadline(requestTimeout, (scope) async {
+      _ensureSecureApiTransport();
       final headers = await _authHeaders.load();
       _sessionBinding?.ensureCurrent();
       scope.checkActive();
@@ -4203,6 +4221,7 @@ class PostDeeApiClient {
         }.contains(path);
     return _withRequestDeadline(
         isAiOperation ? aiRequestTimeout : requestTimeout, (scope) async {
+      _ensureSecureApiTransport();
       final headers = await _authHeaders.load();
       _sessionBinding?.ensureCurrent();
       scope.checkActive();

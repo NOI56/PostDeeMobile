@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/theme/app_theme.dart';
+import 'publish_post_preview.dart';
 
 /// Plays a local clip or a temporary owned-post URL without uploading media.
 class PostVideoPreviewScreen extends StatefulWidget {
@@ -14,6 +16,8 @@ class PostVideoPreviewScreen extends StatefulWidget {
     required this.videoFile,
     required this.videoName,
     this.controllerFactory,
+    this.postPreview,
+    this.ownerSession,
   })  : assert(videoFile != null),
         videoUrl = null,
         networkControllerFactory = null;
@@ -27,11 +31,17 @@ class PostVideoPreviewScreen extends StatefulWidget {
     this.networkControllerFactory,
   })  : assert(videoUrl != null),
         videoFile = null,
-        controllerFactory = null;
+        controllerFactory = null,
+        postPreview = null,
+        ownerSession = null;
 
   final File? videoFile;
   final Uri? videoUrl;
   final String videoName;
+  final PublishPostPreviewData? postPreview;
+  // Capture at the caller before navigation so a delayed route cannot bind
+  // an old account's caption and clip to a new sign-in lifetime.
+  final AuthSessionBinding? ownerSession;
   final VideoPlayerController Function(File)? controllerFactory;
   final VideoPlayerController Function(Uri)? networkControllerFactory;
 
@@ -48,15 +58,25 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
   Completer<void>? _initializationGate;
   Timer? _initializationTimer;
   int _initializationVersion = 0;
+  int _playbackVersion = 0;
   bool _loading = true;
   bool _foreground = true;
   bool _commandPending = false;
   double? _dragPositionMs;
+  double? _dragVolume;
+  double _previewVolume = 1;
+  double _lastAudibleVolume = 1;
+  bool _volumePanelOpen = false;
   String? _errorMessage;
   String? _playbackMessage;
   AuthSessionBinding? _ownerBinding;
   bool _accessRevoked = false;
   final _sessions = PostDeeAuthSessionStore.instance;
+
+  bool get _requiresOwnerBinding =>
+      widget.videoUrl != null ||
+      widget.postPreview != null ||
+      widget.ownerSession != null;
 
   @override
   void initState() {
@@ -64,11 +84,13 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
     WidgetsBinding.instance.addObserver(this);
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
-    if (widget.videoUrl != null) {
-      _ownerBinding = _sessions.captureSession();
+    if (_requiresOwnerBinding) {
+      _ownerBinding = widget.ownerSession ?? _sessions.captureSession();
       _sessions.addListener(_onSessionChanged);
-      _accessRevoked = !_sessions.session.isSignedIn ||
-          _sessions.session.stableUserId == null;
+      _accessRevoked = !_ownerBinding!.isCurrent ||
+          (widget.videoUrl != null &&
+              (!_sessions.session.isSignedIn ||
+                  _sessions.session.stableUserId == null));
     }
     unawaited(_initialize());
   }
@@ -76,16 +98,24 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
   @override
   void didUpdateWidget(PostVideoPreviewScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.videoUrl != null && widget.videoUrl == null) {
+    final previouslyBound = oldWidget.videoUrl != null ||
+        oldWidget.postPreview != null ||
+        oldWidget.ownerSession != null;
+    if (previouslyBound && !_requiresOwnerBinding) {
       _sessions.removeListener(_onSessionChanged);
       _ownerBinding = null;
     }
-    if (oldWidget.videoUrl == null && widget.videoUrl != null) {
-      _ownerBinding = _sessions.captureSession();
+    if (!previouslyBound && _requiresOwnerBinding) {
+      _ownerBinding = widget.ownerSession ?? _sessions.captureSession();
       _sessions.addListener(_onSessionChanged);
-      _accessRevoked = _accessRevoked ||
-          !_sessions.session.isSignedIn ||
-          _sessions.session.stableUserId == null;
+    }
+    if (_requiresOwnerBinding &&
+        (_ownerBinding?.isCurrent == false ||
+            widget.ownerSession?.isCurrent == false ||
+            (widget.videoUrl != null &&
+                (!_sessions.session.isSignedIn ||
+                    _sessions.session.stableUserId == null)))) {
+      _revokeAccess();
     }
     if (oldWidget.videoFile?.path != widget.videoFile?.path ||
         oldWidget.videoUrl != widget.videoUrl ||
@@ -97,6 +127,11 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
 
   void _onSessionChanged() {
     if (_ownerBinding?.isCurrent != false || _accessRevoked || !mounted) return;
+    _revokeAccess();
+  }
+
+  void _revokeAccess() {
+    if (_accessRevoked || !mounted) return;
     _accessRevoked = true;
     _initializationVersion++;
     _cancelInitialization();
@@ -112,7 +147,11 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
-    if (!_foreground) _pauseCurrent();
+    if (!_foreground) {
+      _dragVolume = null;
+      _volumePanelOpen = false;
+      _pauseCurrent();
+    }
     if (mounted) setState(() {});
   }
 
@@ -187,6 +226,13 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
       if (controller.value.hasError || !controller.value.isInitialized) {
         throw StateError('The local clip could not be initialized');
       }
+      if (_previewVolume != 1) {
+        await controller.setVolume(_previewVolume).timeout(_commandTimeout);
+        if (!_isCurrent(controller, version)) {
+          _releaseController(controller);
+          return;
+        }
+      }
       controller.addListener(_onVideoChanged);
       setState(() => _loading = false);
     } catch (_) {
@@ -236,6 +282,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
       _playbackMessage = null;
       _commandPending = false;
       _dragPositionMs = null;
+      _dragVolume = null;
     });
     unawaited(_initialize());
   }
@@ -259,6 +306,9 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
   }
 
   void _pauseCurrent() {
+    // A pending play continuation stays cancelled even if the app resumes
+    // before its native volume/seek request completes.
+    _playbackVersion++;
     final controller = _controller;
     if (controller != null) unawaited(_pauseSafely(controller));
   }
@@ -276,60 +326,102 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
     }());
   }
 
-  Future<void> _runCommand(
-    Future<void> Function(VideoPlayerController controller) command,
-  ) async {
+  Future<bool> _runCommand(
+    Future<void> Function(
+            VideoPlayerController controller, bool Function() isActive)
+        command, {
+    String failureMessage = 'ยังเล่นคลิปไม่ได้ ลองอีกครั้ง',
+  }) async {
     final controller = _controller;
     final version = _initializationVersion;
+    final playbackVersion = _playbackVersion;
     if (controller == null || _loading || _commandPending || !_foreground) {
-      return;
+      return false;
     }
     setState(() {
       _commandPending = true;
       _playbackMessage = null;
     });
+    var active = true;
+    bool isActive() =>
+        active &&
+        playbackVersion == _playbackVersion &&
+        _foreground &&
+        _isCurrent(controller, version);
     try {
-      await command(controller).timeout(_commandTimeout);
-      if (!_foreground || !_isCurrent(controller, version)) {
+      await command(controller, isActive).timeout(_commandTimeout);
+      if (!isActive()) {
         await _pauseSafely(controller);
       }
+      return _isCurrent(controller, version);
     } catch (_) {
+      // Future.timeout does not cancel the native command. Invalidate its
+      // continuation before pausing so a late result cannot start playback.
+      active = false;
       if (_isCurrent(controller, version)) {
         await _pauseSafely(controller);
       }
       if (_isCurrent(controller, version)) {
         setState(() {
-          _playbackMessage = 'ยังเล่นคลิปไม่ได้ ลองอีกครั้ง';
+          _playbackMessage = failureMessage;
         });
       }
+      return false;
     } finally {
+      active = false;
       if (_isCurrent(controller, version)) {
         setState(() {
           _commandPending = false;
           _dragPositionMs = null;
+          _dragVolume = null;
         });
       }
     }
   }
 
   void _togglePlayback() {
-    unawaited(_runCommand((controller) async {
+    unawaited(_runCommand((controller, isActive) async {
       if (controller.value.isPlaying) {
         await controller.pause();
       } else {
         if (controller.value.position >= controller.value.duration) {
           await controller.seekTo(Duration.zero);
         }
-        if (_foreground && identical(_controller, controller)) {
+        if (isActive()) {
+          // A failed native volume request may have changed the plugin's
+          // optimistic value. Reapply the confirmed level before playback.
+          if (controller.value.volume != _previewVolume) {
+            await controller.setVolume(_previewVolume);
+          }
+        }
+        if (isActive()) {
           await controller.play();
         }
       }
     }));
   }
 
+  Future<void> _setPreviewVolume(double requestedVolume) async {
+    final controller = _controller;
+    final version = _initializationVersion;
+    final volume = requestedVolume.clamp(0.0, 1.0);
+    final applied = await _runCommand(
+      (controller, _) => controller.setVolume(volume),
+      failureMessage: 'ยังปรับเสียงไม่ได้ ลองอีกครั้ง',
+    );
+    if (!applied || controller == null || !_isCurrent(controller, version)) {
+      return;
+    }
+    setState(() {
+      _previewVolume = volume;
+      if (volume > 0) _lastAudibleVolume = volume;
+    });
+  }
+
   void _seek(double positionMs) {
-    unawaited(_runCommand((controller) async {
+    unawaited(_runCommand((controller, isActive) async {
       await controller.pause();
+      if (!isActive()) return;
       final maximumMs = controller.value.duration.inMilliseconds;
       await controller.seekTo(Duration(
         milliseconds: positionMs.round().clamp(0, maximumMs),
@@ -351,9 +443,11 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
 
   @override
   Widget build(BuildContext context) {
+    final postPreview = widget.postPreview;
+    final title = postPreview == null ? 'ดูคลิป' : 'พรีวิว';
     if (_accessRevoked) {
       return Scaffold(
-          appBar: AppBar(title: const Text('ดูคลิป')),
+          appBar: AppBar(title: Text(title)),
           body: const Center(
               child: Padding(
                   padding: EdgeInsets.all(24),
@@ -365,33 +459,246 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) _pauseCurrent();
       },
-      child: Scaffold(
-        appBar: AppBar(title: const Text('ดูคลิป')),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  widget.videoName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
+      child: postPreview != null
+          ? Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: const ColorScheme.dark(
+                  primary: Colors.white,
+                  surface: Color(0xFF202020),
                 ),
-                const SizedBox(height: 12),
-                Expanded(child: _buildVideo(controller)),
-                if (!_loading && controller != null && _errorMessage == null)
-                  _buildControls(controller),
-              ],
+                textTheme: Theme.of(context).textTheme.apply(
+                      bodyColor: Colors.white,
+                      displayColor: Colors.white,
+                    ),
+              ),
+              child: _buildImmersivePreview(postPreview, controller),
+            )
+          : Scaffold(
+              appBar: AppBar(title: Text(title)),
+              body: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (postPreview == null) ...[
+                        Text(
+                          widget.videoName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Expanded(child: _buildVideo(controller)),
+                      if (!_loading &&
+                          controller != null &&
+                          _errorMessage == null)
+                        _buildControls(controller),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
+    );
+  }
+
+  Widget _buildImmersivePreview(
+      PublishPostPreviewData preview, VideoPlayerController? controller) {
+    final ready = !_loading && controller != null && _errorMessage == null;
+    final enabled = ready && !_commandPending && _foreground;
+    final playing = controller?.value.isPlaying ?? false;
+    // Staging's outer banner uses the app theme above this dark preview route.
+    final lightStagingBar =
+        const bool.fromEnvironment('POSTDEE_STAGING_BUILD') &&
+            Theme.of(context).brightness == Brightness.light;
+    final systemBars = lightStagingBar
+        ? SystemUiOverlayStyle.dark
+        : SystemUiOverlayStyle.light;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: systemBars.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.black,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          key: const ValueKey('post-video-preview-immersive'),
+          fit: StackFit.expand,
+          children: [
+            Tooltip(
+              message: playing ? 'หยุดคลิป' : 'เล่นคลิป',
+              child: Semantics(
+                button: true,
+                enabled: enabled,
+                label: playing ? 'หยุดคลิป' : 'เล่นคลิป',
+                child: GestureDetector(
+                  key: const ValueKey('post-video-preview-play'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: enabled
+                      ? () {
+                          if (_volumePanelOpen) {
+                            setState(() => _volumePanelOpen = false);
+                          } else {
+                            _togglePlayback();
+                          }
+                        }
+                      : null,
+                  child: PublishPostPreviewPane(
+                    immersive: true,
+                    data: preview,
+                    video: Stack(fit: StackFit.expand, children: [
+                      _buildVideo(controller, edgeToEdge: true),
+                      if (ready && !playing)
+                        const Center(
+                          child: IgnorePointer(
+                            child: ExcludeSemantics(
+                              child: Icon(Icons.play_arrow_rounded,
+                                  size: 76, color: Colors.white70),
+                            ),
+                          ),
+                        ),
+                    ]),
+                    hasStartedPlayback: controller != null &&
+                        (playing || controller.value.position > Duration.zero),
+                    isPlaying: playing,
+                    onShowCover: _pauseCurrent,
+                    onShowInformation: _pauseCurrent,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 8,
+              right: 8,
+              child: SafeArea(
+                bottom: false,
+                child: SizedBox(
+                  height: 56,
+                  child: Row(children: [
+                    IconButton(
+                      tooltip:
+                          MaterialLocalizations.of(context).backButtonTooltip,
+                      color: Colors.white,
+                      icon: const Icon(Icons.arrow_back_ios_new, size: 26),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    const Expanded(
+                      child: Text('พรีวิว',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    IconButton(
+                      key: const ValueKey('post-video-preview-volume-toggle'),
+                      tooltip: 'ปรับเสียงพรีวิว',
+                      color: Colors.white,
+                      disabledColor: Colors.white38,
+                      onPressed: enabled
+                          ? () => setState(
+                              () => _volumePanelOpen = !_volumePanelOpen)
+                          : null,
+                      icon: Icon(_previewVolume == 0
+                          ? Icons.volume_off_outlined
+                          : Icons.volume_up_outlined),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+            if (_volumePanelOpen && ready)
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 64,
+                right: MediaQuery.paddingOf(context).right + 12,
+                child: _buildImmersiveVolume(),
+              ),
+            if (_playbackMessage != null)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: MediaQuery.paddingOf(context).bottom + 16,
+                child: Material(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(_playbackMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white)),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildVideo(VideoPlayerController? controller) {
+  Widget _buildImmersiveVolume() {
+    final enabled = !_commandPending && _foreground;
+    final displayedVolume = _dragVolume ?? _previewVolume;
+    return Material(
+      key: const ValueKey('post-video-preview-volume-panel'),
+      color: const Color(0xEE202020),
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: (MediaQuery.sizeOf(context).width - 24).clamp(0.0, 300.0),
+        child: Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: Row(children: [
+            IconButton(
+              key: const ValueKey('post-video-preview-mute'),
+              tooltip:
+                  _previewVolume == 0 ? 'เปิดเสียงพรีวิว' : 'ปิดเสียงพรีวิว',
+              color: Colors.white,
+              onPressed: enabled
+                  ? () => unawaited(_setPreviewVolume(
+                      _previewVolume == 0 ? _lastAudibleVolume : 0))
+                  : null,
+              icon: Icon(_previewVolume == 0
+                  ? Icons.volume_off_outlined
+                  : Icons.volume_up_outlined),
+            ),
+            Expanded(
+              child: Semantics(
+                label: 'ระดับเสียงพรีวิว',
+                child: Slider(
+                  key: const ValueKey('post-video-preview-volume'),
+                  value: displayedVolume,
+                  activeColor: Colors.white,
+                  inactiveColor: Colors.white30,
+                  semanticFormatterCallback: (value) =>
+                      '${(value * 100).round()} เปอร์เซ็นต์',
+                  onChanged: enabled
+                      ? (value) => setState(() => _dragVolume = value)
+                      : null,
+                  onChangeEnd: enabled
+                      ? (value) => unawaited(_setPreviewVolume(value))
+                      : null,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 48,
+              child: Text('${(displayedVolume * 100).round()}%',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: const TextStyle(color: Colors.white, fontSize: 12)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideo(VideoPlayerController? controller,
+      {bool edgeToEdge = false}) {
     if (_errorMessage != null) {
       return Center(
         child: SingleChildScrollView(
@@ -400,7 +707,9 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
             children: [
               Icon(Icons.videocam_off_outlined,
                   size: 48,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  color: edgeToEdge
+                      ? Colors.white70
+                      : Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(height: 16),
               Text(_errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 8),
@@ -446,7 +755,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
     }
     final aspectRatio = controller.value.aspectRatio;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+      borderRadius: BorderRadius.circular(edgeToEdge ? 0 : AppTheme.cardRadius),
       child: ColoredBox(
         color: Colors.black,
         child: Center(
@@ -518,6 +827,51 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.end,
+              ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            IconButton(
+              key: const ValueKey('post-video-preview-mute'),
+              tooltip:
+                  _previewVolume == 0 ? 'เปิดเสียงพรีวิว' : 'ปิดเสียงพรีวิว',
+              onPressed: controlsEnabled
+                  ? () => unawaited(_setPreviewVolume(
+                      _previewVolume == 0 ? _lastAudibleVolume : 0))
+                  : null,
+              icon: Icon(_previewVolume == 0
+                  ? Icons.volume_off_outlined
+                  : Icons.volume_up_outlined),
+            ),
+            Expanded(
+              child: Semantics(
+                label: 'ระดับเสียงพรีวิว',
+                child: Slider(
+                  key: const ValueKey('post-video-preview-volume'),
+                  value: _dragVolume ?? _previewVolume,
+                  activeColor: AppTheme.accent,
+                  label: '${((_dragVolume ?? _previewVolume) * 100).round()}%',
+                  semanticFormatterCallback: (value) =>
+                      '${(value * 100).round()} เปอร์เซ็นต์',
+                  onChanged: controlsEnabled
+                      ? (value) => setState(() => _dragVolume = value)
+                      : null,
+                  onChangeEnd: controlsEnabled
+                      ? (value) => unawaited(_setPreviewVolume(value))
+                      : null,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 54,
+              child: Text(
+                '${((_dragVolume ?? _previewVolume) * 100).round()}%',
+                maxLines: 1,
+                textAlign: TextAlign.end,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
           ],

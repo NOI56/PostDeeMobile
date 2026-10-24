@@ -184,8 +184,7 @@ class PublishReviewSummary extends StatelessWidget {
     this.platformSettings = const PlatformPublishSettings(),
     this.connectionDisplayNames = const {},
     this.coverResult,
-    this.onEditVideo,
-    this.onEditCaption,
+    this.onPreview,
     this.onEditPlatforms,
     this.showSchedule = true,
     this.previewImagePath,
@@ -201,8 +200,7 @@ class PublishReviewSummary extends StatelessWidget {
   final PlatformPublishSettings platformSettings;
   final Map<SocialPlatform, String> connectionDisplayNames;
   final CoverEditorResult? coverResult;
-  final VoidCallback? onEditVideo;
-  final VoidCallback? onEditCaption;
+  final VoidCallback? onPreview;
   final VoidCallback? onEditPlatforms;
   final bool showSchedule;
   final String? previewImagePath;
@@ -252,15 +250,22 @@ class PublishReviewSummary extends StatelessWidget {
                     previewImagePath: previewImagePath,
                     previewImageBytes: previewImageBytes,
                     videoAspectLabel: videoAspectLabel,
+                    onPreview: onPreview,
                   ),
-                  if (onEditVideo != null) ...[
-                    const SizedBox(height: 4),
-                    _ReviewEditButton(
-                      section: 'video',
-                      label: 'แก้คลิป',
-                      onPressed: onEditVideo!,
+                  const SizedBox(height: 4),
+                  TextButton.icon(
+                    key: const ValueKey('publish-review-preview'),
+                    onPressed: onPreview,
+                    icon: const Icon(Icons.play_circle_outline, size: 16),
+                    label: const Text('พรีวิว', textAlign: TextAlign.center),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.accentCyanInk,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 6),
+                      textStyle: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -269,31 +274,21 @@ class PublishReviewSummary extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Wrap(
-                    spacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        'แคปชั่น',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textMuted,
-                        ),
-                      ),
-                      if (onEditCaption != null)
-                        _ReviewEditButton(
-                          section: 'caption',
-                          label: 'แก้ไข',
-                          onPressed: onEditCaption!,
-                        ),
-                    ],
+                  Text(
+                    'แคปชั่น',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textMuted,
+                    ),
                   ),
                   const SizedBox(height: 5),
                   Text(
                     platformSettings.usePlatformCaptions
                         ? 'ใช้แคปชั่นแยกตามช่องทางด้านล่าง'
-                        : trimmedCaption.isEmpty ? '(ไม่มีแคปชั่น)' : trimmedCaption,
+                        : trimmedCaption.isEmpty
+                            ? '(ไม่มีแคปชั่น)'
+                            : trimmedCaption,
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.5,
@@ -334,11 +329,15 @@ class PublishReviewSummary extends StatelessWidget {
                   Row(children: [
                     SocialPlatformLogo(platform: platform, size: 22),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(platform.label,
-                        style: const TextStyle(fontWeight: FontWeight.w600))),
+                    Expanded(
+                        child: Text(platform.label,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600))),
                   ]),
                   const SizedBox(height: 8),
-                  Text(platformSettings.effectiveCaption(platform, caption).trim()),
+                  Text(platformSettings
+                      .effectiveCaption(platform, caption)
+                      .trim()),
                 ],
               ),
             ),
@@ -502,12 +501,14 @@ class _ReviewVideoThumbnail extends StatelessWidget {
     required this.previewImagePath,
     required this.previewImageBytes,
     required this.videoAspectLabel,
+    this.onPreview,
   });
 
   final CoverEditorResult? coverResult;
   final String? previewImagePath;
   final Uint8List? previewImageBytes;
   final String? videoAspectLabel;
+  final VoidCallback? onPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -522,7 +523,7 @@ class _ReviewVideoThumbnail extends StatelessWidget {
         : 'publish-review-cover-image');
     final aspectLabel = videoAspectLabel?.trim();
 
-    return Container(
+    final thumbnail = Container(
       width: 88,
       height: 120,
       clipBehavior: Clip.antiAlias,
@@ -575,6 +576,17 @@ class _ReviewVideoThumbnail extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+    if (onPreview == null) return thumbnail;
+    return Semantics(
+      button: true,
+      label: 'พรีวิววิดีโอ',
+      child: InkWell(
+        key: const ValueKey('publish-review-thumbnail'),
+        onTap: onPreview,
+        borderRadius: BorderRadius.circular(14),
+        child: thumbnail,
       ),
     );
   }

@@ -2,6 +2,119 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Local post-preview boundary (2026-10-24, local candidate)
+
+The review summary uses one nullable `onPreview` action beneath the thumbnail,
+which remains visible but disabled without a clip callback. The thumbnail can
+invoke the same callback. Clip/caption edit links are removed from this summary;
+channel editing and the wizard's existing Back navigation remain intact.
+
+The uploader captures only selected destinations, effective captions, connected
+display identities, the resolved/custom YouTube title, cover and watermark
+metadata, then passes that local snapshot to the existing video-player route.
+Its approximate per-platform presentation uses the actual local clip. It does
+not call AI/upload/publish APIs, run FFmpeg or change quotas. Cover support and
+watermark notes describe capabilities rather than promising identical platform
+rendering or a burned-in preview watermark.
+
+The current TikTok portrait presentation uses a bottom gradient with real
+identity/caption, bounded expansion and a decorative heart/comment/save/share
+rail without fabricated counts. `เสียงจากคลิป` identifies the clip audio without
+inventing song metadata. Narrow/enlarged-text/landscape layouts retain safe
+fallbacks. Preview-only volume runs from 0–100%; slider dragging stages the
+displayed value and commits to the native player on release. Mute restores the
+last audible level. Tab changes and local retry retain that playback setting,
+while command timeout, owner and lifecycle guards remain authoritative. Neither
+system volume nor exported/published media is edited.
+
+Metadata-bearing local previews bind to the captured sign-in lifetime and
+revoke media/metadata access after account changes. Plain local clip playback
+without post metadata retains its existing behavior; authenticated temporary
+owned-post network playback keeps its existing ownership/lifecycle fences.
+Publishing validation, settings, schedule and queue boundaries are unchanged.
+This needs no API/schema/dependency/configuration change relative to refreshed
+main `6afe4d6` (runtime `342470f`). Its Facebook provider mapping, settings and
+actual-media checks remain intact; this preview uses generic Facebook wording
+without a provider acceptance claim. One named Sentry reporter-forwarding unit
+fixture removes its default SDK integrations through the public test API and
+has a 20-second bound; production monitoring remains unchanged. Tool-only `CI=true` and
+`FLUTTER_SUPPRESS_ANALYTICS=true` bypass the verified Windows WMI analytics
+startup block without SDK, OS-service or runtime changes. Full Mobile validation
+passes **2,867 tests / 6 skipped**, plus **150** Staging checks, **187** API
+regressions/typecheck, analyzer (16s) and **10** real-font visual checks.
+Staging APK **12049** builds with eight complete-source and packaged-environment
+checks passing and is installed with unchanged package UID/storage. Android's
+framework restarted during launch. After manual sign-in, the existing draft's
+native playback/pause/seek and volume 100% → 36% → mute → 36% → 62% are verified.
+Back preserves its clip, empty caption, zero destinations and one draft without
+saving or changing fields. An initial transient pause error recovered on later
+explicit resume/pause; its cause is unconfirmed. Current Home shows Free and
+only YouTube connected, so latest TikTok/Instagram native tabs and restoration
+of the earlier Pro demo draft are unverified. Earlier 12048 TikTok native and
+final visual tests remain separate evidence. The feature remains local, without
+main/push/cloud deployment. Earlier verification history is in the
+[implementation record](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
+
+## Immersive post-preview presentation (2026-10-24, local APK 12051)
+
+Only routes carrying `postPreview` use the full-bleed presentation. The player
+retains the native video's natural aspect ratio without cropping and exposes
+canvas tap play/pause, a central paused-play affordance and a top speaker action.
+The old bottom seek/replay/time/volume controls are absent from this path; plain
+local and authenticated temporary-network clip playback keeps its existing UI.
+Speaker controls are an inline, on-demand playback-only panel rather than a
+second Navigator route; they do not alter the system mixer or export audio.
+
+`PublishPostPreviewPane(immersive: true)` fills the available canvas and overlays
+selected-platform chips, the selected channel's effective caption/identity and
+YouTube title, and an inert social rail without fake counts. With no destinations
+it renders the shared caption and generic rail without inventing an identity.
+Captions retain bounded expansion/scrolling for narrow, enlarged-text and
+landscape layouts. Cover, capability, watermark and approximate-appearance notes
+remain accessible through compact controls. The information panel is inline in
+the pane, pauses/cancels pending playback when opened and consumes its own taps.
+It is removed with the preview when the owner session is revoked, including ABA
+transitions, so explanatory metadata cannot outlive its owning route.
+
+The latest working baseline is `8872f0e`, preserving nine incoming API-security/
+documentation commits. Those commits introduce no Mobile or schema change;
+hashes of all ten candidate Mobile runtime/test files are identical before and
+after the refresh. The historical 12049 baseline is recorded separately above.
+
+The existing owner/lifecycle/timeouts, disposal, actual-media and publishing
+boundaries are unchanged. No API/schema/dependency/configuration or backend
+migration is needed. Before the cosmetic follow-up, 12050 full Mobile validation passes **2,880 tests /
+6 skipped** (9m26s), analysis has no issues (16.7s) and joint preview checks pass
+**76** (10s). Fresh-baseline API static/build checks and **206 tests in 11 files**
+pass; their scope is distinct from historical 12049's 187 checks. Final **163**
+Staging checks (58s) and **15** exact-color visual checks (4s) also pass. APK
+**12050** builds (44.2s), with eight complete-source and packaged-environment/
+Firebase checks matching. Installed 12050 retains UID/storage, the active account
+and existing draft. Native generic immersive play/pause, absent bottom controls
+and inline volume 100% → 34% → mute → 34% pass. The draft has no destinations or
+caption, so connected TikTok-tab acceptance is not established. Initial startup
+ANR recovered after one app-only restart; the cause is unconfirmed. Follow-up
+**12051** conditionally uses `SystemUiOverlayStyle.dark` only for
+`POSTDEE_STAGING_BUILD` with a light outer theme. Dark Staging and normal
+immersive routes retain light icons for their dark status surface. Light/dark
+player tests cover this cosmetic distinction. Final 12051 player checks pass
+**44** (5s), Staging checks pass **165** (11s) and analysis finds no issues
+(11.8s). The final information-panel integration verifies pause/no automatic
+resume; it changes tests only, so the verified APK runtime remains identical.
+APK 12051 builds (93.9s), with all eight complete-source/package/Firebase checks
+matching, and installs with the same UID/storage. Its approximately 45-second
+cold start reaches Home without another app-only restart. Native play/pause/
+replay, volume 100% → 34% → mute → 34%, canvas dismissal of the volume panel,
+information open/close with paused state, readable Staging status icons and
+Back to unchanged review all pass. The preview is left paused. The actual clip
+is landscape/letterboxed with zero destinations and an empty caption; connected
+TikTok tabs and native iOS remain unverified. The subsequent user instruction
+authorizes `main/push` for this verified UI; the handoff adds no runtime changes
+and needs no backend deployment.
+Historical 12049 results above retain their stated platform/account limits.
+Record final evidence in the
+[preview implementation record](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
+
 ## Shared wheel time picker (2026-10-24)
 
 `features/shared/postdee_time_picker.dart` provides a 24-hour Flutter
@@ -1440,6 +1553,15 @@ RevenueCat และ PostPeer ชุดทดสอบแยกกัน รา�
 Android Debug เพิ่ม suffix `.staging` และใช้ `src/debug/google-services.json`;
 Profile/Release ยังคงใช้ Firebase Production จึงห้ามผสมกับ Staging Dart defines
 
+Security Batch 6 (2026-10-24): Android disables app-data backup and device
+transfer (`allowBackup="false"` plus data extraction rules) so the Firebase
+session stays on the signing-in device, and drops the unused `postdee://billing`
+intent filter. `PostDeeApiClient` refuses a non-HTTPS base URL in release builds
+with Firebase auth before loading auth headers, and the iOS CI IPA pins the
+production `API_BASE_URL`. Both workflows run with `permissions: contents:
+read`, check out without persisted credentials, pin actions by commit SHA, and
+restrict a manual `apk_source_ref` to commits on this repository's branches.
+
 ## Backend Runtime Dependency Boundary
 
 The backend imports `firebase-admin/app`, `firebase-admin/auth`, and
@@ -2110,6 +2232,10 @@ Rules:
   status wording.
 - Provider retries are explicit-safe-only. Unknown network/polling outcomes are
   terminal and tell the user to inspect the destination before trying again.
+- Each in-process scheduler poll reads at most 50 due posts across all owners
+  (`take: 50`, ordered by `scheduledAt`), selecting only publish fields (no media
+  fingerprint or add-on allocation). Remaining due posts wait for the next
+  poll, about five seconds later.
 
 The mobile HTTP client applies an end-to-end 20-second deadline to ordinary
 JSON requests, including token refresh, connection, and body consumption.

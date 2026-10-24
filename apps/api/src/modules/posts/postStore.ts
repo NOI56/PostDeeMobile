@@ -186,7 +186,7 @@ export type PostStore = {
   // Posts whose time has come: QUEUED with no schedule (post now) or scheduledAt
   // at/before `now`. Used by the publish scheduler; returns at most `limit`
   // (default maxDuePostsPerPoll) posts per call.
-  listDue: (input: { now: string; limit?: number }) => Promise<DuePost[]>;
+  listDue: (input: { now: string; limit?: number; excludeIds?: string[] }) => Promise<DuePost[]>;
   // Atomically moves a still-queued post into PUBLISHING before calling an
   // external publisher. Returns false for missing, already-running, or finished posts.
   claimForPublish: (input: ClaimPostForPublishInput) => Promise<boolean>;
@@ -362,12 +362,13 @@ export const createPostStore = ({
         created: true
       };
     }),
-    listDue: async ({ now, limit = maxDuePostsPerPoll }) =>
+    listDue: async ({ now, limit = maxDuePostsPerPoll, excludeIds = [] }) =>
       posts
         .filter(
           (post) =>
             post.status === 'QUEUED' &&
-            (post.scheduledAt === undefined || post.scheduledAt <= now)
+            (post.scheduledAt === undefined || post.scheduledAt <= now) &&
+            !excludeIds.includes(post.id)
         )
         .slice(0, limit),
     claimForPublish: async ({ postId, expectedRunAt }) => {

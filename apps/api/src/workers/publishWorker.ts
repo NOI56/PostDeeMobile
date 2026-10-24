@@ -420,17 +420,18 @@ export const processPublishJobForPost = async ({
   deleteVideoAfterPublish?: boolean;
   now?: () => string;
 }): Promise<PublishWorkerResult> => {
+  // Scheduling is a paid feature. Read the plan before the owner lifetime and
+  // the claim: a read failure then leaves the post QUEUED for the caller's
+  // pre-publish retry and never retains the owner's operation ticket.
+  const ownerPlanEnded =
+    jobData.status === 'SCHEDULED' && readOwnerPlan && jobData.userId
+      ? (await readOwnerPlan(jobData.userId)) === 'BASIC'
+      : false;
+
   const processForOwner = async (): Promise<PublishWorkerResult> => {
     if (assertOwnerActive && jobData.userId) {
       await assertOwnerActive(jobData.userId);
     }
-
-    // Scheduling is a paid feature. Read the plan before claiming, so a read
-    // failure leaves the post QUEUED for the caller's pre-publish retry.
-    const paidPlanEnded =
-      jobData.status === 'SCHEDULED' && readOwnerPlan && jobData.userId
-        ? (await readOwnerPlan(jobData.userId)) === 'BASIC'
-        : false;
 
     const claimed = await postStore.claimForPublish({
       postId: jobData.postId,
@@ -459,6 +460,12 @@ export const processPublishJobForPost = async ({
         await assertOwnerActive(jobData.userId);
       }
 
+      // The owner may have switched the post to Publish now while the plan was
+      // read; the claim accepts that row, and post-now posts are not re-checked.
+      const paidPlanEnded = ownerPlanEnded && jobData.userId
+        ? (await postStore.findOwned({ postId: jobData.postId, userId: jobData.userId }))
+          ?.scheduledAt !== undefined
+        : false;
       if (paidPlanEnded) {
         // Never contact a provider. Units used at creation are not refunded.
         const platformResults: PlatformPublishResult[] = jobData.platforms.map((platform) => ({

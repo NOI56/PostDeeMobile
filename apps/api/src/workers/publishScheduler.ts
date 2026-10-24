@@ -4,7 +4,7 @@ import {
   type PublishNotifier,
   createNoopPublishNotifier
 } from '../modules/notifications/publishNotifier.js';
-import type { PostStore } from '../modules/posts/postStore.js';
+import { maxDuePostsPerPoll, type PostStore } from '../modules/posts/postStore.js';
 import { reconcileInterruptedPublishes } from './interruptedPublishRecovery.js';
 import type { ReadOwnerPlan } from './scheduledPublishPlan.js';
 import { reportMonitoringError } from '../monitoring/sentryMonitoring.js';
@@ -24,6 +24,11 @@ export type PublishScheduler = {
   checkReady?: () => Promise<void>;
   sweepUploadsOnce?: () => Promise<void>;
 };
+
+// One poll reads due posts in batches of maxDuePostsPerPoll, skipping posts it
+// already tried this poll, so posts it cannot start (for example an owner whose
+// account deletion is in progress) never hide later owners' posts.
+export const maxDueBatchesPerPoll = 10;
 
 const activationBacklogInspectionFailedMessage =
   'Social publishing activation blocked: backlog inspection failed';
@@ -179,18 +184,27 @@ export const createPublishScheduler = ({
     if (activeRun) return activeRun;
     activeRun = Promise.resolve().then(async () => {
       try {
-        const duePosts = await postStore.listDue({ now: now() });
+        const pollNow = now();
+        const attempted: string[] = [];
         let persistenceFailed = false;
-        for (const post of duePosts) {
-          if (stopped) break;
-          try {
-            await publishDuePost(post);
-          } catch (error) {
-            // Preserve an uncertain provider outcome. A later healthy poll can
-            // retry only rows that remain safely QUEUED before provider intake.
-            persistenceFailed = true;
-            reportMonitoringError(error, { operation: 'scheduler.process' });
+        for (let batch = 0; batch < maxDueBatchesPerPoll && !stopped; batch += 1) {
+          const duePosts = await postStore.listDue({
+            now: pollNow,
+            ...(attempted.length > 0 ? { excludeIds: attempted } : {})
+          });
+          for (const post of duePosts) {
+            if (stopped) break;
+            attempted.push(post.id);
+            try {
+              await publishDuePost(post);
+            } catch (error) {
+              // Preserve an uncertain provider outcome. A later healthy poll can
+              // retry only rows that remain safely QUEUED before provider intake.
+              persistenceFailed = true;
+              reportMonitoringError(error, { operation: 'scheduler.process' });
+            }
           }
+          if (duePosts.length < maxDuePostsPerPoll) break;
         }
         pollHealthy = !persistenceFailed;
       } catch (error) {

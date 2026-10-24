@@ -64,6 +64,7 @@ type PostDelegate = {
   }) => Promise<number>;
   findMany: (args: {
     where: {
+      id?: { notIn: string[] };
       userId?: string;
       status?: PrismaPostStatus;
       scheduledAt?: { not: null };
@@ -414,10 +415,11 @@ export const createPrismaPostRepository = ({
     return persisted ? mapPost(persisted) : undefined;
   },
   createWithinMonthlyLimit: async (input) => createWithinMonthlyLimit(prisma, input),
-  listDue: async ({ now, limit = maxDuePostsPerPoll }) => {
-    // A global read across owners: keep it to one bounded batch per poll.
+  listDue: async ({ now, limit = maxDuePostsPerPoll, excludeIds = [] }) => {
+    // A global read across owners: keep it to one bounded batch per call.
     const posts = await prisma.post.findMany({
       where: {
+        ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
         status: 'QUEUED',
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date(now) } }]
       },

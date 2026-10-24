@@ -42,6 +42,17 @@ describe('due post read for the publish scheduler', () => {
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 5 }));
   });
 
+  it('skips posts the scheduler already tried this poll', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const repository = createPrismaPostRepository({ prisma: withPostRepositoryFixture({ post: { findMany } }) });
+
+    await repository.listDue({ now: '2026-10-24T01:00:00.000Z', excludeIds: ['tried-1', 'tried-2'] });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { notIn: ['tried-1', 'tried-2'] }, status: 'QUEUED' })
+    }));
+  });
+
   it('bounds the in-memory store the same way', async () => {
     const store = createPostStore();
     for (let index = 0; index < maxDuePostsPerPoll + 3; index += 1) {

@@ -122,6 +122,7 @@ export const withAppPrismaFixture = <T extends {
       findUnique: vi.fn<AppPrismaClient['managedUploadSession']['findUnique']>(fail),
       findMany: vi.fn<AppPrismaClient['managedUploadSession']['findMany']>(fail),
       update: vi.fn<AppPrismaClient['managedUploadSession']['update']>(fail),
+      updateMany: vi.fn<AppPrismaClient['managedUploadSession']['updateMany']>(fail),
       deleteMany: vi.fn<AppPrismaClient['managedUploadSession']['deleteMany']>(fail)
     }
   }) satisfies AppPrismaClient;

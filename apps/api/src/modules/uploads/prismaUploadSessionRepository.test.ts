@@ -42,6 +42,7 @@ const createPrismaDouble = () => {
       findUnique: vi.fn(async () => persistedSession),
       findMany: vi.fn(async () => [persistedSession]),
       update: vi.fn(async () => persistedSession),
+      updateMany: vi.fn(async () => ({ count: 0 })),
       deleteMany: vi.fn(async () => ({ count: 1 }))
     }
   };
@@ -82,6 +83,7 @@ const createOwnerPrismaDouble = (initialOwners: OwnerFixture[] = []) => {
       findUnique: vi.fn(async () => persistedSession),
       findMany: vi.fn(async () => []),
       update: vi.fn(async () => persistedSession),
+      updateMany: vi.fn(async () => ({ count: 0 })),
       deleteMany: vi.fn(async () => ({ count: 0 }))
     }
   };

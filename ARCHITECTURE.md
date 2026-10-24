@@ -2041,6 +2041,16 @@ Rules:
 - Completion and abort transitions use compare-and-set rules. If R2 completes
   an object before the database acknowledgement survives, `GET /uploads/:id`
   verifies its exact size with `HEAD` and reconciles the session.
+- The in-process scheduler sweeps expired sessions on its own 10-minute timer,
+  separate from the publish poll. Each sweep takes at most 25 `UPLOADING`
+  sessions that expired more than five minutes ago, using the
+  `(expiresAt, status)` index. It aborts the R2 multipart upload first, then
+  retires the row to `ABORTED` only if the row is still expired and
+  `UPLOADING`. A failed abort is retried by the next sweep. Sweep errors go to
+  monitoring as `scheduler.uploadSweep` and never change `/ready`. Expiry
+  already blocks new parts and completion, so the sweep cannot race a
+  completing upload. R2 uploads with no session row are still aborted only
+  by account deletion or a bucket lifecycle rule.
 - The legacy single-file signed `PUT` remains a bearer URL that cannot be
   revoked individually. It keeps a replay window while `legacy` or `dual` mode
   accepts old clients; strict `multipart` closes that remaining path.

@@ -1613,6 +1613,16 @@ its drain window, and aborts persisted and R2 orphan multipart uploads before
 sweeping the owner's stored objects. Completion and abort state changes use
 compare-and-set rules so neither terminal result can overwrite the other.
 
+Since 2026-10-24 the in-process scheduler also retires abandoned sessions. Every
+10 minutes it takes up to 25 `UPLOADING` sessions (any owner, oldest first)
+whose `sessionExpiresAt` passed more than five minutes ago, aborts each R2
+multipart upload, and then moves the session to `ABORTED` with a compare-and-set
+update. `GET /uploads/:uploadId` then reports `sessionStatus: "ABORTED"`. Part
+and complete calls already returned `410 UPLOAD_SESSION_EXPIRED` after expiry, so
+no live upload changes behavior. A failed R2 abort leaves the session
+`UPLOADING` for the next sweep. Session rows are kept, not deleted, so
+`videoS3Key` lookups keep their meaning.
+
 Legacy signed `PUT` remains available during `legacy`/`dual` rollout and still
 has a replay window until strict `multipart` mode is enabled for all clients.
 

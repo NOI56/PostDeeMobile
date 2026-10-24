@@ -30,6 +30,7 @@ const createSignedFirebaseToken = ({
   const payload = toBase64UrlJson({
     aud: projectId,
     email: 'seller@example.com',
+    email_verified: true,
     exp: nowSeconds + 3600,
     iat: nowSeconds,
     iss: `https://securetoken.google.com/${projectId}`,

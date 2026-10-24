@@ -13,8 +13,16 @@ export type CreateTemplateInput = {
   body: string;
 };
 
+// Templates are caption snippets; these ceilings sit well above real use and
+// bound what one owner can keep in the shared database and list responses.
+export const templateTitleMaxLength = 120;
+export const templateBodyMaxLength = 5000;
+export const maxTemplatesPerOwner = 200;
+
 export type TemplateStore = {
+  // Newest first, at most maxTemplatesPerOwner rows.
   list: (filter: { userId: string }) => TextTemplate[] | Promise<TextTemplate[]>;
+  count: (filter: { userId: string }) => number | Promise<number>;
   create: (input: CreateTemplateInput) => TextTemplate | Promise<TextTemplate>;
   // Hard-deletes every template owned by userId. Used by account deletion.
   // Optional because the Prisma store relies on the User cascade instead.
@@ -28,7 +36,10 @@ export const createTemplateStore = (): TemplateStore => {
     list: ({ userId }) =>
       templates
         .filter((template) => template.userId === userId)
+        .reverse()
+        .slice(0, maxTemplatesPerOwner)
         .map(({ userId: _userId, ...template }) => template),
+    count: ({ userId }) => templates.filter((template) => template.userId === userId).length,
     create: (input) => {
       const template = {
         id: randomUUID(),

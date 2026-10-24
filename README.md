@@ -15,6 +15,17 @@ Existing publish/Page-draft choices, optional AI disclosure, per-platform captio
 and immutable target snapshots are preserved. Real-account Reel/draft/thumbnail
 E2E remains pending; the contract change alone does not establish production readiness.
 
+## Identity and pre-auth hardening (2026-10-24, security Batch 4)
+
+The API stores a Firebase email only when the ID token marks it verified;
+unverified accounts keep `firebase-<uid>@postdee.local`. A verified address
+still held by another PostDee row also falls back instead of failing with `500`.
+The built-in Firebase verifier shares one certificate refresh, times out after
+5 seconds and briefly reuses a failed refresh. Per-IP rate limiters sweep at
+most once per window and cap remembered addresses at 10,000. No schema change,
+migration or mobile change. See
+[`2026-10-24-identity-preauth-security-batch4.md`](docs/superpowers/plans/2026-10-24-identity-preauth-security-batch4.md).
+
 ## Wheel time selection (2026-10-24)
 
 Create Post and Calendar rescheduling share a 24-hour Flutter wheel picker.
@@ -30,6 +41,20 @@ themes and narrow enlarged text. The user authorized main/push after verifying
 the implementation. APK installation and native acceptance remain pending;
 the installed app is unchanged. See the
 [wheel-picker work record](docs/superpowers/plans/2026-10-24-wheel-time-picker.md).
+
+## Per-owner resource caps (2026-10-24, security Batch 5)
+
+The API now bounds what one account can keep in the shared database and
+process:
+- Templates: 200 per owner, with 120/5000-character title/body.
+- Device tokens: 10 per owner, FCM-shaped, oldest evicted first.
+- Managed upload sessions: 10 open per owner, 255-character file names,
+  exact video/image types.
+- New post captions: at most 63,206 characters.
+
+Limited post lists and single-post reschedule/publish-now no longer read the
+full history. No schema change, migration or mobile change. See
+[`2026-10-24-resource-caps-security-batch5.md`](docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md).
 
 ## Compact caption AI panel (2026-10-23, Staging delivered)
 
@@ -970,6 +995,12 @@ editing and Subtitle Studio no longer have a product entry point, and the
 paywall/profile no longer advertise editing minutes or top-ups. AI captions in
 the upload flow remain available. The editing implementation and shared media
 helpers below are retained as compatibility code, not an active product offer.
+Since 2026-10-24 the API also stops serving it: every `/ai-edits/*` request
+returns `410 AI_EDITING_RETIRED` without provider work unless the
+`AI_EDITING_ENABLED=true` rollback switch is set. Real-clip AI captions now
+accept only image frame keys, cap frames at 5 MiB, and return
+`503 AI_MEDIA_BUSY` when two requests already hold media on the instance. See
+`docs/superpowers/plans/2026-10-24-ai-editing-retirement-security-batch3.md`.
 
 Each authenticated account can publish one profile page with up to 20 enabled
 custom links on every package. The page is hosted by the existing PostDee API at

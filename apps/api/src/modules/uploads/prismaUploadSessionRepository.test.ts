@@ -43,7 +43,8 @@ const createPrismaDouble = () => {
       findMany: vi.fn(async () => [persistedSession]),
       update: vi.fn(async () => persistedSession),
       updateMany: vi.fn(async () => ({ count: 0 })),
-      deleteMany: vi.fn(async () => ({ count: 1 }))
+      deleteMany: vi.fn(async () => ({ count: 1 })),
+      count: vi.fn(async () => 0)
     }
   };
   const prisma = {
@@ -84,7 +85,8 @@ const createOwnerPrismaDouble = (initialOwners: OwnerFixture[] = []) => {
       findMany: vi.fn(async () => []),
       update: vi.fn(async () => persistedSession),
       updateMany: vi.fn(async () => ({ count: 0 })),
-      deleteMany: vi.fn(async () => ({ count: 0 }))
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      count: vi.fn(async () => 0)
     }
   };
   const $transaction = vi.fn(async (action: (client: typeof transaction) => Promise<unknown>) => action(transaction));
@@ -125,6 +127,32 @@ describe('Prisma upload session repository', () => {
     ).resolves.toMatchObject({ id: 'session-1', status: 'UPLOADING' });
 
     expect(transaction.managedUploadSession.create).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a new session once the owner holds the open-session cap', async () => {
+    const { prisma, transaction } = createPrismaDouble();
+    transaction.managedUploadSession.count.mockResolvedValue(10);
+    const repository = createPrismaUploadSessionRepository({ prisma });
+
+    await expect(
+      repository.createForActiveOwner({
+        id: 'session-11',
+        ownerId: 'seller-1',
+        storageUploadId: 'r2-upload-11',
+        videoS3Key: 'uploads/seller-1/session-11/video.mp4',
+        fileName: 'video.mp4',
+        contentType: 'video/mp4',
+        sizeBytes: 10,
+        partSizeBytes: 8,
+        partCount: 2,
+        expiresAt: '2026-07-13T11:00:00.000Z'
+      })
+    ).rejects.toMatchObject({ code: 'UPLOAD_SESSION_LIMIT_REACHED' });
+
+    expect(transaction.managedUploadSession.count).toHaveBeenCalledWith({
+      where: { ownerId: 'seller-1', status: 'UPLOADING', expiresAt: { gt: expect.any(Date) } }
+    });
+    expect(transaction.managedUploadSession.create).not.toHaveBeenCalled();
   });
 
   it('does not reactivate a deleted owner', async () => {

@@ -564,7 +564,7 @@ describe('post routes', () => {
       oldest, covered, video, otherOwner
     ]);
     const response = await request(app).get('/posts?includeMedia=true&limit=2').expect(200);
-    expect(store.list).toHaveBeenCalledWith({ userId: 'seller-preview', scheduledOnly: false });
+    expect(store.list).toHaveBeenCalledWith({ userId: 'seller-preview', scheduledOnly: false, limit: 2 });
     expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.body.posts.map((post: QueuedPost) => post.id)).toEqual(['covered', 'video']);
     expect(response.body.posts[0]).toMatchObject({
@@ -2252,6 +2252,7 @@ describe('post routes', () => {
       ),
       template: {
         findMany: vi.fn(),
+        count: vi.fn(),
         create: vi.fn()
       }
     };

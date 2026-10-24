@@ -43,7 +43,8 @@ describe('ai edit routes', () => {
     const app = createApp({
       config: readServerConfig({
         DATABASE_URL: 'postgresql://postdee:postdee_password@localhost:5432/postdee',
-        AI_EDIT_USAGE_STORE: 'prisma'
+        AI_EDIT_USAGE_STORE: 'prisma',
+        AI_EDITING_ENABLED: 'true'
       }),
       prisma: withOwnerLifecycleFixture(prisma) as never,
       transcriptionProvider: {

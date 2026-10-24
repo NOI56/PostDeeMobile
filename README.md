@@ -2720,6 +2720,10 @@ Queue/storage scaffold switches:
   schedules are therefore included. A non-zero total or inspection error blocks startup
   without loading post/user/media details. Staging enables this guard; its
   default is `false`, and the Production Blueprint is unchanged.
+- Each memory-scheduler poll reads at most 50 due posts (all owners combined)
+  with only the fields needed to publish; a larger backlog drains over later
+  polls. See
+  [`2026-10-24-due-post-read-bound.md`](docs/superpowers/plans/2026-10-24-due-post-read-bound.md).
 - API startup reads server configuration once and passes that same object to the
   app and scheduler diagnostics. It logs only the non-secret social mode,
   publisher name, and whether the empty-backlog guard is enforced. When that

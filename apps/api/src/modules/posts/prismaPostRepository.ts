@@ -59,9 +59,15 @@ type PostDelegate = {
       status?: PrismaPostStatus;
       scheduledAt?: { not: null };
       createdAt?: { gte: Date; lt: Date };
-      OR?: Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>;
+      OR?:
+        | Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>
+        | [{ createdAt: { lt: Date } }, { createdAt: Date; id: { lt: string } }];
     };
-    orderBy?: { createdAt: 'desc' } | { scheduledAt: 'asc' };
+    orderBy?:
+      | { createdAt: 'desc' }
+      | { scheduledAt: 'asc' }
+      | [{ createdAt: 'desc' }, { id: 'desc' }];
+    take?: number;
     select?: { createdAt: true; selectedPlatforms: true; addonPostUnits?: true } | { id: true; selectedPlatforms: true };
   }) => Promise<PrismaPost[]>;
   create: (args: {
@@ -354,6 +360,27 @@ export const createPrismaPostRepository = ({
     });
 
     return posts.map(mapPost);
+  },
+  listPage: async ({ userId, scheduledOnly = false, limit, after }) => {
+    const afterTime = after ? new Date(after.createdAt) : undefined;
+    // One extra row tells whether another page exists; (userId, createdAt) is indexed.
+    const rows = await prisma.post.findMany({
+      where: {
+        userId,
+        ...(scheduledOnly ? { scheduledAt: { not: null } } : {}),
+        ...(after && afterTime
+          ? { OR: [{ createdAt: { lt: afterTime } }, { createdAt: afterTime, id: { lt: after.id } }] }
+          : {})
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1
+    });
+    const posts = rows.slice(0, limit).map(mapPost);
+    const last = posts.at(-1);
+    return {
+      posts,
+      ...(rows.length > limit && last ? { next: { createdAt: last.createdAt, id: last.id } } : {})
+    };
   },
   findOwned: async ({ postId, userId }) => {
     const persisted = await prisma.post.findFirst({ where: { id: postId, userId } });

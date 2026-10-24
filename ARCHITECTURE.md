@@ -2055,6 +2055,18 @@ Rules:
   external id is stored.
 - `GET /posts` joins each authenticated user's posts with their persisted
   `platformResults`, including partial and failed platform outcomes.
+- Calendar reads history in cursor pages (2026-10-24):
+  - The app sends `GET /posts?pageSize=100`, then `cursor=<nextCursor>`. Each
+    page is a `createdAt desc, id desc` keyset query of at most 101 rows on
+    `(userId, createdAt)`.
+  - The app stops after the page that reaches 31 days before the oldest period
+    the user has viewed. A post's calendar time falls at most about 30 days
+    after its creation because of the schedule window. It also stops at
+    `nextCursor: null` or after 20 pages.
+  - Browsing to an earlier month or week extends that window and reloads.
+  - Plain `GET /posts` keeps returning the full history for installed apps. An
+    older API that ignores `pageSize` returns everything in one response, which
+    the new app treats as the last page.
 - Mobile presents the returned post lifecycle without upgrading it to success:
   `QUEUED`, `PUBLISHING`, `PUBLISHED`, and `PARTIAL_PUBLISHED` have distinct
   messages; an unknown status retains the local draft and blocks a success view.

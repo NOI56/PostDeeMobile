@@ -54,9 +54,7 @@ class PlatformCaptionAiTargets extends StatelessWidget {
                   softWrap: true,
                   overflow: TextOverflow.visible,
                   child: Text(
-                    platform == SocialPlatform.facebookReels
-                        ? 'Facebook Page Video'
-                        : platform.label,
+                    platform.label,
                     softWrap: true,
                     overflow: TextOverflow.visible,
                   ),
@@ -179,9 +177,7 @@ class _PlatformCaptionFieldsState extends State<PlatformCaptionFields> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          platform == SocialPlatform.facebookReels
-                              ? 'Facebook Page Video'
-                              : platform.label,
+                          platform.label,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -281,10 +277,7 @@ class PlatformCaptionPreviewSheet extends StatelessWidget {
                             SocialPlatformLogo(platform: platform, size: 24),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(
-                                  platform == SocialPlatform.facebookReels
-                                      ? 'Facebook Page Video'
-                                      : platform.label),
+                              child: Text(platform.label),
                             ),
                           ]),
                           const SizedBox(height: 10),

@@ -28,7 +28,7 @@ Native receipt updated on 2026-10-20; build/install evidence is from 2026-10-18.
 | TikTok | Inbox / Direct mode | Manual privacy and interactions, commercial/AI disclosure, music/policy confirmation, creator capabilities |
 | YouTube | Visibility and explicit audience choice | Title, synthetic-media answer, community certification |
 | Instagram | Share to feed | AI disclosure and cover |
-| Facebook Page Video | Publish / Page draft | AI disclosure and cover |
+| Facebook Page Reels (`contentType: 'reel'`; real-account E2E pending) | Publish / Page draft | AI disclosure and best-effort cover |
 
 TikTok explicitly requires no default privacy value and interactions initially
 off: [Content Sharing Guidelines](https://developers.tiktok.com/docs/en/content-sharing-guidelines).

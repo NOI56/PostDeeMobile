@@ -49,7 +49,7 @@ const _steps = [
     icon: Icons.hub_outlined,
     title: 'เชื่อมช่องทางครั้งเดียว',
     description:
-        'ต่อ TikTok, YouTube Shorts, Instagram Reels และ Facebook Video ครั้งเดียว ไม่ต้องสลับหลายแอป',
+        'เชื่อม TikTok, YouTube Shorts, Instagram Reels และ Facebook Reels บนเพจ ไม่ต้องสลับหลายแอป',
   ),
   _OnboardingStep(
     icon: Icons.movie_outlined,

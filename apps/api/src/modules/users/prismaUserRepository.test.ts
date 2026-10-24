@@ -112,4 +112,59 @@ describe('createPrismaUserRepository', () => {
     });
     expect(prisma.user.upsert).not.toHaveBeenCalled();
   });
+
+  // A stale row from another UID can still hold an address Firebase later
+  // verifies for a new UID. That must not turn every authenticated route into 500.
+  it('stores the fallback email when another user already holds the address', async () => {
+    const now = new Date('2026-06-01T00:00:00.000Z');
+    const uniqueEmailConflict = Object.assign(new Error('Unique constraint failed on the fields: (`email`)'), {
+      code: 'P2002',
+      meta: { target: ['email'] }
+    });
+    const prisma = {
+      user: {
+        findUnique: vi.fn(),
+        upsert: vi
+          .fn()
+          .mockRejectedValueOnce(uniqueEmailConflict)
+          .mockImplementationOnce(async ({ create }: { create: { id: string; firebaseUid: string; email: string } }) => ({
+            ...create,
+            displayName: null,
+            createdAt: now,
+            updatedAt: now
+          }))
+      }
+    };
+    const repository = createPrismaUserRepository({ prisma: withOwnerLifecycleFixture(prisma) });
+
+    const user = await repository.ensure({
+      id: 'firebase-user-b',
+      provider: 'firebase',
+      email: 'shared@example.test'
+    });
+
+    expect(user.email).toBe('firebase-firebase-user-b@postdee.local');
+    expect(prisma.user.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.user.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ email: 'firebase-firebase-user-b@postdee.local' })
+    }));
+  });
+
+  it('does not hide other unique conflicts behind the email fallback', async () => {
+    const otherConflict = Object.assign(new Error('Unique constraint failed on the fields: (`firebaseUid`)'), {
+      code: 'P2002',
+      meta: { target: ['firebaseUid'] }
+    });
+    const prisma = {
+      user: {
+        findUnique: vi.fn(),
+        upsert: vi.fn().mockRejectedValue(otherConflict)
+      }
+    };
+    const repository = createPrismaUserRepository({ prisma: withOwnerLifecycleFixture(prisma) });
+
+    await expect(repository.ensure({ id: 'firebase-user-c', provider: 'firebase', email: 'c@example.test' }))
+      .rejects.toBe(otherConflict);
+    expect(prisma.user.upsert).toHaveBeenCalledTimes(1);
+  });
 });

@@ -85,7 +85,7 @@ void main() {
     expect(find.text('ส่งเป็นร่างแล้ว'), findsOneWidget);
     expect(find.text('ส่งไม่สำเร็จ'), findsOneWidget);
     expect(find.text('TikTok'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Facebook Video'), 180,
+    await tester.scrollUntilVisible(find.text('Facebook Reels'), 180,
         scrollable: find.byType(Scrollable).first);
     expect(find.text('รอผล'), findsOneWidget);
     expect(find.textContaining('%'), findsNothing);

@@ -40,7 +40,7 @@ describe('administrator post presentation', () => {
     const { rows } = await data.view('posts', { query: '' });
     expect(rows[0]).toMatchObject({ status: 'PUBLISHED', channels: [
       'TikTok: ส่งเป็นร่างเข้า TikTok Inbox · ยังไม่เผยแพร่', 'YouTube Shorts: เผยแพร่แล้ว',
-      'Instagram Reels: เผยแพร่แบบส่วนตัว', 'Facebook Page Video: เผยแพร่แบบไม่แสดงในรายการ'
+      'Instagram Reels: เผยแพร่แบบส่วนตัว', 'Facebook Reels: เผยแพร่แบบไม่แสดงในรายการ'
     ].join(' · ') });
   });
 
@@ -55,7 +55,7 @@ describe('administrator post presentation', () => {
     const { rows } = await data.view('posts', { query: '' });
     expect(rows[0].channels).toBe([
       'TikTok: ส่งไม่สำเร็จ', 'YouTube Shorts: ส่งถึงช่องทางแล้ว · ไม่มีข้อมูลรูปแบบการเผยแพร่',
-      'Instagram Reels: รอส่ง', 'Facebook Page Video: กำลังส่ง', 'ช่องทางอื่น: ส่งไม่สำเร็จ'
+      'Instagram Reels: รอส่ง', 'Facebook Reels: กำลังส่ง', 'ช่องทางอื่น: ส่งไม่สำเร็จ'
     ].join(' · '));
     expect(rows[0].failureReason).toMatch(/^TikTok: /);
     expect(rows[0].failureReason).toContain('ช่องทางอื่น: ');

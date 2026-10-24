@@ -7,6 +7,25 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Facebook Page Reels contract (2026-10-24)
+
+Facebook now requests Page Reels only through the existing PostPeer integration.
+`FACEBOOK_REELS` always sets `contentType: 'reel'`, with no Page feed fallback.
+Existing publish/Page-draft choices, optional AI disclosure, per-platform captions
+and immutable target snapshots are preserved. Real-account Reel/draft/thumbnail
+E2E remains pending; the contract change alone does not establish production readiness.
+
+## Identity and pre-auth hardening (2026-10-24, security Batch 4)
+
+The API stores a Firebase email only when the ID token marks it verified;
+unverified accounts keep `firebase-<uid>@postdee.local`. A verified address
+still held by another PostDee row also falls back instead of failing with `500`.
+The built-in Firebase verifier shares one certificate refresh, times out after
+5 seconds and briefly reuses a failed refresh. Per-IP rate limiters sweep at
+most once per window and cap remembered addresses at 10,000. No schema change,
+migration or mobile change. See
+[`2026-10-24-identity-preauth-security-batch4.md`](docs/superpowers/plans/2026-10-24-identity-preauth-security-batch4.md).
+
 ## Wheel time selection (2026-10-24)
 
 Create Post and Calendar rescheduling share a 24-hour Flutter wheel picker.
@@ -22,6 +41,20 @@ themes and narrow enlarged text. The user authorized main/push after verifying
 the implementation. APK installation and native acceptance remain pending;
 the installed app is unchanged. See the
 [wheel-picker work record](docs/superpowers/plans/2026-10-24-wheel-time-picker.md).
+
+## Per-owner resource caps (2026-10-24, security Batch 5)
+
+The API now bounds what one account can keep in the shared database and
+process:
+- Templates: 200 per owner, with 120/5000-character title/body.
+- Device tokens: 10 per owner, FCM-shaped, oldest evicted first.
+- Managed upload sessions: 10 open per owner, 255-character file names,
+  exact video/image types.
+- New post captions: at most 63,206 characters.
+
+Limited post lists and single-post reschedule/publish-now no longer read the
+full history. No schema change, migration or mobile change. See
+[`2026-10-24-resource-caps-security-batch5.md`](docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md).
 
 ## Compact caption AI panel (2026-10-23, Staging delivered)
 
@@ -91,7 +124,7 @@ actual provider quality and publication remain unverified. See its
 
 The post composer's optional advanced caption mode hides the shared input and
 shows separate editable captions for TikTok, YouTube Shorts, Instagram Reels
-and Facebook Page Video. Users can write them manually or explicitly request
+and Facebook Page Reels. Users can write them manually or explicitly request
 AI for all four, inspect the preview, then apply the set and edit it. An undo
 action restores the text from before applying AI, including across mode toggles.
 Switching back retains the original shared text and saved advanced text; shared
@@ -248,7 +281,7 @@ See the [work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-
 
 Mobile remembers reusable choices on this device per signed-in owner and
 connected channel: TikTok delivery mode, YouTube visibility/audience, Instagram
-feed sharing and Facebook Page Video delivery mode. New clips still require
+feed sharing and Facebook Page Reels delivery mode. New clips still require
 content declarations and current confirmation; TikTok privacy/interactions
 remain manual. Saved drafts keep their own values. No API change or migration.
 Within an open TikTok settings sheet, changing viewers, interactions or the AI
@@ -318,7 +351,7 @@ Production remain unverified; blank descriptions require the updated API.
 
 ## Unified channel settings (2026-10-18, Staging delivered)
 
-TikTok, YouTube, Instagram and Facebook Page Video share a content-sized settings
+TikTok, YouTube, Instagram and Facebook Page Reels share a content-sized settings
 sheet with account identity, grouped controls, visible validation and fixed
 Cancel/Save actions above the keyboard. TikTok Inbox no longer requests Direct
 creator options; each Direct opening fetches fresh account-bound options and
@@ -981,6 +1014,12 @@ editing and Subtitle Studio no longer have a product entry point, and the
 paywall/profile no longer advertise editing minutes or top-ups. AI captions in
 the upload flow remain available. The editing implementation and shared media
 helpers below are retained as compatibility code, not an active product offer.
+Since 2026-10-24 the API also stops serving it: every `/ai-edits/*` request
+returns `410 AI_EDITING_RETIRED` without provider work unless the
+`AI_EDITING_ENABLED=true` rollback switch is set. Real-clip AI captions now
+accept only image frame keys, cap frames at 5 MiB, and return
+`503 AI_MEDIA_BUSY` when two requests already hold media on the instance. See
+`docs/superpowers/plans/2026-10-24-ai-editing-retirement-security-batch3.md`.
 
 Each authenticated account can publish one profile page with up to 20 enabled
 custom links on every package. The page is hosted by the existing PostDee API at
@@ -1393,7 +1432,7 @@ cd apps/api
 npm.cmd run worker:publish
 ```
 
-The worker currently uses mock platform publishing and mock video cleanup by default. When `ANALYTICS_STORE=prisma`, it records platform publish results into `PlatformPublish` so the analytics summary can read them from PostgreSQL. It claims posts with `QUEUED -> PUBLISHING` before calling external publishers, skips jobs for posts that are already running or finished, skips stale scheduled jobs whose `runAt` no longer matches the post's current schedule, and treats optional R2/S3 cleanup failures as best-effort cleanup results instead of changing a successfully published post to failed. It is the handoff point for real TikTok, YouTube Shorts, Instagram Reels, Facebook Page Video, and R2/S3 cleanup integrations. `FACEBOOK_REELS` remains the internal compatibility value, but PostPeer's current Facebook capability is Page Video, not Reels.
+The worker currently uses mock platform publishing and mock video cleanup by default. When `ANALYTICS_STORE=prisma`, it records platform publish results into `PlatformPublish` so the analytics summary can read them from PostgreSQL. It claims posts with `QUEUED -> PUBLISHING` before calling external publishers, skips jobs for posts that are already running or finished, skips stale scheduled jobs whose `runAt` no longer matches the post's current schedule, and treats optional R2/S3 cleanup failures as best-effort cleanup results instead of changing a successfully published post to failed. It is the handoff point for real TikTok, YouTube Shorts, Instagram Reels, Facebook Page Reels, and R2/S3 cleanup integrations. The existing `FACEBOOK_REELS` value always sends PostPeer `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and optional `isAiGenerated`. Facebook requires a video and never falls back to a Page feed video; real-account E2E remains pending.
 
 PostPeer `202 pending/publishing` responses are polled through
 `GET /v1/posts/{postId}` for roughly two minutes. A platform is marked
@@ -1725,7 +1764,7 @@ The complete explicit settings shapes are:
   `private|unlisted|public`, the made-for-kids answer, the realistic synthetic
   media answer, and `communityGuidelinesCertified: true`.
 - Instagram Reels: `shareToFeed: true|false`; there is no per-post Private mode.
-- Facebook Page Video: `publishMode: PUBLISH|PAGE_DRAFT`. The user must choose;
+- Facebook Page Reels: `publishMode: PUBLISH|PAGE_DRAFT`. The user must choose;
   the internal compatibility platform name remains `FACEBOOK_REELS`.
 
 “Save draft in PostDee” and provider drafts are different. A PostDee draft stays
@@ -1851,7 +1890,7 @@ numbers.
 - TikTok
 - YouTube Shorts
 - Instagram Reels
-- Facebook Page Video (internal compatibility value: `FACEBOOK_REELS`)
+- Facebook Page Reels (existing API value: `FACEBOOK_REELS`; real-account E2E pending)
 
 #### `GET /billing/subscription`
 
@@ -2128,7 +2167,7 @@ Current mobile pieces:
   still needs real-device save/restore/storage/backup verification.
 - The pre-publish review shows the requested per-platform outcome and connected
   account/channel/page before confirm: TikTok inbox draft, the completed YouTube
-  visibility/compliance choice, Instagram share-to-feed, and Facebook Page Video
+  visibility/compliance choice, Instagram share-to-feed, and Facebook Page Reels
   publish/page-draft. A missing account identity, incomplete setting, or unknown
   outcome blocks confirmation and asks the seller to refresh/reconnect or fix the
   setting. Scheduled-post detail uses the dedicated authenticated
@@ -2485,8 +2524,8 @@ Required services for later milestones:
 - Firebase Auth for Google Sign-In and Phone OTP verification
 - Gemini API for Thai caption generation
 - PostPeer for real TikTok, YouTube Shorts, Instagram Reels, and Facebook Page
-  Video publishing (`FACEBOOK_REELS` is retained only as the current internal
-  compatibility value)
+  Reels publishing (`FACEBOOK_REELS` always sets `contentType: 'reel'`, with no
+  Page feed fallback; real-account E2E is still required)
 - RevenueCat subscriptions for Starter and Pro, backed by Apple App Store and Google Play products
 
 The post/caption add-on is a separate, repeatable consumable purchase: target
@@ -2695,8 +2734,15 @@ reference and exactly one post unit, but it predates the complete Phase 2
 settings/target/delivery matrix. Production, provider-draft behavior, and the
 remaining platforms/scheduling paths still require controlled E2E tests and
 never use shared `POSTPEER_*_ACCOUNT_ID` values. The internal
-`FACEBOOK_REELS` value currently targets Facebook Page Video, not Reels. The
-repository's Production Blueprint currently selects
+`FACEBOOK_REELS` value targets Facebook Page Reels only through PostPeer
+`platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, with no
+Page feed fallback. Optional signed thumbnails remain best effort; their display
+on a Reel needs real-account verification, and the provider may choose the cover.
+Page Video duration/width limits are not Reel limits. Deploying the updated
+publisher also routes existing queued/scheduled Facebook jobs to Page Reels,
+retaining their accepted `PUBLISH|PAGE_DRAFT`, optional `isAiGenerated` and
+immutable target snapshots; no new client fields, environment variables or
+migrations are needed. The repository's Production Blueprint currently selects
 `SOCIAL_PUBLISHER=postpeer` even though broader provider-level E2E is still
 pending. Treat this as an unresolved configuration risk, not proof that the
 deployed Production environment or a user connection is ready; this safety

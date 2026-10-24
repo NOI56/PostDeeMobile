@@ -112,8 +112,8 @@ void main() {
       expect(find.text('TikTok'), findsOneWidget);
       expect(find.text('YouTube Shorts'), findsOneWidget);
       expect(find.text('Instagram Reels'), findsOneWidget);
-      expect(find.text('Facebook Page Video'), findsOneWidget);
-      expect(find.text('Facebook Reels'), findsNothing);
+      expect(find.text('Facebook Reels'), findsOneWidget);
+      expect(find.text('Facebook Page Video'), findsNothing);
       for (final platform in captionPlatforms) {
         final chip = _chip(tester, platform);
         expect(chip.avatar, isA<SocialPlatformLogo>());

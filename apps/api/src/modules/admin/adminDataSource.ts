@@ -7,7 +7,7 @@ import { readAdminUsageReport, type AdminReportScope, type AdminReportSummary, t
 const postStatusLabels: Record<string, string> = { DRAFT: 'ร่าง', QUEUED: 'รอส่ง', PENDING: 'รอส่ง', PUBLISHING: 'กำลังส่ง',
   PUBLISHED: 'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED: 'ส่งถึงบางช่องทาง', FAILED: 'ส่งไม่สำเร็จ' };
 const platformLabels: Record<string, string> = { TIKTOK: 'TikTok', YOUTUBE_SHORTS: 'YouTube Shorts',
-  INSTAGRAM_REELS: 'Instagram Reels', FACEBOOK_REELS: 'Facebook Page Video' };
+  INSTAGRAM_REELS: 'Instagram Reels', FACEBOOK_REELS: 'Facebook Reels' };
 export const adminChannelResult = (p: { platform: string; status: string; deliveryOutcome?: string | null }): string => {
   let result = postStatusLabels[p.status] ?? 'ยังไม่ยืนยันสถานะ';
   if (p.status === 'PUBLISHED') {

@@ -105,7 +105,9 @@ preserved through nullish fallback as an empty description. Missing overrides
 still use shared text; TikTok, Instagram and Facebook reject empty overrides.
 YouTube's existing title and required-settings guards remain enforced.
 There is no new column or migration, and clients without overrides retain the
-shared-caption behavior. Facebook's compatibility key still targets Page Video.
+shared-caption behavior. Facebook retains the `FACEBOOK_REELS` key and now
+requests Page Reels only through `contentType: 'reel'`; real-account E2E remains
+pending.
 
 Explicit advanced AI generation adds optional `platforms` to the real-clip
 caption endpoint. One provider operation/one quota reservation produces the
@@ -1090,6 +1092,17 @@ Profile link replaces the AI editing navigation entry. AI caption generation
 remains in Upload; editing modules are retained compatibility code and do not
 have an active mobile entry point or editing-minute offer.
 
+Since 2026-10-24 (security Batch 3) the API registers the AI editing routes
+only when `AI_EDITING_ENABLED=true`. By default `/ai-edits/*` answers `410
+AI_EDITING_RETIRED` and the edit-plan, sound-effect and visual-plan providers are
+not constructed, so no direct caller can spend ElevenLabs or Gemini editing
+work. The transcription provider is still built because the legacy
+real-clip caption fallback can use it, and the AI-edit usage store is still
+built so account deletion clears historical rows. Real-clip captions dedupe
+and type-check frame keys, cap each frame at 5 MiB, stream every download
+against its byte limit, and allow two clip-caption requests per instance to
+hold media at once (`503 AI_MEDIA_BUSY` otherwise).
+
 The 2026-10-06 bottom-navigation revision presents Home, Calendar, Create post,
 Store link, and Account while retaining the existing shell indices and
 callbacks. Visual button order maps to indices 0, 3, 2, 1, 5; Create post (2)
@@ -1379,8 +1392,10 @@ Target platforms:
 - TikTok
 - YouTube Shorts
 - Instagram Reels
-- Facebook Page Video through PostPeer (the internal compatibility value remains
-  `FACEBOOK_REELS`; Reels are not currently supported by this provider path)
+- Facebook Page Reels through PostPeer (`FACEBOOK_REELS` retains its existing
+  value; PostPeer always receives `platform: 'facebook'` with
+  `platformSpecificData.contentType: 'reel'`, with no Page feed fallback;
+  real-account E2E remains pending)
 
 ## Project Layout
 
@@ -1469,6 +1484,16 @@ Express retains its single-hop `trust proxy = 1` setting. Its compatible
 `proxy-addr` dependency is locked to `2.0.8` for `GHSA-jqcg-44mw-7w3h`; this
 dependency patch changes no route, authentication policy, custom rate limiter,
 database schema, or environment setting.
+
+Security Batch 4 (2026-10-24) keeps the same proxy setting and narrows the
+identity and pre-auth paths. Both Firebase verifiers pass `email` to the user
+store only when `email_verified === true`; the Prisma user repository retries
+an email unique conflict once with the per-UID fallback address and never
+rewrites the other row. The built-in verifier single-flights certificate
+refreshes with a 5-second fetch timeout and a 5-second failure cache. The
+in-process rate limiter sweeps once per window and caps each limiter at
+10,000 remembered client keys, evicting the oldest. See
+`docs/superpowers/plans/2026-10-24-identity-preauth-security-batch4.md`.
 
 ## Mobile App
 
@@ -1732,7 +1757,7 @@ delivery visibility cannot be reconstructed.
 | AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | ElevenLabs Scribe v2 transcribes; `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite` plans from visual proxy/transcript with structured JSON and provider-default sampling (no explicit `temperature`); PostDee rules are the final fallback; FFmpeg export stays on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
-| Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` currently targets Facebook Page Video; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
+| Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` always requests Facebook Page Reels with `contentType: 'reel'`, preserving `PUBLISH` / `PAGE_DRAFT` and optional `isAiGenerated`, with no Page feed fallback; real-account E2E remains pending; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
 
 The authenticated `GET /publishing/readiness` route is deliberately only a
 configuration gate: `acceptingPosts: true` means the API process is not using
@@ -1883,6 +1908,20 @@ revocation is implemented for those platforms.
 
 ## Upload And Scheduling Flow
 
+Security Batch 5 (2026-10-24) bounds per-owner state in the single shared API
+and scheduler process. Managed upload sessions accept file names up to 255
+characters and exact video/image types, and an owner holds at most 10
+unexpired `UPLOADING` sessions (counted inside the serializable create
+transaction). Templates are capped at 200 per owner with 120/5000-character
+fields and a bounded list. Device tokens are FCM-shaped, capped at 10 per owner
+with oldest-first eviction, and the notifier reads at most 10. Limited post
+lists push `take` into Postgres, single-post reschedule and publish-now read
+one owned row, and new captions stop at 63,206 UTF-16 units. Still open:
+a sweeper for expired upload sessions and abandoned R2 multipart uploads,
+pagination for the full Calendar post list, and owner/post indexing before
+BullMQ is enabled. See
+`docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md`.
+
 The 2026-10-07 composer revision changes Mobile presentation only. A local
 poster/player uses the selected device file; preview and step navigation do not
 publish or consume post quota. AI generation starts only when explicitly
@@ -1964,7 +2003,7 @@ sequenceDiagram
     A-->>M: videoS3Key + uploadUrl
     M->>S: PUT full video file
   end
-  opt Instagram or Facebook uses the custom cover image
+  opt Instagram custom cover or Facebook best-effort thumbnail requested
     M->>A: POST /uploads for JPEG/PNG cover
     M->>S: Upload rendered cover image
   end
@@ -2031,9 +2070,12 @@ Rules:
   Both storage keys remain owner-scoped and must be completed before queueing.
 - Managed cover uploads accept JPEG or PNG up to 2 MiB. Mobile avoids uploading
   an unused image for TikTok/YouTube-only posts.
-- Platform adapters send only supported controls: Instagram uses the signed
-  image or frame offset, Facebook Page Video receives the signed image, TikTok
-  receives the frame time, and YouTube Shorts receives no custom thumbnail.
+- Platform adapters send controls per destination: Instagram uses the signed
+  image or frame offset. Facebook Page Reels always sends `contentType: 'reel'`
+  and optionally sends the signed image as best-effort `videoThumbnailUrl`;
+  display on the Reel still needs real-account verification, and the provider
+  may choose the cover. TikTok receives the frame time, and YouTube Shorts
+  receives no custom thumbnail.
 - New clients opt in with `multipart-v1`. `UPLOAD_PROTOCOL_MODE` defaults to
   `legacy`; production uses `dual` during rollout, and moves to strict
   `multipart` only after old clients are retired.
@@ -2910,7 +2952,13 @@ cd apps/mobile
   compliance/visibility, immutable-target, migration/backlog, and redaction E2E
   remain required. Shared
   `POSTPEER_*_ACCOUNT_ID` values are rejected in production. The internal
-  `FACEBOOK_REELS` key currently means Facebook Page Video, not Reels.
+  `FACEBOOK_REELS` key requests Facebook Page Reels only through
+  `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`; missing
+  video fails before submission and there is no Page feed fallback. Existing
+  `PUBLISH|PAGE_DRAFT`, explicit optional `isAiGenerated`, immutable target
+  snapshots and unknown-outcome safeguards are preserved. Real-account E2E is
+  still pending; deployment also changes existing queued/scheduled Facebook
+  jobs to this route without new client fields, environment variables or migrations.
 - `render.yaml` currently selects `SOCIAL_PUBLISHER=postpeer` while broader
   connected-account E2E and Production verification remain pending. Repository
   configuration cannot prove the live Render value or provider health; resolve this fail-closed policy

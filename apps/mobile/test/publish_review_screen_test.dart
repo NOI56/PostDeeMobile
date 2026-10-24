@@ -323,7 +323,7 @@ void main() {
     expect(outcome, contains('ส่งออกจริงและใช้โควตาโพสต์'));
     expect(outcome, isNot(contains('เผยแพร่เวลา')));
     expect(publishReviewPlatformLabel(SocialPlatform.facebookReels),
-        'Facebook Page Video');
+        'Facebook Reels');
   });
 
   testWidgets('summary shows a real poster without claiming a custom cover',
@@ -694,7 +694,7 @@ void main() {
     expect(find.textContaining('ส่งออกจริงและใช้โควตาโพสต์'), findsNWidgets(2));
     expect(find.text('ส่วนตัว (Private)'), findsOneWidget);
     expect(find.text('Reels + ฟีด · เผยแพร่ตามบัญชี'), findsOneWidget);
-    expect(find.text('Facebook Page Video'), findsOneWidget);
+    expect(find.text('Facebook Reels'), findsOneWidget);
     expect(find.text('@seller'), findsOneWidget);
     expect(find.text('PostDee Channel'), findsOneWidget);
     expect(find.textContaining('เก็บเป็นร่างบนเพจ'), findsOneWidget);

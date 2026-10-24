@@ -10,8 +10,10 @@ The implementation baseline is verified `origin/main`
 `C:\Users\stopp\.codex\worktrees\platform-consent-preserve\PostDeeMobile`.
 Preserve unrelated existing generated Windows plugin changes.
 
-Scope includes TikTok, YouTube Shorts, Instagram Reels and Facebook Page Video.
-`FACEBOOK_REELS` remains the internal compatibility key for Page Video. This
+Scope includes TikTok, YouTube Shorts, Instagram Reels and Facebook Page Reels.
+`FACEBOOK_REELS` retains its existing key and now requests `contentType: 'reel'`
+with no Page feed fallback under the 2026-10-24 contract; real-account E2E is
+still pending. This
 feature adds no unsupported destinations, new provider integration, credential,
 environment variable, database column or migration.
 

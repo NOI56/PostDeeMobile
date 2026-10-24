@@ -4,7 +4,7 @@ Working guide for Codex and AI assistants helping to develop the PostDee project
 
 ## Project Goals
 
-PostDee is a mobile app for online sellers, creators, and affiliate marketers in Thailand. The long-term goal is to upload a single vertical video, then post or schedule it to TikTok, YouTube Shorts, Instagram Reels, Facebook, Shopee Video, and Lazada Video from one place. The current PostPeer production path covers TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Video. Do not advertise Facebook Reels, Shopee Video, or Lazada Video as working destinations until their provider mappings and end-to-end tests pass.
+PostDee is a mobile app for online sellers, creators, and affiliate marketers in Thailand. The long-term goal is to upload a single vertical video, then post or schedule it to TikTok, YouTube Shorts, Instagram Reels, Facebook, Shopee Video, and Lazada Video from one place. The current PostPeer path targets TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels. The existing `FACEBOOK_REELS` value must always send PostPeer `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and optional `isAiGenerated`; there is no fallback to a Page feed video. Facebook Reel delivery and optional best-effort thumbnails still require real-account end-to-end verification before production claims. Shopee Video and Lazada Video remain future targets. Do not apply Facebook Page Video duration or width limits to Page Reels.
 
 ## How to work with this project
 

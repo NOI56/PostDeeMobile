@@ -53,8 +53,8 @@ JSON persistence, queued execution and provider mapping retain and use the
 effective per-destination text. A changed override conflicts with the original
 accepted submission intent. The optional field does not change visibility,
 disclosures, destination ownership, scheduling, quotas or posting modes.
-`FACEBOOK_REELS` remains the internal compatibility key for Facebook Page
-Video; this feature does not add Facebook Reels support.
+`FACEBOOK_REELS` retains its existing key; the 2026-10-24 contract below routes
+it to Facebook Page Reels only. Real-account E2E remains pending.
 
 The existing `POST /captions/generate-from-clip` additionally accepts optional
 `platforms` and can return `platformCaptions`; its detailed contract is below.
@@ -203,8 +203,9 @@ deployment or database migration is needed; see the
 `platformSettings.INSTAGRAM_REELS` accepts `{shareToFeed: boolean,
 isAiGenerated?: boolean}`; `FACEBOOK_REELS` accepts `{publishMode:
 "PUBLISH" | "PAGE_DRAFT", isAiGenerated?: boolean}`. The Facebook internal key
-still targets Page Video. A present disclosure must be a boolean; null, strings,
-numbers and unknown fields are rejected. Absence preserves the old exact shape,
+now targets Page Reels using `contentType: 'reel'`; these existing delivery and
+disclosure choices are preserved. A present disclosure must be a boolean; null,
+strings, numbers and unknown fields are rejected. Absence preserves the old exact shape,
 including persisted snapshots, queue messages, accepted request replay and
 read-only submission recovery. Absent, false and true are distinct immutable
 intents; changing a declaration cannot reuse an accepted request ID.
@@ -404,6 +405,11 @@ and optional `maxLength`/`unit` (`utf8_bytes` or `utf16_units`). Reasons are
 the guard before account/media/provider work. Matching already accepted
 idempotent requests recover the original intent before new-request validation;
 TikTok's existing Direct-only caption rule and Inbox behavior are unchanged.
+Since 2026-10-24 (security Batch 5) new posts also reject any shared or
+per-platform caption longer than 63,206 UTF-16 units, the largest supported
+platform cap, with reason `CAPTION_TOO_LONG`. This bounds TikTok Inbox captions,
+which had no ceiling below the 1 MiB body limit. The check runs only when a post
+is created; already queued posts are not re-checked by the publisher.
 
 `POST /posts/submissions/recover` is an authenticated, strictly read-only lookup;
 POST keeps the private caption and original intent out of URLs/access logs. Send
@@ -868,8 +874,10 @@ apps/api
 
 ## Profile Links (2026-10-05)
 
-Profile links replace AI video editing in the active mobile product. AI editing
-routes documented later remain compatibility contracts, not package benefits.
+Profile links replace AI video editing in the active mobile product. Since
+2026-10-24 the AI editing routes documented later answer `410
+AI_EDITING_RETIRED` unless `AI_EDITING_ENABLED=true`; they are not package
+benefits.
 One profile page per authenticated account is available on every package.
 Production persistence follows `POST_STORE=prisma` and requires the new
 LinkInBioProfile migration; memory mode is development-only scaffolding.
@@ -1246,9 +1254,11 @@ The backend currently supports:
 
 The backend must not publish through shared PostPeer account ids in production
 (startup rejects them). Production publishing resolves per-user social
-connections. The internal `FACEBOOK_REELS` value currently maps to PostPeer's
-Facebook Page Video capability, not Facebook Reels. Provider-level approval is
-still blocked on broader per-user platform, scheduling, failure-recovery, and
+connections. The existing `FACEBOOK_REELS` value requests Facebook Page Reels
+through PostPeer `platform: 'facebook'` with
+`platformSpecificData.contentType: 'reel'`; there is no Page feed fallback.
+Provider-level approval is still blocked on broader per-user platform,
+scheduling, failure-recovery, and
 Production tests. One controlled Staging YouTube Shorts Private immediate E2E
 passed on 2026-08-10 with a real non-mock external reference; this is not launch
 approval for other paths. The repository's Production Blueprint nevertheless
@@ -1296,6 +1306,21 @@ Authorization: Bearer <firebase-id-token>
 ```
 
 The backend reads `phone_number` from the verified Firebase ID token and treats it as phone verification for the Basic free quota.
+
+Since 2026-10-24 (security Batch 4) the backend stores the token's `email` only
+when the token also carries `email_verified: true`. Otherwise the account keeps
+the fallback address `firebase-<uid>@postdee.local`, so an unverified sign-up
+cannot occupy another person's address in the unique `User.email` column. If a
+verified address is still held by a different PostDee row (for example a
+deleted Firebase identity whose PostDee data remains), the new account also
+gets the fallback address instead of a `500`. Admin search and member trial
+confirmation therefore show the fallback address for unverified accounts.
+
+The built-in verifier (used when no Firebase service account is configured)
+shares one certificate refresh between concurrent requests, aborts the Google
+certificate fetch after 5 seconds, and reuses a failed refresh for 5 seconds.
+Per-IP rate limiters sweep expired entries at most once per window and remember
+at most 10,000 client addresses each, evicting the oldest first.
 
 ## Plans And Entitlements
 
@@ -1485,8 +1510,15 @@ Request:
 
 Validation:
 
-- `fileName` is required.
-- `contentType` must start with `video/` or `image/`.
+- `fileName` is required and at most 255 characters (2026-10-24).
+- `contentType` must be exactly `video/mp4`, `video/quicktime`, `image/jpeg`,
+  `image/png` or `image/webp` (2026-10-24; previously any `video/` or `image/`
+  prefix). The purpose-specific uploads below keep their own exact types.
+- A managed multipart session is refused with `409` and
+  `code: "UPLOAD_SESSION_LIMIT_REACHED"` when the owner already holds 10
+  unexpired `UPLOADING` sessions; the provider upload created for that request
+  is aborted. Expired sessions do not count. No sweeper retires expired
+  session rows or aborts their R2 uploads yet; account deletion still does.
 - `sizeBytes` must be positive and no larger than `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
 - For generic uploads, provided `width` and `height` must describe vertical
   9:16 media within a 2 percent tolerance.
@@ -1701,9 +1733,19 @@ INSTAGRAM_REELS
 FACEBOOK_REELS
 ```
 
-`FACEBOOK_REELS` is retained for mobile/API compatibility. With the current
-PostPeer adapter it publishes a Facebook Page Video; it must not be presented as
-Facebook Reels in Store copy.
+`FACEBOOK_REELS` is retained for mobile/API compatibility. From the 2026-10-24
+contract update, the server always sets PostPeer `platform: 'facebook'` with
+`platformSpecificData.contentType: 'reel'`. It requires a video and never falls
+back to a Page feed video. Existing `publishMode: PUBLISH|PAGE_DRAFT` and
+explicit optional `isAiGenerated` remain unchanged; `PAGE_DRAFT` still sends
+`published: false` and requires provider-confirmed draft delivery. Real-account
+E2E must verify Page Reel delivery before production claims.
+
+No new client fields, environment variables, or database migrations are needed.
+After deploying the updated publisher, existing queued/scheduled
+`FACEBOOK_REELS` jobs also request Page Reels while retaining their accepted
+settings and immutable target snapshots. Page Video duration/width limits must
+not be treated as Reel limits; the provider validates the actual media.
 
 ### `GET /posts`
 
@@ -1725,6 +1767,11 @@ safe HTTP(S) URLs, and bounds each signing attempt to 1.5 seconds. A missing,
 unsafe or failed URL is omitted while retaining the post. A successful cover
 does not also sign the clip. Neither query grants access to another owner's
 keys. These previews do not add cursor pagination to the legacy full history.
+Since 2026-10-24 (security Batch 5) limited and media requests ask the store for
+only that many newest posts (`take` in Postgres) instead of reading the whole
+history first. Plain `GET /posts`, used by Calendar, still returns the full
+history until the app supports pagination. The Prisma post store refuses a list
+without a `userId`.
 
 Response:
 
@@ -1919,9 +1966,11 @@ Worker behavior:
   cleanup failure is returned in the worker result, but the post stays
   `PUBLISHED`.
 - Cover delivery follows platform capability: Instagram receives the signed
-  cover image or frame offset, Facebook Page Video receives the signed image,
-  TikTok Direct Post receives the selected frame time, and YouTube Shorts does
-  not receive a custom thumbnail.
+  cover image or frame offset. Facebook Page Reels optionally receives the
+  signed image as `videoThumbnailUrl` alongside `contentType: 'reel'` on a
+  best-effort basis; display on a Reel still needs real-account verification,
+  and the provider may choose the cover. TikTok Direct Post receives the selected
+  frame time, and YouTube Shorts does not receive a custom thumbnail.
 - Create is database-first. The API commits one deterministic, owner-scoped
   `QUEUED` post for a supplied `clientRequestId`, then enqueues it. If enqueue
   fails, the API returns `503 PUBLISH_QUEUE_UNAVAILABLE` but deliberately keeps
@@ -2039,7 +2088,9 @@ Post limit reached:
 ### `PATCH /posts/:id`
 
 Reschedules an authenticated user's queued post. Body:
-`{ "scheduledAt": "<ISO-8601 date>" }`. The route returns the updated `post`,
+`{ "scheduledAt": "<ISO-8601 date>" }`. Since 2026-10-24 this route and
+`POST /posts/:id/publish-now` read only the one owned post, not the owner's
+history. The route returns the updated `post`,
 returns `404` for a missing/non-queued user-owned post, and returns `503` when
 the publish queue cannot be rescheduled. The timestamp uses the same strict RFC
 3339 contract as post creation, must be in the future, and must be no more than
@@ -2065,6 +2116,11 @@ so queued or scheduled records can be removed safely.
 
 Registers the authenticated user's FCM token. Body:
 `{ "token": "...", "platform": "IOS|ANDROID|WEB" }`; `platform` is optional.
+
+Since 2026-10-24 (security Batch 5) `token` must be at most 4096 characters of
+`A-Z a-z 0-9 : _ . -`, otherwise `400` with `code: "DEVICE_TOKEN_INVALID"`.
+Each owner keeps the 10 most recently registered tokens; registering an
+eleventh removes the oldest, and the publish notifier reads at most those 10.
 
 Publish-result pushes include `data: { postId, type: "publish_result", userId }`,
 using the same owner as device-token selection. Mobile clears its in-app list
@@ -2387,6 +2443,16 @@ Requires Starter or Pro.
 - Frame sampling itself (extracting `selectedFrameKeys` from the video) is done
   by the mobile app via FFmpeg, which uploads the frames as images before
   calling this endpoint. Pending real-device verification.
+- Media limits (2026-10-24): `selectedFrameKeys` are deduplicated before the
+  first three are used, and each must end in `.jpg`, `.jpeg`, `.png` or `.webp`;
+  otherwise the request returns `400` with `code: "AI_CAPTION_FRAME_INVALID"`
+  before any download. Each frame download must have an `image/*` content type
+  (`415 AI_CAPTION_FRAME_INVALID`) and at most 5 MiB; the clip keeps its
+  200 MiB limit. Limits are enforced while streaming, so a missing or wrong
+  `Content-Length` cannot make the API buffer more (`413 AI_MEDIA_TOO_LARGE`).
+  At most two clip-caption requests per API instance hold media at once; extra
+  requests get `503` with `code: "AI_MEDIA_BUSY"` and `Retry-After: 1`, after
+  the quota pre-check but before any download or quota reservation.
 - The active customer flow should not require manual language or market
   selection. Spoken language is inferred from the clip, while `guidance`
   remains the simple override path when a seller wants a specific language,
@@ -2616,7 +2682,17 @@ frames where useful.
 
 ## AI Auto Editing
 
-All `/ai-edits/*` endpoints require auth. `POST /ai-edits/transcribe`,
+**Retired (2026-10-24).** AI video editing has no mobile entry point, so the
+API no longer serves it by default. Every `/ai-edits/*` request returns `410`
+with `{ "status": "error", "code": "AI_EDITING_RETIRED", "message": "AI video
+editing is no longer available." }` and never reaches the transcription,
+edit-plan, sound-effect or visual-plan providers. Setting
+`AI_EDITING_ENABLED=true` restores the legacy contract below for a controlled
+rollback only. Historical `AiEditUsage` rows are kept and are still removed by
+account deletion. `/captions/generate` and `/captions/generate-from-clip` are
+unaffected.
+
+The legacy contract, when re-enabled: all `/ai-edits/*` endpoints require auth. `POST /ai-edits/transcribe`,
 `POST /ai-edits/prepare`, and `POST /ai-edits/plan` require the `PRO` plan
 (otherwise `402` with `code: "PRO_REQUIRED"`); `GET /ai-edits/quota` is
 available to any authenticated user.
@@ -3134,7 +3210,8 @@ on-device render pipeline used by silence/segment cuts. Returns `400` when
 
 ### `GET /templates`
 
-Returns saved text templates for the authenticated user.
+Returns saved text templates for the authenticated user, newest first. Since
+2026-10-24 (security Batch 5) the list returns at most 200 templates.
 
 Response:
 
@@ -3148,6 +3225,12 @@ Response:
 ### `POST /templates`
 
 Creates a saved text template for the authenticated user.
+
+Limits (2026-10-24): `title` up to 120 characters and `body` up to 5000 after
+trimming, otherwise `400` with `code: "TEMPLATE_FIELD_TOO_LONG"`. One owner
+can keep up to 200 templates; the next create returns `409` with
+`code: "TEMPLATE_LIMIT_REACHED"`. The count check is not transactional, so a
+burst of concurrent creates can end slightly above 200.
 
 Request:
 
@@ -3892,6 +3975,7 @@ PostgreSQL.
 | `ANALYTICS_STORE` | `memory`, `prisma` | Analytics persistence |
 | `CAPTION_USAGE_STORE` | `memory`, `prisma` | Real-clip AI caption monthly usage persistence |
 | `AI_EDIT_USAGE_STORE` | `memory`, `prisma` | AI editing monthly minute usage persistence |
+| `AI_EDITING_ENABLED` | `false` (default), `true` | Rollback switch for the retired `/ai-edits/*` routes. Leave unset in production and staging; when unset every `/ai-edits/*` request returns `410 AI_EDITING_RETIRED` without provider work |
 | `PUBLISH_QUEUE` | `memory`, `bullmq` | Publish queue adapter; `bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` |
 | `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing. `disabled` makes readiness, post create, post reschedule, and publish-now return `503 SOCIAL_PUBLISHING_UNAVAILABLE`; cancel remains available |
 | `SOCIAL_PUBLISH_REQUIRE_EMPTY_BACKLOG` | `false`, `true` | Optional `PUBLISH_QUEUE=memory` activation guard. With `postpeer`, startup runs one atomic global aggregate count with status in `QUEUED` or `PUBLISHING` (including future schedules) before starting the scheduler or listening; a non-zero total or inspection failure blocks startup. Defaults to `false`; Staging sets `true` and Production is unchanged |
@@ -3902,7 +3986,7 @@ PostgreSQL.
 | `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Operator PostPeer TikTok integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Operator PostPeer YouTube Shorts integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Operator PostPeer Instagram Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
-| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Page Video integration id (internal `FACEBOOK_REELS` compatibility value) used only when no per-user connection resolver is wired; forbidden in production |
+| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Page integration id for `FACEBOOK_REELS` (Page Reels only via `contentType: 'reel'`) used only when no per-user connection resolver is wired; forbidden in production |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps

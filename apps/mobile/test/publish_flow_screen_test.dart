@@ -397,7 +397,7 @@ void main() {
     expect(find.text('TikTok'), findsOneWidget);
     expect(find.text('YouTube Shorts'), findsOneWidget);
     expect(find.text('Instagram Reels'), findsOneWidget);
-    expect(find.text('Facebook Video'), findsOneWidget);
+    expect(find.text('Facebook Reels'), findsOneWidget);
     expect(
         find.byKey(const ValueKey('publish-flow-step-queue')), findsOneWidget);
     operation.complete(const QueuedPostResult(

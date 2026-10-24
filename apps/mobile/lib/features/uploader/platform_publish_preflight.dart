@@ -122,6 +122,56 @@ class PublishPreflightProblem {
   final SocialPlatform? platform;
 }
 
+/// Shared duration rules for early channel hints and verified final media.
+/// Missing or invalid measurements stay unknown; required-media checks below
+/// still reject them before upload.
+PublishPreflightProblem? validatePlatformVideoDuration({
+  required SocialPlatform platform,
+  required double? durationSeconds,
+  int? tikTokMaxDurationSeconds,
+}) {
+  if (durationSeconds == null ||
+      !durationSeconds.isFinite ||
+      durationSeconds <= 0) {
+    return null;
+  }
+  PublishPreflightProblem problem(String code, String message) =>
+      PublishPreflightProblem(code: code, message: message, platform: platform);
+
+  if (platform == SocialPlatform.youtubeShorts && durationSeconds > 180) {
+    return problem('YOUTUBE_SHORTS_DURATION_INVALID',
+        'YouTube Shorts ต้องใช้คลิปยาวไม่เกิน 3 นาที');
+  }
+  if (platform == SocialPlatform.instagramReels &&
+      (durationSeconds < 3 || durationSeconds > 900)) {
+    return problem('INSTAGRAM_DURATION_INVALID',
+        'Instagram Reels ต้องใช้คลิปยาวตั้งแต่ 3 วินาทีถึง 15 นาที');
+  }
+  if (platform == SocialPlatform.facebookReels &&
+      (durationSeconds < 3 || durationSeconds > 90)) {
+    return problem('FACEBOOK_DURATION_INVALID',
+        'Facebook Reels ต้องใช้คลิปยาวตั้งแต่ 3 วินาทีถึง 1 นาที 30 วินาที');
+  }
+  if (platform == SocialPlatform.tiktok) {
+    final maximumSeconds = tikTokMaxDurationSeconds != null &&
+            tikTokMaxDurationSeconds > 0 &&
+            tikTokMaxDurationSeconds < 600
+        ? tikTokMaxDurationSeconds
+        : 600;
+    if (durationSeconds > maximumSeconds) {
+      final minutes = maximumSeconds ~/ 60;
+      final seconds = maximumSeconds % 60;
+      final limit = [
+        if (minutes > 0) '$minutes นาที',
+        if (seconds > 0) '$seconds วินาที',
+      ].join(' ');
+      return problem('TIKTOK_DURATION_INVALID',
+          'TikTok ต้องใช้คลิปยาวไม่เกิน $limit');
+    }
+  }
+  return null;
+}
+
 PublishPreflightProblem? validatePlatformPublishPreflight({
   required Set<SocialPlatform> selectedPlatforms,
   required String caption,
@@ -179,10 +229,6 @@ PublishPreflightProblem? validatePlatformPublishPreflight({
       return problem(platform, 'PUBLISH_MEDIA_UNVERIFIED',
           'ยังตรวจสอบข้อมูลคลิปสำหรับ ${platform.label} ไม่สำเร็จ กรุณาลองอีกครั้งหรือเลือกคลิปใหม่');
     }
-    if (platform == SocialPlatform.youtubeShorts && duration > 180) {
-      return problem(platform, 'YOUTUBE_SHORTS_DURATION_INVALID',
-          'YouTube Shorts ต้องใช้คลิปยาวไม่เกิน 3 นาที');
-    }
     if (platform == SocialPlatform.instagramReels) {
       final containerNames =
           media.container?.split(',').map((name) => name.trim().toLowerCase());
@@ -191,10 +237,13 @@ PublishPreflightProblem? validatePlatformPublishPreflight({
         return problem(platform, 'INSTAGRAM_CONTAINER_INVALID',
             'Instagram ต้องใช้คลิป MOV หรือ MP4 ที่ตรวจสอบรูปแบบไฟล์ได้');
       }
-      if (duration < 3 || duration > 900) {
-        return problem(platform, 'INSTAGRAM_DURATION_INVALID',
-            'Instagram Reels ต้องใช้คลิปยาวตั้งแต่ 3 วินาทีถึง 15 นาที');
-      }
+    }
+    final durationProblem = validatePlatformVideoDuration(
+      platform: platform,
+      durationSeconds: duration,
+    );
+    if (durationProblem != null) return durationProblem;
+    if (platform == SocialPlatform.instagramReels) {
       if (media.sizeBytes > 300000000) {
         return problem(platform, 'INSTAGRAM_SIZE_INVALID',
             'คลิป Instagram ต้องมีขนาดไม่เกิน 300 MB');
@@ -222,8 +271,8 @@ PublishPreflightProblem? validatePlatformPublishPreflight({
             'เสียง Instagram ต้องเป็น AAC แบบโมโนหรือสเตอริโอ และไม่เกิน 48 kHz');
       }
     }
-    // Facebook Reels uses the provider's final media checks. The Facebook Feed
-    // Video duration/width limits do not establish Reel compatibility.
+    // The provider still checks actual Reel encoding. Facebook Feed Video
+    // width limits do not establish Reel compatibility.
   }
   return null;
 }

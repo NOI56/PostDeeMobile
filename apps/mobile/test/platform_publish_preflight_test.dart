@@ -78,6 +78,125 @@ void main() {
         requireMedia: true,
       );
 
+  test('duration hints wait for a finite positive duration', () {
+    for (final platform in SocialPlatform.values) {
+      for (final duration in [
+        null,
+        double.nan,
+        double.infinity,
+        double.negativeInfinity,
+        0.0,
+        -1.0,
+      ]) {
+        expect(
+          validatePlatformVideoDuration(
+            platform: platform,
+            durationSeconds: duration,
+            tikTokMaxDurationSeconds: 300,
+          ),
+          isNull,
+          reason: '$platform duration $duration has not been verified',
+        );
+      }
+    }
+  });
+
+  test('duration hints keep exact non-TikTok boundaries and destination errors',
+      () {
+    final accepted = <SocialPlatform, List<double>>{
+      SocialPlatform.youtubeShorts: [0.001, 180],
+      SocialPlatform.instagramReels: [3, 900],
+      SocialPlatform.facebookReels: [3, 90],
+    };
+    for (final entry in accepted.entries) {
+      for (final duration in entry.value) {
+        expect(
+          validatePlatformVideoDuration(
+            platform: entry.key,
+            durationSeconds: duration,
+          ),
+          isNull,
+          reason: '${entry.key} accepts $duration seconds',
+        );
+      }
+    }
+    final rejected = <SocialPlatform, List<double>>{
+      SocialPlatform.youtubeShorts: [180.001],
+      SocialPlatform.instagramReels: [2.999, 900.001],
+      SocialPlatform.facebookReels: [2.999, 90.001],
+    };
+    const codes = {
+      SocialPlatform.youtubeShorts: 'YOUTUBE_SHORTS_DURATION_INVALID',
+      SocialPlatform.instagramReels: 'INSTAGRAM_DURATION_INVALID',
+      SocialPlatform.facebookReels: 'FACEBOOK_DURATION_INVALID',
+    };
+    for (final entry in rejected.entries) {
+      for (final duration in entry.value) {
+        final problem = validatePlatformVideoDuration(
+          platform: entry.key,
+          durationSeconds: duration,
+        );
+        expect(problem?.code, codes[entry.key]);
+        expect(problem?.platform, entry.key);
+      }
+    }
+    expect(
+      validatePlatformVideoDuration(
+        platform: SocialPlatform.youtubeShorts,
+        durationSeconds: 180.001,
+      )?.message,
+      'YouTube Shorts ต้องใช้คลิปยาวไม่เกิน 3 นาที',
+    );
+    expect(
+      validatePlatformVideoDuration(
+        platform: SocialPlatform.instagramReels,
+        durationSeconds: 900.001,
+      )?.message,
+      'Instagram Reels ต้องใช้คลิปยาวตั้งแต่ 3 วินาทีถึง 15 นาที',
+    );
+  });
+
+  test('TikTok duration hints retain the 600 second API upload ceiling', () {
+    for (final creatorLimit in <int?>[null, 0, -1, 600, 601, 3600]) {
+      expect(
+        validatePlatformVideoDuration(
+          platform: SocialPlatform.tiktok,
+          durationSeconds: 600,
+          tikTokMaxDurationSeconds: creatorLimit,
+        ),
+        isNull,
+      );
+      final problem = validatePlatformVideoDuration(
+        platform: SocialPlatform.tiktok,
+        durationSeconds: 600.001,
+        tikTokMaxDurationSeconds: creatorLimit,
+      );
+      expect(problem?.code, 'TIKTOK_DURATION_INVALID');
+      expect(problem?.platform, SocialPlatform.tiktok);
+      expect(problem?.message, contains('TikTok'));
+    }
+  });
+
+  test('TikTok duration hints respect a smaller positive creator limit', () {
+    for (final creatorLimit in [1, 59, 90, 300, 599]) {
+      expect(
+        validatePlatformVideoDuration(
+          platform: SocialPlatform.tiktok,
+          durationSeconds: creatorLimit.toDouble(),
+          tikTokMaxDurationSeconds: creatorLimit,
+        ),
+        isNull,
+      );
+      final problem = validatePlatformVideoDuration(
+        platform: SocialPlatform.tiktok,
+        durationSeconds: creatorLimit + 0.001,
+        tikTokMaxDurationSeconds: creatorLimit,
+      );
+      expect(problem?.code, 'TIKTOK_DURATION_INVALID');
+      expect(problem?.platform, SocialPlatform.tiktok);
+    }
+  });
+
   test('valid original media passes each non-TikTok destination', () {
     for (final platform in [
       SocialPlatform.youtubeShorts,
@@ -149,8 +268,13 @@ void main() {
       _media(size: 0),
       _media(hasVideo: false),
     ]) {
-      expect(check(SocialPlatform.youtubeShorts, media: media)?.code,
-          'PUBLISH_MEDIA_UNVERIFIED');
+      for (final platform in [
+        SocialPlatform.youtubeShorts,
+        SocialPlatform.instagramReels,
+        SocialPlatform.facebookReels,
+      ]) {
+        expect(check(platform, media: media)?.code, 'PUBLISH_MEDIA_UNVERIFIED');
+      }
     }
     expect(
         validatePlatformPublishPreflight(
@@ -216,15 +340,23 @@ void main() {
         isNull);
   });
 
-  test('Facebook Reels does not reuse Facebook Feed Video media ceilings',
-      () {
-    // Passing local preflight does not guarantee provider acceptance.
-    for (final media in [
-      _media(duration: 14400.01),
-      _media(width: 4001),
-    ]) {
-      expect(check(SocialPlatform.facebookReels, media: media), isNull);
+  test('Facebook Reels allows 3 to 90 seconds without rounding', () {
+    for (final duration in [3.0, 90.0]) {
+      expect(check(SocialPlatform.facebookReels, media: _media(duration: duration)),
+          isNull);
     }
+    for (final duration in [2.999, 90.001]) {
+      final problem = check(SocialPlatform.facebookReels,
+          media: _media(duration: duration));
+      expect(problem?.code, 'FACEBOOK_DURATION_INVALID');
+      expect(problem?.platform, SocialPlatform.facebookReels);
+      expect(problem?.message, contains('1 นาที 30 วินาที'));
+    }
+  });
+
+  test('Facebook Reels does not reuse Facebook Feed Video width ceilings', () {
+    // Passing local preflight does not guarantee provider acceptance.
+    expect(check(SocialPlatform.facebookReels, media: _media(width: 4001)), isNull);
     expect(
         check(SocialPlatform.facebookReels,
             media: _media(width: 1079, fps: 25)),
@@ -262,6 +394,45 @@ void main() {
     }
     expect(check(SocialPlatform.youtubeShorts, media: _media(container: null)),
         isNull);
+  });
+
+  test('required Instagram container validation keeps its existing priority', () {
+    expect(
+      check(SocialPlatform.instagramReels,
+          media: _media(container: null, duration: 900.001))?.code,
+      'INSTAGRAM_CONTAINER_INVALID',
+    );
+  });
+
+  test('full TikTok preflight keeps duration checks in its preparation flow', () {
+    expect(check(SocialPlatform.tiktok, media: _media(duration: 600.001)), isNull);
+  });
+
+  test('an overlong Reel only blocks when Facebook is selected', () {
+    final result = validatePlatformPublishPreflight(
+      selectedPlatforms: {
+        SocialPlatform.youtubeShorts,
+        SocialPlatform.instagramReels,
+        SocialPlatform.facebookReels,
+      },
+      caption: 'caption',
+      media: _media(duration: 120),
+      requireMedia: true,
+    );
+    expect(result?.code, 'FACEBOOK_DURATION_INVALID');
+    expect(result?.platform, SocialPlatform.facebookReels);
+    expect(
+      validatePlatformPublishPreflight(
+        selectedPlatforms: {
+          SocialPlatform.youtubeShorts,
+          SocialPlatform.instagramReels,
+        },
+        caption: 'caption',
+        media: _media(duration: 120),
+        requireMedia: true,
+      ),
+      isNull,
+    );
   });
 
   test('multi-destination preflight identifies the platform that blocks upload',

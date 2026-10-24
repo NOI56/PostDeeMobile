@@ -2,6 +2,32 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Per-channel duration boundary (2026-10-25, local candidate)
+
+The Mobile candidate uses available source duration for early warnings at video
+pick, prefill and draft restore. Each connected channel evaluates its own limit:
+Facebook Page Reels 3–90 seconds, YouTube Shorts at most 180, Instagram Reels
+3–900, TikTok Inbox at most 600 and Direct at most min(600, fresh creator limit).
+An incompatible unselected row cannot be added. Selected incompatible rows stay
+removable and block Next/confirmation; Select all adds compatible channels only
+without clearing earlier selections. The client never trims or deselects silently.
+
+Source hints are not proof of the rendered upload. Unknown hints do not pass a
+check; final outgoing-file verification remains authoritative locally, including
+unknown-metadata rejection for YouTube/Instagram/Facebook and existing TikTok
+preparation/Direct validation. Inbox does not acquire Direct creator permissions.
+Reusing a cached TikTok Inbox upload requires positive, finite recorded duration
+at most 600 seconds. Missing or over-limit proof blocks a new submission while
+retaining its receipt and original request ID. Inspect/recover the original work
+before starting again; do not silently render, reupload or resend it.
+Owner/account freshness, manual consent, cached receipt/fingerprint binding,
+accepted-request recovery before new guards and original request IDs remain
+unchanged. Existing accepted schedules are not reinterpreted by this UI change.
+No backend/schema/flag change is introduced. Mobile tests and analysis pass;
+APK build and device delivery remain unverified. The
+[2026-10-25 source review](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate)
+does not prove real-account PostPeer delivery.
+
 ## Local post-preview boundary (2026-10-24, local candidate)
 
 The review summary uses one nullable `onPreview` action beneath the thumbnail,

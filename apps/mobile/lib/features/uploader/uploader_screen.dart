@@ -178,6 +178,7 @@ class UploaderScreen extends StatefulWidget {
     this.loadSocialConnections,
     this.loadSocialPublishingReadiness,
     this.probePublishMedia,
+    this.readVideoMetadata,
     this.loadTikTokPublishingOptions,
     this.onScheduledPostCreated,
     this.onPublishFinished,
@@ -200,6 +201,7 @@ class UploaderScreen extends StatefulWidget {
     this.initialVideoSizeBytes,
     this.initialVideoWidth,
     this.initialVideoHeight,
+    this.initialVideoDurationSeconds,
     this.fullScreen = false,
   });
 
@@ -220,6 +222,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderConnectionsLoader? loadSocialConnections;
   final UploaderSocialReadinessLoader? loadSocialPublishingReadiness;
   final PublishMediaProbe? probePublishMedia;
+  final VideoMetadataReader? readVideoMetadata;
   final UploaderTikTokOptionsLoader? loadTikTokPublishingOptions;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
@@ -255,6 +258,7 @@ class UploaderScreen extends StatefulWidget {
   final int? initialVideoSizeBytes;
   final int? initialVideoWidth;
   final int? initialVideoHeight;
+  final double? initialVideoDurationSeconds;
   final bool fullScreen;
 
   @override
@@ -336,6 +340,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _captionNeedsReview = false;
   List<String> _aiCaptionSeoKeywords = const [];
   String? _selectedVideoName;
+  double? _videoDurationSeconds;
+  int _videoDurationReadGeneration = 0;
+  bool _isReadingVideoDuration = false;
+  Timer? _videoDurationReadTimer;
+  Completer<VideoDimensions?>? _videoDurationReadResult;
   CoverEditorResult? _coverResult;
   List<PublishDraft> _drafts = const [];
   String? _activeDraftId;
@@ -485,7 +494,128 @@ class _UploaderScreenState extends State<UploaderScreen>
       !_isLoadingConnections &&
       _connectionsErrorMessage == null &&
       _selectedReadinessIssue == null &&
+      _selectedDurationProblem == null &&
       _draftUnavailablePlatforms.isEmpty;
+
+  PublishPreflightProblem? _durationProblem(SocialPlatform platform) =>
+      validatePlatformVideoDuration(
+        platform: platform,
+        durationSeconds: _videoDurationSeconds,
+        tikTokMaxDurationSeconds:
+            _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost
+                ? _tikTokPublishingOptions?.creatorInfo.maxVideoPostDurationSec
+                : null,
+      );
+
+  PublishPreflightProblem? get _selectedDurationProblem {
+    for (final platform
+        in SocialPlatform.values.where(_selectedPlatforms.contains)) {
+      final problem = _durationProblem(platform);
+      if (problem != null) return problem;
+    }
+    return null;
+  }
+
+  Map<SocialPlatform, String> get _durationWarnings => {
+        for (final platform
+            in SocialPlatform.values.where(_connectedPlatforms.contains))
+          if (_durationProblem(platform) case final problem?)
+            platform: '${problem.message} จึงโพสต์ช่องทางนี้ไม่ได้',
+      };
+
+  // Source metadata is an early hint. The exact outgoing file is checked again
+  // after preparation, before any remote upload.
+  void _setVideoDuration(double? seconds) {
+    _videoDurationReadGeneration++;
+    _cancelVideoDurationRead();
+    _videoDurationSeconds = seconds != null && seconds.isFinite && seconds > 0
+        ? seconds
+        : null;
+    _isReadingVideoDuration = false;
+  }
+
+  void _cancelVideoDurationRead() {
+    _videoDurationReadTimer?.cancel();
+    _videoDurationReadTimer = null;
+    final result = _videoDurationReadResult;
+    _videoDurationReadResult = null;
+    if (result != null && !result.isCompleted) result.complete(null);
+  }
+
+  Future<void> _readSelectedVideoDuration() async {
+    final path = _localFilePathController.text.trim();
+    if (path.isEmpty || _videoDurationSeconds != null) return;
+    if (widget.readVideoMetadata == null &&
+        !Platform.isAndroid && !Platform.isIOS) {
+      return;
+    }
+    final generation = ++_videoDurationReadGeneration;
+    _cancelVideoDurationRead();
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    final result = Completer<VideoDimensions?>();
+    _videoDurationReadResult = result;
+    _videoDurationReadTimer = Timer(const Duration(seconds: 15), () {
+      if (!result.isCompleted) result.complete(null);
+    });
+    setState(() => _isReadingVideoDuration = true);
+    final readMetadata =
+        widget.readVideoMetadata ?? const FfmpegVideoMetadataReader().call;
+    unawaited(Future<VideoDimensions?>.sync(() => readMetadata(path))
+        .then<void>((metadata) {
+      if (!result.isCompleted) result.complete(metadata);
+    }, onError: (Object _, StackTrace __) {
+      if (!result.isCompleted) result.complete(null);
+    }));
+    final metadata = await result.future;
+    if (identical(_videoDurationReadResult, result)) {
+      _cancelVideoDurationRead();
+    }
+    if (!mounted ||
+        generation != _videoDurationReadGeneration ||
+        owner != PostDeeAuthSessionStore.instance.session.stableUserId) {
+      return;
+    }
+    final seconds = metadata?.durationSeconds;
+    setState(() {
+      _videoDurationSeconds = seconds != null && seconds.isFinite && seconds > 0
+          ? seconds
+          : null;
+      _isReadingVideoDuration = false;
+    });
+  }
+
+  String _durationClock(double seconds) {
+    final total = seconds.ceil();
+    return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildDurationWarnings() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_videoDurationSeconds == null &&
+              _localFilePathController.text.isNotEmpty)
+            Text(
+              _isReadingVideoDuration
+                  ? 'กำลังอ่านความยาวคลิป...'
+                  : 'ยังอ่านความยาวคลิปไม่ได้ จะตรวจซ้ำก่อนส่ง',
+              key: const ValueKey('uploader-duration-status'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          for (final entry in _durationWarnings.entries)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Semantics(
+                liveRegion: true,
+                child: PostDeeNotice(
+                  key: ValueKey('uploader-duration-warning-${entry.key.apiValue}'),
+                  message: entry.value,
+                  icon: Icons.timer_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+        ],
+      );
 
   String? get _selectedReadinessIssue {
     if (_selectedPlatforms.isEmpty) return null;
@@ -858,6 +988,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     final height = _readPositiveInt(_heightController);
     final size = _readPositiveInt(_sizeBytesController);
     final parts = <String>[
+      if (_videoDurationSeconds case final seconds?)
+        '${_durationClock(seconds)} นาที',
       if (width != null && height != null) '$width × $height px',
       if (_videoAspectLabel != null) '9:16',
       if (size != null)
@@ -935,6 +1067,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       } else if (_selectedPlatformWithoutIdentity != null) {
         error =
             'ยังยืนยันบัญชีหรือเพจปลายทางไม่ได้ กรุณารีเฟรชช่องทางหรือเชื่อมต่อใหม่';
+      } else if (_selectedDurationProblem case final problem?) {
+        error = '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่';
       } else if (_postTextValidationError() case final message?) {
         error = message;
       } else {
@@ -1161,6 +1295,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     _appIsResumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     _savedFormSnapshot = _formSnapshot;
     _prefillInitialVideo();
+    unawaited(_readSelectedVideoDuration());
     final requestedDate = widget.initialScheduleDate?.toLocal();
     if (requestedDate != null &&
         !(widget.initialDraftId?.trim().isNotEmpty ?? false)) {
@@ -1410,6 +1545,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _activeDraftWatermarkEnabled = null;
       _activeDraftUploadedMedia = null;
       _selectedVideoName = null;
+      _setVideoDuration(null);
       _coverResult = null;
       _captionController.clear();
       _captionNeedsReview = false;
@@ -1719,6 +1855,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         : _readFileNameFromPath(path);
 
     _selectedVideoName = name;
+    _setVideoDuration(widget.initialVideoDurationSeconds);
     _localFilePathController.text = path;
     _fileNameController.text = name;
 
@@ -1738,6 +1875,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _connectionLoadGeneration++;
+    _videoDurationReadGeneration++;
+    _cancelVideoDurationRead();
     _captionGeneration++;
     _captionStyleGeneration++;
     _captionValidationGeneration++;
@@ -2772,6 +2911,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           }
         }
         _selectedVideoName = fileName;
+        _setVideoDuration(video.durationSeconds);
         _coverResult = null;
         _localFilePathController.text = video.path;
         _fileNameController.text = fileName;
@@ -2786,6 +2926,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         unawaited(previousCover.cleanupTemporaryFiles());
       }
       unawaited(_loadVideoPoster());
+      unawaited(_readSelectedVideoDuration());
       unawaited(_analytics.logVideoSelected(
         hasDimensions: video.width != null && video.height != null,
       ));
@@ -3068,22 +3209,31 @@ class _UploaderScreenState extends State<UploaderScreen>
             .contains(SocialPlatform.tiktok)) {
       return false;
     }
-    final needsDurationProof =
-        _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost &&
-            (receipt.videoDurationSeconds == null ||
-                !receipt.videoDurationSeconds!.isFinite ||
-                receipt.videoDurationSeconds! <= 0);
+    final needsDurationProof = receipt.videoDurationSeconds == null ||
+        !receipt.videoDurationSeconds!.isFinite ||
+        receipt.videoDurationSeconds! <= 0;
+    final durationProblem = validatePlatformVideoDuration(
+      platform: SocialPlatform.tiktok,
+      durationSeconds: receipt.videoDurationSeconds,
+      tikTokMaxDurationSeconds:
+          _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost
+              ? _tikTokPublishingOptions?.creatorInfo.maxVideoPostDurationSec
+              : null,
+    );
     if (receipt.videoPreparationPolicy == tikTokVideoPreparationPolicy &&
-        !needsDurationProof) {
+        !needsDurationProof &&
+        durationProblem == null) {
       return false;
     }
     setState(() {
       final id = _activeDraftId;
       if (id != null) _blockedSubmissionDraftIds.add(id);
       _errorMessage = needsDurationProof
-          ? 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่มีข้อมูลระยะเวลาสำหรับโพสต์ตรง กรุณาตรวจรายการเดิมก่อนเริ่มรายการโพสต์ใหม่'
-          : 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
-              'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่';
+          ? 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่มีข้อมูลระยะเวลาสำหรับ TikTok กรุณาตรวจรายการเดิมก่อนเริ่มรายการโพสต์ใหม่'
+          : durationProblem != null
+              ? '${durationProblem.message} กรุณาตรวจรายการเดิมก่อนเริ่มรายการโพสต์ใหม่'
+              : 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
+                  'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่';
       _successMessage = null;
     });
     _setUploadStatus(_errorMessage!);
@@ -3130,6 +3280,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     _activeDraftWatermarkEnabled = null;
     _activeDraftUploadedMedia = null;
     _selectedVideoName = null;
+    _setVideoDuration(null);
     _coverResult = null;
     _captionController.clear();
     _captionNeedsReview = false;
@@ -3189,6 +3340,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _activeDraftWatermarkEnabled = draft.watermarkEnabled;
       _activeDraftUploadedMedia = draft.uploadedMedia;
       _selectedVideoName = draft.videoName;
+      _setVideoDuration(null);
       _localFilePathController.text = draft.videoPath;
       _fileNameController.text = draft.videoName;
       _sizeBytesController.text = draft.videoSizeBytes.toString();
@@ -3240,6 +3392,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       unawaited(previousCover.cleanupTemporaryFiles());
     }
     unawaited(_loadVideoPoster());
+    unawaited(_readSelectedVideoDuration());
   }
 
   Future<void> _deleteDraft(PublishDraft draft) async {
@@ -3522,6 +3675,14 @@ class _UploaderScreenState extends State<UploaderScreen>
 
     if (_selectedReadinessIssue case final issue?) {
       setState(() => _errorMessage = issue);
+      return;
+    }
+
+    if (_selectedDurationProblem case final problem?) {
+      setState(() {
+        _currentStep = 2;
+        _errorMessage = '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่';
+      });
       return;
     }
 
@@ -4071,7 +4232,7 @@ class _UploaderScreenState extends State<UploaderScreen>
             maxDurationSeconds: isTikTokDirect
                 ? directOptions!.creatorInfo.maxVideoPostDurationSec
                     .clamp(1, 600)
-                : null,
+                : 600,
           ));
           generatedTikTokVideo = prepared;
           preparedDurationSeconds = prepared.durationSeconds;
@@ -4116,6 +4277,10 @@ class _UploaderScreenState extends State<UploaderScreen>
               media: verifiedMedia,
               requireMedia: true);
           if (problem != null) {
+            if (problem.code.contains('DURATION')) {
+              final seconds = verifiedMedia.durationSeconds;
+              setState(() => _setVideoDuration(seconds));
+            }
             throw ApiException(problem.message,
                 statusCode: 400, code: problem.code);
           }
@@ -4560,6 +4725,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _setPlatformSelected(SocialPlatform platform, bool isSelected) {
+    if (isSelected && _durationProblem(platform) != null) return;
     setState(() {
       _clearTikTokFreshness();
       if (isSelected && _connectedPlatforms.contains(platform)) {
@@ -4821,11 +4987,12 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _selectAllConnectedPlatforms() {
+    final compatible = _connectedPlatforms
+        .where((platform) => _durationProblem(platform) == null)
+        .toList();
     setState(() {
       _clearTikTokFreshness();
-      _selectedPlatforms
-        ..clear()
-        ..addAll(_connectedPlatforms);
+      _selectedPlatforms.addAll(compatible);
     });
   }
 
@@ -5002,6 +5169,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 const SizedBox(height: 12),
                                 _buildVideoMetadata(
                                     textAlign: TextAlign.center),
+                                _buildDurationWarnings(),
                                 const SizedBox(height: 6),
                                 Wrap(
                                     alignment: WrapAlignment.center,
@@ -5079,6 +5247,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 const SizedBox(height: 20),
                               ],
                               _buildCaptionCard(context),
+                              _buildDurationWarnings(),
                             ],
                             if (_currentStep == 2)
                               _PlatformSelectorSection(
@@ -5103,6 +5272,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 animate: _uploaderMotionAllowed(
                                     context, _appIsResumed),
                                 platformSettings: _resolvedPlatformSettings,
+                                durationWarnings: _durationWarnings,
                                 validationPlatform: _platformValidationTarget,
                                 validationMessage: _platformValidationTarget == null
                                     ? null : _platformSettingsError(_platformValidationTarget!),
@@ -5128,6 +5298,13 @@ class _UploaderScreenState extends State<UploaderScreen>
                                   message: message,
                                   actionLabel: 'แก้แคปชัน',
                                   onAction: () => _goToStep(1),
+                                ),
+                              if (_selectedDurationProblem case final problem?)
+                                PostDeeNotice(
+                                  key: const ValueKey('uploader-selected-duration-error'),
+                                  message: '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่',
+                                  actionLabel: 'แก้ช่องทาง',
+                                  onAction: () => _goToStep(2),
                                 ),
                               if (_connectionsErrorMessage != null)
                                 PostDeeNotice(
@@ -6200,6 +6377,7 @@ class _PlatformSelectorSection extends StatelessWidget {
     required this.onRetryConnections,
     this.connectionDisplayNames = const {},
     this.readinessLabels = const {},
+    this.durationWarnings = const {},
     this.validationPlatform,
     this.validationMessage,
     this.validationAnchors = const {},
@@ -6214,6 +6392,7 @@ class _PlatformSelectorSection extends StatelessWidget {
   final PlatformPublishSettings platformSettings;
   final Map<SocialPlatform, String> connectionDisplayNames;
   final Map<SocialPlatform, String> readinessLabels;
+  final Map<SocialPlatform, String> durationWarnings;
   final SocialPlatform? validationPlatform;
   final String? validationMessage;
   final Map<SocialPlatform, GlobalKey> validationAnchors;
@@ -6383,14 +6562,18 @@ class _PlatformSelectorSection extends StatelessWidget {
             children: [
               TextButton(
                 key: const ValueKey('uploader-select-all-platforms'),
-                onPressed: selectedPlatforms.length == visiblePlatforms.length
+                onPressed: !visiblePlatforms.any((platform) =>
+                        !selectedPlatforms.contains(platform) &&
+                        !durationWarnings.containsKey(platform))
                     ? null
                     : onSelectAll,
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 9),
                 ),
-                child: const Text('เลือกทั้งหมด'),
+                child: Text(durationWarnings.isEmpty
+                    ? 'เลือกทั้งหมด'
+                    : 'เลือกทั้งหมดที่รองรับ'),
               ),
               TextButton(
                 key: const ValueKey('uploader-clear-all-platforms'),
@@ -6430,6 +6613,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                     connectionDisplayName:
                         connectionDisplayNames[visiblePlatforms[index]],
                     readinessLabel: readinessLabels[visiblePlatforms[index]],
+                    blockedReason: durationWarnings[visiblePlatforms[index]],
                     animate: animate,
                     isSelected: selectedPlatforms.contains(
                       visiblePlatforms[index],
@@ -6526,6 +6710,7 @@ class _PlatformRow extends StatelessWidget {
     required this.onOpenSettings,
     this.connectionDisplayName,
     this.readinessLabel,
+    this.blockedReason,
     this.animate = true,
   });
 
@@ -6537,6 +6722,7 @@ class _PlatformRow extends StatelessWidget {
   final VoidCallback onOpenSettings;
   final String? connectionDisplayName;
   final String? readinessLabel;
+  final String? blockedReason;
   final bool animate;
 
   @override
@@ -6544,9 +6730,9 @@ class _PlatformRow extends StatelessWidget {
     final identity = connectionDisplayName?.trim();
     return Semantics(
       label: publishReviewPlatformLabel(platform),
-      hint: subLabel,
+      hint: blockedReason ?? subLabel,
       button: true,
-      enabled: true,
+      enabled: blockedReason == null || isSelected,
       selected: isSelected,
       child: _UploaderDecorationTransition(
         animate: animate,
@@ -6561,7 +6747,9 @@ class _PlatformRow extends StatelessWidget {
               enabled: _uploaderMotionAllowed(context, animate),
               child: InkWell(
                 key: ValueKey('uploader-platform-${platform.apiValue}'),
-                onTap: () => onChanged(!isSelected),
+                onTap: blockedReason != null && !isSelected
+                    ? null
+                    : () => onChanged(!isSelected),
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -6596,7 +6784,10 @@ class _PlatformRow extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 3),
-                            Text(settingsSummary,
+                            Text(
+                                blockedReason == null
+                                    ? settingsSummary
+                                    : 'โพสต์ช่องทางนี้ไม่ได้',
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: AppTheme.textSecondary)),
@@ -6609,6 +6800,17 @@ class _PlatformRow extends StatelessWidget {
                                       fontSize: 11,
                                       color: AppTheme.textSecondary)),
                             ],
+                            if (blockedReason != null) ...[
+                              const SizedBox(height: 4),
+                              Semantics(
+                                liveRegion: true,
+                                child: Text(blockedReason!,
+                                    key: ValueKey('uploader-platform-duration-${platform.apiValue}'),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.error)),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -6617,7 +6819,9 @@ class _PlatformRow extends StatelessWidget {
                         child: Icon(
                             isSelected
                                 ? Icons.check_circle_rounded
-                                : Icons.radio_button_unchecked_rounded,
+                                : blockedReason != null
+                                    ? Icons.block_rounded
+                                    : Icons.radio_button_unchecked_rounded,
                             color: isSelected
                                 ? AppTheme.accent
                                 : AppTheme.textMuted,

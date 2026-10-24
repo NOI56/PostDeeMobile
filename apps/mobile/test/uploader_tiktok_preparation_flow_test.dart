@@ -61,6 +61,7 @@ void main() {
         sizeBytes: 4,
         width: 720,
         height: 1280,
+        durationSeconds: 10,
         cleanup: () async {
           cleaned = true;
         });
@@ -185,6 +186,19 @@ void main() {
   });
 
   testWidgets(
+      'Inbox preparation receives the provider 600 second duration ceiling',
+      (tester) async {
+    int? durationLimit;
+    await tester.pumpWidget(app(preparer: (request) async {
+      durationLimit = request.maxDurationSeconds;
+      return prepare(request);
+    }));
+    await submit(tester);
+    expect(durationLimit, 600);
+    expect(events, contains('post'));
+  });
+
+  testWidgets(
       'preparation failure stops before uploading and keeps source draft',
       (tester) async {
     await tester.pumpWidget(app(preparer: (_) async {
@@ -199,13 +213,20 @@ void main() {
     expect(find.textContaining('เตรียมคลิปไม่สำเร็จ'), findsWidgets);
   });
 
-  for (final legacyPolicy in <String?>[null, 'tiktok-cfr30-h264-aac-v1']) {
+  for (final receiptCase in <({String? policy, double? duration})>[
+    (policy: null, duration: null),
+    (policy: 'tiktok-cfr30-h264-aac-v1', duration: null),
+    (policy: tikTokVideoPreparationPolicy, duration: null),
+    (policy: tikTokVideoPreparationPolicy, duration: 601),
+  ]) {
+    final legacyPolicy = receiptCase.policy;
     testWidgets(
-        'legacy TikTok receipt ($legacyPolicy) is blocked before any save can discard it',
+        'legacy TikTok receipt ($legacyPolicy, ${receiptCase.duration}s) is blocked before any save can discard it',
         (tester) async {
       final receipt = PublishDraftUploadedMedia(
           mediaContentFingerprint: 'legacy-fingerprint',
           videoPreparationPolicy: legacyPolicy,
+          videoDurationSeconds: receiptCase.duration,
           videoS3Key: 'uploads/legacy.mp4');
       final legacy = PublishDraft(
           version: publishDraftManifestVersion,
@@ -298,6 +319,7 @@ void main() {
               sizeBytes: 4,
               width: 720,
               height: 1280,
+              durationSeconds: 10,
               cleanup: () async {
                 cleaned = true;
                 sessionStore.signIn(

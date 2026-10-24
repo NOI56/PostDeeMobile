@@ -7,6 +7,33 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Per-channel clip-duration alerts (2026-10-25, local candidate)
+
+The Mobile candidate warns about clip length after picking a video, receiving a
+prefilled video or restoring a draft. Connected channel rows show their own
+duration error. An incompatible unselected row cannot be selected; an already
+selected row stays selected and can be unchecked. Next and final confirmation
+remain blocked until selected duration errors are resolved. Select all adds only
+compatible channels and never removes an existing selection. No clip is trimmed
+and no destination is silently dropped.
+
+| Destination | Duration used by the Mobile guard |
+| --- | --- |
+| Facebook Page Reels | 3–90 seconds, inclusive |
+| YouTube Shorts | At most 180 seconds |
+| Instagram Reels | 3–900 seconds, inclusive |
+| TikTok Inbox | At most 600 seconds |
+| TikTok Direct | At most the lower of 600 seconds and the fresh connected creator limit |
+
+An unknown source-duration hint does not mean a clip passed. Final preflight still
+checks the actual outgoing file; YouTube/Instagram/Facebook block unknown required
+metadata, and TikTok retains its existing preparation and Direct validation.
+Owner-bound cached receipts and accepted-request recovery remain intact. There
+is no backend, schema or feature-flag change. Source requirements were reviewed
+on 2026-10-25; Mobile automated tests and analysis pass. APK build, device
+delivery and real-account PostPeer E2E remain unverified. See the
+[duration contract and sources](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate).
+
 ## Facebook Page Reels contract (2026-10-24)
 
 Facebook now requests Page Reels only through the existing PostPeer integration.

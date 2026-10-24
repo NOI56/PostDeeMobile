@@ -11,4 +11,5 @@ Future<TikTokPreparedVideoResult> testPrepareTikTokVideo(
       sizeBytes: request.inputFile.lengthSync(),
       width: 1080,
       height: 1920,
+      durationSeconds: 10,
     );

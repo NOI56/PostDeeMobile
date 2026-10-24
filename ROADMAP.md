@@ -2,14 +2,32 @@
 
 Build roadmap for PostDee.
 
+## Per-channel clip-duration alerts (2026-10-25, local candidate)
+
+- Warn after video pick/prefill/draft restore and show a duration error beside
+  each connected channel. Disable incompatible unselected rows while allowing
+  selected incompatible rows to be unchecked; never trim or silently deselect.
+- Block Next/final confirmation while a selected channel has a duration error.
+  Select all adds compatible channels without removing existing selections.
+- Use Facebook Page Reels 3–90 seconds, YouTube Shorts at most 180 seconds,
+  Instagram Reels 3–900 seconds, TikTok Inbox at most 600 seconds and TikTok
+  Direct at most min(600 seconds, fresh connected creator limit).
+- Unknown source duration is not a pass. Preserve actual outgoing-file checks,
+  TikTok preparation/consent, cached receipts, accepted recovery, owner scope,
+  quotas and already accepted schedules. No backend/schema/flag change.
+- Mobile automated tests and analysis pass; APK/device delivery is still pending.
+  Source review dated 2026-10-25 is not real-account publishing evidence. See the
+  [contract and source record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate).
+
 ## Facebook Page Reels only (2026-10-24)
 
 - Retain `FACEBOOK_REELS` and always send PostPeer `platform: 'facebook'` with
   `platformSpecificData.contentType: 'reel'`; never fall back to a Page feed video.
 - Preserve `PUBLISH|PAGE_DRAFT`, optional `isAiGenerated`, per-platform captions,
   immutable target snapshots, existing TikTok Direct and billing safeguards.
-- Remove feed-specific Facebook media limits without inventing Reel limits;
-  keep actual-media verification and provider validation. Signed thumbnails
+- Remove feed-specific Facebook media limits; the 2026-10-25 local candidate
+  separately adds the documented 3–90-second API Reel duration guard. Keep
+  actual-media verification and provider validation. Signed thumbnails
   remain best effort, with Reel display and real-account publish/draft E2E pending.
 - No new client fields, environment variables or migrations. Updated publishers
   also route existing queued/scheduled Facebook jobs to Page Reels.

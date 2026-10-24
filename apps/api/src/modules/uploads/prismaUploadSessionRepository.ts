@@ -3,6 +3,8 @@ import { assertOwnerDrained, createPrismaOwnerOperationCoordinator, type PrismaO
 
 import {
   UploadSessionConflictError,
+  maxOpenUploadSessionsPerOwner,
+  uploadSessionLimitError,
   type CreateUploadSessionInput,
   type UploadOwnerStatus,
   type UploadSession,
@@ -77,6 +79,9 @@ type UploadSessionDelegate = {
     };
   }) => Promise<PrismaUploadSession>;
   deleteMany: (args: { where: { ownerId: string } }) => Promise<{ count: number }>;
+  count: (args: {
+    where: { ownerId: string; status: 'UPLOADING'; expiresAt: { gt: Date } };
+  }) => Promise<number>;
 };
 
 type PrismaUploadSessionTransaction = {
@@ -201,6 +206,14 @@ export const createPrismaUploadSessionRepository = ({
         update: {}
       });
       assertOwnerActive(owner);
+      // Counted inside the serializable transaction, so concurrent creates
+      // cannot both pass the cap.
+      const openSessions = await transaction.managedUploadSession.count({
+        where: { ownerId: input.ownerId, status: 'UPLOADING', expiresAt: { gt: new Date() } }
+      });
+      if (openSessions >= maxOpenUploadSessionsPerOwner) {
+        throw uploadSessionLimitError();
+      }
 
       return mapSession(
         await transaction.managedUploadSession.create({

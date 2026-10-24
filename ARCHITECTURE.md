@@ -1092,6 +1092,17 @@ Profile link replaces the AI editing navigation entry. AI caption generation
 remains in Upload; editing modules are retained compatibility code and do not
 have an active mobile entry point or editing-minute offer.
 
+Since 2026-10-24 (security Batch 3) the API registers the AI editing routes
+only when `AI_EDITING_ENABLED=true`. By default `/ai-edits/*` answers `410
+AI_EDITING_RETIRED` and the edit-plan, sound-effect and visual-plan providers are
+not constructed, so no direct caller can spend ElevenLabs or Gemini editing
+work. The transcription provider is still built because the legacy
+real-clip caption fallback can use it, and the AI-edit usage store is still
+built so account deletion clears historical rows. Real-clip captions dedupe
+and type-check frame keys, cap each frame at 5 MiB, stream every download
+against its byte limit, and allow two clip-caption requests per instance to
+hold media at once (`503 AI_MEDIA_BUSY` otherwise).
+
 The 2026-10-06 bottom-navigation revision presents Home, Calendar, Create post,
 Store link, and Account while retaining the existing shell indices and
 callbacks. Visual button order maps to indices 0, 3, 2, 1, 5; Create post (2)
@@ -1478,6 +1489,16 @@ Express retains its single-hop `trust proxy = 1` setting. Its compatible
 `proxy-addr` dependency is locked to `2.0.8` for `GHSA-jqcg-44mw-7w3h`; this
 dependency patch changes no route, authentication policy, custom rate limiter,
 database schema, or environment setting.
+
+Security Batch 4 (2026-10-24) keeps the same proxy setting and narrows the
+identity and pre-auth paths. Both Firebase verifiers pass `email` to the user
+store only when `email_verified === true`; the Prisma user repository retries
+an email unique conflict once with the per-UID fallback address and never
+rewrites the other row. The built-in verifier single-flights certificate
+refreshes with a 5-second fetch timeout and a 5-second failure cache. The
+in-process rate limiter sweeps once per window and caps each limiter at
+10,000 remembered client keys, evicting the oldest. See
+`docs/superpowers/plans/2026-10-24-identity-preauth-security-batch4.md`.
 
 ## Mobile App
 
@@ -1891,6 +1912,20 @@ Apple Sign-In must not be exposed on Android/web until server-side Apple token
 revocation is implemented for those platforms.
 
 ## Upload And Scheduling Flow
+
+Security Batch 5 (2026-10-24) bounds per-owner state in the single shared API
+and scheduler process. Managed upload sessions accept file names up to 255
+characters and exact video/image types, and an owner holds at most 10
+unexpired `UPLOADING` sessions (counted inside the serializable create
+transaction). Templates are capped at 200 per owner with 120/5000-character
+fields and a bounded list. Device tokens are FCM-shaped, capped at 10 per owner
+with oldest-first eviction, and the notifier reads at most 10. Limited post
+lists push `take` into Postgres, single-post reschedule and publish-now read
+one owned row, and new captions stop at 63,206 UTF-16 units. Still open:
+a sweeper for expired upload sessions and abandoned R2 multipart uploads,
+pagination for the full Calendar post list, and owner/post indexing before
+BullMQ is enabled. See
+`docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md`.
 
 The 2026-10-07 composer revision changes Mobile presentation only. A local
 poster/player uses the selected device file; preview and step navigation do not

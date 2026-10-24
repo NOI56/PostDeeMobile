@@ -3,6 +3,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     env: {
+      // Keep the retired AI-edit routes covered; production leaves them off.
+      AI_EDITING_ENABLED: 'true',
       ANALYTICS_STORE: 'memory',
       AUTH_PROVIDER: 'mock',
       BILLING_PROVIDER: 'mock',

@@ -108,6 +108,7 @@ describe('template routes', () => {
     };
     const asyncStore: TemplateStore = {
       list: async () => [template],
+      count: async () => 1,
       create: async () => template
     };
     const app = express();

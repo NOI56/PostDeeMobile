@@ -4,7 +4,11 @@ import { reportMonitoringError } from '../../monitoring/sentryMonitoring.js';
 
 import type { TranscriptionProvider } from '../aiEdits/transcriptionProvider.js';
 import { readAuthUser } from '../auth/authTypes.js';
-import { MediaDownloadError } from '../storage/mediaDownload.js';
+import {
+  MediaDownloadError,
+  aiCaptionFrameMaxBytes,
+  type AiMediaFetchOptions
+} from '../storage/mediaDownload.js';
 import { isStorageKeyOwnedByUser } from '../storage/storageKeyPolicy.js';
 import {
   monthlyAiCaptionGenerationLimits,
@@ -33,6 +37,16 @@ import type {
   RealClipCaptionProvider,
   RealClipMediaPart
 } from './realClipCaptionProvider.js';
+
+const defaultMaxConcurrentMediaRequests = 2;
+
+const sendMediaBusyResponse = (response: Response) => {
+  response.set('Retry-After', '1').status(503).json({
+    status: 'error',
+    code: 'AI_MEDIA_BUSY',
+    message: 'AI caption is busy right now. Please try again in a moment.'
+  });
+};
 
 const sendForbiddenMediaKeyResponse = (response: Response) => {
   response.status(403).json({
@@ -161,11 +175,20 @@ export const registerCaptionRoutes = (
   transcriptionProvider?: TranscriptionProvider,
   realClipCaptionUsageStore: RealClipCaptionUsageStore = createInMemoryRealClipCaptionUsageStore(),
   realClipCaptionProvider?: RealClipCaptionProvider,
-  fetchClipMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>,
+  fetchClipMedia?: (videoS3Key: string, options?: AiMediaFetchOptions) => Promise<RealClipMediaPart>,
   deleteClipMedia?: (videoS3Key: string) => Promise<void>,
   userStore?: UserStore,
-  options: { monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>; billingAddonsEnabled?: boolean; now?: () => Date } = {}
+  options: {
+    monthlyAddonStore?: Pick<MonthlyAddonStore, 'readCredits'>;
+    billingAddonsEnabled?: boolean;
+    now?: () => Date;
+    maxConcurrentMediaRequests?: number;
+  } = {}
 ) => {
+  // Clip captions buffer up to a 200 MiB clip plus frames in this shared
+  // process, so only a few may hold media at once. Excess requests retry.
+  const maxConcurrentMediaRequests = options.maxConcurrentMediaRequests ?? defaultMaxConcurrentMediaRequests;
+  let activeMediaRequests = 0;
   const readAddonRemaining = async (userId: string, now: string) => {
     const [grants, used] = await Promise.all([
       options.monthlyAddonStore?.readCredits({ userId, now }),
@@ -302,6 +325,7 @@ export const registerCaptionRoutes = (
     if (!validation.ok) {
       response.status(400).json({
         status: 'error',
+        ...('code' in validation ? { code: validation.code } : {}),
         message: validation.message
       });
       return;
@@ -409,58 +433,71 @@ export const registerCaptionRoutes = (
     if (realClipCaptionProvider && fetchClipMedia) {
       // Primary path: Gemini listens to the clip (Starter) and also looks at
       // selected frames (Pro) to write the caption — no Whisper here.
+      if (activeMediaRequests >= maxConcurrentMediaRequests) {
+        await cleanupRequestedMedia();
+        sendMediaBusyResponse(response);
+        return;
+      }
+
+      activeMediaRequests += 1;
       try {
-        const audio = await fetchClipMedia(validation.request.videoS3Key);
-        let frames: RealClipMediaPart[] | undefined;
+        try {
+          const audio = await fetchClipMedia(validation.request.videoS3Key);
+          let frames: RealClipMediaPart[] | undefined;
 
-        if (
-          mode === 'AUDIO_WITH_FRAMES' &&
-          validation.request.selectedFrameKeys.length > 0
-        ) {
-          frames = await Promise.all(
-            validation.request.selectedFrameKeys.map((key) => fetchClipMedia(key))
-          );
-        }
-
-        if (!(await reserveUsageOrRespond())) {
-          return;
-        }
-
-        caption = await realClipCaptionProvider.generate({
-          request: validation.request,
-          mode,
-          audio,
-          frames
-        });
-        if (validation.request.platforms) {
-          const platformCaptions = readRealClipPlatformCaptions(caption.platformCaptions, validation.request.platforms);
-          if (!platformCaptions) {
-            throw new Error('Real-clip AI provider returned incomplete or invalid platform captions');
+          if (
+            mode === 'AUDIO_WITH_FRAMES' &&
+            validation.request.selectedFrameKeys.length > 0
+          ) {
+            frames = await Promise.all(
+              validation.request.selectedFrameKeys.map((key) =>
+                fetchClipMedia(key, { kind: 'frame', maxBytes: aiCaptionFrameMaxBytes })
+              )
+            );
           }
-          caption = { ...caption, platformCaptions };
-        }
-      } catch (error) {
-        if (error instanceof MediaDownloadError) {
-          await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
-          await cleanupRequestedMedia();
-          sendMediaDownloadErrorResponse(response, error);
-          return;
-        }
 
-        if (!(await reserveUsageOrRespond())) {
-          return;
-        }
+          if (!(await reserveUsageOrRespond())) {
+            return;
+          }
 
-        // Fall back to the local template so an AI/provider outage still returns
-        // a usable caption. Logged so a broken provider is visible in ops.
-        reportMonitoringError(error, { operation: 'captions.provider' });
-        console.error(
-          'Real-clip AI caption failed; using local template:',
-          error instanceof Error ? error.message : error
-        );
-        caption = generateLocalRealClipCaption({ request: validation.request, mode });
-        isFallback = true;
-        releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
+          caption = await realClipCaptionProvider.generate({
+            request: validation.request,
+            mode,
+            audio,
+            frames
+          });
+          if (validation.request.platforms) {
+            const platformCaptions = readRealClipPlatformCaptions(caption.platformCaptions, validation.request.platforms);
+            if (!platformCaptions) {
+              throw new Error('Real-clip AI provider returned incomplete or invalid platform captions');
+            }
+            caption = { ...caption, platformCaptions };
+          }
+        } catch (error) {
+          if (error instanceof MediaDownloadError) {
+            await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
+            await cleanupRequestedMedia();
+            sendMediaDownloadErrorResponse(response, error);
+            return;
+          }
+
+          if (!(await reserveUsageOrRespond())) {
+            return;
+          }
+
+          // Fall back to the local template so an AI/provider outage still returns
+          // a usable caption. Logged so a broken provider is visible in ops.
+          reportMonitoringError(error, { operation: 'captions.provider' });
+          console.error(
+            'Real-clip AI caption failed; using local template:',
+            error instanceof Error ? error.message : error
+          );
+          caption = generateLocalRealClipCaption({ request: validation.request, mode });
+          isFallback = true;
+          releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
+        }
+      } finally {
+        activeMediaRequests -= 1;
       }
     } else if (transcriptionProvider) {
       // Legacy path: Whisper transcript -> local template.

@@ -3,6 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { readServerConfig } from './env.js';
 
 describe('readServerConfig', () => {
+  it('keeps retired AI video editing disabled unless the rollback switch is set', () => {
+    expect(readServerConfig({}).aiEditingEnabled).toBe(false);
+    expect(readServerConfig({ AI_EDITING_ENABLED: 'true' }).aiEditingEnabled).toBe(true);
+    expect(() => readServerConfig({ AI_EDITING_ENABLED: 'yes' })).toThrow('AI_EDITING_ENABLED must be true or false');
+  });
   it('isolates paid subscriptions in production by default and requires an explicit sandbox setting', () => {
     expect(readServerConfig({}).revenueCatSubscriptionEnvironment).toBe('PRODUCTION');
     expect(readServerConfig({ REVENUECAT_SUBSCRIPTION_ENVIRONMENT: 'SANDBOX' }).revenueCatSubscriptionEnvironment).toBe('SANDBOX');
@@ -108,6 +113,7 @@ describe('readServerConfig', () => {
       openAiEditPlanModel: 'gpt-4o-mini',
       geminiEditPlanModel: 'gemini-3.5-flash-lite',
       aiEditUsageStore: 'memory',
+      aiEditingEnabled: false,
       mockUserId: 'local-dev-user'
     });
   });

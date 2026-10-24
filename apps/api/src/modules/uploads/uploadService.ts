@@ -10,6 +10,18 @@ export const aiEditVisualProxyUploadMaxBytes = 50 * 1024 * 1024;
 export const aiEditVisualProxyUploadInvalidCode =
   'UPLOAD_AI_EDIT_VISUAL_PROXY_INVALID' as const;
 
+// The R2 object key is derived separately; this bounds the stored name only.
+const maxUploadFileNameLength = 255;
+// Exact types the app uploads (MP4 videos, JPEG frames/covers) plus common
+// phone-native formats. Parameters or other subtypes are refused.
+const supportedGeneralContentTypes = new Set([
+  'video/mp4',
+  'video/quicktime',
+  'image/jpeg',
+  'image/png',
+  'image/webp'
+]);
+
 const isPositiveNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
 
@@ -37,6 +49,13 @@ export const readUploadMetadata = (body: unknown, { maxSizeBytes }: ReadUploadMe
   const sizeBytes = payload.sizeBytes;
   const width = readOptionalPositiveNumber(payload.width);
   const height = readOptionalPositiveNumber(payload.height);
+
+  if (fileName.length > maxUploadFileNameLength) {
+    return {
+      ok: false as const,
+      message: `fileName must not exceed ${maxUploadFileNameLength} characters`
+    };
+  }
 
   if (payload.purpose === aiCaptionVideoUploadPurpose) {
     const hasNoDimensions = payload.width === undefined && payload.height === undefined;
@@ -133,8 +152,7 @@ export const readUploadMetadata = (body: unknown, { maxSizeBytes }: ReadUploadMe
   }
 
   // Videos are the main upload; images are accepted too for AI-caption frames.
-  const isSupportedContentType =
-    contentType.startsWith('video/') || contentType.startsWith('image/');
+  const isSupportedContentType = supportedGeneralContentTypes.has(contentType.toLowerCase());
 
   if (!fileName || !isSupportedContentType || !isPositiveNumber(sizeBytes)) {
     return {

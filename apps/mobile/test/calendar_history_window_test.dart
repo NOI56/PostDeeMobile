@@ -47,6 +47,25 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('the first load covers a week that starts in the previous month',
+      (tester) async {
+    final requestedSince = <DateTime>[];
+    // Thursday 1 October 2026: the default week view starts on Monday 28 September.
+    final firstOfMonth = DateTime(2026, 10, 1, 10);
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: CalendarScreen(
+      now: () => firstOfMonth,
+      loadCalendarPostsSince: (since) async {
+        requestedSince.add(since);
+        return [post];
+      },
+    ))));
+    await tester.pumpAndSettle();
+    expect(requestedSince, [DateTime(2026, 9, 28)]);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('switching from week to month view widens the history window',
       (tester) async {
     final requestedSince = <DateTime>[];

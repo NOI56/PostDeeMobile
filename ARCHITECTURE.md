@@ -2065,6 +2065,10 @@ Rules:
   status wording.
 - Provider retries are explicit-safe-only. Unknown network/polling outcomes are
   terminal and tell the user to inspect the destination before trying again.
+- Each in-process scheduler poll reads at most 50 due posts across all owners
+  (`take: 50`, ordered by `scheduledAt`), selecting only publish fields (no media
+  fingerprint or add-on allocation). Remaining due posts wait for the next
+  poll, about five seconds later.
 
 The mobile HTTP client applies an end-to-end 20-second deadline to ordinary
 JSON requests, including token refresh, connection, and body consumption.

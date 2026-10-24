@@ -36,7 +36,7 @@ import {
   isValidPlatform
 } from './postStore.js';
 import { normalizePersistedPlatformSettings, readEffectivePlatformCaption, readPlatformSettings, type PlatformSettings } from './platformSettings.js';
-import { readPlatformCaptionIssue } from './platformCaptionValidation.js';
+import { readCaptionStorageIssue, readPlatformCaptionIssue } from './platformCaptionValidation.js';
 import { encodePostPageCursor, readPostPageRequest } from './postPageCursor.js';
 import {
   buildTikTokConnectionRevision,
@@ -498,6 +498,7 @@ export const registerPostRoutes = (
 
     response.setHeader('Cache-Control', 'private, no-store');
     const scheduledOnly = request.query.scheduled === 'true';
+    const isLimitedList = includeMedia || parsedLimit !== undefined;
     const postPage = pageRequest
       ? await store.listPage({
           userId: authUser.id,
@@ -508,11 +509,12 @@ export const registerPostRoutes = (
       : undefined;
     let posts = (postPage?.posts ?? await store.list({
       userId: authUser.id,
-      scheduledOnly
+      scheduledOnly,
+      ...(isLimitedList ? { limit: Math.min(parsedLimit ?? 50, 50) } : {})
     })).filter((post) => post.userId === authUser.id);
     // Bound the optional preview work before signing any private objects.
     // Legacy lists keep their existing ordering and complete result set.
-    if (includeMedia || parsedLimit !== undefined) {
+    if (isLimitedList) {
       posts = [...posts]
         .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
         .slice(0, Math.min(parsedLimit ?? 50, 50));
@@ -826,7 +828,8 @@ export const registerPostRoutes = (
 
     // Matching accepted requests were recovered above. Only new publishing
     // intents are subject to these guards, before media/provider/quota work.
-    const captionIssue = readPlatformCaptionIssue(caption, platforms, platformSettings);
+    const captionIssue = readPlatformCaptionIssue(caption, platforms, platformSettings) ??
+      readCaptionStorageIssue(caption, platforms, platformSettings);
     if (captionIssue) {
       response.status(400).json({ status: 'error', code: 'PLATFORM_CAPTION_INVALID', ...captionIssue });
       return;
@@ -1276,9 +1279,8 @@ export const registerPostRoutes = (
         return;
       }
 
-      const existingPost = (await store.list({ userId: authUser.id })).find(
-        (post) => post.id === postId && post.status === 'QUEUED'
-      );
+      const ownedPost = await store.findOwned({ postId, userId: authUser.id });
+      const existingPost = ownedPost?.status === 'QUEUED' ? ownedPost : undefined;
       if (!existingPost) {
         response.status(404).json({
           status: 'error',
@@ -1399,12 +1401,9 @@ export const registerPostRoutes = (
         throw error;
       }
 
-      const existingPost = (await store.list({ userId: authUser.id })).find(
-        (post) =>
-          post.id === postId &&
-          post.status === 'QUEUED' &&
-          post.scheduledAt !== undefined
-      );
+      const ownedPost = await store.findOwned({ postId, userId: authUser.id });
+      const existingPost =
+        ownedPost?.status === 'QUEUED' && ownedPost.scheduledAt !== undefined ? ownedPost : undefined;
       if (!existingPost) {
         response.status(404).json({
           status: 'error',

@@ -3,7 +3,7 @@ import { readEffectivePlatformCaption, type PlatformSettings } from './platformS
 
 export type PlatformCaptionIssue = {
   platform: Platform;
-  reason: 'YOUTUBE_DESCRIPTION_TOO_LONG' | 'YOUTUBE_DESCRIPTION_INVALID_CHARACTERS' | 'INSTAGRAM_CAPTION_TOO_LONG' | 'FACEBOOK_CAPTION_TOO_LONG';
+  reason: 'YOUTUBE_DESCRIPTION_TOO_LONG' | 'YOUTUBE_DESCRIPTION_INVALID_CHARACTERS' | 'INSTAGRAM_CAPTION_TOO_LONG' | 'FACEBOOK_CAPTION_TOO_LONG' | 'CAPTION_TOO_LONG';
   message: string;
   maxLength?: number;
   unit?: 'utf8_bytes' | 'utf16_units';
@@ -16,6 +16,22 @@ export class PlatformCaptionValidationError extends Error {
     this.name = 'PlatformCaptionValidationError';
   }
 }
+
+// Facebook's 63206 is the largest supported platform cap. Every newly stored
+// caption, including TikTok Inbox drafts and overridden shared captions, stays
+// below it. Admission-only: the publisher does not re-check already queued posts.
+const maxStoredCaptionLength = 63206;
+
+export const readCaptionStorageIssue = (
+  caption: string | undefined,
+  platforms: readonly Platform[],
+  platformSettings?: PlatformSettings | null
+): PlatformCaptionIssue | undefined => {
+  const platform = platforms[0];
+  const candidates = [caption, ...Object.values(platformSettings ?? {}).map((settings) => settings?.caption)];
+  if (!platform || !candidates.some((value) => (value?.length ?? 0) > maxStoredCaptionLength)) return undefined;
+  return { platform, reason: 'CAPTION_TOO_LONG', message: `Captions must not exceed ${maxStoredCaptionLength} characters. Shorten the caption before posting.`, maxLength: maxStoredCaptionLength, unit: 'utf16_units' };
+};
 
 export const readPlatformCaptionIssue = (
   caption: string | undefined,

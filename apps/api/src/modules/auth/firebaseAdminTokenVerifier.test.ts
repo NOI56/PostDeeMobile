@@ -14,6 +14,7 @@ describe('createFirebaseAdminTokenVerifier', () => {
       iss: 'https://securetoken.google.com/postdee-test',
       sub: 'firebase-user-1',
       email: 'seller@example.com',
+      email_verified: true,
       name: 'PostDee Seller',
       phone_number: '+66812345678'
     }));
@@ -88,5 +89,26 @@ describe('createFirebaseAdminTokenVerifier', () => {
 
     await expect(verifier.verifyIdToken('revoked-token')).rejects.toThrow('revoked');
     expect(verifyIdToken).toHaveBeenCalledTimes(1);
+  });
+
+  // User.email is globally unique; an unverified claim must not occupy it.
+  it('drops an email Firebase has not verified', async () => {
+    const verifier = createFirebaseAdminTokenVerifier({
+      verifyIdToken: vi.fn(async () => ({
+        uid: 'firebase-user-2',
+        aud: 'postdee-test',
+        auth_time: 1,
+        exp: 2,
+        firebase: { identities: {}, sign_in_provider: 'password' },
+        iat: 1,
+        iss: 'https://securetoken.google.com/postdee-test',
+        sub: 'firebase-user-2',
+        email: 'victim@example.test',
+        email_verified: false
+      })),
+      deleteUser: vi.fn()
+    });
+
+    await expect(verifier.verifyIdToken('unverified-token')).resolves.not.toHaveProperty('email');
   });
 });

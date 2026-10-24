@@ -106,6 +106,9 @@ export type ServerConfig = {
   openAiEditPlanModel: string;
   geminiEditPlanModel: string;
   aiEditUsageStore: AiEditUsageStoreKind;
+  // AI video editing was removed from the mobile product; its routes answer
+  // 410 unless this rollback switch is set.
+  aiEditingEnabled: boolean;
   mockUserId: string;
 };
 
@@ -626,6 +629,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     geminiEditPlanModel:
       readOptional(env, 'GEMINI_EDIT_PLAN_MODEL') ?? 'gemini-3.5-flash-lite',
     aiEditUsageStore: readAiEditUsageStore(env),
+    aiEditingEnabled: readBoolean(env, 'AI_EDITING_ENABLED', false),
     mockUserId: readOptional(env, 'MOCK_USER_ID') ?? 'local-dev-user'
   };
 

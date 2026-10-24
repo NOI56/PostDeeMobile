@@ -92,9 +92,26 @@ table. No new environment variable.
   of `prisma migrate diff` from the baseline schema.
 - Full: `npm run test`, `npm run typecheck`, `npm run build` (results in the
   pull request).
-- Not verified: the migration against a real PostgreSQL. The repository's
-  real-database fixture (loopback port 55441) was not available, and the local
-  development database was deliberately not used.
+- Real PostgreSQL, checked after merge (2026-10-25):
+  - Setup: a throwaway PostgreSQL 18.1 fixture cluster on loopback port 55441
+    (`postdee_addon_test`), created in a temporary folder. The local
+    development database was not touched.
+  - Migrations: all 23, including `20261024120000_link_in_bio_slug_reservations`,
+    applied from main `7fca508e` with no drift (`prisma migrate diff
+    --exit-code`). The add-on real-database suites passed (7 tests).
+  - New `linkInBioSlugReservation.database.test.ts`, 3 tests:
+    - A rename reserves the old slug, which is released after 30 days.
+    - Account deletion keeps an ownerless reservation.
+    - Over 15 rounds of one owner renaming while another claims the old slug at
+      the same time, the claim never succeeds.
+  - Mutation check: with the "current holder" read removed, the race test fails
+    because the other owner took the slug mid-rename. The holder-first read is
+    therefore needed, and the test detects its loss. With the shipped code
+    restored, 3/3 pass.
+  - Clean-up: no fixture rows were left, and the cluster was stopped and
+    deleted.
+  - The test is skipped unless `POSTDEE_TEST_DATABASE_URL` points at that exact
+    fixture.
 
 ## Residual risk and owner decisions
 

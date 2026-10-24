@@ -6,6 +6,10 @@ import type { AuthUser, FirebaseTokenVerifier } from './authTypes.js';
 const FIREBASE_CERTIFICATES_URL =
   'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 const DEFAULT_CERTIFICATE_CACHE_MS = 300_000;
+// A failed refresh is reused briefly so an outage or a burst of unsigned tokens
+// cannot turn every request into another outbound certificate fetch.
+const CERTIFICATE_FAILURE_CACHE_MS = 5_000;
+const CERTIFICATE_FETCH_TIMEOUT_MS = 5_000;
 const MAX_SUBJECT_LENGTH = 128;
 
 export type FirebaseCertificatesResponse = {
@@ -28,6 +32,7 @@ type JwtHeader = {
 type FirebaseTokenPayload = {
   aud?: unknown;
   email?: unknown;
+  email_verified?: unknown;
   exp?: unknown;
   iat?: unknown;
   iss?: unknown;
@@ -139,6 +144,25 @@ export const createFirebaseTokenVerifier = ({
         expiresAt: number;
       }
     | undefined;
+  let refreshFailure: { error: unknown; retryAt: number } | undefined;
+  let refreshInFlight: Promise<Record<string, string>> | undefined;
+
+  const refreshCertificates = async () => {
+    try {
+      const { certificates, cacheMilliseconds } = await readCertificates(fetchCertificates);
+      certificateCache = {
+        certificates,
+        expiresAt: Date.now() + cacheMilliseconds
+      };
+      refreshFailure = undefined;
+      return certificates;
+    } catch (error) {
+      refreshFailure = { error, retryAt: Date.now() + CERTIFICATE_FAILURE_CACHE_MS };
+      throw error;
+    } finally {
+      refreshInFlight = undefined;
+    }
+  };
 
   const loadCertificates = async () => {
     const now = Date.now();
@@ -147,13 +171,13 @@ export const createFirebaseTokenVerifier = ({
       return certificateCache.certificates;
     }
 
-    const { certificates, cacheMilliseconds } = await readCertificates(fetchCertificates);
-    certificateCache = {
-      certificates,
-      expiresAt: now + cacheMilliseconds
-    };
+    if (refreshFailure && refreshFailure.retryAt > now) {
+      throw refreshFailure.error;
+    }
 
-    return certificates;
+    // Concurrent cold or expired-cache verifications share one fetch.
+    refreshInFlight ??= refreshCertificates();
+    return refreshInFlight;
   };
 
   return {
@@ -196,7 +220,12 @@ export const createFirebaseTokenVerifier = ({
         provider: 'firebase'
       };
 
-      if (typeof payload.email === 'string' && payload.email.length > 0) {
+      // User.email is unique, so only a Firebase-verified address is stored.
+      if (
+        typeof payload.email === 'string' &&
+        payload.email.length > 0 &&
+        payload.email_verified === true
+      ) {
         authUser.email = payload.email;
       }
 
@@ -232,7 +261,10 @@ export const createFirebaseTokenVerifierFromConfig = ({
   const configuredFetch =
     fetchCertificates ??
     (typeof globalThis.fetch === 'function'
-      ? ((url: string) => globalThis.fetch(url) as Promise<FirebaseCertificatesResponse>)
+      ? ((url: string) =>
+          globalThis.fetch(url, {
+            signal: AbortSignal.timeout(CERTIFICATE_FETCH_TIMEOUT_MS)
+          }) as Promise<FirebaseCertificatesResponse>)
       : undefined);
 
   if (!configuredFetch) {

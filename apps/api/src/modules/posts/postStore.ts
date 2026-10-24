@@ -158,7 +158,8 @@ export type PostStore = {
   // Internal startup recovery reads ids and platforms, never private content.
   listPublishing: () => Promise<Array<Pick<QueuedPost, 'id' | 'platforms'>>>;
   finalizeInterruptedPublish: (input: FinalizeInterruptedPublishInput) => Promise<boolean>;
-  list: (filter?: { userId?: string; scheduledOnly?: boolean }) => Promise<QueuedPost[]>;
+  // With limit, returns at most that many of the newest posts (createdAt desc).
+  list: (filter?: { userId?: string; scheduledOnly?: boolean; limit?: number }) => Promise<QueuedPost[]>;
   // Direct owner-scoped reads must not scan or return another owner's history.
   findOwned: (input: { postId: string; userId: string }) => Promise<QueuedPost | undefined>;
   // Global aggregate only: used by the opt-in real-publisher activation guard.
@@ -260,17 +261,25 @@ export const createPostStore = ({
       if (publishedAt) post.publishedAt = publishedAt;
       return true;
     },
-    list: async (filter) =>
-      posts
+    list: async (filter) => {
+      const matching = posts
         .filter((post) => (filter?.userId ? post.userId === filter.userId : true))
-        .filter((post) => (filter?.scheduledOnly ? post.scheduledAt !== undefined : true))
-        .sort((left, right) => {
-          if (!filter?.scheduledOnly) {
-            return 0;
-          }
+        .filter((post) => (filter?.scheduledOnly ? post.scheduledAt !== undefined : true));
 
-          return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
-        }),
+      if (filter?.limit !== undefined) {
+        return matching
+          .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+          .slice(0, filter.limit);
+      }
+
+      return matching.sort((left, right) => {
+        if (!filter?.scheduledOnly) {
+          return 0;
+        }
+
+        return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
+      });
+    },
     findOwned: async ({ postId, userId }) => posts.find((post) => post.id === postId && post.userId === userId),
     countPublishBacklog: async () =>
       posts.filter(

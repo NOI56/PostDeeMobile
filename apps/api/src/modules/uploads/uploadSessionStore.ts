@@ -36,7 +36,18 @@ export type UploadSessionConflictCode =
   | 'ACCOUNT_DELETION_IN_PROGRESS'
   | 'UPLOAD_COMPLETION_IN_PROGRESS'
   | 'UPLOAD_SESSION_EXPIRED'
+  | 'UPLOAD_SESSION_LIMIT_REACHED'
   | 'UPLOAD_SESSION_NOT_ACTIVE';
+
+// Unexpired UPLOADING sessions one owner may hold at once. The app uploads one
+// video plus a few frames per post, so this only stops abandoned-session floods.
+export const maxOpenUploadSessionsPerOwner = 10;
+
+export const uploadSessionLimitError = () =>
+  new UploadSessionConflictError(
+    'UPLOAD_SESSION_LIMIT_REACHED',
+    'Too many uploads are in progress. Finish or wait for them to expire, then try again.'
+  );
 
 export class UploadSessionConflictError extends Error {
   constructor(
@@ -174,6 +185,14 @@ export const createInMemoryUploadSessionStore = ({
       assertOwnerActive(owners, input.ownerId);
 
       const timestamp = now();
+      const openSessions = [...sessions.values()].filter((session) =>
+        session.ownerId === input.ownerId &&
+        session.status === 'UPLOADING' &&
+        Date.parse(session.expiresAt) > Date.parse(timestamp)
+      );
+      if (openSessions.length >= maxOpenUploadSessionsPerOwner) {
+        throw uploadSessionLimitError();
+      }
       const session: UploadSession = {
         ...input,
         status: 'UPLOADING',

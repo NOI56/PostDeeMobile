@@ -69,6 +69,10 @@ type UploadSessionDelegate = {
       status: { in: UploadSessionStatus[] };
     };
     orderBy: { createdAt: 'asc' };
+  } | {
+    where: { status: 'UPLOADING'; expiresAt: { lte: Date } };
+    orderBy: { expiresAt: 'asc' };
+    take: number;
   }) => Promise<PrismaUploadSession[]>;
   update: (args: {
     where: { id: string };
@@ -78,6 +82,10 @@ type UploadSessionDelegate = {
       completedAt?: Date;
     };
   }) => Promise<PrismaUploadSession>;
+  updateMany: (args: {
+    where: { id: string; status: 'UPLOADING'; expiresAt: { lte: Date } };
+    data: { status: 'ABORTED'; operationStartedAt: null };
+  }) => Promise<{ count: number }>;
   deleteMany: (args: { where: { ownerId: string } }) => Promise<{ count: number }>;
   count: (args: {
     where: { ownerId: string; status: 'UPLOADING'; expiresAt: { gt: Date } };
@@ -449,6 +457,22 @@ export const createPrismaUploadSessionRepository = ({
           data: { status: 'DELETED' }
         });
       }
-    }))
+    })),
+  // Uses the existing (expiresAt, status) index.
+  listExpiredUploading: async ({ expiredBefore, limit }) =>
+    (
+      await prisma.managedUploadSession.findMany({
+        where: { status: 'UPLOADING', expiresAt: { lte: new Date(expiredBefore) } },
+        orderBy: { expiresAt: 'asc' },
+        take: limit
+      })
+    ).map(mapSession),
+  retireExpired: async ({ id, expiredBefore }) =>
+    (
+      await prisma.managedUploadSession.updateMany({
+        where: { id, status: 'UPLOADING', expiresAt: { lte: new Date(expiredBefore) } },
+        data: { status: 'ABORTED', operationStartedAt: null }
+      })
+    ).count === 1
   };
 };

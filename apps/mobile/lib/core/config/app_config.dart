@@ -12,6 +12,9 @@ class AppConfig {
     defaultValue: 'http://localhost:4000',
   );
 
+  /// True only in release (product-mode) builds.
+  static const isReleaseBuild = bool.fromEnvironment('dart.vm.product');
+
   static const sentryDsn = String.fromEnvironment('SENTRY_DSN');
   static const sentryEnvironment = String.fromEnvironment(
     'SENTRY_ENVIRONMENT', defaultValue: 'development',

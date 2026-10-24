@@ -30,8 +30,8 @@ checks the actual outgoing file; YouTube/Instagram/Facebook block unknown requir
 metadata, and TikTok retains its existing preparation and Direct validation.
 Owner-bound cached receipts and accepted-request recovery remain intact. There
 is no backend, schema or feature-flag change. Source requirements were reviewed
-on 2026-10-25; Mobile automated tests and analysis pass. APK build, device
-delivery and real-account PostPeer E2E remain unverified. See the
+on 2026-10-25; Mobile tests, analysis and Staging APK12052 build/package/signature
+checks pass. Installation, runtime and real-account PostPeer E2E remain unverified. See the
 [duration contract and sources](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate).
 
 ## Facebook Page Reels contract (2026-10-24)

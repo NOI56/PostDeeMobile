@@ -23,8 +23,8 @@ before starting again; do not silently render, reupload or resend it.
 Owner/account freshness, manual consent, cached receipt/fingerprint binding,
 accepted-request recovery before new guards and original request IDs remain
 unchanged. Existing accepted schedules are not reinterpreted by this UI change.
-No backend/schema/flag change is introduced. Mobile tests and analysis pass;
-APK build and device delivery remain unverified. The
+No backend/schema/flag change is introduced. Mobile tests, analysis and Staging
+APK12052 build/package/signature checks pass; installation/runtime remain unverified. The
 [2026-10-25 source review](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate)
 does not prove real-account PostPeer delivery.
 

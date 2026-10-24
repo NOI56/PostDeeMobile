@@ -21,9 +21,9 @@ the stale original checkout and unrelated user work are not reset or included.
 ## Per-channel duration alerts — 2026-10-25 local candidate
 
 The follow-up starts from fresh `main` `f29c701e93ce24f76aee58a36f726b8fcbc126d1`
-on `codex/clip-duration-alerts`. Its Mobile automated verification passes as
-recorded below; APK/device delivery remains pending. Older verification/delivery
-records later in this file describe earlier work.
+on `codex/clip-duration-alerts`. Mobile verification and the exact Staging APK12052
+build/package/signature checks pass as recorded below. Installation/runtime remain
+unverified. Older verification/delivery records later in this file describe earlier work.
 
 Warn as soon as source duration is available after video pick, prefill or draft
 restore. Each connected channel row shows its own duration problem. Disable
@@ -74,9 +74,31 @@ prefill, stale creator responses and retained receipt/recovery behavior.
 - Whole-project Flutter analysis reports no issues.
 - Both checked SDK locations resolve to Flutter **3.44.1**, revision
   `924134a44`, with Dart **3.12.1**.
-- APK build, installation, native device acceptance and real-account provider
-  publication are not verified by these automated checks. No live PostPeer post
-  or E2E success is claimed.
+- Installation, native device acceptance and real-account provider publication
+  are not verified by these automated checks. No live PostPeer post or E2E
+  success is claimed.
+
+### Exact Staging APK build receipt — 2026-10-25
+
+- Frozen source commit: `56408cf0bc8698f7e8a3498fef92af8990ba3d5d` on
+  `codex/clip-duration-alerts`. The following documentation receipt is separate
+  from the compiled source.
+- The Staging helper completed `build-apk --no-pub --build-number 12052` in
+  **193.8 seconds**, using Flutter **3.44.1**. The checked-in Staging example
+  supplies the Staging API, Firebase authentication enabled and mock auth
+  disabled. The existing Test Store overlay was validated without printing keys.
+- `aapt` confirms package `com.postdee.postdee_mobile.staging`, versionCode
+  **12052**, versionName **0.1.0-staging**, min SDK **24**, target SDK **36** and
+  launcher `MainActivity`.
+- `apksigner` verification exits **0**. Certificate SHA-256:
+  `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+- Artifact: `C:/Users/stopp/.codex/worktrees/clip-duration-alerts/PostDeeMobile/apps/mobile/build/app/outputs/flutter-apk/app-debug.apk`.
+  Size: **292,795,012 bytes**. APK SHA-256:
+  `6B132D6881DF631E9BC68033AF530CCE6A2413B54B5F31763F0E6E22FC1B2FAA`.
+- This verifies build identity, package metadata and signature only. The APK has
+  not been installed or exercised on a device for this feature. Native runtime,
+  live PostPeer publishing and provider E2E remain unverified; no real social
+  post was submitted.
 
 ## Caption contract
 

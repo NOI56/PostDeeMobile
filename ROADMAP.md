@@ -15,7 +15,8 @@ Build roadmap for PostDee.
 - Unknown source duration is not a pass. Preserve actual outgoing-file checks,
   TikTok preparation/consent, cached receipts, accepted recovery, owner scope,
   quotas and already accepted schedules. No backend/schema/flag change.
-- Mobile automated tests and analysis pass; APK/device delivery is still pending.
+- Mobile tests, analysis and Staging APK12052 build/package/signature checks pass;
+  installation, runtime and provider E2E remain unverified.
   Source review dated 2026-10-25 is not real-account publishing evidence. See the
   [contract and source record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate).
 

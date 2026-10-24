@@ -20,7 +20,8 @@ validation and TikTok preparation/Direct guards remain required.
 No request field, backend route, schema, migration, quota or feature flag changes.
 Accepted idempotent recovery remains before new submission guards; cached receipts
 and original request IDs are retained. No already queued schedule is rewritten.
-Mobile automated tests and analysis pass; APK/device delivery is still pending.
+Mobile tests, analysis and Staging APK12052 build/package/signature checks pass;
+installation and native runtime are still unverified.
 Primary source review on 2026-10-25 is recorded in the [preflight plan](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate);
 real-account PostPeer publication remains unverified.
 

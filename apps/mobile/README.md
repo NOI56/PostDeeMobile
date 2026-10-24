@@ -18,8 +18,8 @@ validation, including existing consent and account freshness requirements.
 Retain cached receipts, local drafts and accepted-request recovery without
 reuploading or resending uncertain work. No API/schema/flag change is needed.
 
-Mobile automated tests and analysis pass; APK build/device delivery is still
-pending. See the
+Mobile tests, analysis and Staging APK12052 build/package/signature checks pass;
+installation and native runtime remain unverified. See the
 [2026-10-25 source review and contract](../../docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate);
 no real-account PostPeer publication is claimed.
 

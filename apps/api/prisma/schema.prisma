@@ -156,6 +156,18 @@ model LinkInBioProfile {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// A Link in Bio slug released by a rename or account deletion. Other owners
+// cannot claim it until reservedUntil; the previous owner (ownerId) may. There
+// is no User relation: deleting the account nulls ownerId and keeps the row.
+model LinkInBioSlugReservation {
+  slug          String   @id
+  ownerId       String?
+  releasedAt    DateTime
+  reservedUntil DateTime
+
+  @@index([ownerId, releasedAt])
+}
+
 model LinkInBioImage {
   id         String   @id
   userId     String

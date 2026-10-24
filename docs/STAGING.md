@@ -447,7 +447,10 @@ Workflow `ci.yml` มี input `build_staging_apk` ค่าเริ่มต�
 build ยังรัน checks เดิมก่อน ใช้ `staging_build_number` ระบุ version code
 เพื่ออัปเดตแอปเดิมได้ โดยรับจำนวนเต็ม 1–2100000000 เท่านั้น; ค่าว่างใช้ค่า
 จาก pubspec ตามเดิม ค่า input ผ่าน environment และ quoted shell array
-โดยไม่แทรกลง shell command โดยตรง
+โดยไม่แทรกลง shell command โดยตรง ตั้งแต่ 2026-10-24 (security Batch 6)
+`apk_source_ref` ต้องเป็น commit ที่อยู่บน branch ของ repository นี้ (workflow
+fetch ทุก branch แล้วตรวจด้วย `git for-each-ref --contains HEAD refs/remotes/origin`)
+ref ของ pull request จาก fork จะถูกปฏิเสธก่อนรัน checks
 
 ตัวเลือก `staging_test_store_billing` ค่าเริ่มต้น `false` คง APK ที่ปิด billing
 ไว้ตามเดิม เปิดได้เฉพาะ manual dispatch ที่เปิด `build_staging_apk` ด้วย

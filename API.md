@@ -933,7 +933,17 @@ and `publicPath` (`/p/<slug>` only when published, otherwise null). It does not
 include the owner's email or tokens. The client resolves `publicPath` against
 its configured API origin. A changed slug makes the old URL unavailable.
 
-Slug conflicts return HTTP 409 with `LINK_IN_BIO_SLUG_TAKEN`. Invalid payloads
+Slug conflicts return HTTP 409 with `LINK_IN_BIO_SLUG_TAKEN`. Since 2026-10-24
+the same response also covers:
+- A slug another owner released less than 30 days ago, by renaming or deleting
+  their account. The previous owner may take back a slug they renamed away
+  from; after account deletion nobody may claim it until the 30 days end. Each
+  owner keeps at most their 3 most recent released slugs reserved.
+- A reserved name for a new claim: `admin`, `support`, `help`, `api`,
+  `official`, `www` and similar, or any slug containing `postdee`. An owner who
+  already holds such a slug may keep republishing it.
+
+Unpublishing still keeps the slug held by its owner. Invalid payloads
 return 400. An unavailable durable repository returns 503 with
 `LINK_IN_BIO_UNAVAILABLE`; it never silently falls back to in-memory publication.
 Owner/public responses disable caching. Unpublishing or deleting an account
@@ -1517,8 +1527,9 @@ Validation:
 - A managed multipart session is refused with `409` and
   `code: "UPLOAD_SESSION_LIMIT_REACHED"` when the owner already holds 10
   unexpired `UPLOADING` sessions; the provider upload created for that request
-  is aborted. Expired sessions do not count. No sweeper retires expired
-  session rows or aborts their R2 uploads yet; account deletion still does.
+  is aborted. Expired sessions do not count, and the scheduler's expired-session
+  sweep (see `DELETE /uploads/:uploadId`) aborts their R2 uploads and retires
+  them to `ABORTED`.
 - `sizeBytes` must be positive and no larger than `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
 - For generic uploads, provided `width` and `height` must describe vertical
   9:16 media within a 2 percent tolerance.
@@ -1642,6 +1653,16 @@ its drain window, and aborts persisted and R2 orphan multipart uploads before
 sweeping the owner's stored objects. Completion and abort state changes use
 compare-and-set rules so neither terminal result can overwrite the other.
 
+Since 2026-10-24 the in-process scheduler also retires abandoned sessions. Every
+10 minutes it takes up to 25 `UPLOADING` sessions (any owner, oldest first)
+whose `sessionExpiresAt` passed more than five minutes ago, aborts each R2
+multipart upload, and then moves the session to `ABORTED` with a compare-and-set
+update. `GET /uploads/:uploadId` then reports `sessionStatus: "ABORTED"`. Part
+and complete calls already returned `410 UPLOAD_SESSION_EXPIRED` after expiry, so
+no live upload changes behavior. A failed R2 abort leaves the session
+`UPLOADING` for the next sweep. Session rows are kept, not deleted, so
+`videoS3Key` lookups keep their meaning.
+
 Legacy signed `PUT` remains available during `legacy`/`dual` rollout and still
 has a replay window until strict `multipart` mode is enabled for all clients.
 
@@ -1758,6 +1779,25 @@ not sign media URLs. Optional query parameters:
 | `scheduled=true` | Retain the existing scheduled-post filter |
 | `includeMedia=true` | Add available signed preview URLs for this owner's objects only |
 | `limit=<positive integer>` | Return newest-created posts first, capped at 50; invalid, zero, fractional, duplicate or unsafe-integer values return `400 INVALID_POST_LIMIT` |
+| `pageSize=<1-100>` | Since 2026-10-24: return one cursor page, newest created first (`createdAt` desc, then `id` desc), and add `nextCursor` |
+| `cursor=<nextCursor>` | Continue after the page that returned this cursor; `pageSize` defaults to 50 when omitted |
+
+Cursor pages (2026-10-24) let Calendar read history in bounded requests. A
+paged response adds `"nextCursor": "<opaque string>"`, or `null` on the last
+page. Clients pass the value back unchanged and must not parse it. Each page is
+one owner-scoped keyset query of at most `pageSize + 1` rows on the
+`(userId, createdAt)` index, so a forged cursor can only move within the
+caller's own posts. Posts created after the first page do not shift later
+pages. `scheduled=true` combines with paging. A `pageSize` outside 1-100, a
+cursor not issued by the API, or paging combined with `limit` or
+`includeMedia` returns `400 INVALID_POST_PAGE`.
+
+Plain `GET /posts` without `pageSize`/`cursor` is unchanged: it still returns
+the complete history with no `nextCursor`, so installed apps keep working. A new
+app talking to an older API gets the complete list (the old API ignores the
+unknown parameters and returns no `nextCursor`), which the app treats as the
+last page. The legacy unbounded list can be capped once every supported app
+version pages.
 
 Media opt-in without a limit defaults to 50 posts. Home requests
 `includeMedia=true&limit=3`. A valid owned cover produces optional
@@ -1766,12 +1806,12 @@ The API uses the existing storage adapter's signed download access, accepts
 safe HTTP(S) URLs, and bounds each signing attempt to 1.5 seconds. A missing,
 unsafe or failed URL is omitted while retaining the post. A successful cover
 does not also sign the clip. Neither query grants access to another owner's
-keys. These previews do not add cursor pagination to the legacy full history.
+keys. These previews do not add cursor pagination; use `pageSize`/`cursor`.
 Since 2026-10-24 (security Batch 5) limited and media requests ask the store for
 only that many newest posts (`take` in Postgres) instead of reading the whole
-history first. Plain `GET /posts`, used by Calendar, still returns the full
-history until the app supports pagination. The Prisma post store refuses a list
-without a `userId`.
+history first. Plain `GET /posts` still returns the full history for installed
+apps; Calendar in new app builds uses the cursor pages above. The Prisma post
+store refuses a list without a `userId`.
 
 Response:
 

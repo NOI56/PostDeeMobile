@@ -37,6 +37,7 @@ import {
 } from './postStore.js';
 import { normalizePersistedPlatformSettings, readEffectivePlatformCaption, readPlatformSettings, type PlatformSettings } from './platformSettings.js';
 import { readCaptionStorageIssue, readPlatformCaptionIssue } from './platformCaptionValidation.js';
+import { encodePostPageCursor, readPostPageRequest } from './postPageCursor.js';
 import {
   buildTikTokConnectionRevision,
   isExplicitTikTokDirectSettings,
@@ -482,12 +483,33 @@ export const registerPostRoutes = (
       });
       return;
     }
+    // Opt-in cursor pages (pageSize/cursor) for Calendar. Without them the
+    // legacy complete list below is unchanged for installed apps.
+    const pageRequest = readPostPageRequest(request.query);
+    if (pageRequest === 'invalid' ||
+      (pageRequest && (includeMedia || rawLimit !== undefined))) {
+      response.status(400).json({
+        status: 'error',
+        code: 'INVALID_POST_PAGE',
+        message: 'pageSize must be 1-100, cursor must come from a previous page, and neither combines with limit or includeMedia'
+      });
+      return;
+    }
 
     response.setHeader('Cache-Control', 'private, no-store');
+    const scheduledOnly = request.query.scheduled === 'true';
     const isLimitedList = includeMedia || parsedLimit !== undefined;
-    let posts = (await store.list({
+    const postPage = pageRequest
+      ? await store.listPage({
+          userId: authUser.id,
+          scheduledOnly,
+          limit: pageRequest.pageSize,
+          ...(pageRequest.after ? { after: pageRequest.after } : {})
+        })
+      : undefined;
+    let posts = (postPage?.posts ?? await store.list({
       userId: authUser.id,
-      scheduledOnly: request.query.scheduled === 'true',
+      scheduledOnly,
       ...(isLimitedList ? { limit: Math.min(parsedLimit ?? 50, 50) } : {})
     })).filter((post) => post.userId === authUser.id);
     // Bound the optional preview work before signing any private objects.
@@ -530,7 +552,8 @@ export const registerPostRoutes = (
     }));
     response.json({
       status: 'ok',
-      posts: publicPosts
+      posts: publicPosts,
+      ...(postPage ? { nextCursor: postPage.next ? encodePostPageCursor(postPage.next) : null } : {})
     });
   });
 

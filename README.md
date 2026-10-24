@@ -154,6 +154,25 @@ style-cancel evidence remains recorded separately. No AI credit was spent or
 post published. The current API supports this UI without a redeploy. See the
 [compact-panel record](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
+## Mobile and CI hardening (2026-10-24, security Batch 6)
+
+- **Android:** backup and device-to-device transfer of app data are off
+  (`allowBackup="false"` plus data extraction rules), so a signed-in Firebase
+  session does not move to another device. The unused `postdee://billing`
+  deep link is removed.
+- **iOS:** the CI IPA now passes the production `API_BASE_URL`. A release
+  build with Firebase sign-in refuses any non-HTTPS API base URL before
+  sending a request (`INSECURE_API_BASE_URL`).
+- **AI captions:** frame extraction passes FFmpeg arguments as a list.
+- **Workflows:**
+  - read-only `contents: read` token;
+  - checkouts without persisted credentials;
+  - actions pinned by commit SHA;
+  - a manual `apk_source_ref` must be a commit on a branch of this
+    repository.
+
+See [`2026-10-24-mobile-ci-security-batch6.md`](docs/superpowers/plans/2026-10-24-mobile-ci-security-batch6.md).
+
 ## Choose AI caption channels (2026-10-23, Staging Live)
 
 Advanced mode keeps all four manual caption editors, but AI generation starts
@@ -283,6 +302,18 @@ checked-in example with billing disabled/enabled. That CI-only validator change
 does not change runtime code; the later API sanitizer fix changes no Mobile
 source or APK12041. iOS compilation uses Sentry disabled and does
 not establish iOS monitoring runtime acceptance.
+
+## Calendar history pages (2026-10-24, security follow-up)
+
+Calendar no longer asks the API for the complete post history in one response.
+The app reads `GET /posts?pageSize=100` pages, newest created first, following
+`nextCursor`. It stops after the page that reaches 31 days before the oldest
+month or week the user has viewed, at the last page, or after 20 pages.
+Browsing to an earlier period loads further back. Plain `GET /posts` is
+unchanged for installed apps, and a new app works with an older API, which
+returns everything at once. No schema change or migration. Deploy the API
+before shipping the app build, although either order works. See
+[`2026-10-24-calendar-post-pagination.md`](docs/superpowers/plans/2026-10-24-calendar-post-pagination.md).
 
 ## Calendar selected covers (2026-10-21)
 
@@ -1083,7 +1114,13 @@ accept only image frame keys, cap frames at 5 MiB, and return
 Each authenticated account can publish one profile page with up to 20 enabled
 custom links on every package. The page is hosted by the existing PostDee API at
 `/p/<slug>`; the app resolves the URL against its configured API domain. No
-`postdee.link` domain or third-party statistics subscription is assumed. Public
+`postdee.link` domain or third-party statistics subscription is assumed.
+Since 2026-10-24 a slug left by a rename or account deletion stays reserved for
+30 days, so another seller cannot take over an old shared link. Only the
+previous owner can reclaim it, and only after a rename. Brand and system names
+(any slug containing `postdee`, `admin`, `support` and similar) cannot be
+newly claimed. The app shows its existing "name already used" message. See
+[`2026-10-24-link-in-bio-slug-reservation.md`](docs/superpowers/plans/2026-10-24-link-in-bio-slug-reservation.md). Public
 pages show the store information, images, and links the owner explicitly publishes.
 Draft edits remain private until Publish/Update is pressed. Publishing, copying
 the confirmed URL, opening the page, and unpublishing are supported. Scheduled
@@ -1897,6 +1934,12 @@ changing the clip or cover conflicts with an already accepted request and keeps
 the draft. Pre-upgrade uncertain drafts without upload receipts cannot infer
 the old media safely; check the existing post before explicitly starting anew.
 Interrupted pre-submit uploads still need a verified R2 lifecycle rule.
+Since 2026-10-24 the scheduler retires unfinished managed multipart sessions:
+every 10 minutes it aborts the R2 upload of up to 25 sessions that expired more
+than five minutes ago and marks them `ABORTED`. Completed objects that never
+reached a post, and R2 multipart uploads with no session row, still rely on
+that lifecycle rule. See
+[`2026-10-24-upload-session-sweeper.md`](docs/superpowers/plans/2026-10-24-upload-session-sweeper.md).
 
 Mobile bounds each ordinary JSON request to 20 seconds from authentication
 refresh through connection and response-body completion. AI transcription,
@@ -2707,6 +2750,10 @@ Queue/storage scaffold switches:
   schedules are therefore included. A non-zero total or inspection error blocks startup
   without loading post/user/media details. Staging enables this guard; its
   default is `false`, and the Production Blueprint is unchanged.
+- Each memory-scheduler poll reads at most 50 due posts (all owners combined)
+  with only the fields needed to publish; a larger backlog drains over later
+  polls. See
+  [`2026-10-24-due-post-read-bound.md`](docs/superpowers/plans/2026-10-24-due-post-read-bound.md).
 - API startup reads server configuration once and passes that same object to the
   app and scheduler diagnostics. It logs only the non-secret social mode,
   publisher name, and whether the empty-backlog guard is enforced. When that

@@ -3,6 +3,7 @@ import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 
 import { countCurrentMonthPostUnits } from './postUsage.js';
+import type { PostPageCursor } from './postPageCursor.js';
 import {
   arePlatformSettingsEqual,
   type PlatformSettings
@@ -48,6 +49,14 @@ export type QueuedPost = {
   // Internal allocation, fixed when accepted; never reallocated after a plan change.
   addonPostUnits?: number;
 };
+
+// Fields the publish scheduler needs from a due post. It never reads the
+// media fingerprint or the add-on allocation.
+export type DuePost = Omit<QueuedPost, 'mediaContentFingerprint' | 'addonPostUnits'>;
+
+// One scheduler poll reads at most this many due posts. The rest wait for the
+// next poll, so a large backlog never loads every owner's rows at once.
+export const maxDuePostsPerPoll = 50;
 
 export type CreatePostInput = {
   userId: string;
@@ -152,6 +161,14 @@ export type PostStore = {
   finalizeInterruptedPublish: (input: FinalizeInterruptedPublishInput) => Promise<boolean>;
   // With limit, returns at most that many of the newest posts (createdAt desc).
   list: (filter?: { userId?: string; scheduledOnly?: boolean; limit?: number }) => Promise<QueuedPost[]>;
+  // Keyset page of one owner's posts, newest created first (createdAt desc,
+  // id desc). `next` is present only when another page exists.
+  listPage: (input: {
+    userId: string;
+    scheduledOnly?: boolean;
+    limit: number;
+    after?: PostPageCursor;
+  }) => Promise<{ posts: QueuedPost[]; next?: PostPageCursor }>;
   // Direct owner-scoped reads must not scan or return another owner's history.
   findOwned: (input: { postId: string; userId: string }) => Promise<QueuedPost | undefined>;
   // Global aggregate only: used by the opt-in real-publisher activation guard.
@@ -167,8 +184,9 @@ export type PostStore = {
     input: CreatePostWithinMonthlyLimitInput
   ) => Promise<CreatePostWithinMonthlyLimitResult>;
   // Posts whose time has come: QUEUED with no schedule (post now) or scheduledAt
-  // at/before `now`. Used by the publish scheduler.
-  listDue: (input: { now: string }) => Promise<QueuedPost[]>;
+  // at/before `now`. Used by the publish scheduler; returns at most `limit`
+  // (default maxDuePostsPerPoll) posts per call.
+  listDue: (input: { now: string; limit?: number }) => Promise<DuePost[]>;
   // Atomically moves a still-queued post into PUBLISHING before calling an
   // external publisher. Returns false for missing, already-running, or finished posts.
   claimForPublish: (input: ClaimPostForPublishInput) => Promise<boolean>;
@@ -271,6 +289,25 @@ export const createPostStore = ({
         return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
       });
     },
+    listPage: async ({ userId, scheduledOnly = false, limit, after }) => {
+      const afterTime = after ? Date.parse(after.createdAt) : undefined;
+      const ordered = posts
+        .filter((post) => post.userId === userId && (!scheduledOnly || post.scheduledAt !== undefined))
+        .sort((left, right) =>
+          Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+          (right.id < left.id ? -1 : right.id > left.id ? 1 : 0))
+        .filter((post) => {
+          if (!after || afterTime === undefined) return true;
+          const time = Date.parse(post.createdAt);
+          return time < afterTime || (time === afterTime && post.id < after.id);
+        });
+      const page = ordered.slice(0, limit);
+      const last = page.at(-1);
+      return {
+        posts: page,
+        ...(ordered.length > limit && last ? { next: { createdAt: last.createdAt, id: last.id } } : {})
+      };
+    },
     findOwned: async ({ postId, userId }) => posts.find((post) => post.id === postId && post.userId === userId),
     countPublishBacklog: async () =>
       posts.filter(
@@ -325,12 +362,14 @@ export const createPostStore = ({
         created: true
       };
     }),
-    listDue: async ({ now }) =>
-      posts.filter(
-        (post) =>
-          post.status === 'QUEUED' &&
-          (post.scheduledAt === undefined || post.scheduledAt <= now)
-      ),
+    listDue: async ({ now, limit = maxDuePostsPerPoll }) =>
+      posts
+        .filter(
+          (post) =>
+            post.status === 'QUEUED' &&
+            (post.scheduledAt === undefined || post.scheduledAt <= now)
+        )
+        .slice(0, limit),
     claimForPublish: async ({ postId, expectedRunAt }) => {
       const post = posts.find((candidate) => candidate.id === postId);
 

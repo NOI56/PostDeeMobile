@@ -78,10 +78,9 @@ and `ABORTED` was already a documented status.
 ## Docs
 
 `API.md` (`DELETE /uploads/:uploadId` section), `ARCHITECTURE.md` (upload
-rules list), `README.md` (interrupted-upload paragraph). When this merges after
-Batch 5, remove Batch 5's sentences "No sweeper retires expired session rows or
-aborts their R2 uploads yet" (`API.md`) and "Still open: a sweeper ..."
-(`ARCHITECTURE.md`).
+rules list), `README.md` (interrupted-upload paragraph). Batch 5 merged to
+`main` while this branch was open. Its "no sweeper yet" notes in `API.md` and
+`ARCHITECTURE.md` were updated in the merge commit.
 
 ## Verification
 

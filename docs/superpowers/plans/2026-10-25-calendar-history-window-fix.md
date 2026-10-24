@@ -60,6 +60,20 @@ the updated `calendar_history_window_test.dart` did not run in that commit. It
 expects the window start (1 October, then 1 September) instead of the old
 31-day margin, and a reload after the week→month switch.
 
+## Round 2 after the Codex re-review (2026-10-25)
+
+The re-review rated this PR "partly fixed".
+- Regression: the first window started at the month's first day. The default
+  week view can start in the previous month. Opening on 1 October 2026 shows
+  28 September to 4 October, but the app asked for posts active since
+  1 October, so a post published on 30 September was missing, even after a
+  refresh.
+- Fix: `_initialHistoryStart` uses the earlier of the month start and the
+  current week's Monday, both at first load and after an owner change.
+- Before fix: the new test "the first load covers a week that starts in the
+  previous month" was pushed alone as commit `b3ed5e40` for the CI before-fix
+  run. It expects 28 September and the old code asked for 1 October.
+
 ## Verification
 
 See the pull request: the full API suite, typecheck, build, and CI Flutter

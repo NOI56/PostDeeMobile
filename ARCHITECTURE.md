@@ -2260,6 +2260,9 @@ Rules:
   - The earlier rule ("stop 31 days before the window, by creation time") was
     replaced after the Codex review: every reschedule allows 30 days from the
     reschedule, so a post can move arbitrarily far from its creation date.
+  - The first window starts at the earlier of the current month's first day
+    and the current week's Monday, because the default week view can begin in
+    the previous month.
   - Browsing to an earlier month or week, or switching week/month view,
     extends that window and reloads.
   - Plain `GET /posts` keeps returning the full history for installed apps. An

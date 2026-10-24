@@ -130,7 +130,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     final now = _now();
     _visibleMonth = DateTime(now.year, now.month);
-    _historyStart = _visibleMonth;
+    _historyStart = _initialHistoryStart(now);
     if (widget.isActive) {
       unawaited(_loadPosts());
     } else {
@@ -217,7 +217,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       _posts = const [];
       _selectedDay = null;
       _visibleMonth = DateTime(now.year, now.month);
-      _historyStart = _visibleMonth;
+      _historyStart = _initialHistoryStart(now);
       _hasLoaded = false;
       _isLoading = widget.isActive;
       _isRefreshing = false;
@@ -364,6 +364,14 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   bool get _loadsHistoryWindow =>
       widget.loadCalendarPosts == null && widget.loadScheduledPosts == null;
+
+  // The first window covers both the current month and the current week, which
+  // can start in the previous month (the default view is a Monday-first week).
+  DateTime _initialHistoryStart(DateTime now) {
+    final monthStart = DateTime(now.year, now.month);
+    final weekStart = DateTime(now.year, now.month, now.day - now.weekday + 1);
+    return weekStart.isBefore(monthStart) ? weekStart : monthStart;
+  }
 
   // Loads further back when the visible period starts before the loaded window,
   // after a day change or a week/month switch.

@@ -319,7 +319,8 @@ The app reads `GET /posts?pageSize=100` pages, newest created first, following
 `nextCursor`. Since 2026-10-25 it asks only for posts active since the start
 of the oldest month or week the user has viewed (`activeSince`: created,
 scheduled or published since then), so posts rescheduled far from their
-creation date are included. It stops at the last page or after 20 pages.
+creation date are included. The first load also covers the current week when
+it starts in the previous month. It stops at the last page or after 20 pages.
 Browsing to an earlier period, or switching week/month view, loads further
 back. Plain `GET /posts` is
 unchanged for installed apps, and a new app works with an older API, which

@@ -974,7 +974,13 @@ helpers below are retained as compatibility code, not an active product offer.
 Each authenticated account can publish one profile page with up to 20 enabled
 custom links on every package. The page is hosted by the existing PostDee API at
 `/p/<slug>`; the app resolves the URL against its configured API domain. No
-`postdee.link` domain or third-party statistics subscription is assumed. Public
+`postdee.link` domain or third-party statistics subscription is assumed.
+Since 2026-10-24 a slug left by a rename or account deletion stays reserved for
+30 days, so another seller cannot take over an old shared link. Only the
+previous owner can reclaim it, and only after a rename. Brand and system names
+(any slug containing `postdee`, `admin`, `support` and similar) cannot be
+newly claimed. The app shows its existing "name already used" message. See
+[`2026-10-24-link-in-bio-slug-reservation.md`](docs/superpowers/plans/2026-10-24-link-in-bio-slug-reservation.md). Public
 pages show the store information, images, and links the owner explicitly publishes.
 Draft edits remain private until Publish/Update is pressed. Publishing, copying
 the confirmed URL, opening the page, and unpublishing are supported. Scheduled

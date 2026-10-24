@@ -1,4 +1,9 @@
 import { normalizeStoredLinkInBioAppearance, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
+import {
+  isReservedLinkInBioSlug,
+  linkInBioSlugReservationMs,
+  maxLinkInBioSlugReservationsPerOwner
+} from './linkInBioSlugPolicy.js';
 
 export type { LinkInBioAppearance } from './linkInBioAppearance.js';
 export type LinkInBioLink = {
@@ -54,9 +59,21 @@ const copyProfile = (profile: LinkInBioProfile | undefined): LinkInBioProfile | 
     appearance: normalizeStoredLinkInBioAppearance(profile.appearance, profile.links)
   } : null;
 
+type SlugReservation = { ownerId: string | null; releasedAt: number; reservedUntil: number };
+
 export const createInMemoryLinkInBioStore = ({ now = () => new Date() } = {}): LinkInBioStore => {
   const profiles = new Map<string, LinkInBioProfile>();
   const ownersBySlug = new Map<string, string>();
+  const reservations = new Map<string, SlugReservation>();
+  const reserveReleasedSlug = (slug: string, ownerId: string | null, releasedAt: number) => {
+    reservations.set(slug, { ownerId, releasedAt, reservedUntil: releasedAt + linkInBioSlugReservationMs });
+    if (!ownerId) return;
+    [...reservations.entries()]
+      .filter(([, reservation]) => reservation.ownerId === ownerId)
+      .sort(([, left], [, right]) => right.releasedAt - left.releasedAt)
+      .slice(maxLinkInBioSlugReservationsPerOwner)
+      .forEach(([surplusSlug]) => reservations.delete(surplusSlug));
+  };
 
   return {
     getForUser: async (userId) => copyProfile(profiles.get(userId)),
@@ -73,10 +90,23 @@ export const createInMemoryLinkInBioStore = ({ now = () => new Date() } = {}): L
         throw slugTakenError();
       }
       const previous = profiles.get(userId);
+      const currentTime = now();
+      if (previous?.slug !== slug) {
+        const reservation = reservations.get(slug);
+        if (
+          isReservedLinkInBioSlug(slug) ||
+          (reservation && reservation.ownerId !== userId &&
+            reservation.reservedUntil > currentTime.getTime())
+        ) {
+          throw slugTakenError();
+        }
+        reservations.delete(slug);
+      }
       if (previous && previous.slug !== slug) {
         ownersBySlug.delete(previous.slug);
+        reserveReleasedSlug(previous.slug, userId, currentTime.getTime());
       }
-      const timestamp = now().toISOString();
+      const timestamp = currentTime.toISOString();
       const profile: LinkInBioProfile = {
         storeName, slug, links: links.map((link) => ({ ...link })),
         appearance: normalizeStoredLinkInBioAppearance(appearance ?? previous?.appearance, links),
@@ -99,7 +129,13 @@ export const createInMemoryLinkInBioStore = ({ now = () => new Date() } = {}): L
     },
     deleteAllForUser: async (userId) => {
       const profile = profiles.get(userId);
-      if (profile) ownersBySlug.delete(profile.slug);
+      for (const reservation of reservations.values()) {
+        if (reservation.ownerId === userId) reservation.ownerId = null;
+      }
+      if (profile) {
+        ownersBySlug.delete(profile.slug);
+        reserveReleasedSlug(profile.slug, null, now().getTime());
+      }
       profiles.delete(userId);
     }
   };

@@ -18,12 +18,21 @@ const fixture = () => {
     updateMany: vi.fn(async () => ({ count: 1 })),
     deleteMany: vi.fn(async () => ({ count: 1 }))
   };
-  const store = createPrismaLinkInBioRepository({ prisma: { linkInBioProfile }, now: () => at });
+  const linkInBioSlugReservation = {
+    findUnique: vi.fn(async () => null),
+    findMany: vi.fn(async () => []),
+    upsert: vi.fn(async () => ({})),
+    updateMany: vi.fn(async () => ({ count: 0 })),
+    deleteMany: vi.fn(async () => ({ count: 0 }))
+  };
+  const transaction = { linkInBioProfile, linkInBioSlugReservation } as unknown as Omit<PrismaLinkInBioClient, '$transaction'>;
+  const prisma: PrismaLinkInBioClient = { ...transaction, $transaction: async (action) => action(transaction) };
+  const store = createPrismaLinkInBioRepository({ prisma, now: () => at });
   return { store, linkInBioProfile };
 };
 
 describe('Prisma link in bio repository', () => {
-  it('uses one atomic user-scoped upsert and returns only the public profile fields', async () => {
+  it('uses one user-scoped upsert and returns only the public profile fields', async () => {
     const { store, linkInBioProfile } = fixture();
     expect(await store.publish(input)).toEqual({
       storeName: input.storeName, slug: input.slug, links: input.links,
@@ -39,7 +48,8 @@ describe('Prisma link in bio repository', () => {
         isPublished: true, publishedAt: at, updatedAt: at
       }
     });
-    expect(linkInBioProfile.findUnique).not.toHaveBeenCalled();
+    // The owner's current slug decides whether reservation checks are needed.
+    expect(linkInBioProfile.findUnique).toHaveBeenCalledExactlyOnceWith({ where: { userId: 'owner' } });
   });
 
   it('reads owner data by userId and public data only when published', async () => {

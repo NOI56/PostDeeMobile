@@ -926,7 +926,17 @@ and `publicPath` (`/p/<slug>` only when published, otherwise null). It does not
 include the owner's email or tokens. The client resolves `publicPath` against
 its configured API origin. A changed slug makes the old URL unavailable.
 
-Slug conflicts return HTTP 409 with `LINK_IN_BIO_SLUG_TAKEN`. Invalid payloads
+Slug conflicts return HTTP 409 with `LINK_IN_BIO_SLUG_TAKEN`. Since 2026-10-24
+the same response also covers:
+- A slug another owner released less than 30 days ago, by renaming or deleting
+  their account. The previous owner may take back a slug they renamed away
+  from; after account deletion nobody may claim it until the 30 days end. Each
+  owner keeps at most their 3 most recent released slugs reserved.
+- A reserved name for a new claim: `admin`, `support`, `help`, `api`,
+  `official`, `www` and similar, or any slug containing `postdee`. An owner who
+  already holds such a slug may keep republishing it.
+
+Unpublishing still keeps the slug held by its owner. Invalid payloads
 return 400. An unavailable durable repository returns 503 with
 `LINK_IN_BIO_UNAVAILABLE`; it never silently falls back to in-memory publication.
 Owner/public responses disable caching. Unpublishing or deleting an account

@@ -1879,7 +1879,8 @@ void main() {
       final request = await server.first;
       expect(request.method, 'GET');
       expect(request.uri.path, '/posts');
-      expect(request.uri.query, isEmpty);
+      // An older API ignores pageSize and returns everything without a cursor.
+      expect(request.uri.queryParameters, {'pageSize': '100'});
       expect(request.headers.value(HttpHeaders.authorizationHeader),
           'Bearer calendar-test-token');
       await request.drain<void>();

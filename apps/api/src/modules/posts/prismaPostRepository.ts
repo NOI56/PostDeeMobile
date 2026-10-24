@@ -14,7 +14,8 @@ import { countCurrentMonthPostUnits, readUtcMonthBounds } from './postUsage.js';
 import {
   PostIdempotencyKeyReusedError,
   buildIdempotentPostId,
-  isMatchingIdempotentIntent
+  isMatchingIdempotentIntent,
+  maxDuePostsPerPoll
 } from './postStore.js';
 import { normalizePersistedPlatformSettings } from './platformSettings.js';
 import { normalizePersistedPlatformTargets } from './platformTargets.js';
@@ -47,6 +48,14 @@ type PrismaPost = {
   addonPostUnits?: number;
 };
 
+// Publish fields only: the scheduler never needs the media fingerprint or the
+// add-on allocation of a due post.
+const duePostSelect = {
+  id: true, userId: true, caption: true, videoS3Key: true, coverImageS3Key: true,
+  coverFrameTimeMs: true, selectedPlatforms: true, platformSettings: true,
+  platformTargets: true, scheduledAt: true, status: true, publishedAt: true, createdAt: true
+} as const;
+
 type PostDelegate = {
   aggregate?: (args: { where: { userId: string }; _sum: { addonPostUnits: true } }) =>
     Promise<{ _sum: { addonPostUnits: number | null } }>;
@@ -59,11 +68,19 @@ type PostDelegate = {
       status?: PrismaPostStatus;
       scheduledAt?: { not: null };
       createdAt?: { gte: Date; lt: Date };
-      OR?: Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>;
+      OR?:
+        | Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>
+        | [{ createdAt: { lt: Date } }, { createdAt: Date; id: { lt: string } }];
     };
-    orderBy?: { createdAt: 'desc' } | { scheduledAt: 'asc' };
+    orderBy?:
+      | { createdAt: 'desc' }
+      | { scheduledAt: 'asc' }
+      | [{ createdAt: 'desc' }, { id: 'desc' }];
     take?: number;
-    select?: { createdAt: true; selectedPlatforms: true; addonPostUnits?: true } | { id: true; selectedPlatforms: true };
+    select?:
+      | { createdAt: true; selectedPlatforms: true; addonPostUnits?: true }
+      | { id: true; selectedPlatforms: true }
+      | typeof duePostSelect;
   }) => Promise<PrismaPost[]>;
   create: (args: {
     data: {
@@ -360,6 +377,27 @@ export const createPrismaPostRepository = ({
 
     return posts.map(mapPost);
   },
+  listPage: async ({ userId, scheduledOnly = false, limit, after }) => {
+    const afterTime = after ? new Date(after.createdAt) : undefined;
+    // One extra row tells whether another page exists; (userId, createdAt) is indexed.
+    const rows = await prisma.post.findMany({
+      where: {
+        userId,
+        ...(scheduledOnly ? { scheduledAt: { not: null } } : {}),
+        ...(after && afterTime
+          ? { OR: [{ createdAt: { lt: afterTime } }, { createdAt: afterTime, id: { lt: after.id } }] }
+          : {})
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1
+    });
+    const posts = rows.slice(0, limit).map(mapPost);
+    const last = posts.at(-1);
+    return {
+      posts,
+      ...(rows.length > limit && last ? { next: { createdAt: last.createdAt, id: last.id } } : {})
+    };
+  },
   findOwned: async ({ postId, userId }) => {
     const persisted = await prisma.post.findFirst({ where: { id: postId, userId } });
     return persisted ? mapPost(persisted) : undefined;
@@ -376,13 +414,16 @@ export const createPrismaPostRepository = ({
     return persisted ? mapPost(persisted) : undefined;
   },
   createWithinMonthlyLimit: async (input) => createWithinMonthlyLimit(prisma, input),
-  listDue: async ({ now }: { now: string }) => {
+  listDue: async ({ now, limit = maxDuePostsPerPoll }) => {
+    // A global read across owners: keep it to one bounded batch per poll.
     const posts = await prisma.post.findMany({
       where: {
         status: 'QUEUED',
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date(now) } }]
       },
-      orderBy: { scheduledAt: 'asc' }
+      orderBy: { scheduledAt: 'asc' },
+      take: limit,
+      select: duePostSelect
     });
 
     return posts.map(mapPost);

@@ -120,6 +120,10 @@ import { OwnerOperationBusyError } from './modules/account/ownerOperationQueue.j
 import { createOwnerOperationRouter } from './modules/account/ownerOperationRouter.js';
 import { createPlatformPublisherFromConfig } from './workers/platformPublisherFactory.js';
 import { createPublishScheduler } from './workers/publishScheduler.js';
+import {
+  allowsSubscriptionPlanOverride,
+  createScheduledPublishPlanReader
+} from './workers/scheduledPublishPlan.js';
 import { registerPublishQueueRoutes } from './modules/queue/publishQueueRoutes.js';
 import {
   MediaDownloadError,
@@ -181,7 +185,9 @@ type AppPrismaClient = PrismaTemplateClient &
   PrismaAiEditUsageClient &
   PrismaDeviceTokenClient &
   PrismaSocialConnectionClient &
-  PrismaUploadSessionClient & Partial<PrismaLinkInBioClient & PrismaLinkInBioImageClient>;
+  PrismaUploadSessionClient &
+  // The shared client's $transaction is typed by the stores above.
+  Partial<Omit<PrismaLinkInBioClient, '$transaction'> & PrismaLinkInBioImageClient>;
 
 type AppOptions = {
   adminDataSource?: AdminDataSource;
@@ -738,8 +744,7 @@ export const createApp = (options: AppOptions = {}) => {
     subscriptionStore,
     platformPublishStore,
     {
-      allowSubscriptionPlanOverride:
-        config.nodeEnv !== 'production' && config.authProvider === 'mock',
+      allowSubscriptionPlanOverride: allowsSubscriptionPlanOverride(config),
       monthlyAddonStore,
       billingAddonsEnabled: config.billingAddonsEnabled,
       socialPublishingEnabled: config.socialPublisher !== 'disabled',
@@ -948,6 +953,10 @@ export const createApp = (options: AppOptions = {}) => {
       }),
       assertOwnerActive,
       runWithActiveOwner: runWithOwnerLifetime,
+      ...(managedUploadService
+        ? { sweepExpiredUploads: () => managedUploadService.sweepExpiredSessions() }
+        : {}),
+      readOwnerPlan: createScheduledPublishPlanReader({ config, subscriptionStore }),
       requireEmptyBacklogOnStart:
         config.socialPublisher === 'postpeer' &&
         config.socialPublishRequireEmptyBacklog

@@ -2668,6 +2668,16 @@ class PostSummaryResult {
 }
 
 /// Owner-scoped Calendar activity, including immediate posts without a schedule.
+/// One page of Calendar activity, newest created first.
+class CalendarPostPage {
+  const CalendarPostPage({required this.posts, this.nextCursor});
+
+  final List<CalendarPostResult> posts;
+
+  /// Null on the last page, or when an older API returned the full history.
+  final String? nextCursor;
+}
+
 class CalendarPostResult extends PostSummaryResult {
   const CalendarPostResult({
     required super.id,
@@ -3001,11 +3011,16 @@ class PostDeeApiClient {
     this.requestTimeout = const Duration(seconds: 20),
     this.aiRequestTimeout = const Duration(seconds: 120),
     this.uploadRequestTimeout = const Duration(seconds: 180),
+    bool releaseMode = AppConfig.isReleaseBuild,
+    bool enableFirebaseAuth = AppConfig.enableFirebaseAuth,
   })  : assert(requestTimeout > Duration.zero),
         assert(aiRequestTimeout > Duration.zero),
         assert(uploadRequestTimeout > Duration.zero),
         _customHttpClient = httpClient,
         _baseUri = Uri.parse(baseUrl),
+        _refusesCleartextApi = releaseMode &&
+            enableFirebaseAuth &&
+            Uri.parse(baseUrl).scheme != 'https',
         _reportServerError = reportServerError ?? reportPostDeeApiServerError,
         _sessionBinding = sessionBinding,
         _authHeaders = authHeaders ??
@@ -3035,10 +3050,22 @@ class PostDeeApiClient {
   }
 
   final Uri _baseUri;
+  final bool _refusesCleartextApi;
   final ApiServerErrorReporter _reportServerError;
   final PostDeeApiAuthHeaders _authHeaders;
   final AuthSessionBinding? _sessionBinding;
   final Future<void> Function(Duration) _multipartCompletionPollDelay;
+
+  // Release Firebase builds send ID tokens on every call, so a cleartext base
+  // URL (such as the localhost default) must fail before any request is made.
+  void _ensureSecureApiTransport() {
+    if (_refusesCleartextApi) {
+      throw const ApiException(
+        'API base URL must use HTTPS in release builds.',
+        code: 'INSECURE_API_BASE_URL',
+      );
+    }
+  }
 
   Future<LinkInBioProfileResult?> loadLinkInBioProfile() async {
     final response = await _getJson('/link-in-bio');
@@ -3137,6 +3164,7 @@ class PostDeeApiClient {
           const ApiException('Invalid profile image storage key'));
     }
     return _withRequestDeadline(requestTimeout, (scope) async {
+      _ensureSecureApiTransport();
       final headers = await _authHeaders.load();
       _sessionBinding?.ensureCurrent();
       scope.checkActive();
@@ -3597,17 +3625,57 @@ class PostDeeApiClient {
   }
 
   /// Lists all of the authenticated owner's activity without preview limits.
-  Future<List<CalendarPostResult>> listCalendarPosts() async {
-    final response = await _getJson('/posts');
+  static const calendarPostPageSize = 100;
+  static const calendarPostMaxPages = 20;
+
+  /// Reads one Calendar page from `GET /posts?pageSize=...`. An older API that
+  /// ignores paging returns the full history without `nextCursor`.
+  Future<CalendarPostPage> listCalendarPostsPage({String? cursor}) async {
+    final query = Uri(queryParameters: {
+      'pageSize': '$calendarPostPageSize',
+      if (cursor != null) 'cursor': cursor,
+    }).query;
+    final response = await _getJson('/posts?$query');
     final posts = response['posts'];
+    final nextCursor = response['nextCursor'];
 
     if (posts is! List<dynamic>) {
       throw const ApiException('Calendar posts response is missing posts data');
     }
+    if (nextCursor != null && (nextCursor is! String || nextCursor.isEmpty)) {
+      throw const ApiException('Calendar posts response has an invalid cursor');
+    }
 
-    return posts
-        .map((post) => CalendarPostResult.fromJson(post as Map<String, Object?>))
-        .toList();
+    return CalendarPostPage(
+      posts: posts
+          .map((post) =>
+              CalendarPostResult.fromJson(post as Map<String, Object?>))
+          .toList(),
+      nextCursor: nextCursor as String?,
+    );
+  }
+
+  /// Loads Calendar activity one bounded page at a time, newest created first.
+  /// Stops at the last page, after the first page that reaches posts created
+  /// before [createdSince], or after [maxPages] pages.
+  Future<List<CalendarPostResult>> listCalendarPosts({
+    DateTime? createdSince,
+    int maxPages = calendarPostMaxPages,
+  }) async {
+    final posts = <CalendarPostResult>[];
+    final seenIds = <String>{};
+    String? cursor;
+    for (var page = 0; page < maxPages; page += 1) {
+      final result = await listCalendarPostsPage(cursor: cursor);
+      for (final post in result.posts) {
+        if (seenIds.add(post.id)) posts.add(post);
+      }
+      cursor = result.nextCursor;
+      final reachedStart = createdSince != null &&
+          result.posts.any((post) => post.createdAt.isBefore(createdSince));
+      if (cursor == null || reachedStart) break;
+    }
+    return posts;
   }
 
   /// Lists the user's posts (any state), newest first, with up to 50 previews.
@@ -4203,6 +4271,7 @@ class PostDeeApiClient {
         }.contains(path);
     return _withRequestDeadline(
         isAiOperation ? aiRequestTimeout : requestTimeout, (scope) async {
+      _ensureSecureApiTransport();
       final headers = await _authHeaders.load();
       _sessionBinding?.ensureCurrent();
       scope.checkActive();

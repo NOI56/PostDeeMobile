@@ -17,6 +17,7 @@ import { retainCurrentOwnerOperation } from '../modules/account/prismaOwnerOpera
 import { readRequestedDeliveryOutcome } from './platformDeliveryOutcome.js';
 import { PlatformCaptionValidationError } from '../modules/posts/platformCaptionValidation.js';
 import { reportMonitoringError } from '../monitoring/sentryMonitoring.js';
+import { paidPlanRequiredPublishError, type ReadOwnerPlan } from './scheduledPublishPlan.js';
 
 export type PlatformPublishInput = {
   userId?: string;
@@ -401,6 +402,7 @@ export const processPublishJobForPost = async ({
   notifier = createNoopPublishNotifier(),
   assertOwnerActive,
   runWithActiveOwner,
+  readOwnerPlan,
   deleteVideoAfterPublish = false,
   now = () => new Date().toISOString()
 }: {
@@ -412,6 +414,9 @@ export const processPublishJobForPost = async ({
   notifier?: PublishNotifier;
   assertOwnerActive?: (ownerId: string) => Promise<void>;
   runWithActiveOwner?: RunWithActiveOwner;
+  // Re-checks the owner's plan for scheduled posts; omitted where the plan
+  // cannot be re-read (local mock development).
+  readOwnerPlan?: ReadOwnerPlan;
   deleteVideoAfterPublish?: boolean;
   now?: () => string;
 }): Promise<PublishWorkerResult> => {
@@ -419,6 +424,13 @@ export const processPublishJobForPost = async ({
     if (assertOwnerActive && jobData.userId) {
       await assertOwnerActive(jobData.userId);
     }
+
+    // Scheduling is a paid feature. Read the plan before claiming, so a read
+    // failure leaves the post QUEUED for the caller's pre-publish retry.
+    const paidPlanEnded =
+      jobData.status === 'SCHEDULED' && readOwnerPlan && jobData.userId
+        ? (await readOwnerPlan(jobData.userId)) === 'BASIC'
+        : false;
 
     const claimed = await postStore.claimForPublish({
       postId: jobData.postId,
@@ -445,6 +457,19 @@ export const processPublishJobForPost = async ({
     try {
       if (assertOwnerActive && jobData.userId) {
         await assertOwnerActive(jobData.userId);
+      }
+
+      if (paidPlanEnded) {
+        // Never contact a provider. Units used at creation are not refunded.
+        const platformResults: PlatformPublishResult[] = jobData.platforms.map((platform) => ({
+          platform,
+          status: 'FAILED',
+          errorMessage: paidPlanRequiredPublishError
+        }));
+        await platformPublishStore.recordResults({ postId: jobData.postId, results: platformResults });
+        await postStore.updateStatus({ postId: jobData.postId, status: 'FAILED' });
+        await notify('FAILED');
+        return { ...createSkippedPublishResult(jobData), status: 'FAILED', platformResults };
       }
 
       const result = await processPublishJob({

@@ -1239,6 +1239,20 @@ schema, package, authentication, or publication behavior.
 The existing Express service owns both authenticated profile management and
 the public HTML page at `/p/:slug`. A LinkInBioProfile row belongs to one User,
 has a globally unique slug, and cascades away when the account is deleted.
+Since 2026-10-24 a released slug is not recycled at once:
+- A rename or account deletion writes a `LinkInBioSlugReservation` row (slug
+  key, nullable `ownerId`, `releasedAt`, `reservedUntil` = 30 days later) in
+  the same transaction as the profile change.
+- The table has no User relation. Account deletion nulls `ownerId`, so the old
+  link stays protected without keeping the owner's id.
+- A claim of a new slug runs in one transaction. It rejects brand and system
+  names, then reads the profile holding that slug before reading the
+  reservation. Because a rename commits both rows together, one of those two
+  reads always sees the slug as taken. It then removes an expired or own
+  reservation before the profile upsert.
+- Each owner keeps at most three reservations, newest first, so repeated
+  renames cannot squat on names. The answer is the existing
+  `409 LINK_IN_BIO_SLUG_TAKEN`, so Mobile needs no change.
 The repository follows `POST_STORE`: Prisma for durable deployments, memory
 for local scaffolding only. Publish atomically saves a snapshot of enabled
 custom links. Local unsaved draft changes never change that public snapshot.
@@ -1552,6 +1566,15 @@ Production และ Staging ต้องเป็นคนละ data boundary:
 RevenueCat และ PostPeer ชุดทดสอบแยกกัน รายละเอียดอยู่ใน `docs/STAGING.md`
 Android Debug เพิ่ม suffix `.staging` และใช้ `src/debug/google-services.json`;
 Profile/Release ยังคงใช้ Firebase Production จึงห้ามผสมกับ Staging Dart defines
+
+Security Batch 6 (2026-10-24): Android disables app-data backup and device
+transfer (`allowBackup="false"` plus data extraction rules) so the Firebase
+session stays on the signing-in device, and drops the unused `postdee://billing`
+intent filter. `PostDeeApiClient` refuses a non-HTTPS base URL in release builds
+with Firebase auth before loading auth headers, and the iOS CI IPA pins the
+production `API_BASE_URL`. Both workflows run with `permissions: contents:
+read`, check out without persisted credentials, pin actions by commit SHA, and
+restrict a manual `apk_source_ref` to commits on this repository's branches.
 
 ## Backend Runtime Dependency Boundary
 
@@ -2020,10 +2043,10 @@ transaction). Templates are capped at 200 per owner with 120/5000-character
 fields and a bounded list. Device tokens are FCM-shaped, capped at 10 per owner
 with oldest-first eviction, and the notifier reads at most 10. Limited post
 lists push `take` into Postgres, single-post reschedule and publish-now read
-one owned row, and new captions stop at 63,206 UTF-16 units. Still open:
-a sweeper for expired upload sessions and abandoned R2 multipart uploads,
-pagination for the full Calendar post list, and owner/post indexing before
-BullMQ is enabled. See
+one owned row, and new captions stop at 63,206 UTF-16 units. Expired upload
+sessions are retired by the scheduler sweep described in the upload rules
+below. Calendar reads cursor pages (see the `GET /posts` rule below). Still
+open: owner/post indexing before BullMQ is enabled. See
 `docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md`.
 
 The 2026-10-07 composer revision changes Mobile presentation only. A local
@@ -2157,8 +2180,20 @@ Rules:
 - Starter can schedule posts up to 14 days in advance; Pro can schedule up to
   30 days. The mobile date picker and post API enforce the current plan's limit
   for new schedules and reschedules. Previously accepted queue entries retain
-  their time after a policy change or downgrade, without worker revalidation or
-  data migration. The API accepts only calendar-valid
+  their time after a policy change or a downgrade between paid plans, without
+  data migration. Since 2026-10-24 the worker re-reads the owner's plan
+  (including admin trials) when a scheduled post comes due:
+  - If the plan is now `BASIC`, it sends nothing. It records each platform as
+    `FAILED` with `errorMessage: "PAID_PLAN_REQUIRED"`, marks the post `FAILED`
+    and sends the usual failure push.
+  - Units charged at creation stay counted.
+  - Post-now posts are not re-checked.
+  - The plan is read before the post is claimed, so a read failure leaves it
+    `QUEUED` for the pre-publish retry.
+  - Local mock auth, whose plan came from a request header, skips the check.
+  - The scheduler and the BullMQ worker share the rule.
+
+  The API accepts only calendar-valid
   RFC 3339 timestamps with `Z` or `±HH:mm`, normalizes them to UTC, and rejects
   past, timezone-free, or malformed values for create and reschedule requests.
 - Starter is limited to 120 post units per month.
@@ -2189,6 +2224,16 @@ Rules:
 - Completion and abort transitions use compare-and-set rules. If R2 completes
   an object before the database acknowledgement survives, `GET /uploads/:id`
   verifies its exact size with `HEAD` and reconciles the session.
+- The in-process scheduler sweeps expired sessions on its own 10-minute timer,
+  separate from the publish poll. Each sweep takes at most 25 `UPLOADING`
+  sessions that expired more than five minutes ago, using the
+  `(expiresAt, status)` index. It aborts the R2 multipart upload first, then
+  retires the row to `ABORTED` only if the row is still expired and
+  `UPLOADING`. A failed abort is retried by the next sweep. Sweep errors go to
+  monitoring as `scheduler.uploadSweep` and never change `/ready`. Expiry
+  already blocks new parts and completion, so the sweep cannot race a
+  completing upload. R2 uploads with no session row are still aborted only
+  by account deletion or a bucket lifecycle rule.
 - The legacy single-file signed `PUT` remains a bearer URL that cannot be
   revoked individually. It keeps a replay window while `legacy` or `dual` mode
   accepts old clients; strict `multipart` closes that remaining path.
@@ -2203,6 +2248,18 @@ Rules:
   external id is stored.
 - `GET /posts` joins each authenticated user's posts with their persisted
   `platformResults`, including partial and failed platform outcomes.
+- Calendar reads history in cursor pages (2026-10-24):
+  - The app sends `GET /posts?pageSize=100`, then `cursor=<nextCursor>`. Each
+    page is a `createdAt desc, id desc` keyset query of at most 101 rows on
+    `(userId, createdAt)`.
+  - The app stops after the page that reaches 31 days before the oldest period
+    the user has viewed. A post's calendar time falls at most about 30 days
+    after its creation because of the schedule window. It also stops at
+    `nextCursor: null` or after 20 pages.
+  - Browsing to an earlier month or week extends that window and reloads.
+  - Plain `GET /posts` keeps returning the full history for installed apps. An
+    older API that ignores `pageSize` returns everything in one response, which
+    the new app treats as the last page.
 - Mobile presents the returned post lifecycle without upgrading it to success:
   `QUEUED`, `PUBLISHING`, `PUBLISHED`, and `PARTIAL_PUBLISHED` have distinct
   messages; an unknown status retains the local draft and blocks a success view.
@@ -2219,6 +2276,10 @@ Rules:
   status wording.
 - Provider retries are explicit-safe-only. Unknown network/polling outcomes are
   terminal and tell the user to inspect the destination before trying again.
+- Each in-process scheduler poll reads at most 50 due posts across all owners
+  (`take: 50`, ordered by `scheduledAt`), selecting only publish fields (no media
+  fingerprint or add-on allocation). Remaining due posts wait for the next
+  poll, about five seconds later.
 
 The mobile HTTP client applies an end-to-end 20-second deadline to ordinary
 JSON requests, including token refresh, connection, and body consumption.

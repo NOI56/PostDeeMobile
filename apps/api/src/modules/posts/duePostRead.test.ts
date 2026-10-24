@@ -54,16 +54,23 @@ describe('due post read for the publish scheduler', () => {
     }));
   });
 
-  it('claims an ended-plan post only while it is still scheduled at its run time', async () => {
+  it('claims a post only as still scheduled, or only as post-now, when asked', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 0 });
     const repository = createPrismaPostRepository({ prisma: withPostRepositoryFixture({ post: { updateMany } }) });
 
     await expect(repository.claimForPublish({
-      postId: 'post-1', expectedRunAt: '2026-10-24T00:00:00.000Z', requireSchedule: true
+      postId: 'post-1', expectedRunAt: '2026-10-24T00:00:00.000Z', schedule: 'scheduled'
     })).resolves.toBe(false);
+    await repository.claimForPublish({
+      postId: 'post-1', expectedRunAt: '2026-10-24T00:00:00.000Z', schedule: 'immediate'
+    });
 
-    expect(updateMany).toHaveBeenCalledExactlyOnceWith({
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
       where: { id: 'post-1', status: 'QUEUED', scheduledAt: new Date('2026-10-24T00:00:00.000Z') },
+      data: { status: 'PUBLISHING' }
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: 'post-1', status: 'QUEUED', scheduledAt: null },
       data: { status: 'PUBLISHING' }
     });
   });

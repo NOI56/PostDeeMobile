@@ -432,14 +432,16 @@ export const createPrismaPostRepository = ({
 
     return posts.map(mapPost);
   },
-  claimForPublish: async ({ postId, expectedRunAt, requireSchedule = false }: ClaimPostForPublishInput) => {
+  claimForPublish: async ({ postId, expectedRunAt, schedule }: ClaimPostForPublishInput) => {
     const result = await prisma.post.updateMany({
       where: {
         id: postId,
         status: 'QUEUED',
-        ...(requireSchedule
+        ...(schedule === 'scheduled'
           ? { scheduledAt: new Date(expectedRunAt) }
-          : { OR: [{ scheduledAt: null }, { scheduledAt: new Date(expectedRunAt) }] })
+          : schedule === 'immediate'
+            ? { scheduledAt: null }
+            : { OR: [{ scheduledAt: null }, { scheduledAt: new Date(expectedRunAt) }] })
       },
       data: { status: 'PUBLISHING' }
     });

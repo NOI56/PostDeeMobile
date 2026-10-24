@@ -153,9 +153,9 @@ export type RemovePostInput = {
 export type ClaimPostForPublishInput = {
   postId: string;
   expectedRunAt: string;
-  // Claim only while the post is still scheduled at expectedRunAt, never a
-  // row the owner switched to Publish now.
-  requireSchedule?: boolean;
+  // 'scheduled': only while still scheduled at expectedRunAt. 'immediate':
+  // only a row the owner switched to Publish now. Omitted: either.
+  schedule?: 'scheduled' | 'immediate';
 };
 
 export type PostStore = {
@@ -379,16 +379,19 @@ export const createPostStore = ({
         )
         .slice(0, limit);
     },
-    claimForPublish: async ({ postId, expectedRunAt, requireSchedule = false }) => {
+    claimForPublish: async ({ postId, expectedRunAt, schedule }) => {
       const post = posts.find((candidate) => candidate.id === postId);
 
       if (!post || post.status !== 'QUEUED') {
         return false;
       }
 
-      if (requireSchedule
-        ? post.scheduledAt !== expectedRunAt
-        : post.scheduledAt && post.scheduledAt !== expectedRunAt) {
+      const matches = schedule === 'scheduled'
+        ? post.scheduledAt === expectedRunAt
+        : schedule === 'immediate'
+          ? post.scheduledAt === undefined
+          : post.scheduledAt === undefined || post.scheduledAt === expectedRunAt;
+      if (!matches) {
         return false;
       }
 

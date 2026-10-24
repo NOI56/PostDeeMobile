@@ -110,10 +110,8 @@ describe('scheduler review fixes (Codex review 2026-10-25)', () => {
       postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher: { publish }, readOwnerPlan
     });
 
-    // The stale scheduled job cannot claim the post-now row; the next poll
-    // reads it as post-now, which is not plan-checked.
-    await scheduler.runOnce();
-    expect((await postStore.findOwned({ postId: post.id, userId: 'seller-plan' }))?.status).not.toBe('FAILED');
+    // The job claims the row as post-now (not plan-checked) in the same run,
+    // so no job-less QUEUED row can be left behind (BullMQ has no poller).
     await scheduler.runOnce();
 
     expect(publish).toHaveBeenCalledTimes(1);

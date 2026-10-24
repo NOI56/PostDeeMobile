@@ -79,6 +79,29 @@ The Publish-now test now checks the post is not failed on the first poll and
 is published on the second. `duePostRead.test.ts` now expects `id` order,
 `afterId` and the schedule-only claim.
 
+## Round 3 after the second Codex re-review (2026-10-25)
+
+The second re-review confirmed P1 and P2 fixed, and found one new problem in
+BullMQ mode only (not deployed):
+- The scenario: a scheduled job for an ended-plan owner is running, and the
+  owner presses Publish now. The route enqueues a READY job and cannot remove
+  the locked scheduled job, so it rolls the schedule back.
+- With the round-2 strict claim, the scheduled job skipped (schedule null at
+  that moment). The READY job then skipped too (its run time no longer matched
+  the restored schedule), leaving the post `QUEUED` with no job.
+
+Fix: `claimForPublish({ schedule: 'scheduled' | 'immediate' })`. With an ended
+plan, the worker first claims the row as still scheduled (and fails it). If that
+fails, it claims a post-now row and publishes it in the same run. Each claim is
+one atomic update, and no row is left without a job. In memory mode the
+switched post is now published in the same poll instead of the next one.
+
+Before fix, against round-2 head `f97d8150`:
+- The Publish-now test, now expecting publication in the same run: publisher
+  called 0 times.
+- The Prisma claim test for `schedule: 'immediate'` (`scheduledAt: null`):
+  the claim mode did not exist.
+
 ## Known limitation (not changed)
 
 In BullMQ mode (not deployed), a plan read that fails on every attempt leaves

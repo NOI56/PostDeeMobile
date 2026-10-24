@@ -2192,11 +2192,13 @@ Rules:
     is claimed. A read failure leaves the post `QUEUED` for the pre-publish
     retry and never keeps the owner's operation ticket, which would otherwise
     block a later account deletion.
-  - With an ended plan, the claim succeeds only while the row is still
-    scheduled at its run time (one atomic update, no extra read inside the
-    owner lifetime). A post the owner switched to Publish now while the plan
-    was being read is left `QUEUED`, and the next poll publishes it as
-    post-now.
+  - With an ended plan, the worker first claims the row only if it is still
+    scheduled at its run time, and then fails it. If the owner switched it to
+    Publish now while the plan was being read, a second claim takes it as
+    post-now (not plan-checked) and publishes it in the same run. Each claim is
+    one atomic update with no extra read inside the owner lifetime, and no row
+    is left `QUEUED` without a job, which matters in BullMQ mode where nothing
+    polls.
   - Local mock auth, whose plan came from a request header, skips the check.
   - The scheduler and the BullMQ worker share the rule.
 

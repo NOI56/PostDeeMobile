@@ -1802,6 +1802,13 @@ Response:
 user's returned post ids. A failed platform result can contain `errorMessage`;
 the response does not expose another user's publish records.
 
+Since 2026-10-24 a scheduled post whose owner's plan is `BASIC` when it comes
+due (for example a subscription expired, was refunded, or a trial ended) is not
+sent. The post becomes `FAILED`, and each selected platform gets a `FAILED`
+result with `errorMessage: "PAID_PLAN_REQUIRED"`. The post units charged when it
+was accepted are not refunded. Post-now posts and downgrades between paid plans
+are unaffected.
+
 The 2026-10-18 Mobile publishing-activity follow-up uses these existing reads
 and result fields. Home refreshes recent posts every 30 seconds only while a
 loaded post is `PUBLISHING` and its owner, foreground, active-tab and current-route

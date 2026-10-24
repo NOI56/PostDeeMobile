@@ -1865,7 +1865,13 @@ downgrade; listing and automatic publishing do not reapply the shorter window.
 `videoS3Key` and optional `coverImageS3Key` must come from `POST /uploads` for
 the same authenticated user; the backend rejects media keys owned by another
 user. `coverFrameTimeMs` stores the selected source-video frame in milliseconds.
-Cloud Scheduling requires Starter or Pro. The `BASIC` scaffold path supports
+Cloud Scheduling requires Starter or Pro, both when a post is scheduled and,
+since 2026-10-24, again when it comes due. A scheduled post whose owner is back
+on `BASIC` by then is not sent: it becomes `FAILED` with platform reason
+`PAID_PLAN_REQUIRED`, its units stay used, and the usual failure push is sent
+(see
+[`2026-10-24-scheduled-post-plan-check.md`](docs/superpowers/plans/2026-10-24-scheduled-post-plan-check.md)).
+The `BASIC` scaffold path supports
 real-time posting only after phone verification and is limited to 3 post units
 per month. Starter is limited to 120 post units per month, and Pro is limited
 to 250 post units per month. A post unit is counted per selected platform, so

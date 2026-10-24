@@ -25,12 +25,15 @@ import { createPostStoreFromConfig } from '../modules/posts/postStoreFactory.js'
 import type { PrismaSocialConnectionClient } from '../modules/socialConnections/prismaSocialConnectionRepository.js';
 import { createSocialConnectionStore } from '../modules/socialConnections/socialConnectionStoreFactory.js';
 import { createVideoStorageFromConfig } from '../modules/storage/videoStorageFactory.js';
+import type { PrismaSubscriptionClient } from '../modules/subscriptions/prismaSubscriptionRepository.js';
+import { createSubscriptionStoreFromConfig } from '../modules/subscriptions/subscriptionStoreFactory.js';
 import {
   createPrismaUploadSessionRepository,
   type PrismaUploadSessionClient
 } from '../modules/uploads/prismaUploadSessionRepository.js';
 import { createPlatformPublisherFromConfig } from './platformPublisherFactory.js';
 import { processPublishJobForPost } from './publishWorker.js';
+import { createScheduledPublishPlanReader } from './scheduledPublishPlan.js';
 import {
   buildPublishWorkerCompletedLog,
   buildPublishWorkerFailedLog,
@@ -46,7 +49,9 @@ const prisma =
   config.postStore === 'prisma' ||
   config.analyticsStore === 'prisma' ||
   config.socialPublisher === 'postpeer' ||
-  config.uploadProtocolMode !== 'legacy'
+  config.uploadProtocolMode !== 'legacy' ||
+  config.subscriptionStore === 'prisma' ||
+  config.trialAccessEnabled
     ? createPrismaClient()
     : undefined;
 const socialConnectionStore = createSocialConnectionStore({
@@ -73,6 +78,14 @@ const platformPublishStore = prisma
       prisma: prisma as unknown as PrismaPlatformPublishClient
     })
   : createInMemoryPlatformPublishStore();
+// Scheduled posts re-check the owner's current plan (including trials) when due.
+const readOwnerPlan = createScheduledPublishPlanReader({
+  config,
+  subscriptionStore: createSubscriptionStoreFromConfig({
+    config,
+    prisma: prisma as unknown as PrismaSubscriptionClient | undefined
+  })
+});
 const deviceTokenStore = createDeviceTokenStore({
   prisma: prisma as unknown as PrismaDeviceTokenClient | undefined
 });
@@ -93,7 +106,8 @@ const worker = new Worker<BullMqPublishJobData>(
       platformPublishStore,
       notifier,
       assertOwnerActive: uploadSessionStore?.assertOwnerActive,
-      runWithActiveOwner: uploadSessionStore?.runWithOwnerLifetime
+      runWithActiveOwner: uploadSessionStore?.runWithOwnerLifetime,
+      readOwnerPlan
     });
 
     return enforceRetriedPublishRecoveryPolicy({

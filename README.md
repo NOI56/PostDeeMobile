@@ -26,6 +26,84 @@ most once per window and cap remembered addresses at 10,000. No schema change,
 migration or mobile change. See
 [`2026-10-24-identity-preauth-security-batch4.md`](docs/superpowers/plans/2026-10-24-identity-preauth-security-batch4.md).
 
+## Review post preview (2026-10-24, local candidate)
+
+The final review step replaces clip/caption edit links with one `พรีวิว` action
+under the thumbnail. Channel editing and wizard Back remain available. Preview
+plays the selected local clip and shows an approximate post view only for chosen
+destinations, using each effective caption, connected identity and YouTube title.
+Chosen-cover capability and watermark notes remain explicit; platform layouts
+can differ. The current follow-up gives TikTok portrait preview a bottom gradient,
+real identity/caption and decorative heart/comment/save/share icons without
+invented counts. Preview volume is 0–100%, with mute/restoration of the previous
+audible level; it changes playback only, not system volume or the exported clip.
+Opening preview does not upload, generate AI, render with FFmpeg, publish or
+consume quota. Owner-bound post metadata is separated from existing plain local
+playback and authenticated network playback.
+
+On fresh main `6afe4d6`, the full Mobile rerun passes **2,867 tests / 6 skipped**,
+with **150** Staging checks, **187** API regressions/typecheck, analyzer and **10**
+real-font visual checks also passing. Verified Staging APK **12049** builds with
+eight complete-source matches and the intended environment. It is installed
+with the same package UID/storage. After manual sign-in, native playback, pause,
+seek and volume changes (100% → 36% → mute → 36% → 62%) pass on an existing
+45-second draft. Returning to review preserves its clip, empty caption, zero
+selected destinations and the single draft. One initial pause showed a transient
+player error; later explicit resume/pause and seek work without an error. Its
+cause is unconfirmed. The current Home shows Free with only YouTube connected,
+so this run does not verify TikTok/Instagram tabs or restoration of the earlier
+Pro demo draft. TikTok-specific evidence remains the older 12048 native checks
+and final visual tests. No draft save, AI, upload, post or purchase occurred in
+this follow-up. This preview uses generic Facebook wording and establishes no
+provider-delivery claim. It is not merged, pushed or cloud-deployed.
+Earlier build/native results and resolved verification issues are in the
+[preview work record](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
+
+## Immersive post preview (2026-10-24, local APK 12051)
+
+The next local candidate follows the user's full-screen reference: post preview
+removes the bottom seek/replay/time/volume panel and places white navigation,
+caption and decorative social icons over the video. Tap the video to play or
+pause; a top speaker button opens the playback-only volume controls on demand.
+The video keeps its natural aspect ratio without cropping. Chosen destinations
+retain their own real captions, identities and YouTube titles. With no chosen
+destination, the shared caption and a generic social rail appear without an
+invented account or counts. Compact inline information keeps publishing/cover/
+watermark caveats available, pauses playback and is removed with the owner-bound
+preview. The plain local/network clip viewer retains its existing controls.
+
+The working baseline is now `8872f0e`, preserving nine incoming API-security/docs
+commits. No incoming Mobile or schema change was introduced; all ten candidate
+Mobile runtime/test hashes remain identical across that refresh.
+
+Before the cosmetic follow-up, full Mobile validation on 12050 passes
+**2,880 tests / 6 skipped**;
+analysis reports no issues, and the joint preview suite passes **76** checks.
+Fresh-baseline API static/build checks and **206 tests across 11 targeted files**
+also pass; their scope is separate from the historical 187 API checks above.
+Final **163** Staging checks and **15** exact-color visual checks also pass.
+APK **12050** builds with eight complete-source and package/Firebase checks
+matching. Installed 12050 retains the same UID/storage, signed-in Free account,
+YouTube connection and existing draft. Native immersive play/pause, removal of
+the bottom panel and inline volume 100% → 34% → mute → 34% pass. An initial
+startup ANR recovered after one app-only restart; its cause is unconfirmed.
+The draft has no destinations/caption, so this proves the generic view rather
+than connected TikTok tab acceptance. Final **12051** improves Staging status-bar
+contrast, passes **44** player/**165** Staging checks and analysis, and builds
+with eight exact-source/package/Firebase matches. Its retained-data installation
+and native play/pause/replay, volume, information panel and Back checks pass.
+Cold launch reaches Home in approximately 45 seconds without an app restart;
+the 12050 startup ANR remains a separate historical observation. The current
+landscape clip is letterboxed without cropping, and the preview is left paused.
+Connected TikTok tabs and native iOS remain unverified. The subsequent user
+instruction authorizes `main/push` for this verified UI. The source-only handoff
+preserves the tested runtime and requires no backend deployment.
+The 12049 results above describe the previous UI and
+retain their account/platform limitations. This follow-up needs
+no API, database, dependency, configuration or backend deployment change and
+does not change exported audio or perform publication. See the
+[preview work record](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
+
 ## Wheel time selection (2026-10-24)
 
 Create Post and Calendar rescheduling share a 24-hour Flutter wheel picker.

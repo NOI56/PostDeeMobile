@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,7 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
+import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/uploader/post_video_preview_screen.dart';
+import 'package:postdee_mobile/features/uploader/publish_post_preview.dart';
+import 'package:video_player/video_player.dart';
 // The fake replaces the platform interface already used by video_player.
 // ignore: depend_on_referenced_packages
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -28,6 +32,9 @@ class _PreviewVideoPlatform extends VideoPlayerPlatform {
   final List<int> played = [];
   final List<int> paused = [];
   final List<Duration> seeks = [];
+  final List<({int playerId, double volume})> volumes = [];
+  Completer<void>? volumeGate;
+  bool failNextVolume = false;
 
   @override
   Future<void> init() async {}
@@ -71,7 +78,14 @@ class _PreviewVideoPlatform extends VideoPlayerPlatform {
   Future<void> setLooping(int playerId, bool looping) async {}
 
   @override
-  Future<void> setVolume(int playerId, double volume) async {}
+  Future<void> setVolume(int playerId, double volume) async {
+    volumes.add((playerId: playerId, volume: volume));
+    if (failNextVolume) {
+      failNextVolume = false;
+      throw StateError('Volume unavailable');
+    }
+    await volumeGate?.future;
+  }
 
   @override
   Future<void> setPlaybackSpeed(int playerId, double speed) async {}
@@ -105,13 +119,16 @@ class _PreviewVideoPlatform extends VideoPlayerPlatform {
 }
 
 Widget _testApp({
+  ThemeData? theme,
   double textScale = 1,
   String videoPath = 'local-selected-clip.mp4',
   bool reducedMotion = false,
   bool tickerEnabled = true,
+  PublishPostPreviewData? postPreview,
+  AuthSessionBinding? ownerSession,
 }) =>
     MaterialApp(
-      theme: AppTheme.light,
+      theme: theme ?? AppTheme.light,
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
           textScaler: TextScaler.linear(textScale),
@@ -122,6 +139,8 @@ Widget _testApp({
       home: PostVideoPreviewScreen(
         videoFile: File(videoPath),
         videoName: 'คลิปสินค้าของฉัน.mp4',
+        postPreview: postPreview,
+        ownerSession: ownerSession,
       ),
     );
 
@@ -158,6 +177,367 @@ void main() {
   tearDown(() {
     VideoPlayerPlatform.instance = previousPlatform;
   });
+
+  PublishPostPreviewData previewData() => PublishPostPreviewData(
+        caption: 'แคปชันหลัก',
+        channels: [
+          const PublishPostPreviewChannel(
+            platform: SocialPlatform.tiktok,
+            caption: 'ข้อความเฉพาะ TikTok',
+            displayName: '@seller',
+            publishingNote: 'ส่งเป็นร่างเข้า TikTok',
+          ),
+          const PublishPostPreviewChannel(
+            platform: SocialPlatform.youtubeShorts,
+            caption: 'คำอธิบาย YouTube',
+            displayName: 'Seller channel',
+            title: 'ชื่อคลิป YouTube',
+          ),
+        ],
+      );
+
+  testWidgets('post preview switches captions while keeping one local player',
+      (tester) async {
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    expect(find.text('พรีวิว'), findsOneWidget);
+    expect(find.text('ข้อความเฉพาะ TikTok'), findsOneWidget);
+    expect(platform.sources.single.sourceType, DataSourceType.file);
+    expect(platform.played, isEmpty);
+    await tester
+        .tap(find.byKey(const ValueKey('preview-platform-YOUTUBE_SHORTS')));
+    await tester.pumpAndSettle();
+    expect(find.text('คำอธิบาย YouTube'), findsOneWidget);
+    expect(find.text('ชื่อคลิป YouTube'), findsOneWidget);
+    expect(find.text('ข้อความเฉพาะ TikTok'), findsNothing);
+    expect(platform.sources, hasLength(1));
+    await tester.tap(find.byKey(const ValueKey('post-video-preview-play')));
+    await tester.pump();
+    expect(platform.played, [1]);
+    await tester.pumpWidget(const SizedBox());
+    await _settleNativeDisposal(tester);
+    expect(platform.disposeCounts, {1: 1});
+  });
+
+  testWidgets('post preview fills the screen without a bottom control panel',
+      (tester) async {
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    final canvas = find.byKey(const ValueKey('post-video-preview-immersive'));
+    final systemBar = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(find
+        .ancestor(
+            of: canvas,
+            matching: find.byType(AnnotatedRegion<SystemUiOverlayStyle>))
+        .first);
+    expect(
+        systemBar.value.statusBarIconBrightness,
+        const bool.fromEnvironment('POSTDEE_STAGING_BUILD')
+            ? Brightness.dark
+            : Brightness.light);
+    expect(
+        tester.getRect(canvas),
+        Offset.zero &
+            (tester.view.physicalSize / tester.view.devicePixelRatio));
+    expect(find.byType(Slider), findsNothing);
+    expect(find.byTooltip('เริ่มคลิปใหม่'), findsNothing);
+    expect(find.text('0:00 / 0:30'), findsNothing);
+    expect(platform.played, isEmpty);
+    final tap = find.byKey(const ValueKey('post-video-preview-play'));
+    await tester.tap(tap);
+    await tester.pump();
+    expect(platform.played, [1]);
+    final pauses = platform.paused.length;
+    await tester.tap(tap);
+    await tester.pumpAndSettle();
+    expect(platform.paused.length, greaterThan(pauses));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await _settleNativeDisposal(tester);
+  });
+
+  testWidgets('immersive status icons remain readable in the outer dark theme',
+      (tester) async {
+    await tester
+        .pumpWidget(_testApp(theme: AppTheme.dark, postPreview: previewData()));
+    await tester.pumpAndSettle();
+    final canvas = find.byKey(const ValueKey('post-video-preview-immersive'));
+    final systemBar = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(find
+        .ancestor(
+            of: canvas,
+            matching: find.byType(AnnotatedRegion<SystemUiOverlayStyle>))
+        .first);
+    expect(systemBar.value.statusBarIconBrightness, Brightness.light);
+    expect(systemBar.value.statusBarBrightness, Brightness.dark);
+    expect(systemBar.value.systemNavigationBarIconBrightness, Brightness.light);
+    await tester.pumpWidget(const SizedBox());
+    await _settleNativeDisposal(tester);
+  });
+
+  testWidgets('immersive information pauses without resuming on text or close',
+      (tester) async {
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    final controller = tester
+        .widget<VideoPlayer>(
+            find.byKey(const ValueKey('post-video-preview-player')))
+        .controller;
+    await tester.tap(find.byKey(const ValueKey('post-video-preview-play')));
+    await tester.pump();
+    expect(controller.value.isPlaying, isTrue);
+    expect(platform.played, [1]);
+    final pausesBeforeInformation = platform.paused.length;
+
+    await tester.tap(find.byKey(const ValueKey('preview-info-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('preview-info-panel')), findsOneWidget);
+    expect(controller.value.isPlaying, isFalse);
+    expect(platform.paused.length, greaterThan(pausesBeforeInformation));
+    await tester.tap(find.text('ส่งเป็นร่างเข้า TikTok'));
+    await tester.pump();
+    expect(controller.value.isPlaying, isFalse);
+    expect(platform.played, [1]);
+
+    await tester.tap(find.byKey(const ValueKey('preview-info-close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('preview-info-panel')), findsNothing);
+    expect(controller.value.isPlaying, isFalse);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+    expect(platform.played, [1]);
+    expect(platform.sources, hasLength(1));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await _settleNativeDisposal(tester);
+  });
+
+  testWidgets(
+      'immersive volume appears only on demand and closes on canvas tap',
+      (tester) async {
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    expect(find.byType(Slider), findsNothing);
+    await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    final volume = find.byKey(const ValueKey('post-video-preview-volume'));
+    expect(volume.hitTestable(), findsOneWidget);
+    tester.widget<Slider>(volume).onChangeEnd!(.45);
+    await tester.pumpAndSettle();
+    expect(platform.volumes.last.volume, .45);
+    await tester.tap(find.byKey(const ValueKey('post-video-preview-play')));
+    await tester.pumpAndSettle();
+    expect(volume, findsNothing);
+    expect(platform.played, isEmpty);
+    await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Slider>(volume).value, .45);
+    await tester.pumpWidget(const SizedBox());
+    await _settleNativeDisposal(tester);
+  });
+
+  testWidgets('immersive volume and metadata disappear after owner revocation',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    sessions
+        .signIn(AuthSession.authenticated(userId: 'immersive-a', idToken: 'a'));
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Slider), findsOneWidget);
+    sessions
+        .signIn(AuthSession.authenticated(userId: 'immersive-b', idToken: 'b'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Slider), findsNothing);
+    expect(find.byKey(const ValueKey('post-video-preview-immersive')),
+        findsNothing);
+    expect(find.text('ข้อความเฉพาะ TikTok'), findsNothing);
+    expect(platform.played, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await _settleNativeDisposal(tester);
+  });
+
+  testWidgets('post preview hides local clip and captions after owner ABA',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    final owner = AuthSession.authenticated(
+        userId: 'preview-local-owner', idToken: 'local-token');
+    sessions.signIn(owner);
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('post-video-preview-play')));
+    await tester.pump();
+    sessions.signIn(AuthSession.authenticated(
+        userId: 'preview-other-owner', idToken: 'other-token'));
+    sessions.signIn(owner);
+    await tester.pumpAndSettle();
+    await _settleNativeDisposal(tester);
+    expect(find.text('ข้อความเฉพาะ TikTok'), findsNothing);
+    expect(find.text('@seller'), findsNothing);
+    expect(find.byType(PublishPostPreviewPane), findsNothing);
+    expect(
+        find.byKey(const ValueKey('post-video-preview-player')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('post-video-preview-retry')), findsNothing);
+    expect(platform.disposeCounts, {1: 1});
+  });
+
+  testWidgets('post preview rejects a stale caller before creating a player',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    final owner = AuthSession.authenticated(
+        userId: 'preview-delayed-owner', idToken: 'local-token');
+    sessions.signIn(owner);
+    final binding = sessions.captureSession();
+    sessions.signIn(AuthSession.authenticated(
+        userId: 'preview-other-owner', idToken: 'other-token'));
+    sessions.signIn(owner);
+    await tester.pumpWidget(
+        _testApp(postPreview: previewData(), ownerSession: binding));
+    await tester.pumpAndSettle();
+    expect(platform.sources, isEmpty);
+    expect(find.byType(PublishPostPreviewPane), findsNothing);
+    expect(find.text('ข้อความเฉพาะ TikTok'), findsNothing);
+    expect(
+        find.byKey(const ValueKey('post-video-preview-retry')), findsNothing);
+  });
+
+  testWidgets('owner ABA during local post initialization cannot restore media',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    final owner = AuthSession.authenticated(
+        userId: 'preview-waiting-owner', idToken: 'local-token');
+    sessions.signIn(owner);
+    final gate = Completer<void>();
+    platform = _PreviewVideoPlatform(firstCreationGate: gate);
+    VideoPlayerPlatform.instance = platform;
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pump();
+    expect(platform.sources, hasLength(1));
+    sessions.signIn(AuthSession.authenticated(
+        userId: 'preview-other-owner', idToken: 'other-token'));
+    sessions.signIn(owner);
+    await tester.pump();
+    gate.complete();
+    await tester.pumpAndSettle();
+    await _settleNativeDisposal(tester);
+    expect(find.byType(PublishPostPreviewPane), findsNothing);
+    expect(find.text('ข้อความเฉพาะ TikTok'), findsNothing);
+    expect(find.text('@seller'), findsNothing);
+    expect(
+        find.byKey(const ValueKey('post-video-preview-player')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('post-video-preview-retry')), findsNothing);
+    expect(platform.disposeCounts, {1: 1});
+    expect(platform.played, isEmpty);
+  });
+
+  testWidgets('viewing a cover pauses and resuming restores the actual clip',
+      (tester) async {
+    final data = previewData();
+    await tester.pumpWidget(_testApp(
+      postPreview: PublishPostPreviewData(
+        channels: data.channels,
+        caption: data.caption,
+        coverImageBytes: base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final video = tester.widget<VideoPlayer>(
+        find.byKey(const ValueKey('post-video-preview-player')));
+    await video.controller.seekTo(const Duration(seconds: 5));
+    await tester.tap(find.byKey(const ValueKey('post-video-preview-play')));
+    await tester.pump();
+    expect(video.controller.value.isPlaying, isTrue);
+    final pausesBeforeCover = platform.paused.length;
+    await tester
+        .ensureVisible(find.byKey(const ValueKey('preview-cover-toggle')));
+    await tester.tap(find.byKey(const ValueKey('preview-cover-toggle')));
+    await tester.pumpAndSettle();
+    expect(platform.paused.length, greaterThan(pausesBeforeCover));
+    expect(video.controller.value.isPlaying, isFalse);
+    expect(find.byKey(const ValueKey('preview-cover-image')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('post-video-preview-play')));
+    await tester.pump();
+    expect(video.controller.value.isPlaying, isTrue);
+    expect(find.byKey(const ValueKey('preview-cover-image')), findsNothing);
+    expect(platform.sources, hasLength(1));
+    await tester.pumpWidget(const SizedBox());
+    await _settleNativeDisposal(tester);
+    expect(platform.disposeCounts, {1: 1});
+  });
+
+  testWidgets('rotating a post preview keeps the same playing controller',
+      (tester) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('post-video-preview-play')));
+    await tester.pump();
+    final controller = tester
+        .widget<VideoPlayer>(
+            find.byKey(const ValueKey('post-video-preview-player')))
+        .controller;
+    tester.view.physicalSize = const Size(740, 360);
+    await tester.pumpAndSettle();
+    expect(platform.sources, hasLength(1));
+    expect(
+        tester
+            .widget<VideoPlayer>(
+                find.byKey(const ValueKey('post-video-preview-player')))
+            .controller,
+        same(controller));
+    expect(controller.value.isPlaying, isTrue);
+    expect(find.byKey(const ValueKey('preview-caption')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    tester.view.physicalSize = const Size(430, 900);
+    await tester.pumpAndSettle();
+    expect(platform.sources, hasLength(1));
+    await tester.pumpWidget(const SizedBox());
+    await _settleNativeDisposal(tester);
+    expect(platform.disposeCounts, {1: 1});
+  });
+
+  for (final size in [const Size(320, 568), const Size(740, 360)]) {
+    testWidgets('post preview keeps playback reachable at $size and text 2',
+        (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester
+          .pumpWidget(_testApp(textScale: 2, postPreview: previewData()));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('post-video-preview-play')),
+          findsOneWidget);
+      await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+      await tester.pumpAndSettle();
+      expect(
+          find.byKey(const ValueKey('post-video-preview-volume')).hitTestable(),
+          findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('post-video-preview-mute')).hitTestable(),
+          findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('post-video-preview-play')));
+      await tester.pump();
+      expect(platform.played, [1]);
+      await tester.pumpWidget(const SizedBox());
+      await _settleNativeDisposal(tester);
+    });
+  }
 
   testWidgets(
       'network preview plays a verified URL without autoplay and disposes on exit',
@@ -357,6 +737,237 @@ void main() {
     expect(platform.seeks.last, Duration.zero);
     expect(find.text('0:00 / 0:30'), findsOneWidget);
     expect(platform.played, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('preview volume commits one slider value and mute restores it',
+      (tester) async {
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    final initialCalls = platform.volumes.length;
+    final volume = find.byKey(const ValueKey('post-video-preview-volume'));
+    var slider = tester.widget<Slider>(volume);
+    slider.onChanged!(.65);
+    slider.onChanged!(.35);
+    await tester.pump();
+    expect(platform.volumes.length, initialCalls);
+    expect(tester.widget<Slider>(volume).value, .35);
+    slider.onChangeEnd!(.35);
+    await tester.pumpAndSettle();
+    expect(platform.volumes.last, (playerId: 1, volume: .35));
+    expect(find.text('35%'), findsOneWidget);
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    expect(platform.volumes.last.volume, 0);
+    expect(tester.widget<Slider>(volume).value, 0);
+    await tester.tap(find.byTooltip('เปิดเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    expect(platform.volumes.last.volume, .35);
+    await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('preview-platform-YOUTUBE_SHORTS')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Slider>(volume).value, .35);
+    expect(platform.sources, hasLength(1));
+    expect(platform.played, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('muted preview stays muted after decoder retry', (tester) async {
+    await tester.pumpWidget(_testApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    platform.events[1]!.addError(
+        PlatformException(code: 'decoder-error', message: 'Decoder stopped'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ลองเปิดคลิปอีกครั้ง'));
+    await tester.pumpAndSettle();
+    expect(platform.volumes.last, (playerId: 2, volume: 0.0));
+    expect(find.byTooltip('เปิดเสียงพรีวิว'), findsOneWidget);
+    expect(platform.played, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('failed volume change pauses and leaves controls recoverable',
+      (tester) async {
+    await tester.pumpWidget(_testApp());
+    await tester.pumpAndSettle();
+    platform.failNextVolume = true;
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    expect(find.text('ยังปรับเสียงไม่ได้ ลองอีกครั้ง'), findsOneWidget);
+    expect(find.byTooltip('ปิดเสียงพรีวิว'), findsOneWidget);
+    expect(platform.paused, contains(1));
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('เปิดเสียงพรีวิว'), findsOneWidget);
+    expect(platform.played, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('late volume completion cannot change a replacement clip',
+      (tester) async {
+    await tester.pumpWidget(_testApp());
+    await tester.pumpAndSettle();
+    final gate = Completer<void>();
+    platform.volumeGate = gate;
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pump();
+    platform.volumeGate = null;
+    await tester.pumpWidget(_testApp(videoPath: 'replacement-clip.mp4'));
+    await tester.pumpAndSettle();
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('ปิดเสียงพรีวิว'), findsOneWidget);
+    expect(
+        tester
+            .widget<Slider>(
+                find.byKey(const ValueKey('post-video-preview-volume')))
+            .value,
+        1);
+    expect(platform.sources, hasLength(2));
+    expect(platform.played, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await _settleNativeDisposal(tester);
+    expect(platform.disposeCounts, {1: 1, 2: 1});
+  });
+
+  testWidgets('stalled volume times out and can be retried without playback',
+      (tester) async {
+    await tester.pumpWidget(_testApp());
+    await tester.pumpAndSettle();
+    final gate = Completer<void>();
+    platform.volumeGate = gate;
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+    expect(find.text('ยังปรับเสียงไม่ได้ ลองอีกครั้ง'), findsOneWidget);
+    expect(
+        tester
+            .widget<Slider>(
+                find.byKey(const ValueKey('post-video-preview-volume')))
+            .onChanged,
+        isNotNull);
+    platform.volumeGate = null;
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('เปิดเสียงพรีวิว'), findsOneWidget);
+    expect(platform.played, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('owner ABA revokes controls during a pending volume request',
+      (tester) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final original = sessions.session;
+    addTearDown(() => sessions.signIn(original));
+    final owner = AuthSession.authenticated(
+        idToken: 'volume-token', userId: 'volume-owner', displayName: 'A');
+    sessions.signIn(owner);
+    await tester.pumpWidget(_testApp(postPreview: previewData()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('ปรับเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    final gate = Completer<void>();
+    platform.volumeGate = gate;
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pump();
+    sessions.signIn(AuthSession.authenticated(
+        idToken: 'other-token', userId: 'other', displayName: 'B'));
+    sessions.signIn(owner);
+    gate.complete();
+    await tester.pumpAndSettle();
+    await _settleNativeDisposal(tester);
+    expect(
+        find.byKey(const ValueKey('post-video-preview-volume')), findsNothing);
+    expect(find.text('ข้อความเฉพาะ TikTok'), findsNothing);
+    expect(platform.disposeCounts, {1: 1});
+    expect(platform.played, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a timed out volume restore cannot start playing later',
+      (tester) async {
+    await tester.pumpWidget(_testApp());
+    await tester.pumpAndSettle();
+    platform.failNextVolume = true;
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    final gate = Completer<void>();
+    platform.volumeGate = gate;
+    await tester.tap(find.byTooltip('เล่นคลิป'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pump();
+    expect(find.text('ยังเล่นคลิปไม่ได้ ลองอีกครั้ง'), findsOneWidget);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(platform.played, isEmpty);
+    expect(find.byTooltip('เล่นคลิป'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+      'backgrounding permanently cancels a pending playback continuation',
+      (tester) async {
+    await tester.pumpWidget(_testApp());
+    await tester.pumpAndSettle();
+    platform.failNextVolume = true;
+    await tester.tap(find.byTooltip('ปิดเสียงพรีวิว'));
+    await tester.pumpAndSettle();
+    final gate = Completer<void>();
+    platform.volumeGate = gate;
+    await tester.tap(find.byTooltip('เล่นคลิป'));
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(platform.played, isEmpty);
+    expect(find.byTooltip('เล่นคลิป'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('background pauses playback and retains preview volume on resume',
+      (tester) async {
+    await tester.pumpWidget(_testApp());
+    await tester.pumpAndSettle();
+    final volume = find.byKey(const ValueKey('post-video-preview-volume'));
+    tester.widget<Slider>(volume).onChangeEnd!(.4);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('เล่นคลิป'));
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(tester.widget<Slider>(volume).onChanged, isNull);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(tester.widget<Slider>(volume).value, .4);
+    expect(find.byTooltip('เล่นคลิป'), findsOneWidget);
+    expect(platform.played, [1]);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
   });

@@ -22,6 +22,8 @@ import 'calendar_cover_preview_cache.dart';
 
 typedef ScheduledPostsLoader = Future<List<ScheduledPostResult>> Function();
 typedef CalendarPostsLoader = Future<List<CalendarPostResult>> Function();
+typedef CalendarHistoryLoader = Future<List<CalendarPostResult>> Function(
+    DateTime createdSince);
 typedef ScheduledPostRescheduler = Future<ScheduledPostResult> Function(
   String postId,
   DateTime scheduledAt,
@@ -38,6 +40,7 @@ class CalendarScreen extends StatefulWidget {
     this.isActive = true,
     this.loadScheduledPosts,
     this.loadCalendarPosts,
+    this.loadCalendarPostsSince,
     this.reschedulePost,
     this.cancelPost,
     this.loadPost,
@@ -57,6 +60,10 @@ class CalendarScreen extends StatefulWidget {
   final bool isActive;
   final ScheduledPostsLoader? loadScheduledPosts;
   final CalendarPostsLoader? loadCalendarPosts;
+
+  /// Loads posts created on or after the given time. Used when no complete
+  /// loader is injected; defaults to the paged API read.
+  final CalendarHistoryLoader? loadCalendarPostsSince;
   final ScheduledPostRescheduler? reschedulePost;
   final ScheduledPostCanceller? cancelPost;
   final Future<PostSummaryResult?> Function(String postId)? loadPost;
@@ -103,6 +110,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   List<CalendarPostResult> _posts = const [];
   Timer? _queuedRefreshTimer;
   late DateTime _visibleMonth;
+  // Start of the oldest period the user has viewed; history loads back to it.
+  late DateTime _historyStart;
   DateTime? _selectedDay;
   String _platformFilter = 'all';
   String? _pendingActionPostId;
@@ -121,6 +130,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     final now = _now();
     _visibleMonth = DateTime(now.year, now.month);
+    _historyStart = _visibleMonth;
     if (widget.isActive) {
       unawaited(_loadPosts());
     } else {
@@ -207,6 +217,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       _posts = const [];
       _selectedDay = null;
       _visibleMonth = DateTime(now.year, now.month);
+      _historyStart = _visibleMonth;
       _hasLoaded = false;
       _isLoading = widget.isActive;
       _isRefreshing = false;
@@ -346,8 +357,19 @@ class _CalendarScreenState extends State<CalendarScreen>
           .map(CalendarPostResult.fromScheduledPost)
           .toList();
     }
-    return _apiClient.listCalendarPosts();
+    final historyLoader = widget.loadCalendarPostsSince;
+    if (historyLoader != null) return historyLoader(_historyCreatedSince);
+    return _apiClient.listCalendarPosts(createdSince: _historyCreatedSince);
   }
+
+  bool get _loadsHistoryWindow =>
+      widget.loadCalendarPosts == null && widget.loadScheduledPosts == null;
+
+  // A post's calendar time is at most about 30 days after it was created (the
+  // schedule window), so posts shown from _historyStart onward were created no
+  // earlier than 31 days before it.
+  DateTime get _historyCreatedSince =>
+      DateTime(_historyStart.year, _historyStart.month, _historyStart.day - 31);
 
   void _syncQueuedRefresh() {
     _queuedRefreshTimer?.cancel();
@@ -429,6 +451,11 @@ class _CalendarScreenState extends State<CalendarScreen>
       _selectedDay = DateTime(date.year, date.month, date.day);
       _visibleMonth = DateTime(date.year, date.month);
     });
+    final periodStart = _periodStart;
+    if (_loadsHistoryWindow && periodStart.isBefore(_historyStart)) {
+      _historyStart = periodStart;
+      unawaited(_loadPosts(silent: true));
+    }
   }
 
   bool get _hasAddAction =>

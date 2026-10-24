@@ -65,8 +65,11 @@ Guards that pass before and after: the plain list stays complete without
 `nextCursor`, and same-millisecond posts are neither skipped nor repeated.
 
 Mobile (`calendar_post_pagination_test.dart`,
-`calendar_history_window_test.dart`): see the pull request for the before-fix
-run. The existing test "calendar activity loads immediate and scheduled posts
+`calendar_history_window_test.dart`) did not compile against the baseline app:
+`listCalendarPosts` had no `createdSince` or `maxPages`,
+`listCalendarPostsPage` did not exist, and `CalendarScreen` had no
+`loadCalendarPostsSince`. The baseline client sent plain `GET /posts`, and the
+existing API test asserted an empty query. The existing test "calendar activity loads immediate and scheduled posts
 without previews" now expects `pageSize=100` instead of an empty query. Its
 server omits `nextCursor`, so it doubles as the new-app/old-API compatibility
 test (all 53 posts from one response).

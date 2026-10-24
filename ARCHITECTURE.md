@@ -2045,8 +2045,8 @@ with oldest-first eviction, and the notifier reads at most 10. Limited post
 lists push `take` into Postgres, single-post reschedule and publish-now read
 one owned row, and new captions stop at 63,206 UTF-16 units. Expired upload
 sessions are retired by the scheduler sweep described in the upload rules
-below. Still open: pagination for the full Calendar post list, and owner/post
-indexing before BullMQ is enabled. See
+below. Calendar reads cursor pages (see the `GET /posts` rule below). Still
+open: owner/post indexing before BullMQ is enabled. See
 `docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md`.
 
 The 2026-10-07 composer revision changes Mobile presentation only. A local
@@ -2236,6 +2236,18 @@ Rules:
   external id is stored.
 - `GET /posts` joins each authenticated user's posts with their persisted
   `platformResults`, including partial and failed platform outcomes.
+- Calendar reads history in cursor pages (2026-10-24):
+  - The app sends `GET /posts?pageSize=100`, then `cursor=<nextCursor>`. Each
+    page is a `createdAt desc, id desc` keyset query of at most 101 rows on
+    `(userId, createdAt)`.
+  - The app stops after the page that reaches 31 days before the oldest period
+    the user has viewed. A post's calendar time falls at most about 30 days
+    after its creation because of the schedule window. It also stops at
+    `nextCursor: null` or after 20 pages.
+  - Browsing to an earlier month or week extends that window and reloads.
+  - Plain `GET /posts` keeps returning the full history for installed apps. An
+    older API that ignores `pageSize` returns everything in one response, which
+    the new app treats as the last page.
 - Mobile presents the returned post lifecycle without upgrading it to success:
   `QUEUED`, `PUBLISHING`, `PUBLISHED`, and `PARTIAL_PUBLISHED` have distinct
   messages; an unknown status retains the local draft and blocks a success view.

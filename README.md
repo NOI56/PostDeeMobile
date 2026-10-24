@@ -303,6 +303,18 @@ does not change runtime code; the later API sanitizer fix changes no Mobile
 source or APK12041. iOS compilation uses Sentry disabled and does
 not establish iOS monitoring runtime acceptance.
 
+## Calendar history pages (2026-10-24, security follow-up)
+
+Calendar no longer asks the API for the complete post history in one response.
+The app reads `GET /posts?pageSize=100` pages, newest created first, following
+`nextCursor`. It stops after the page that reaches 31 days before the oldest
+month or week the user has viewed, at the last page, or after 20 pages.
+Browsing to an earlier period loads further back. Plain `GET /posts` is
+unchanged for installed apps, and a new app works with an older API, which
+returns everything at once. No schema change or migration. Deploy the API
+before shipping the app build, although either order works. See
+[`2026-10-24-calendar-post-pagination.md`](docs/superpowers/plans/2026-10-24-calendar-post-pagination.md).
+
 ## Calendar selected covers (2026-10-21)
 
 Calendar post cards add the saved selected cover as a small portrait thumbnail,

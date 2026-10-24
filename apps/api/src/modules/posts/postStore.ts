@@ -3,6 +3,7 @@ import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 
 import { countCurrentMonthPostUnits } from './postUsage.js';
+import type { PostPageCursor } from './postPageCursor.js';
 import {
   arePlatformSettingsEqual,
   type PlatformSettings
@@ -160,6 +161,14 @@ export type PostStore = {
   finalizeInterruptedPublish: (input: FinalizeInterruptedPublishInput) => Promise<boolean>;
   // With limit, returns at most that many of the newest posts (createdAt desc).
   list: (filter?: { userId?: string; scheduledOnly?: boolean; limit?: number }) => Promise<QueuedPost[]>;
+  // Keyset page of one owner's posts, newest created first (createdAt desc,
+  // id desc). `next` is present only when another page exists.
+  listPage: (input: {
+    userId: string;
+    scheduledOnly?: boolean;
+    limit: number;
+    after?: PostPageCursor;
+  }) => Promise<{ posts: QueuedPost[]; next?: PostPageCursor }>;
   // Direct owner-scoped reads must not scan or return another owner's history.
   findOwned: (input: { postId: string; userId: string }) => Promise<QueuedPost | undefined>;
   // Global aggregate only: used by the opt-in real-publisher activation guard.
@@ -279,6 +288,25 @@ export const createPostStore = ({
 
         return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
       });
+    },
+    listPage: async ({ userId, scheduledOnly = false, limit, after }) => {
+      const afterTime = after ? Date.parse(after.createdAt) : undefined;
+      const ordered = posts
+        .filter((post) => post.userId === userId && (!scheduledOnly || post.scheduledAt !== undefined))
+        .sort((left, right) =>
+          Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+          (right.id < left.id ? -1 : right.id > left.id ? 1 : 0))
+        .filter((post) => {
+          if (!after || afterTime === undefined) return true;
+          const time = Date.parse(post.createdAt);
+          return time < afterTime || (time === afterTime && post.id < after.id);
+        });
+      const page = ordered.slice(0, limit);
+      const last = page.at(-1);
+      return {
+        posts: page,
+        ...(ordered.length > limit && last ? { next: { createdAt: last.createdAt, id: last.id } } : {})
+      };
     },
     findOwned: async ({ postId, userId }) => posts.find((post) => post.id === postId && post.userId === userId),
     countPublishBacklog: async () =>

@@ -26,12 +26,14 @@ this screen; renewing stays in the existing billing flow.
 
 ## Reproduction before the fix
 
-`test/post_detail_paid_plan_failure_test.dart` was pushed alone first, and CI
-ran it against the unchanged app (results in the pull request). Locally, Flutter
-was blocked by another session's long-running `flutter test`.
+`test/post_detail_paid_plan_failure_test.dart` was pushed alone first (commit
+`da6b5f86`), and CI ran it against the unchanged app. CI Flutter Mobile failed
+on exactly the new case: the Thai reason was not found, because the raw code
+was shown. The guard that keeps channel review for other failures passed.
+Locally, Flutter was blocked by another session's long-running `flutter test`.
 
 ## Verification
 
-- CI Flutter Mobile (`flutter analyze` + full `flutter test`) on the fix
-  commit (results in the pull request).
+- Fix commit `1db86a14`: CI Flutter Mobile passed (`flutter analyze` "No issues
+  found" and the full `flutter test` suite), and Backend API passed.
 - Not verified: a real device.

@@ -2207,6 +2207,12 @@ Rules:
   `QUEUED`, `PUBLISHING`, `PUBLISHED`, and `PARTIAL_PUBLISHED` have distinct
   messages; an unknown status retains the local draft and blocks a success view.
   Recovered requests are labelled as the existing item.
+- Post detail shows each failed platform's `errorMessage` as `สาเหตุ: …`,
+  mapping known server messages to Thai. Since 2026-10-24 the reason
+  `PAID_PLAN_REQUIRED` (a scheduled post stopped because the owner's paid plan
+  ended) reads "แพ็กเกจหมดอายุก่อนถึงเวลาโพสต์ …". The "ทบทวนช่องทางนี้"
+  channel-review action is hidden for it, because reconnecting an account
+  cannot fix an expired plan.
 - Per-platform `deliveryOutcome` separates `LIVE`, `PRIVATE`, `UNLISTED`, and
   `DRAFT`. Internal `PUBLISHED` means the requested delivery was confirmed; it
   does not imply public visibility. Existing null outcomes fall back to legacy

@@ -6,6 +6,7 @@ import {
 } from '../modules/notifications/publishNotifier.js';
 import type { PostStore } from '../modules/posts/postStore.js';
 import { reconcileInterruptedPublishes } from './interruptedPublishRecovery.js';
+import type { ReadOwnerPlan } from './scheduledPublishPlan.js';
 import { reportMonitoringError } from '../monitoring/sentryMonitoring.js';
 import {
   type PlatformPublisher,
@@ -48,6 +49,7 @@ export const createPublishScheduler = ({
   notifier = createNoopPublishNotifier(),
   assertOwnerActive,
   runWithActiveOwner,
+  readOwnerPlan,
   requireEmptyBacklogOnStart = false,
   intervalMs = 5000,
   now = () => new Date().toISOString(),
@@ -64,6 +66,7 @@ export const createPublishScheduler = ({
   notifier?: PublishNotifier;
   assertOwnerActive?: (ownerId: string) => Promise<void>;
   runWithActiveOwner?: RunWithActiveOwner;
+  readOwnerPlan?: ReadOwnerPlan;
   requireEmptyBacklogOnStart?: boolean;
   intervalMs?: number;
   now?: () => string;
@@ -125,6 +128,7 @@ export const createPublishScheduler = ({
           notifier,
           assertOwnerActive,
           runWithActiveOwner,
+          readOwnerPlan,
           now
         });
         if (result.requiresReconciliation) {

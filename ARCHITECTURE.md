@@ -2180,8 +2180,20 @@ Rules:
 - Starter can schedule posts up to 14 days in advance; Pro can schedule up to
   30 days. The mobile date picker and post API enforce the current plan's limit
   for new schedules and reschedules. Previously accepted queue entries retain
-  their time after a policy change or downgrade, without worker revalidation or
-  data migration. The API accepts only calendar-valid
+  their time after a policy change or a downgrade between paid plans, without
+  data migration. Since 2026-10-24 the worker re-reads the owner's plan
+  (including admin trials) when a scheduled post comes due:
+  - If the plan is now `BASIC`, it sends nothing. It records each platform as
+    `FAILED` with `errorMessage: "PAID_PLAN_REQUIRED"`, marks the post `FAILED`
+    and sends the usual failure push.
+  - Units charged at creation stay counted.
+  - Post-now posts are not re-checked.
+  - The plan is read before the post is claimed, so a read failure leaves it
+    `QUEUED` for the pre-publish retry.
+  - Local mock auth, whose plan came from a request header, skips the check.
+  - The scheduler and the BullMQ worker share the rule.
+
+  The API accepts only calendar-valid
   RFC 3339 timestamps with `Z` or `±HH:mm`, normalizes them to UTC, and rejects
   past, timezone-free, or malformed values for create and reschedule requests.
 - Starter is limited to 120 post units per month.

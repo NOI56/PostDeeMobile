@@ -2045,8 +2045,8 @@ with oldest-first eviction, and the notifier reads at most 10. Limited post
 lists push `take` into Postgres, single-post reschedule and publish-now read
 one owned row, and new captions stop at 63,206 UTF-16 units. Expired upload
 sessions are retired by the scheduler sweep described in the upload rules
-below. Still open: pagination for the full Calendar post list, and owner/post
-indexing before BullMQ is enabled. See
+below. Calendar reads cursor pages (see the `GET /posts` rule below). Still
+open: owner/post indexing before BullMQ is enabled. See
 `docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md`.
 
 The 2026-10-07 composer revision changes Mobile presentation only. A local

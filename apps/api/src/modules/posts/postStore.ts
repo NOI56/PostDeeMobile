@@ -168,6 +168,8 @@ export type PostStore = {
     scheduledOnly?: boolean;
     limit: number;
     after?: PostPageCursor;
+    // Calendar window: keep posts created, scheduled or published at/after it.
+    activeSince?: string;
   }) => Promise<{ posts: QueuedPost[]; next?: PostPageCursor }>;
   // Direct owner-scoped reads must not scan or return another owner's history.
   findOwned: (input: { postId: string; userId: string }) => Promise<QueuedPost | undefined>;
@@ -289,10 +291,15 @@ export const createPostStore = ({
         return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
       });
     },
-    listPage: async ({ userId, scheduledOnly = false, limit, after }) => {
+    listPage: async ({ userId, scheduledOnly = false, limit, after, activeSince }) => {
       const afterTime = after ? Date.parse(after.createdAt) : undefined;
+      const activeTime = activeSince ? Date.parse(activeSince) : undefined;
+      const isActive = (post: QueuedPost) => activeTime === undefined ||
+        [post.createdAt, post.scheduledAt, post.publishedAt]
+          .some((time) => time !== undefined && Date.parse(time) >= activeTime);
       const ordered = posts
         .filter((post) => post.userId === userId && (!scheduledOnly || post.scheduledAt !== undefined))
+        .filter(isActive)
         .sort((left, right) =>
           Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
           (right.id < left.id ? -1 : right.id > left.id ? 1 : 0))

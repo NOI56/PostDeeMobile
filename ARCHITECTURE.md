@@ -1553,6 +1553,15 @@ RevenueCat และ PostPeer ชุดทดสอบแยกกัน รา�
 Android Debug เพิ่ม suffix `.staging` และใช้ `src/debug/google-services.json`;
 Profile/Release ยังคงใช้ Firebase Production จึงห้ามผสมกับ Staging Dart defines
 
+Security Batch 6 (2026-10-24): Android disables app-data backup and device
+transfer (`allowBackup="false"` plus data extraction rules) so the Firebase
+session stays on the signing-in device, and drops the unused `postdee://billing`
+intent filter. `PostDeeApiClient` refuses a non-HTTPS base URL in release builds
+with Firebase auth before loading auth headers, and the iOS CI IPA pins the
+production `API_BASE_URL`. Both workflows run with `permissions: contents:
+read`, check out without persisted credentials, pin actions by commit SHA, and
+restrict a manual `apk_source_ref` to commits on this repository's branches.
+
 ## Backend Runtime Dependency Boundary
 
 The backend imports `firebase-admin/app`, `firebase-admin/auth`, and

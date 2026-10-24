@@ -2029,10 +2029,10 @@ transaction). Templates are capped at 200 per owner with 120/5000-character
 fields and a bounded list. Device tokens are FCM-shaped, capped at 10 per owner
 with oldest-first eviction, and the notifier reads at most 10. Limited post
 lists push `take` into Postgres, single-post reschedule and publish-now read
-one owned row, and new captions stop at 63,206 UTF-16 units. Still open:
-a sweeper for expired upload sessions and abandoned R2 multipart uploads,
-pagination for the full Calendar post list, and owner/post indexing before
-BullMQ is enabled. See
+one owned row, and new captions stop at 63,206 UTF-16 units. Expired upload
+sessions are retired by the scheduler sweep described in the upload rules
+below. Still open: pagination for the full Calendar post list, and owner/post
+indexing before BullMQ is enabled. See
 `docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md`.
 
 The 2026-10-07 composer revision changes Mobile presentation only. A local
@@ -2198,6 +2198,16 @@ Rules:
 - Completion and abort transitions use compare-and-set rules. If R2 completes
   an object before the database acknowledgement survives, `GET /uploads/:id`
   verifies its exact size with `HEAD` and reconciles the session.
+- The in-process scheduler sweeps expired sessions on its own 10-minute timer,
+  separate from the publish poll. Each sweep takes at most 25 `UPLOADING`
+  sessions that expired more than five minutes ago, using the
+  `(expiresAt, status)` index. It aborts the R2 multipart upload first, then
+  retires the row to `ABORTED` only if the row is still expired and
+  `UPLOADING`. A failed abort is retried by the next sweep. Sweep errors go to
+  monitoring as `scheduler.uploadSweep` and never change `/ready`. Expiry
+  already blocks new parts and completion, so the sweep cannot race a
+  completing upload. R2 uploads with no session row are still aborted only
+  by account deletion or a bucket lifecycle rule.
 - The legacy single-file signed `PUT` remains a bearer URL that cannot be
   revoked individually. It keeps a replay window while `legacy` or `dual` mode
   accepts old clients; strict `multipart` closes that remaining path.

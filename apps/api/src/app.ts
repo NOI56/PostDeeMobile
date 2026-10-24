@@ -948,6 +948,9 @@ export const createApp = (options: AppOptions = {}) => {
       }),
       assertOwnerActive,
       runWithActiveOwner: runWithOwnerLifetime,
+      ...(managedUploadService
+        ? { sweepExpiredUploads: () => managedUploadService.sweepExpiredSessions() }
+        : {}),
       requireEmptyBacklogOnStart:
         config.socialPublisher === 'postpeer' &&
         config.socialPublishRequireEmptyBacklog

@@ -89,6 +89,12 @@ export type UploadSessionStore = {
   beginOwnerDeletion: (ownerId: string) => Promise<UploadOwnerStatus>;
   listOpenForOwner: (ownerId: string) => Promise<UploadSession[]>;
   finishOwnerDeletion: (ownerId: string) => Promise<void>;
+  // Maintenance only: UPLOADING sessions of any owner that expired at or before
+  // `expiredBefore`, oldest first, at most `limit`.
+  listExpiredUploading: (input: { expiredBefore: string; limit: number }) => Promise<UploadSession[]>;
+  // Compare-and-set UPLOADING -> ABORTED while the session is still expired.
+  // Returns false when another path already moved it.
+  retireExpired: (input: { id: string; expiredBefore: string }) => Promise<boolean>;
 };
 
 const accountDeletingError = () =>
@@ -382,6 +388,33 @@ export const createInMemoryUploadSessionStore = ({
           sessions.delete(id);
         }
       }
-    })
+    }),
+    listExpiredUploading: async ({ expiredBefore, limit }) =>
+      [...sessions.values()]
+        .filter(
+          (session) =>
+            session.status === 'UPLOADING' &&
+            Date.parse(session.expiresAt) <= Date.parse(expiredBefore)
+        )
+        .sort((left, right) => Date.parse(left.expiresAt) - Date.parse(right.expiresAt))
+        .slice(0, limit),
+    retireExpired: async ({ id, expiredBefore }) => {
+      const session = sessions.get(id);
+
+      if (
+        session?.status !== 'UPLOADING' ||
+        Date.parse(session.expiresAt) > Date.parse(expiredBefore)
+      ) {
+        return false;
+      }
+
+      sessions.set(id, {
+        ...session,
+        status: 'ABORTED',
+        operationStartedAt: undefined,
+        updatedAt: now()
+      });
+      return true;
+    }
   };
 };

@@ -1517,8 +1517,9 @@ Validation:
 - A managed multipart session is refused with `409` and
   `code: "UPLOAD_SESSION_LIMIT_REACHED"` when the owner already holds 10
   unexpired `UPLOADING` sessions; the provider upload created for that request
-  is aborted. Expired sessions do not count. No sweeper retires expired
-  session rows or aborts their R2 uploads yet; account deletion still does.
+  is aborted. Expired sessions do not count, and the scheduler's expired-session
+  sweep (see `DELETE /uploads/:uploadId`) aborts their R2 uploads and retires
+  them to `ABORTED`.
 - `sizeBytes` must be positive and no larger than `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
 - For generic uploads, provided `width` and `height` must describe vertical
   9:16 media within a 2 percent tolerance.
@@ -1641,6 +1642,16 @@ sessions, returns `409 ACCOUNT_UPLOADS_DRAINING` while a fresh completion gets
 its drain window, and aborts persisted and R2 orphan multipart uploads before
 sweeping the owner's stored objects. Completion and abort state changes use
 compare-and-set rules so neither terminal result can overwrite the other.
+
+Since 2026-10-24 the in-process scheduler also retires abandoned sessions. Every
+10 minutes it takes up to 25 `UPLOADING` sessions (any owner, oldest first)
+whose `sessionExpiresAt` passed more than five minutes ago, aborts each R2
+multipart upload, and then moves the session to `ABORTED` with a compare-and-set
+update. `GET /uploads/:uploadId` then reports `sessionStatus: "ABORTED"`. Part
+and complete calls already returned `410 UPLOAD_SESSION_EXPIRED` after expiry, so
+no live upload changes behavior. A failed R2 abort leaves the session
+`UPLOADING` for the next sweep. Session rows are kept, not deleted, so
+`videoS3Key` lookups keep their meaning.
 
 Legacy signed `PUT` remains available during `legacy`/`dual` rollout and still
 has a replay window until strict `multipart` mode is enabled for all clients.

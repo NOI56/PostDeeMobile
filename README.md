@@ -1910,6 +1910,12 @@ changing the clip or cover conflicts with an already accepted request and keeps
 the draft. Pre-upgrade uncertain drafts without upload receipts cannot infer
 the old media safely; check the existing post before explicitly starting anew.
 Interrupted pre-submit uploads still need a verified R2 lifecycle rule.
+Since 2026-10-24 the scheduler retires unfinished managed multipart sessions:
+every 10 minutes it aborts the R2 upload of up to 25 sessions that expired more
+than five minutes ago and marks them `ABORTED`. Completed objects that never
+reached a post, and R2 multipart uploads with no session row, still rely on
+that lifecycle rule. See
+[`2026-10-24-upload-session-sweeper.md`](docs/superpowers/plans/2026-10-24-upload-session-sweeper.md).
 
 Mobile bounds each ordinary JSON request to 20 seconds from authentication
 refresh through connection and response-body completion. AI transcription,

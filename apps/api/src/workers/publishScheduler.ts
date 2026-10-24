@@ -21,6 +21,7 @@ export type PublishScheduler = {
   runOnce: () => Promise<void>;
   drain?: () => Promise<void>;
   checkReady?: () => Promise<void>;
+  sweepUploadsOnce?: () => Promise<void>;
 };
 
 const activationBacklogInspectionFailedMessage =
@@ -52,7 +53,9 @@ export const createPublishScheduler = ({
   now = () => new Date().toISOString(),
   maxPrePublishAttempts = 3,
   prePublishRetryBackoffMs = 1_000,
-  sleep = wait
+  sleep = wait,
+  sweepExpiredUploads,
+  uploadSweepIntervalMs = 10 * 60_000
 }: {
   postStore: PostStore;
   platformPublishStore: PlatformPublishStore;
@@ -67,9 +70,15 @@ export const createPublishScheduler = ({
   maxPrePublishAttempts?: number;
   prePublishRetryBackoffMs?: number;
   sleep?: (delayMs: number) => Promise<void>;
+  // Best-effort cleanup of expired managed upload sessions. It runs on its own
+  // interval and never affects publishing readiness.
+  sweepExpiredUploads?: () => Promise<{ retired: number; failed: number }>;
+  uploadSweepIntervalMs?: number;
 }): PublishScheduler => {
   let timer: ReturnType<typeof setInterval> | undefined;
+  let sweepTimer: ReturnType<typeof setInterval> | undefined;
   let activeRun: Promise<void> | undefined;
+  let activeSweep: Promise<void> | undefined;
   let stopped = false;
   let pollHealthy = true;
   let requiresReconciliation = false;
@@ -189,12 +198,37 @@ export const createPublishScheduler = ({
     return activeRun;
   };
 
+  const sweepUploadsOnce = (): Promise<void> => {
+    if (stopped || !sweepExpiredUploads) return Promise.resolve();
+    if (activeSweep) return activeSweep;
+    activeSweep = (async () => {
+      try {
+        const { retired, failed } = await sweepExpiredUploads();
+        if (retired > 0) {
+          console.log('Expired upload sessions retired', { count: retired });
+        }
+        if (failed > 0) {
+          console.error('Expired upload session sweep incomplete', {
+            code: 'UPLOAD_SWEEP_INCOMPLETE', count: failed
+          });
+        }
+      } catch (error) {
+        reportMonitoringError(error, { operation: 'scheduler.uploadSweep' });
+      }
+    })().finally(() => { activeSweep = undefined; });
+    return activeSweep;
+  };
+
   const stop = () => {
     generation += 1;
     stopped = true;
     if (timer) {
       clearInterval(timer);
       timer = undefined;
+    }
+    if (sweepTimer) {
+      clearInterval(sweepTimer);
+      sweepTimer = undefined;
     }
   };
 
@@ -242,6 +276,9 @@ export const createPublishScheduler = ({
             console.error('Publish scheduler poll failed', { code: 'PUBLISH_POLL_FAILED' });
           });
         }, intervalMs);
+        if (sweepExpiredUploads) {
+          sweepTimer = setInterval(() => { void sweepUploadsOnce(); }, uploadSweepIntervalMs);
+        }
         stopped = false;
       })().finally(() => { starting = undefined; });
       return starting;
@@ -251,12 +288,14 @@ export const createPublishScheduler = ({
       stop();
       await starting;
       await activeRun;
+      await activeSweep;
     },
     checkReady: async () => {
       if (!timer || stopped || !pollHealthy || requiresReconciliation) {
         throw new Error('Publish scheduler unavailable');
       }
     },
-    runOnce
+    runOnce,
+    sweepUploadsOnce
   };
 };

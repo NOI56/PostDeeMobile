@@ -5,7 +5,7 @@ import type { SentryMonitoringConfig } from './sentryConfig.js';
 
 const operations = new Set([
   'http.unhandled', 'http.response', 'publishing.platform', 'publishing.cleanup',
-  'scheduler.poll', 'scheduler.process', 'worker.failure', 'worker.connection',
+  'scheduler.poll', 'scheduler.process', 'scheduler.uploadSweep', 'worker.failure', 'worker.connection',
   'server.shutdown', 'server.startup', 'captions.provider', 'ai.transcription', 'ai.planning'
 ]);
 const errorNames = new Set([

@@ -50,6 +50,14 @@ export type QueuedPost = {
   addonPostUnits?: number;
 };
 
+// Fields the publish scheduler needs from a due post. It never reads the
+// media fingerprint or the add-on allocation.
+export type DuePost = Omit<QueuedPost, 'mediaContentFingerprint' | 'addonPostUnits'>;
+
+// One scheduler poll reads at most this many due posts. The rest wait for the
+// next poll, so a large backlog never loads every owner's rows at once.
+export const maxDuePostsPerPoll = 50;
+
 export type CreatePostInput = {
   userId: string;
   caption: string;
@@ -176,8 +184,9 @@ export type PostStore = {
     input: CreatePostWithinMonthlyLimitInput
   ) => Promise<CreatePostWithinMonthlyLimitResult>;
   // Posts whose time has come: QUEUED with no schedule (post now) or scheduledAt
-  // at/before `now`. Used by the publish scheduler.
-  listDue: (input: { now: string }) => Promise<QueuedPost[]>;
+  // at/before `now`. Used by the publish scheduler; returns at most `limit`
+  // (default maxDuePostsPerPoll) posts per call.
+  listDue: (input: { now: string; limit?: number }) => Promise<DuePost[]>;
   // Atomically moves a still-queued post into PUBLISHING before calling an
   // external publisher. Returns false for missing, already-running, or finished posts.
   claimForPublish: (input: ClaimPostForPublishInput) => Promise<boolean>;
@@ -353,12 +362,14 @@ export const createPostStore = ({
         created: true
       };
     }),
-    listDue: async ({ now }) =>
-      posts.filter(
-        (post) =>
-          post.status === 'QUEUED' &&
-          (post.scheduledAt === undefined || post.scheduledAt <= now)
-      ),
+    listDue: async ({ now, limit = maxDuePostsPerPoll }) =>
+      posts
+        .filter(
+          (post) =>
+            post.status === 'QUEUED' &&
+            (post.scheduledAt === undefined || post.scheduledAt <= now)
+        )
+        .slice(0, limit),
     claimForPublish: async ({ postId, expectedRunAt }) => {
       const post = posts.find((candidate) => candidate.id === postId);
 

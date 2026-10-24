@@ -933,7 +933,17 @@ and `publicPath` (`/p/<slug>` only when published, otherwise null). It does not
 include the owner's email or tokens. The client resolves `publicPath` against
 its configured API origin. A changed slug makes the old URL unavailable.
 
-Slug conflicts return HTTP 409 with `LINK_IN_BIO_SLUG_TAKEN`. Invalid payloads
+Slug conflicts return HTTP 409 with `LINK_IN_BIO_SLUG_TAKEN`. Since 2026-10-24
+the same response also covers:
+- A slug another owner released less than 30 days ago, by renaming or deleting
+  their account. The previous owner may take back a slug they renamed away
+  from; after account deletion nobody may claim it until the 30 days end. Each
+  owner keeps at most their 3 most recent released slugs reserved.
+- A reserved name for a new claim: `admin`, `support`, `help`, `api`,
+  `official`, `www` and similar, or any slug containing `postdee`. An owner who
+  already holds such a slug may keep republishing it.
+
+Unpublishing still keeps the slug held by its owner. Invalid payloads
 return 400. An unavailable durable repository returns 503 with
 `LINK_IN_BIO_UNAVAILABLE`; it never silently falls back to in-memory publication.
 Owner/public responses disable caching. Unpublishing or deleting an account
@@ -1517,8 +1527,9 @@ Validation:
 - A managed multipart session is refused with `409` and
   `code: "UPLOAD_SESSION_LIMIT_REACHED"` when the owner already holds 10
   unexpired `UPLOADING` sessions; the provider upload created for that request
-  is aborted. Expired sessions do not count. No sweeper retires expired
-  session rows or aborts their R2 uploads yet; account deletion still does.
+  is aborted. Expired sessions do not count, and the scheduler's expired-session
+  sweep (see `DELETE /uploads/:uploadId`) aborts their R2 uploads and retires
+  them to `ABORTED`.
 - `sizeBytes` must be positive and no larger than `UPLOAD_MAX_SIZE_BYTES` (default `524288000`, or 500 MiB).
 - For generic uploads, provided `width` and `height` must describe vertical
   9:16 media within a 2 percent tolerance.
@@ -1641,6 +1652,16 @@ sessions, returns `409 ACCOUNT_UPLOADS_DRAINING` while a fresh completion gets
 its drain window, and aborts persisted and R2 orphan multipart uploads before
 sweeping the owner's stored objects. Completion and abort state changes use
 compare-and-set rules so neither terminal result can overwrite the other.
+
+Since 2026-10-24 the in-process scheduler also retires abandoned sessions. Every
+10 minutes it takes up to 25 `UPLOADING` sessions (any owner, oldest first)
+whose `sessionExpiresAt` passed more than five minutes ago, aborts each R2
+multipart upload, and then moves the session to `ABORTED` with a compare-and-set
+update. `GET /uploads/:uploadId` then reports `sessionStatus: "ABORTED"`. Part
+and complete calls already returned `410 UPLOAD_SESSION_EXPIRED` after expiry, so
+no live upload changes behavior. A failed R2 abort leaves the session
+`UPLOADING` for the next sweep. Session rows are kept, not deleted, so
+`videoS3Key` lookups keep their meaning.
 
 Legacy signed `PUT` remains available during `legacy`/`dual` rollout and still
 has a replay window until strict `multipart` mode is enabled for all clients.

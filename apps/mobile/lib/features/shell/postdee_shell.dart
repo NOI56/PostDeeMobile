@@ -874,6 +874,7 @@ class _PostDeeBottomNavState extends State<_PostDeeBottomNav>
                               reduceMotion: reduceMotion,
                               label: widget.l10n.captionTab,
                               icon: Icons.calendar_today_outlined,
+                              iconSize: 24,
                               selected: widget.currentIndex == 3,
                               onPressed: widget.onCalendar,
                             ),
@@ -1041,6 +1042,7 @@ class _ReferenceNavButton extends StatefulWidget {
     required this.icon,
     required this.selected,
     required this.onPressed,
+    this.iconSize = _PostDeeBottomNav._iconSize,
     this.isCreateAction = false,
     this.createScale = 1,
     this.onHighlightChanged,
@@ -1050,6 +1052,7 @@ class _ReferenceNavButton extends StatefulWidget {
   final bool reduceMotion;
   final String label;
   final IconData icon;
+  final double iconSize;
   final bool selected;
   final VoidCallback onPressed;
   final bool isCreateAction;
@@ -1147,7 +1150,7 @@ class _ReferenceNavButtonState extends State<_ReferenceNavButton>
                 ),
                 Icon(
                   widget.icon,
-                  size: _PostDeeBottomNav._iconSize,
+                  size: widget.iconSize,
                   color: Color.lerp(
                       AppTheme.textSecondary, AppTheme.navActive, progress),
                 ),
@@ -1207,7 +1210,7 @@ class _ReferenceNavButtonState extends State<_ReferenceNavButton>
                                           child: Icon(
                                             widget.icon,
                                             color: Colors.white,
-                                            size: _PostDeeBottomNav._iconSize,
+                                            size: widget.iconSize,
                                           ),
                                         ),
                                       ),

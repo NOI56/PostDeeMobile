@@ -35,6 +35,7 @@ class PostQuotaStrip extends StatelessWidget {
     final secondaryStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
           color: AppTheme.textSecondary,
           fontSize: 11,
+          fontWeight: FontWeight.w500,
         );
     final remainingFraction =
         limit > 0 ? (remaining / limit).clamp(0.0, 1.0) : 0.0;
@@ -43,8 +44,18 @@ class PostQuotaStrip extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppTheme.glass,
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(
+          color: Color.lerp(AppTheme.border, AppTheme.accentCyanInk, 0.3)!,
+          width: 1.2,
+        ),
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -57,7 +68,11 @@ class PostQuotaStrip extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'โพสต์คงเหลือ',
-                    style: secondaryStyle?.copyWith(fontSize: 12),
+                    style: secondaryStyle?.copyWith(
+                      fontSize: 12,
+                      color: AppTheme.accentCyanInk,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(width: AppTheme.spaceSm),
@@ -113,7 +128,8 @@ class PostQuotaStrip extends StatelessWidget {
                 key: const ValueKey('uploader-post-quota-progress'),
                 value: remainingFraction,
                 minHeight: 3,
-                backgroundColor: AppTheme.border,
+                backgroundColor:
+                    Color.lerp(AppTheme.border, AppTheme.accentCyanInk, 0.18),
                 color: AppTheme.accentCyanInk,
                 semanticsLabel: 'โพสต์เหลือ $remaining จาก $limit หน่วย',
               ),

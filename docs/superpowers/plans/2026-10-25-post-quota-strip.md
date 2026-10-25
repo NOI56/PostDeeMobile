@@ -184,3 +184,29 @@ The user-authorized main delivery and Render deployment follow these checks.
 The Render target remains My Workspace / `postdee-api-staging`; deployment
 status and health checks must be verified separately after the push. The API
 tree for this follow-up is unchanged from the CI-passed `ae026e4f` release.
+
+## Card contrast refinement — 2026-10-25
+
+The user reported that the post-quota card blended into the light background.
+Refine only `post_quota_strip.dart` from fresh `main` `546f6ed0`: retain the
+theme-aware surface, compact dimensions and data, add a stronger green-tinted
+1.2-pixel outline and one soft shadow, emphasize the title, and make the empty
+progress track easier to distinguish. Both themes keep the existing quota,
+phone-verification and purchased-bank behavior; the AI card is unchanged.
+
+Existing strip/visual checks passed **15 tests**. The full Flutter suite passed
+**3,002 tests with 6 existing skips**, and full analysis reported no issues.
+Light/dark, narrow/enlarged-text captures were inspected; no test logic or API,
+schema, dependency, Android configuration or runtime flag was changed.
+
+Staging build **12055** passed with the existing configuration and matching
+debug signer, then replaced **12054** using `adb install -r` without clearing
+data. Actual emulator verification confirmed the quota card and empty picker,
+with neither loading nor error state; the outline, shadow and title visibly
+separate the card from its background. Existing session/drafts remained present.
+Proof and APK are local artifacts under
+`D:\PostDeeMobile\output\playwright\post-quota-contrast`, including
+`emulator-post-quota-contrast.png` and `postdee-staging-12055.apk`.
+
+Main delivery follows the session's authorized workflow. This cosmetic Mobile
+change does not require a Render/API deployment.

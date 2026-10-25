@@ -131,7 +131,9 @@
       ล่วงหน้าได้นานกว่านั้น ให้แยก prefix ของไฟล์ AI ชั่วคราวออกจากไฟล์ที่รอโพสต์ก่อน
       แล้วจึงตั้งอายุเฉพาะ prefix ชั่วคราว
 - ✅ ตอนผู้ใช้ลบบัญชี API จะไล่ลบทุก object ใต้ owner prefix ของ Firebase UID
-      ก่อนลบฐานข้อมูล; lifecycle ยังจำเป็นเป็นตาข่ายสำหรับ signed upload ที่มาช้า
+      ก่อนลบฐานข้อมูล; Production Blueprint ใช้ `UPLOAD_PROTOCOL_MODE=multipart`
+      แล้ว (25 ต.ค. 2026) จึงไม่มี legacy signed upload ที่มาช้าหลังลบบัญชี
+      แต่ lifecycle ยังจำเป็นสำหรับไฟล์ AI ชั่วคราว
 - signed download URL ตั้งอายุขั้นต่ำ 1 ชม. แล้ว (ให้ PostPeer/Gemini ดึงทัน)
 
 ---

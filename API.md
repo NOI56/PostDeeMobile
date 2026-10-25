@@ -1731,10 +1731,12 @@ When `UPLOAD_PROTOCOL_MODE=dual|multipart` and the client requests
 }
 ```
 
-`UPLOAD_PROTOCOL_MODE` defaults to `legacy`. Production uses `dual` during the
-client rollout, so opted-in clients receive managed multipart sessions while
-old clients keep receiving the legacy response. In strict `multipart` mode, a
-request without the opt-in returns `426 UPLOAD_CLIENT_UPGRADE_REQUIRED`.
+`UPLOAD_PROTOCOL_MODE` defaults to `legacy`. In `dual` mode (Staging), opted-in
+clients receive managed multipart sessions while old clients keep receiving
+the legacy response. Since 2026-10-25 the Production Blueprint uses strict
+`multipart` (no legacy build was distributed for Production), so account
+deletion can abort every client upload; a request without the opt-in returns
+`426 UPLOAD_CLIENT_UPGRADE_REQUIRED`.
 
 ### `POST /uploads/:uploadId/parts/:partNumber`
 
@@ -4216,7 +4218,7 @@ PostgreSQL.
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | `...` | R2 S3-compatible secret access key |
 | `CLOUDFLARE_R2_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` | Optional custom R2 endpoint |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Signed upload URL lifetime; legacy retries request one fresh URL after explicit expiry, while multipart retries refresh only the affected part URL |
-| `UPLOAD_PROTOCOL_MODE` | `legacy`, `dual`, `multipart` | Upload rollout mode; defaults to `legacy`, production uses `dual` during client migration, and strict `multipart` rejects old clients without the opt-in |
+| `UPLOAD_PROTOCOL_MODE` | `legacy`, `dual`, `multipart` | Upload rollout mode; defaults to `legacy`, Staging uses `dual`, and Production uses strict `multipart`, which rejects old clients without the opt-in |
 | `MULTIPART_UPLOAD_PART_SIZE_BYTES` | `16777216` | Server-selected managed multipart part size in bytes (16 MiB default) |
 | `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS` | `3600` | Managed multipart session lifetime in seconds |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | Maximum declared upload size accepted by `POST /uploads` |

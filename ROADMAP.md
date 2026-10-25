@@ -13,11 +13,14 @@ Build roadmap for PostDee.
   local mapping so retries skip the deleted profile. A failed profile delete
   keeps all data and returns the existing retryable
   `503 ACCOUNT_SOCIAL_CLEANUP_FAILED`.
+- The Production Blueprint now uses strict `UPLOAD_PROTOCOL_MODE=multipart`
+  (only the owner has installed builds), closing late legacy signed-PUT
+  uploads after deletion; Staging keeps `dual` until changed in its Dashboard.
 - No schema, migration, flag, response field or Mobile change; API-only deploy.
   `FIREBASE_AUTH_DELETE_ENABLED` stays `false` until a disposable Staging
-  account passes real Firebase/R2/PostPeer cleanup, legacy signed-PUT late
-  uploads are covered, the Production service account is confirmed and a
-  public deletion request page exists. See the
+  account passes real Firebase/R2/PostPeer cleanup, the Production service
+  account is confirmed and a public deletion page with a monitored contact
+  exists. See the
   [profile cleanup plan](docs/superpowers/plans/2026-10-25-account-deletion-postpeer-profile.md).
 
 ## Post quota on the clip step (2026-10-25, follow-up candidate)

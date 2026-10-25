@@ -70,10 +70,10 @@ page to the duration of one provider request.
    with a Staging-only `FIREBASE_SERVICE_ACCOUNT_JSON`, temporarily enabling
    deletion on Staging: confirm Firebase identity, R2 owner prefix, PostPeer
    integrations and profile, database rows and an isolation-control account.
-2. Cover late legacy signed-PUT uploads (5-minute bearer URLs cannot be
-   revoked): either an R2 lifecycle rule scoped to orphaned owner prefixes, or
-   `UPLOAD_PROTOCOL_MODE=multipart` in Production once no legacy build needs
-   it. Multipart uploads are aborted by the saga already.
+2. ~~Cover late legacy signed-PUT uploads.~~ Done in the Production Blueprint;
+   see [strict multipart follow-up](#strict-multipart-follow-up-2026-10-25).
+   Staging keeps `dual`; set its Dashboard value to `multipart` before the
+   disposable-account test so the test matches Production.
 3. Confirm `FIREBASE_SERVICE_ACCOUNT_JSON` in the Production Dashboard; with
    the flag `true` and no key the API refuses to start.
 4. Publish a public account-deletion request page with a monitored contact
@@ -83,3 +83,31 @@ page to the duration of one provider request.
 
 Deployment order for this change: API only. Any environment receives it with a
 normal API deploy; no migration is involved.
+
+## Strict multipart follow-up (2026-10-25)
+
+The user confirmed that nobody besides the owner has installed any build
+against Production. Legacy signed PUT URLs (5 minutes) are bearer URLs that
+account deletion cannot revoke, so an upload started just before deletion
+could land under the deleted owner's R2 prefix afterwards. Managed multipart
+sessions do not have this gap: the saga aborts them and late part PUTs fail.
+
+- `render.yaml` sets `UPLOAD_PROTOCOL_MODE=multipart` (was `dual`); the
+  render config test now requires it. `/uploads` is the only route that hands
+  upload URLs to clients; the Link in Bio image upload is server-side.
+- Current Mobile always requests `multipart-v1`, so current builds are
+  unaffected. A build without the opt-in gets
+  `426 UPLOAD_CLIENT_UPGRADE_REQUIRED`. Rebuild the earlier prepared Play AAB
+  from current source and confirm it sends `multipart-v1` before uploading it.
+- With strict mode, posts referencing a video uploaded through the legacy
+  path are rejected by `assertUploadReady`. Production has no external users;
+  any old owner-only test post in the suspended Production database may need
+  recreating.
+- `render.staging.yaml` and the live Staging Dashboard keep `dual`; the
+  Blueprint is not auto-synced. Change Staging in the Dashboard before the
+  deletion test.
+- The Blueprint change applies to Production only when the Blueprint is synced
+  or the value is set in the Dashboard; Production is currently suspended.
+
+Verification: `src/config` and `src/modules/uploads` tests pass (191), with
+the updated expectation observed failing first.

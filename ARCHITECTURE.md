@@ -2063,7 +2063,7 @@ delivery visibility cannot be reconstructed.
 | Subscription | `SUBSCRIPTION_STORE=memory` | `SUBSCRIPTION_STORE=prisma` |
 | Analytics | `ANALYTICS_STORE=memory` | `ANALYTICS_STORE=prisma` |
 | Queue | `PUBLISH_QUEUE=memory` | `PUBLISH_QUEUE=bullmq` (Upstash) with `POST_STORE=prisma` and `DATABASE_URL` |
-| Video storage | `VIDEO_STORAGE=mock`, `UPLOAD_PROTOCOL_MODE=legacy` | `VIDEO_STORAGE=r2`, with `UPLOAD_PROTOCOL_MODE=dual` during rollout and strict `multipart` after old clients are retired |
+| Video storage | `VIDEO_STORAGE=mock`, `UPLOAD_PROTOCOL_MODE=legacy` | `VIDEO_STORAGE=r2`, with strict `UPLOAD_PROTOCOL_MODE=multipart` (Staging keeps `dual`) |
 | Captions | `CAPTION_PROVIDER=mock` | Real-clip caption provider using backend AI |
 | Caption usage | `CAPTION_USAGE_STORE=memory` | `CAPTION_USAGE_STORE=prisma` |
 | AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | ElevenLabs Scribe v2 transcribes; `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite` plans from visual proxy/transcript with structured JSON and provider-default sampling (no explicit `temperature`); PostDee rules are the final fallback; FFmpeg export stays on mobile |
@@ -2418,8 +2418,8 @@ Rules:
   may choose the cover. TikTok receives the frame time, and YouTube Shorts
   receives no custom thumbnail.
 - New clients opt in with `multipart-v1`. `UPLOAD_PROTOCOL_MODE` defaults to
-  `legacy`; production uses `dual` during rollout, and moves to strict
-  `multipart` only after old clients are retired.
+  `legacy`; Staging uses `dual`, and Production uses strict `multipart`
+  because no legacy build was distributed for it.
 - Managed part URLs are issued just in time and can be retried per part. The
   server owns completion and abort, which lets account deletion invalidate
   unfinished sessions before object cleanup.

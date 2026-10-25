@@ -128,6 +128,13 @@ describe('administrator refresh and report presentation', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-18T08:00:00Z')); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it('labels the Facebook destination as Reels in the post channel filter', async () => {
+    const ui = await browser();
+    await ui.controls.navigate('posts'); await flush();
+    expect(ui.document.app.textContent).toContain('Facebook Reels');
+    expect(ui.document.app.textContent).not.toContain('Facebook Page Video');
+  });
+
   it('offers a manual refresh and refreshes only visible pages every 60 seconds', async () => {
     const ui = await browser();
     expect(ui.button('รีเฟรชข้อมูล')).toBeTruthy();

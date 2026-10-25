@@ -170,7 +170,7 @@ const _requiredMusicPublishingPlatforms = <String>{
   'TikTok',
   'YouTube Shorts',
   'Instagram Reels',
-  'Facebook Video',
+  'Facebook Reels',
   'Shopee Video',
   'Lazada Video',
 };

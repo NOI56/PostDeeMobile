@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type {
   CreatePostInput,
   CreatePostWithinMonthlyLimitInput,
@@ -14,7 +15,8 @@ import { countCurrentMonthPostUnits, readUtcMonthBounds } from './postUsage.js';
 import {
   PostIdempotencyKeyReusedError,
   buildIdempotentPostId,
-  isMatchingIdempotentIntent
+  isMatchingIdempotentIntent,
+  maxDuePostsPerPoll
 } from './postStore.js';
 import { normalizePersistedPlatformSettings } from './platformSettings.js';
 import { normalizePersistedPlatformTargets } from './platformTargets.js';
@@ -47,6 +49,14 @@ type PrismaPost = {
   addonPostUnits?: number;
 };
 
+// Publish fields only: the scheduler never needs the media fingerprint or the
+// add-on allocation of a due post.
+const duePostSelect = {
+  id: true, userId: true, caption: true, videoS3Key: true, coverImageS3Key: true,
+  coverFrameTimeMs: true, selectedPlatforms: true, platformSettings: true,
+  platformTargets: true, scheduledAt: true, status: true, publishedAt: true, createdAt: true
+} as const;
+
 type PostDelegate = {
   aggregate?: (args: { where: { userId: string }; _sum: { addonPostUnits: true } }) =>
     Promise<{ _sum: { addonPostUnits: number | null } }>;
@@ -55,14 +65,28 @@ type PostDelegate = {
   }) => Promise<number>;
   findMany: (args: {
     where: {
+      id?: { gt: string };
       userId?: string;
       status?: PrismaPostStatus;
       scheduledAt?: { not: null };
       createdAt?: { gte: Date; lt: Date };
-      OR?: Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>;
+      OR?:
+        | Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>
+        | [{ createdAt: { lt: Date } }, { createdAt: Date; id: { lt: string } }];
+      AND?: [{
+        OR: [{ createdAt: { gte: Date } }, { scheduledAt: { gte: Date } }, { publishedAt: { gte: Date } }];
+      }];
     };
-    orderBy?: { createdAt: 'desc' } | { scheduledAt: 'asc' };
-    select?: { createdAt: true; selectedPlatforms: true; addonPostUnits?: true } | { id: true; selectedPlatforms: true };
+    orderBy?:
+      | { createdAt: 'desc' }
+      | { scheduledAt: 'asc' }
+      | { id: 'asc' }
+      | [{ createdAt: 'desc' }, { id: 'desc' }];
+    take?: number;
+    select?:
+      | { createdAt: true; selectedPlatforms: true; addonPostUnits?: true }
+      | { id: true; selectedPlatforms: true }
+      | typeof duePostSelect;
   }) => Promise<PrismaPost[]>;
   create: (args: {
     data: {
@@ -105,6 +129,8 @@ type PrismaPostTransaction = PrismaOwnerLifecycleTransaction & Partial<PrismaMon
   post: PostDelegate;
 };
 export type PrismaPostClient = PrismaPostTransaction & {
+  // Used only by claimForPublishWithSchedule's single UPDATE ... RETURNING.
+  $queryRaw?: <T = unknown>(query: Prisma.Sql) => Promise<T>;
   $transaction: <Result>(
     operation: (client: PrismaPostTransaction) => Promise<Result>,
     options: { isolationLevel: 'Serializable'; maxWait?: number; timeout?: number }
@@ -338,10 +364,13 @@ export const createPrismaPostRepository = ({
   countMonthlyPostUnits: async (input) => countMonthlyUnits(prisma.post, input),
   countAddonPostUnits: async ({ userId }) => countAddonUnits(prisma.post, userId),
   list: async (filter) => {
-    const scheduledOnly = filter?.scheduledOnly ?? false;
+    // An unscoped list would read every owner's history in the shared process.
+    if (!filter?.userId) throw new Error('PostStore.list requires userId');
+    const scheduledOnly = filter.scheduledOnly ?? false;
+    const limited = filter.limit !== undefined;
     const posts = await prisma.post.findMany({
       where: {
-        userId: filter?.userId,
+        userId: filter.userId,
         ...(scheduledOnly
           ? {
               scheduledAt: {
@@ -350,10 +379,46 @@ export const createPrismaPostRepository = ({
             }
           : {})
       },
-      orderBy: scheduledOnly ? { scheduledAt: 'asc' } : { createdAt: 'desc' }
+      orderBy: scheduledOnly && !limited ? { scheduledAt: 'asc' } : { createdAt: 'desc' },
+      ...(limited ? { take: filter.limit } : {})
     });
 
     return posts.map(mapPost);
+  },
+  listPage: async ({ userId, scheduledOnly = false, limit, after, activeSince }) => {
+    const afterTime = after ? new Date(after.createdAt) : undefined;
+    const activeTime = activeSince ? new Date(activeSince) : undefined;
+    // One extra row tells whether another page exists; (userId, createdAt) is indexed.
+    const rows = await prisma.post.findMany({
+      where: {
+        userId,
+        ...(scheduledOnly ? { scheduledAt: { not: null } } : {}),
+        ...(after && afterTime
+          ? { OR: [{ createdAt: { lt: afterTime } }, { createdAt: afterTime, id: { lt: after.id } }] }
+          : {}),
+        // A post can be rescheduled any number of times, so its Calendar time
+        // is not bounded by its creation time.
+        ...(activeTime
+          ? {
+              AND: [{
+                OR: [
+                  { createdAt: { gte: activeTime } },
+                  { scheduledAt: { gte: activeTime } },
+                  { publishedAt: { gte: activeTime } }
+                ]
+              }]
+            }
+          : {})
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1
+    });
+    const posts = rows.slice(0, limit).map(mapPost);
+    const last = posts.at(-1);
+    return {
+      posts,
+      ...(rows.length > limit && last ? { next: { createdAt: last.createdAt, id: last.id } } : {})
+    };
   },
   findOwned: async ({ postId, userId }) => {
     const persisted = await prisma.post.findFirst({ where: { id: postId, userId } });
@@ -371,16 +436,37 @@ export const createPrismaPostRepository = ({
     return persisted ? mapPost(persisted) : undefined;
   },
   createWithinMonthlyLimit: async (input) => createWithinMonthlyLimit(prisma, input),
-  listDue: async ({ now }: { now: string }) => {
+  listDue: async ({ now, limit = maxDuePostsPerPoll, afterId }) => {
+    // A global read across owners: one bounded batch per call, in id order so
+    // the scheduler can resume after the last post it tried.
     const posts = await prisma.post.findMany({
       where: {
+        ...(afterId ? { id: { gt: afterId } } : {}),
         status: 'QUEUED',
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date(now) } }]
       },
-      orderBy: { scheduledAt: 'asc' }
+      orderBy: { id: 'asc' },
+      take: limit,
+      select: duePostSelect
     });
 
     return posts.map(mapPost);
+  },
+  claimForPublishWithSchedule: async ({ postId, expectedRunAt }: ClaimPostForPublishInput) => {
+    if (!prisma.$queryRaw) throw new Error('Atomic publish claim requires raw queries');
+    // One statement claims either a row still scheduled at its run time or a
+    // row switched to Publish now, and returns which. scheduledAt and
+    // updatedAt are UTC timestamps without time zone.
+    const rows = await prisma.$queryRaw<Array<{ scheduledAt: Date | null }>>(Prisma.sql`
+      UPDATE "Post"
+      SET "status" = 'PUBLISHING', "updatedAt" = timezone('UTC', now())
+      WHERE "id" = ${postId}
+        AND "status" = 'QUEUED'
+        AND ("scheduledAt" IS NULL OR "scheduledAt" = timezone('UTC', ${expectedRunAt}::timestamptz))
+      RETURNING "scheduledAt"`);
+    const row = rows[0];
+    if (!row) return undefined;
+    return row.scheduledAt === null ? 'immediate' : 'scheduled';
   },
   claimForPublish: async ({ postId, expectedRunAt }: ClaimPostForPublishInput) => {
     const result = await prisma.post.updateMany({

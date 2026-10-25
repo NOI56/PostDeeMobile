@@ -6,6 +6,7 @@ import { readServerConfig } from '../../config/env.js';
 import { createInMemoryLinkInBioStore } from './linkInBioStore.js';
 import { createLinkInBioStoreFromConfig } from './linkInBioStoreFactory.js';
 import { createDefaultLinkInBioAppearance } from './linkInBioAppearance.js';
+import { linkInBioSlugReservationMs } from './linkInBioSlugPolicy.js';
 
 const page = {
   storeName: 'ร้านของดี',
@@ -109,11 +110,16 @@ describe('link in bio routes', () => {
     await request(app).get('/p/missing').expect(404);
   });
 
-  it('allows the owner to change their slug and releases the previous one', async () => {
-    const app = createApp();
+  it('allows the owner to change their slug and reserves the previous one for other owners', async () => {
+    let clock = new Date('2026-10-24T00:00:00Z');
+    const app = createApp({ now: () => clock });
     await publish(app, 'owner-a').expect(200);
     await publish(app, 'owner-a', { ...page, slug: 'new-shop' }).expect(200);
     await request(app).get('/p/my-shop').expect(404);
+    await publish(app, 'owner-b').expect(409).expect(({ body }) => {
+      expect(body.code).toBe('LINK_IN_BIO_SLUG_TAKEN');
+    });
+    clock = new Date(clock.getTime() + linkInBioSlugReservationMs);
     await publish(app, 'owner-b').expect(200);
   });
 
@@ -124,14 +130,17 @@ describe('link in bio routes', () => {
     expect(results.find(({ status }) => status === 409)?.body.code).toBe('LINK_IN_BIO_SLUG_TAKEN');
   });
 
-  it('removes the public page and frees the slug when the owner deletes their account', async () => {
-    const app = createApp();
+  it('removes the public page and reserves the slug for nobody when the owner deletes their account', async () => {
+    let clock = new Date('2026-10-24T00:00:00Z');
+    const app = createApp({ now: () => clock });
     await publish(app, 'owner-a').expect(200);
     await request(app).delete('/account').set('x-postdee-user-id', 'owner-a').expect(200);
     await request(app).get('/p/my-shop').expect(404);
     await request(app).get('/link-in-bio').set('x-postdee-user-id', 'owner-a')
       .expect(200, { status: 'ok', profile: null });
     await publish(app, 'owner-a').expect(409);
+    await publish(app, 'owner-b').expect(409);
+    clock = new Date(clock.getTime() + linkInBioSlugReservationMs);
     await publish(app, 'owner-b').expect(200);
   });
 

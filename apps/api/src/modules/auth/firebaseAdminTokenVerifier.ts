@@ -10,7 +10,8 @@ const mapDecodedToken = (decoded: DecodedIdToken): AuthUser => {
     authenticatedAtSeconds: decoded.auth_time
   };
 
-  if (decoded.email) {
+  // User.email is unique, so only a Firebase-verified address is stored.
+  if (decoded.email && decoded.email_verified === true) {
     authUser.email = decoded.email;
   }
 

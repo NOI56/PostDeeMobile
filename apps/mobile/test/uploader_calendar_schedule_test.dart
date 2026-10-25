@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
@@ -36,6 +37,56 @@ Future<void> _chooseSchedule(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<TestPublishDraftStore> _openCustomTime(WidgetTester tester,
+    {bool withClip = false}) async {
+  final store = TestPublishDraftStore(ownerUserId: 'calendar-seller');
+  File? clip;
+  if (withClip) {
+    clip = File('${Directory.systemTemp.path}/wheel-time-'
+        '${DateTime.now().microsecondsSinceEpoch}.mp4')
+      ..writeAsBytesSync(List.filled(512, 1));
+    final clipFile = clip;
+    addTearDown(() {
+      if (clipFile.existsSync()) clipFile.deleteSync();
+    });
+  }
+  await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+          body: UploaderScreen(
+    probePublishMedia: probeValidPublishMedia,
+    loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
+    initialScheduleDate: DateTime(2026, 10, 15),
+    initialVideoPath: clip?.path,
+    initialVideoName: clip == null ? null : 'wheel-time.mp4',
+    initialVideoSizeBytes: clip == null ? null : 512,
+    initialVideoWidth: clip == null ? null : 1080,
+    initialVideoHeight: clip == null ? null : 1920,
+    now: () => DateTime(2026, 10, 11, 12),
+    draftStore: store,
+    loadSocialConnections: () async => const [],
+    loadSubscription: () async => _subscription('PRO'),
+    createUpload: (_) async => throw StateError('Draft saves must not upload'),
+    createPost: (_) async => throw StateError('Draft saves must not publish'),
+  ))));
+  await tester.pumpAndSettle();
+  await _chooseSchedule(tester);
+  final custom = find.byKey(const ValueKey('uploader-schedule-time-custom'));
+  await tester.ensureVisible(custom);
+  await tester.tap(custom);
+  await tester.pumpAndSettle();
+  return store;
+}
+
+Future<void> _setTimeWheels(WidgetTester tester, int hour, int minute) async {
+  final hourPicker = tester.widget<CupertinoPicker>(
+      find.byKey(const ValueKey('postdee-time-hour-picker')));
+  final minutePicker = tester.widget<CupertinoPicker>(
+      find.byKey(const ValueKey('postdee-time-minute-picker')));
+  hourPicker.scrollController!.jumpToItem(hour);
+  minutePicker.scrollController!.jumpToItem(minute);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -44,6 +95,74 @@ void main() {
     );
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  testWidgets('custom looping time keeps the suggested calendar date',
+      (tester) async {
+    final store = await _openCustomTime(tester);
+    expect(find.byKey(const ValueKey('postdee-time-picker')), findsOneWidget);
+    expect(find.byType(TimePickerDialog), findsNothing);
+    await _setTimeWheels(tester, 25, 61);
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('ลงโพสต์ 15 ต.ค. 2026 เวลา 01:01 น.'), findsOneWidget);
+    expect(store.savedRequests, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('custom time cancellation keeps the previous time on reopen',
+      (tester) async {
+    final store = await _openCustomTime(tester);
+    expect(find.byKey(const ValueKey('postdee-time-picker')), findsOneWidget);
+    await _setTimeWheels(tester, 23, 59);
+    await tester.tap(find.byKey(const ValueKey('postdee-time-cancel')));
+    await tester.pumpAndSettle();
+    expect(find.text('ลงโพสต์ 15 ต.ค. 2026 เวลา 18:30 น.'), findsOneWidget);
+    await tester
+        .tap(find.byKey(const ValueKey('uploader-schedule-time-custom')));
+    await tester.pumpAndSettle();
+    final hour = tester.widget<CupertinoPicker>(
+        find.byKey(const ValueKey('postdee-time-hour-picker')));
+    final minute = tester.widget<CupertinoPicker>(
+        find.byKey(const ValueKey('postdee-time-minute-picker')));
+    expect(hour.scrollController!.selectedItem % 24, 18);
+    expect(minute.scrollController!.selectedItem % 60, 30);
+    expect(store.savedRequests, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('postdee-time-cancel')));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('confirmed custom time saves the same local instant in UTC',
+      (tester) async {
+    final store = await _openCustomTime(tester, withClip: true);
+    await _setTimeWheels(tester, 25, 61);
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
+    await tester.pumpAndSettle();
+    final save = find.byKey(const ValueKey('uploader-save-draft-button'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(store.savedRequests, hasLength(1));
+    final scheduled = store.savedRequests.single.scheduledAt!;
+    expect(scheduled.isUtc, isTrue);
+    expect(scheduled, DateTime(2026, 10, 15, 1, 1).toUtc());
+  });
+
+  testWidgets('custom time ignores an earlier signed-in session after A-B-A',
+      (tester) async {
+    final store = await _openCustomTime(tester);
+    expect(find.byKey(const ValueKey('postdee-time-picker')), findsOneWidget);
+    await _setTimeWheels(tester, 23, 59);
+    final sessions = PostDeeAuthSessionStore.instance;
+    sessions
+        .signIn(const AuthSession(userId: 'other-seller', idToken: 'other'));
+    sessions.signIn(
+        const AuthSession(userId: 'calendar-seller', idToken: 'test-token'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('ลงโพสต์ 15 ต.ค. 2026 เวลา 18:30 น.'), findsOneWidget);
+    expect(store.savedRequests, isEmpty);
+  });
 
   testWidgets('calendar date is a suggestion until scheduling is chosen',
       (tester) async {
@@ -78,7 +197,9 @@ void main() {
 
   testWidgets('schedule choices provide at least 48dp touch targets',
       (tester) async {
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: UploaderScreen(
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: UploaderScreen(
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       now: () => DateTime(2026, 10, 11, 12),
@@ -93,7 +214,10 @@ void main() {
           greaterThanOrEqualTo(48));
     }
     await _chooseSchedule(tester);
-    for (final key in ['uploader-schedule-day-custom', 'uploader-schedule-time-custom']) {
+    for (final key in [
+      'uploader-schedule-day-custom',
+      'uploader-schedule-time-custom'
+    ]) {
       final choice = find.byKey(ValueKey(key));
       await tester.ensureVisible(choice);
       expect(tester.getSize(choice).height, greaterThanOrEqualTo(48));

@@ -1,5 +1,32 @@
 # PostDee Staging
 
+## Facebook Page Reels — 24 ตุลาคม 2026
+
+[Deploy `dep-dbdqk7sipgvc739q4r50`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbdqk7sipgvc739q4r50)
+เป็น **Live** ที่ source `342470fbc2f656ca4a3d289ddcd500ce58177a6e` จาก `main`
+เวลา 01:41:49 น. ไทย (23 ตุลาคม 2026 เวลา 18:41:49 UTC).
+
+- วางแพตช์บนฐาน `a4efd65` และรักษา platform settings, captions, target snapshots,
+  TikTok Direct Post และ billing ของ `main` ล่าสุด ไม่คัดลอกสาขาเก่าทับระบบใหม่.
+- Facebook ส่ง `contentType: 'reel'` เสมอ รวมโหมด `PAGE_DRAFT`; คง
+  `published`, `isAiGenerated` และบัญชีเจ้าของโพสต์ ไม่มี Page feed fallback.
+- ซิงก์ `REVENUECAT_SUBSCRIPTION_ENVIRONMENT=SANDBOX` ตาม Staging Blueprint
+  ก่อนรุ่นใหม่เริ่มทำงาน; ไม่มี schema/dependency/migration ใหม่จากแพตช์ Reels.
+- ตรวจด้วย Node `22.23.3`: API 2,577 tests ผ่าน/25 ข้าม (4 ชุดต้องใช้ฐานข้อมูล
+  ทดสอบแยก), typecheck, build, Prisma generate/validate และ built-server
+  `/health`/`/ready` ผ่าน. Backend CI ของ source เดียวกันผ่านแล้ว.
+- หลัง Live: `/health` และ `/ready` ตอบ HTTP 200, database/queue `ok`,
+  `/ready` มี `Cache-Control: no-store`; `/posts` ที่ไม่มี token ตอบ 401.
+  ไม่พบ app error logs ในช่วง 18:40:31–18:42:33 UTC ที่ตรวจ.
+- Mobile targeted tests 253 ผ่าน/1 ข้ามและ analyze ผ่าน; full suite ในเครื่อง
+  หยุดเพราะ PowerShell หน่วยความจำไม่พอหลัง 2,525 ผ่าน/5 ข้าม จึงไม่ถือว่า
+  full suite ผ่านจากการรันในเครื่อง. Full Mobile suite และ analyze ของ source
+  เดียวกันผ่านครบแล้วบน GitHub พร้อม Backend API ที่
+  [CI run 40005219097](https://github.com/NOI56/PostDeeMobile/actions/runs/40005219097).
+- รอบนี้ deploy เฉพาะ API Staging ไม่แจก APK และไม่ resume/deploy Production.
+  ยังไม่ได้โพสต์ Reel จริง; provider delivery, draft และ custom thumbnail E2E
+  ต้องตรวจด้วยเพจทดสอบที่เชื่อมบัญชีแล้ว.
+
 ## รวมชุด Staging เข้า main — 20 ตุลาคม 2026
 
 ผู้ใช้อนุมัติ main/push หลังตรวจรายการค้าง จึงรวม runtime `0a43e7b`, เอกสาร
@@ -420,7 +447,10 @@ Workflow `ci.yml` มี input `build_staging_apk` ค่าเริ่มต�
 build ยังรัน checks เดิมก่อน ใช้ `staging_build_number` ระบุ version code
 เพื่ออัปเดตแอปเดิมได้ โดยรับจำนวนเต็ม 1–2100000000 เท่านั้น; ค่าว่างใช้ค่า
 จาก pubspec ตามเดิม ค่า input ผ่าน environment และ quoted shell array
-โดยไม่แทรกลง shell command โดยตรง
+โดยไม่แทรกลง shell command โดยตรง ตั้งแต่ 2026-10-24 (security Batch 6)
+`apk_source_ref` ต้องเป็น commit ที่อยู่บน branch ของ repository นี้ (workflow
+fetch ทุก branch แล้วตรวจด้วย `git for-each-ref --contains HEAD refs/remotes/origin`)
+ref ของ pull request จาก fork จะถูกปฏิเสธก่อนรัน checks
 
 ตัวเลือก `staging_test_store_billing` ค่าเริ่มต้น `false` คง APK ที่ปิด billing
 ไว้ตามเดิม เปิดได้เฉพาะ manual dispatch ที่เปิด `build_staging_apk` ด้วย
@@ -788,10 +818,16 @@ authenticated readiness `200` พร้อม header `private, no-store` จา�
 pseudonymous ที่ PostPeer กำหนดให้มี, poll ผล `202 pending/publishing` ประมาณ 2 นาที
 โดยไม่สร้าง external id ปลอม และคืน `platformResults` ใน `GET /posts` แล้ว ค่า
 Phase 2 ใหม่คือ TikTok `INBOX_DRAFT`; YouTube title + Private/Unlisted/Public +
-kids/synthetic/certification; Instagram share-to-feed; Facebook Page Video แบบ
+kids/synthetic/certification; Instagram share-to-feed; Facebook Page Reels แบบ
 publish/page-draft. TikTok direct/`SELF_ONLY` เป็น legacy compatibility และยังห้าม
 เปิดให้ client ใหม่จน creator-info/consent/audit ครบ.
-`FACEBOOK_REELS` เป็นชื่อภายในที่ตอนนี้ส่ง Facebook Page Video ไม่ใช่ Reels.
+`FACEBOOK_REELS` คง enum เดิม แต่ส่ง PostPeer `platform: 'facebook'` กับ
+`platformSpecificData.contentType: 'reel'` เสมอ ไม่มี Page feed fallback; คง
+`PUBLISH|PAGE_DRAFT`, optional `isAiGenerated`, captions และ target snapshots เดิม.
+ยังต้องผ่าน Page Reel/draft E2E ด้วยบัญชีจริง หน้าปกที่ส่งเป็น best effort และ
+ต้องตรวจการแสดงจริง โดย provider อาจเลือกหน้าปกเอง หลัง deploy publisher ใหม่
+งาน queued/scheduled Facebook เดิมจะใช้เส้นทาง Page Reels ด้วย ไม่มี migration
+หรือ client field/environment variable ใหม่ และไม่ใช้เพดาน Page Video กับ Reels
 Instagram ไม่มี Private รายโพสต์ และ Facebook `PUBLISH` อาจเผยแพร่จริง จึงต้องใช้
 เฉพาะบัญชี disposable ที่ไม่มีผู้ติดตามหรือข้อมูลจริง ส่วน `PAGE_DRAFT` ต้องมี
 หลักฐาน final draft จาก provider ก่อนถือว่าสำเร็จ
@@ -904,7 +940,7 @@ candidate ขึ้น Staging ต้อง manual deploy ชุดที่ต�
       `เลือกทั้งหมด`; เลือกแล้วจึงเห็นปุ่มสรุป/ตั้งค่าของช่องนั้น ไม่วางทุก field บน
       หน้า main. Review ต้องแสดง TikTok inbox draft, YouTube visibility หลังกรอก
       title/kids/synthetic/certification ครบ, Instagram share-to-feed และ Facebook
-      Page Video publish/page-draft พร้อมชื่อ/id ของบัญชี/channel/page ทุกปลายทาง;
+      Page Reels publish/page-draft พร้อมชื่อ/id ของบัญชี/channel/page ทุกปลายทาง;
       TikTok direct, identity ที่หาย, ค่าที่ไม่ครบ และ outcome ที่ไม่รู้ต้อง block
 - [ ] Apply migration `20260811130000_add_platform_publish_configuration`, deploy API
       ก่อน Mobile และตรวจ readiness `platformSettingsVersion: 1`; ตรวจ Prisma JSON
@@ -995,7 +1031,7 @@ candidate ขึ้น Staging ต้อง manual deploy ชุดที่ต�
         URL/id จริง (เก็บแบบ private), ปลายทางระบุวิดีโอเป็น Private และโควตาสด
         เปลี่ยน `249/250` เป็น `248/250`
       - [ ] TikTok inbox draft, YouTube Phase 2 compliance/visibility, Instagram
-        Reels, Facebook Page Video publish/page-draft, scheduling,
+        Reels, Facebook Page Reels publish/page-draft, scheduling,
         ambiguous-outcome/retry และ exact-account/isolation/disposable proof
 - [x] คืน Staging เป็น `SOCIAL_PUBLISHER=disabled` หลังทดสอบ โดย deploy
       `dep-d9socgon74is7393uedg` แสดง runtime `disabled` / publisher `disabled` /

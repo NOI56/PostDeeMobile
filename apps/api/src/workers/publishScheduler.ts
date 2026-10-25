@@ -4,8 +4,9 @@ import {
   type PublishNotifier,
   createNoopPublishNotifier
 } from '../modules/notifications/publishNotifier.js';
-import type { PostStore } from '../modules/posts/postStore.js';
+import { maxDuePostsPerPoll, type PostStore } from '../modules/posts/postStore.js';
 import { reconcileInterruptedPublishes } from './interruptedPublishRecovery.js';
+import type { ReadOwnerPlan } from './scheduledPublishPlan.js';
 import { reportMonitoringError } from '../monitoring/sentryMonitoring.js';
 import {
   type PlatformPublisher,
@@ -21,7 +22,14 @@ export type PublishScheduler = {
   runOnce: () => Promise<void>;
   drain?: () => Promise<void>;
   checkReady?: () => Promise<void>;
+  sweepUploadsOnce?: () => Promise<void>;
 };
+
+// One poll reads up to this many batches of maxDuePostsPerPoll due posts. A
+// cursor kept across polls resumes after the last post tried, so posts the
+// scheduler cannot start (for example an owner whose account deletion is in
+// progress) are visited once per cycle and never hide later owners' posts.
+export const maxDueBatchesPerPoll = 10;
 
 const activationBacklogInspectionFailedMessage =
   'Social publishing activation blocked: backlog inspection failed';
@@ -47,12 +55,15 @@ export const createPublishScheduler = ({
   notifier = createNoopPublishNotifier(),
   assertOwnerActive,
   runWithActiveOwner,
+  readOwnerPlan,
   requireEmptyBacklogOnStart = false,
   intervalMs = 5000,
   now = () => new Date().toISOString(),
   maxPrePublishAttempts = 3,
   prePublishRetryBackoffMs = 1_000,
-  sleep = wait
+  sleep = wait,
+  sweepExpiredUploads,
+  uploadSweepIntervalMs = 10 * 60_000
 }: {
   postStore: PostStore;
   platformPublishStore: PlatformPublishStore;
@@ -61,15 +72,23 @@ export const createPublishScheduler = ({
   notifier?: PublishNotifier;
   assertOwnerActive?: (ownerId: string) => Promise<void>;
   runWithActiveOwner?: RunWithActiveOwner;
+  readOwnerPlan?: ReadOwnerPlan;
   requireEmptyBacklogOnStart?: boolean;
   intervalMs?: number;
   now?: () => string;
   maxPrePublishAttempts?: number;
   prePublishRetryBackoffMs?: number;
   sleep?: (delayMs: number) => Promise<void>;
+  // Best-effort cleanup of expired managed upload sessions. It runs on its own
+  // interval and never affects publishing readiness.
+  sweepExpiredUploads?: () => Promise<{ retired: number; failed: number }>;
+  uploadSweepIntervalMs?: number;
 }): PublishScheduler => {
   let timer: ReturnType<typeof setInterval> | undefined;
+  let sweepTimer: ReturnType<typeof setInterval> | undefined;
   let activeRun: Promise<void> | undefined;
+  let activeSweep: Promise<void> | undefined;
+  let dueCursor: string | undefined;
   let stopped = false;
   let pollHealthy = true;
   let requiresReconciliation = false;
@@ -116,6 +135,7 @@ export const createPublishScheduler = ({
           notifier,
           assertOwnerActive,
           runWithActiveOwner,
+          readOwnerPlan,
           now
         });
         if (result.requiresReconciliation) {
@@ -166,17 +186,29 @@ export const createPublishScheduler = ({
     if (activeRun) return activeRun;
     activeRun = Promise.resolve().then(async () => {
       try {
-        const duePosts = await postStore.listDue({ now: now() });
+        const pollNow = now();
         let persistenceFailed = false;
-        for (const post of duePosts) {
-          if (stopped) break;
-          try {
-            await publishDuePost(post);
-          } catch (error) {
-            // Preserve an uncertain provider outcome. A later healthy poll can
-            // retry only rows that remain safely QUEUED before provider intake.
-            persistenceFailed = true;
-            reportMonitoringError(error, { operation: 'scheduler.process' });
+        for (let batch = 0; batch < maxDueBatchesPerPoll && !stopped; batch += 1) {
+          const duePosts = await postStore.listDue({
+            now: pollNow,
+            ...(dueCursor ? { afterId: dueCursor } : {})
+          });
+          for (const post of duePosts) {
+            if (stopped) break;
+            dueCursor = post.id;
+            try {
+              await publishDuePost(post);
+            } catch (error) {
+              // Preserve an uncertain provider outcome. A later healthy poll can
+              // retry only rows that remain safely QUEUED before provider intake.
+              persistenceFailed = true;
+              reportMonitoringError(error, { operation: 'scheduler.process' });
+            }
+          }
+          if (duePosts.length < maxDuePostsPerPoll) {
+            // End of the due list: the next batch starts from the beginning.
+            dueCursor = undefined;
+            break;
           }
         }
         pollHealthy = !persistenceFailed;
@@ -189,12 +221,37 @@ export const createPublishScheduler = ({
     return activeRun;
   };
 
+  const sweepUploadsOnce = (): Promise<void> => {
+    if (stopped || !sweepExpiredUploads) return Promise.resolve();
+    if (activeSweep) return activeSweep;
+    activeSweep = (async () => {
+      try {
+        const { retired, failed } = await sweepExpiredUploads();
+        if (retired > 0) {
+          console.log('Expired upload sessions retired', { count: retired });
+        }
+        if (failed > 0) {
+          console.error('Expired upload session sweep incomplete', {
+            code: 'UPLOAD_SWEEP_INCOMPLETE', count: failed
+          });
+        }
+      } catch (error) {
+        reportMonitoringError(error, { operation: 'scheduler.uploadSweep' });
+      }
+    })().finally(() => { activeSweep = undefined; });
+    return activeSweep;
+  };
+
   const stop = () => {
     generation += 1;
     stopped = true;
     if (timer) {
       clearInterval(timer);
       timer = undefined;
+    }
+    if (sweepTimer) {
+      clearInterval(sweepTimer);
+      sweepTimer = undefined;
     }
   };
 
@@ -242,6 +299,9 @@ export const createPublishScheduler = ({
             console.error('Publish scheduler poll failed', { code: 'PUBLISH_POLL_FAILED' });
           });
         }, intervalMs);
+        if (sweepExpiredUploads) {
+          sweepTimer = setInterval(() => { void sweepUploadsOnce(); }, uploadSweepIntervalMs);
+        }
         stopped = false;
       })().finally(() => { starting = undefined; });
       return starting;
@@ -251,12 +311,14 @@ export const createPublishScheduler = ({
       stop();
       await starting;
       await activeRun;
+      await activeSweep;
     },
     checkReady: async () => {
       if (!timer || stopped || !pollHealthy || requiresReconciliation) {
         throw new Error('Publish scheduler unavailable');
       }
     },
-    runOnce
+    runOnce,
+    sweepUploadsOnce
   };
 };

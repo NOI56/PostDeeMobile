@@ -17,6 +17,7 @@ import { retainCurrentOwnerOperation } from '../modules/account/prismaOwnerOpera
 import { readRequestedDeliveryOutcome } from './platformDeliveryOutcome.js';
 import { PlatformCaptionValidationError } from '../modules/posts/platformCaptionValidation.js';
 import { reportMonitoringError } from '../monitoring/sentryMonitoring.js';
+import { paidPlanRequiredPublishError, type ReadOwnerPlan } from './scheduledPublishPlan.js';
 
 export type PlatformPublishInput = {
   userId?: string;
@@ -401,6 +402,7 @@ export const processPublishJobForPost = async ({
   notifier = createNoopPublishNotifier(),
   assertOwnerActive,
   runWithActiveOwner,
+  readOwnerPlan,
   deleteVideoAfterPublish = false,
   now = () => new Date().toISOString()
 }: {
@@ -412,18 +414,39 @@ export const processPublishJobForPost = async ({
   notifier?: PublishNotifier;
   assertOwnerActive?: (ownerId: string) => Promise<void>;
   runWithActiveOwner?: RunWithActiveOwner;
+  // Re-checks the owner's plan for scheduled posts; omitted where the plan
+  // cannot be re-read (local mock development).
+  readOwnerPlan?: ReadOwnerPlan;
   deleteVideoAfterPublish?: boolean;
   now?: () => string;
 }): Promise<PublishWorkerResult> => {
+  // Scheduling is a paid feature. Read the plan before the owner lifetime and
+  // the claim: a read failure then leaves the post QUEUED for the caller's
+  // pre-publish retry and never retains the owner's operation ticket.
+  const ownerPlanEnded =
+    jobData.status === 'SCHEDULED' && readOwnerPlan && jobData.userId
+      ? (await readOwnerPlan(jobData.userId)) === 'BASIC'
+      : false;
+
   const processForOwner = async (): Promise<PublishWorkerResult> => {
     if (assertOwnerActive && jobData.userId) {
       await assertOwnerActive(jobData.userId);
     }
 
-    const claimed = await postStore.claimForPublish({
-      postId: jobData.postId,
-      expectedRunAt: jobData.runAt
-    });
+    // With an ended plan, one atomic claim also reports whether the row was
+    // still scheduled (fail it) or switched to Publish now (publish it as
+    // post-now, which is not plan-checked). A single step leaves no gap in
+    // which a schedule rollback could strand the row without a job.
+    const claimInput = { postId: jobData.postId, expectedRunAt: jobData.runAt };
+    let claimed: boolean;
+    let claimedAsScheduled = false;
+    if (ownerPlanEnded) {
+      const claimedSchedule = await postStore.claimForPublishWithSchedule(claimInput);
+      claimed = claimedSchedule !== undefined;
+      claimedAsScheduled = claimedSchedule === 'scheduled';
+    } else {
+      claimed = await postStore.claimForPublish(claimInput);
+    }
 
     if (!claimed) {
       return createSkippedPublishResult(jobData);
@@ -445,6 +468,19 @@ export const processPublishJobForPost = async ({
     try {
       if (assertOwnerActive && jobData.userId) {
         await assertOwnerActive(jobData.userId);
+      }
+
+      if (claimedAsScheduled) {
+        // Never contact a provider. Units used at creation are not refunded.
+        const platformResults: PlatformPublishResult[] = jobData.platforms.map((platform) => ({
+          platform,
+          status: 'FAILED',
+          errorMessage: paidPlanRequiredPublishError
+        }));
+        await platformPublishStore.recordResults({ postId: jobData.postId, results: platformResults });
+        await postStore.updateStatus({ postId: jobData.postId, status: 'FAILED' });
+        await notify('FAILED');
+        return { ...createSkippedPublishResult(jobData), status: 'FAILED', platformResults };
       }
 
       const result = await processPublishJob({

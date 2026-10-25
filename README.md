@@ -7,6 +7,142 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Facebook Page Reels contract (2026-10-24)
+
+Facebook now requests Page Reels only through the existing PostPeer integration.
+`FACEBOOK_REELS` always sets `contentType: 'reel'`, with no Page feed fallback.
+Existing publish/Page-draft choices, optional AI disclosure, per-platform captions
+and immutable target snapshots are preserved. Real-account Reel/draft/thumbnail
+E2E remains pending; the contract change alone does not establish production readiness.
+
+## Identity and pre-auth hardening (2026-10-24, security Batch 4)
+
+The API stores a Firebase email only when the ID token marks it verified;
+unverified accounts keep `firebase-<uid>@postdee.local`. A verified address
+still held by another PostDee row also falls back instead of failing with `500`.
+The built-in Firebase verifier shares one certificate refresh, times out after
+5 seconds and briefly reuses a failed refresh. Per-IP rate limiters sweep at
+most once per window and cap remembered addresses at 10,000. No schema change,
+migration or mobile change. See
+[`2026-10-24-identity-preauth-security-batch4.md`](docs/superpowers/plans/2026-10-24-identity-preauth-security-batch4.md).
+
+## Review post preview (2026-10-24, local candidate)
+
+The final review step replaces clip/caption edit links with one `พรีวิว` action
+under the thumbnail. Channel editing and wizard Back remain available. Preview
+plays the selected local clip and shows an approximate post view only for chosen
+destinations, using each effective caption, connected identity and YouTube title.
+Chosen-cover capability and watermark notes remain explicit; platform layouts
+can differ. The current follow-up gives TikTok portrait preview a bottom gradient,
+real identity/caption and decorative heart/comment/save/share icons without
+invented counts. Preview volume is 0–100%, with mute/restoration of the previous
+audible level; it changes playback only, not system volume or the exported clip.
+Opening preview does not upload, generate AI, render with FFmpeg, publish or
+consume quota. Owner-bound post metadata is separated from existing plain local
+playback and authenticated network playback.
+
+On fresh main `6afe4d6`, the full Mobile rerun passes **2,867 tests / 6 skipped**,
+with **150** Staging checks, **187** API regressions/typecheck, analyzer and **10**
+real-font visual checks also passing. Verified Staging APK **12049** builds with
+eight complete-source matches and the intended environment. It is installed
+with the same package UID/storage. After manual sign-in, native playback, pause,
+seek and volume changes (100% → 36% → mute → 36% → 62%) pass on an existing
+45-second draft. Returning to review preserves its clip, empty caption, zero
+selected destinations and the single draft. One initial pause showed a transient
+player error; later explicit resume/pause and seek work without an error. Its
+cause is unconfirmed. The current Home shows Free with only YouTube connected,
+so this run does not verify TikTok/Instagram tabs or restoration of the earlier
+Pro demo draft. TikTok-specific evidence remains the older 12048 native checks
+and final visual tests. No draft save, AI, upload, post or purchase occurred in
+this follow-up. This preview uses generic Facebook wording and establishes no
+provider-delivery claim. It is not merged, pushed or cloud-deployed.
+Earlier build/native results and resolved verification issues are in the
+[preview work record](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
+
+## Immersive post preview (2026-10-24, local APK 12051)
+
+The next local candidate follows the user's full-screen reference: post preview
+removes the bottom seek/replay/time/volume panel and places white navigation,
+caption and decorative social icons over the video. Tap the video to play or
+pause; a top speaker button opens the playback-only volume controls on demand.
+The video keeps its natural aspect ratio without cropping. Chosen destinations
+retain their own real captions, identities and YouTube titles. With no chosen
+destination, the shared caption and a generic social rail appear without an
+invented account or counts. Compact inline information keeps publishing/cover/
+watermark caveats available, pauses playback and is removed with the owner-bound
+preview. The plain local/network clip viewer retains its existing controls.
+
+The working baseline is now `8872f0e`, preserving nine incoming API-security/docs
+commits. No incoming Mobile or schema change was introduced; all ten candidate
+Mobile runtime/test hashes remain identical across that refresh.
+
+Before the cosmetic follow-up, full Mobile validation on 12050 passes
+**2,880 tests / 6 skipped**;
+analysis reports no issues, and the joint preview suite passes **76** checks.
+Fresh-baseline API static/build checks and **206 tests across 11 targeted files**
+also pass; their scope is separate from the historical 187 API checks above.
+Final **163** Staging checks and **15** exact-color visual checks also pass.
+APK **12050** builds with eight complete-source and package/Firebase checks
+matching. Installed 12050 retains the same UID/storage, signed-in Free account,
+YouTube connection and existing draft. Native immersive play/pause, removal of
+the bottom panel and inline volume 100% → 34% → mute → 34% pass. An initial
+startup ANR recovered after one app-only restart; its cause is unconfirmed.
+The draft has no destinations/caption, so this proves the generic view rather
+than connected TikTok tab acceptance. Final **12051** improves Staging status-bar
+contrast, passes **44** player/**165** Staging checks and analysis, and builds
+with eight exact-source/package/Firebase matches. Its retained-data installation
+and native play/pause/replay, volume, information panel and Back checks pass.
+Cold launch reaches Home in approximately 45 seconds without an app restart;
+the 12050 startup ANR remains a separate historical observation. The current
+landscape clip is letterboxed without cropping, and the preview is left paused.
+Connected TikTok tabs and native iOS remain unverified. The subsequent user
+instruction authorizes `main/push` for this verified UI. The source-only handoff
+preserves the tested runtime and requires no backend deployment.
+The 12049 results above describe the previous UI and
+retain their account/platform limitations. This follow-up needs
+no API, database, dependency, configuration or backend deployment change and
+does not change exported audio or perform publication. See the
+[preview work record](docs/superpowers/plans/2026-10-24-publish-post-preview.md).
+
+## Expired-plan reason on post detail (2026-10-24)
+
+A scheduled post that the API stopped because the owner's Starter/Pro plan
+ended before its time (platform reason `PAID_PLAN_REQUIRED`, see PR #29) now
+shows a Thai reason on post detail instead of the raw code: "แพ็กเกจหมดอายุก่อนถึงเวลาโพสต์
+จึงยังไม่ได้ส่งโพสต์นี้ ต่ออายุแพ็กเกจ Starter หรือ Pro แล้วสร้างโพสต์ใหม่". The
+channel-review button is hidden for that reason. No API or schema change. See
+[`2026-10-24-paid-plan-failure-message.md`](docs/superpowers/plans/2026-10-24-paid-plan-failure-message.md).
+
+## Wheel time selection (2026-10-24)
+
+Create Post and Calendar rescheduling share a 24-hour Flutter wheel picker.
+Hours and minutes loop independently (`23 → 00 → 01`, `59 → 00 → 01`), without
+changing the chosen date. Existing time is preselected; a new uploader schedule
+keeps its 18:30 default. Cancel leaves the previous time intact. The selected
+time uses the device's local timezone and the existing UTC request serialization.
+Future-time checks, Starter's 14-day/Pro's 30-day rolling limits, quotas and
+account safeguards remain unchanged. No API, schema or backend change is needed.
+The full Mobile suite (2,819 passed / 6 skipped), analysis, 93 Staging-configured
+checks and exact-source Staging APK 12046 pass. Real-font checks cover both
+themes and narrow enlarged text. The user authorized main/push after verifying
+the implementation. APK installation and native acceptance remain pending;
+the installed app is unchanged. See the
+[wheel-picker work record](docs/superpowers/plans/2026-10-24-wheel-time-picker.md).
+
+## Per-owner resource caps (2026-10-24, security Batch 5)
+
+The API now bounds what one account can keep in the shared database and
+process:
+- Templates: 200 per owner, with 120/5000-character title/body.
+- Device tokens: 10 per owner, FCM-shaped, oldest evicted first.
+- Managed upload sessions: 10 open per owner, 255-character file names,
+  exact video/image types.
+- New post captions: at most 63,206 characters.
+
+Limited post lists and single-post reschedule/publish-now no longer read the
+full history. No schema change, migration or mobile change. See
+[`2026-10-24-resource-caps-security-batch5.md`](docs/superpowers/plans/2026-10-24-resource-caps-security-batch5.md).
+
 ## Social linking security Batch 2 (2026-10-23, review candidate)
 
 Connecting TikTok, YouTube Shorts, Instagram Reels or Facebook Page Video now
@@ -52,6 +188,25 @@ style-cancel evidence remains recorded separately. No AI credit was spent or
 post published. The current API supports this UI without a redeploy. See the
 [compact-panel record](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
+## Mobile and CI hardening (2026-10-24, security Batch 6)
+
+- **Android:** backup and device-to-device transfer of app data are off
+  (`allowBackup="false"` plus data extraction rules), so a signed-in Firebase
+  session does not move to another device. The unused `postdee://billing`
+  deep link is removed.
+- **iOS:** the CI IPA now passes the production `API_BASE_URL`. A release
+  build with Firebase sign-in refuses any non-HTTPS API base URL before
+  sending a request (`INSECURE_API_BASE_URL`).
+- **AI captions:** frame extraction passes FFmpeg arguments as a list.
+- **Workflows:**
+  - read-only `contents: read` token;
+  - checkouts without persisted credentials;
+  - actions pinned by commit SHA;
+  - a manual `apk_source_ref` must be a commit on a branch of this
+    repository.
+
+See [`2026-10-24-mobile-ci-security-batch6.md`](docs/superpowers/plans/2026-10-24-mobile-ci-security-batch6.md).
+
 ## Choose AI caption channels (2026-10-23, Staging Live)
 
 Advanced mode keeps all four manual caption editors, but AI generation starts
@@ -81,7 +236,7 @@ actual provider quality and publication remain unverified. See its
 
 The post composer's optional advanced caption mode hides the shared input and
 shows separate editable captions for TikTok, YouTube Shorts, Instagram Reels
-and Facebook Page Video. Users can write them manually or explicitly request
+and Facebook Page Reels. Users can write them manually or explicitly request
 AI for all four, inspect the preview, then apply the set and edit it. An undo
 action restores the text from before applying AI, including across mode toggles.
 Switching back retains the original shared text and saved advanced text; shared
@@ -182,6 +337,22 @@ does not change runtime code; the later API sanitizer fix changes no Mobile
 source or APK12041. iOS compilation uses Sentry disabled and does
 not establish iOS monitoring runtime acceptance.
 
+## Calendar history pages (2026-10-24, security follow-up)
+
+Calendar no longer asks the API for the complete post history in one response.
+The app reads `GET /posts?pageSize=100` pages, newest created first, following
+`nextCursor`. Since 2026-10-25 it asks only for posts active since the start
+of the oldest month or week the user has viewed (`activeSince`: created,
+scheduled or published since then), so posts rescheduled far from their
+creation date are included. The first load also covers the current week when
+it starts in the previous month. It stops at the last page or after 20 pages.
+Browsing to an earlier period, or switching week/month view, loads further
+back. Plain `GET /posts` is
+unchanged for installed apps, and a new app works with an older API, which
+returns everything at once. No schema change or migration. Deploy the API
+before shipping the app build, although either order works. See
+[`2026-10-24-calendar-post-pagination.md`](docs/superpowers/plans/2026-10-24-calendar-post-pagination.md).
+
 ## Calendar selected covers (2026-10-21)
 
 Calendar post cards add the saved selected cover as a small portrait thumbnail,
@@ -238,7 +409,7 @@ See the [work record](docs/superpowers/plans/2026-10-20-publish-progress-smooth-
 
 Mobile remembers reusable choices on this device per signed-in owner and
 connected channel: TikTok delivery mode, YouTube visibility/audience, Instagram
-feed sharing and Facebook Page Video delivery mode. New clips still require
+feed sharing and Facebook Page Reels delivery mode. New clips still require
 content declarations and current confirmation; TikTok privacy/interactions
 remain manual. Saved drafts keep their own values. No API change or migration.
 Within an open TikTok settings sheet, changing viewers, interactions or the AI
@@ -308,7 +479,7 @@ Production remain unverified; blank descriptions require the updated API.
 
 ## Unified channel settings (2026-10-18, Staging delivered)
 
-TikTok, YouTube, Instagram and Facebook Page Video share a content-sized settings
+TikTok, YouTube, Instagram and Facebook Page Reels share a content-sized settings
 sheet with account identity, grouped controls, visible validation and fixed
 Cancel/Save actions above the keyboard. TikTok Inbox no longer requests Direct
 creator options; each Direct opening fetches fresh account-bound options and
@@ -971,11 +1142,23 @@ editing and Subtitle Studio no longer have a product entry point, and the
 paywall/profile no longer advertise editing minutes or top-ups. AI captions in
 the upload flow remain available. The editing implementation and shared media
 helpers below are retained as compatibility code, not an active product offer.
+Since 2026-10-24 the API also stops serving it: every `/ai-edits/*` request
+returns `410 AI_EDITING_RETIRED` without provider work unless the
+`AI_EDITING_ENABLED=true` rollback switch is set. Real-clip AI captions now
+accept only image frame keys, cap frames at 5 MiB, and return
+`503 AI_MEDIA_BUSY` when two requests already hold media on the instance. See
+`docs/superpowers/plans/2026-10-24-ai-editing-retirement-security-batch3.md`.
 
 Each authenticated account can publish one profile page with up to 20 enabled
 custom links on every package. The page is hosted by the existing PostDee API at
 `/p/<slug>`; the app resolves the URL against its configured API domain. No
-`postdee.link` domain or third-party statistics subscription is assumed. Public
+`postdee.link` domain or third-party statistics subscription is assumed.
+Since 2026-10-24 a slug left by a rename or account deletion stays reserved for
+30 days, so another seller cannot take over an old shared link. Only the
+previous owner can reclaim it, and only after a rename. Brand and system names
+(any slug containing `postdee`, `admin`, `support` and similar) cannot be
+newly claimed. The app shows its existing "name already used" message. See
+[`2026-10-24-link-in-bio-slug-reservation.md`](docs/superpowers/plans/2026-10-24-link-in-bio-slug-reservation.md). Public
 pages show the store information, images, and links the owner explicitly publishes.
 Draft edits remain private until Publish/Update is pressed. Publishing, copying
 the confirmed URL, opening the page, and unpublishing are supported. Scheduled
@@ -1383,7 +1566,7 @@ cd apps/api
 npm.cmd run worker:publish
 ```
 
-The worker currently uses mock platform publishing and mock video cleanup by default. When `ANALYTICS_STORE=prisma`, it records platform publish results into `PlatformPublish` so the analytics summary can read them from PostgreSQL. It claims posts with `QUEUED -> PUBLISHING` before calling external publishers, skips jobs for posts that are already running or finished, skips stale scheduled jobs whose `runAt` no longer matches the post's current schedule, and treats optional R2/S3 cleanup failures as best-effort cleanup results instead of changing a successfully published post to failed. It is the handoff point for real TikTok, YouTube Shorts, Instagram Reels, Facebook Page Video, and R2/S3 cleanup integrations. `FACEBOOK_REELS` remains the internal compatibility value, but PostPeer's current Facebook capability is Page Video, not Reels.
+The worker currently uses mock platform publishing and mock video cleanup by default. When `ANALYTICS_STORE=prisma`, it records platform publish results into `PlatformPublish` so the analytics summary can read them from PostgreSQL. It claims posts with `QUEUED -> PUBLISHING` before calling external publishers, skips jobs for posts that are already running or finished, skips stale scheduled jobs whose `runAt` no longer matches the post's current schedule, and treats optional R2/S3 cleanup failures as best-effort cleanup results instead of changing a successfully published post to failed. It is the handoff point for real TikTok, YouTube Shorts, Instagram Reels, Facebook Page Reels, and R2/S3 cleanup integrations. The existing `FACEBOOK_REELS` value always sends PostPeer `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and optional `isAiGenerated`. Facebook requires a video and never falls back to a Page feed video; real-account E2E remains pending.
 
 PostPeer `202 pending/publishing` responses are polled through
 `GET /v1/posts/{postId}` for roughly two minutes. A platform is marked
@@ -1715,7 +1898,7 @@ The complete explicit settings shapes are:
   `private|unlisted|public`, the made-for-kids answer, the realistic synthetic
   media answer, and `communityGuidelinesCertified: true`.
 - Instagram Reels: `shareToFeed: true|false`; there is no per-post Private mode.
-- Facebook Page Video: `publishMode: PUBLISH|PAGE_DRAFT`. The user must choose;
+- Facebook Page Reels: `publishMode: PUBLISH|PAGE_DRAFT`. The user must choose;
   the internal compatibility platform name remains `FACEBOOK_REELS`.
 
 “Save draft in PostDee” and provider drafts are different. A PostDee draft stays
@@ -1757,7 +1940,13 @@ downgrade; listing and automatic publishing do not reapply the shorter window.
 `videoS3Key` and optional `coverImageS3Key` must come from `POST /uploads` for
 the same authenticated user; the backend rejects media keys owned by another
 user. `coverFrameTimeMs` stores the selected source-video frame in milliseconds.
-Cloud Scheduling requires Starter or Pro. The `BASIC` scaffold path supports
+Cloud Scheduling requires Starter or Pro, both when a post is scheduled and,
+since 2026-10-24, again when it comes due. A scheduled post whose owner is back
+on `BASIC` by then is not sent: it becomes `FAILED` with platform reason
+`PAID_PLAN_REQUIRED`, its units stay used, and the usual failure push is sent
+(see
+[`2026-10-24-scheduled-post-plan-check.md`](docs/superpowers/plans/2026-10-24-scheduled-post-plan-check.md)).
+The `BASIC` scaffold path supports
 real-time posting only after phone verification and is limited to 3 post units
 per month. Starter is limited to 120 post units per month, and Pro is limited
 to 250 post units per month. A post unit is counted per selected platform, so
@@ -1783,6 +1972,12 @@ changing the clip or cover conflicts with an already accepted request and keeps
 the draft. Pre-upgrade uncertain drafts without upload receipts cannot infer
 the old media safely; check the existing post before explicitly starting anew.
 Interrupted pre-submit uploads still need a verified R2 lifecycle rule.
+Since 2026-10-24 the scheduler retires unfinished managed multipart sessions:
+every 10 minutes it aborts the R2 upload of up to 25 sessions that expired more
+than five minutes ago and marks them `ABORTED`. Completed objects that never
+reached a post, and R2 multipart uploads with no session row, still rely on
+that lifecycle rule. See
+[`2026-10-24-upload-session-sweeper.md`](docs/superpowers/plans/2026-10-24-upload-session-sweeper.md).
 
 Mobile bounds each ordinary JSON request to 20 seconds from authentication
 refresh through connection and response-body completion. AI transcription,
@@ -1841,7 +2036,7 @@ numbers.
 - TikTok
 - YouTube Shorts
 - Instagram Reels
-- Facebook Page Video (internal compatibility value: `FACEBOOK_REELS`)
+- Facebook Page Reels (existing API value: `FACEBOOK_REELS`; real-account E2E pending)
 
 #### `GET /billing/subscription`
 
@@ -2118,7 +2313,7 @@ Current mobile pieces:
   still needs real-device save/restore/storage/backup verification.
 - The pre-publish review shows the requested per-platform outcome and connected
   account/channel/page before confirm: TikTok inbox draft, the completed YouTube
-  visibility/compliance choice, Instagram share-to-feed, and Facebook Page Video
+  visibility/compliance choice, Instagram share-to-feed, and Facebook Page Reels
   publish/page-draft. A missing account identity, incomplete setting, or unknown
   outcome blocks confirmation and asks the seller to refresh/reconnect or fix the
   setting. Scheduled-post detail uses the dedicated authenticated
@@ -2475,8 +2670,8 @@ Required services for later milestones:
 - Firebase Auth for Google Sign-In and Phone OTP verification
 - Gemini API for Thai caption generation
 - PostPeer for real TikTok, YouTube Shorts, Instagram Reels, and Facebook Page
-  Video publishing (`FACEBOOK_REELS` is retained only as the current internal
-  compatibility value)
+  Reels publishing (`FACEBOOK_REELS` always sets `contentType: 'reel'`, with no
+  Page feed fallback; real-account E2E is still required)
 - RevenueCat subscriptions for Starter and Pro, backed by Apple App Store and Google Play products
 
 The post/caption add-on is a separate, repeatable consumable purchase: target
@@ -2593,6 +2788,11 @@ Queue/storage scaffold switches:
   schedules are therefore included. A non-zero total or inspection error blocks startup
   without loading post/user/media details. Staging enables this guard; its
   default is `false`, and the Production Blueprint is unchanged.
+- Each memory-scheduler poll reads due posts in batches of 50 (all owners
+  combined) with only the fields needed to publish, at most 10 batches per
+  poll. A cursor kept across polls resumes after the last post tried, so posts
+  it cannot start are visited once per cycle and never block other owners. See
+  [`2026-10-24-due-post-read-bound.md`](docs/superpowers/plans/2026-10-24-due-post-read-bound.md).
 - API startup reads server configuration once and passes that same object to the
   app and scheduler diagnostics. It logs only the non-secret social mode,
   publisher name, and whether the empty-backlog guard is enforced. When that
@@ -2685,8 +2885,15 @@ reference and exactly one post unit, but it predates the complete Phase 2
 settings/target/delivery matrix. Production, provider-draft behavior, and the
 remaining platforms/scheduling paths still require controlled E2E tests and
 never use shared `POSTPEER_*_ACCOUNT_ID` values. The internal
-`FACEBOOK_REELS` value currently targets Facebook Page Video, not Reels. The
-repository's Production Blueprint currently selects
+`FACEBOOK_REELS` value targets Facebook Page Reels only through PostPeer
+`platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, with no
+Page feed fallback. Optional signed thumbnails remain best effort; their display
+on a Reel needs real-account verification, and the provider may choose the cover.
+Page Video duration/width limits are not Reel limits. Deploying the updated
+publisher also routes existing queued/scheduled Facebook jobs to Page Reels,
+retaining their accepted `PUBLISH|PAGE_DRAFT`, optional `isAiGenerated` and
+immutable target snapshots; no new client fields, environment variables or
+migrations are needed. The repository's Production Blueprint currently selects
 `SOCIAL_PUBLISHER=postpeer` even though broader provider-level E2E is still
 pending. Treat this as an unresolved configuration risk, not proof that the
 deployed Production environment or a user connection is ready; this safety

@@ -10,9 +10,9 @@ export const createLinkInBioStoreFromConfig = ({
   now?: () => Date;
 }): LinkInBioStore => {
   if (config.postStore !== 'prisma') return createInMemoryLinkInBioStore({ now });
-  if (prisma?.linkInBioProfile) {
+  if (prisma?.linkInBioProfile && prisma.linkInBioSlugReservation && prisma.$transaction) {
     return createPrismaLinkInBioRepository({
-      prisma: { linkInBioProfile: prisma.linkInBioProfile }, now
+      prisma: prisma as PrismaLinkInBioClient, now
     });
   }
   // Older injected Prisma mocks remain compatible. A real deployment must

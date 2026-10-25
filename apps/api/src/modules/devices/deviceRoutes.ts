@@ -4,6 +4,11 @@ import { readAuthUser } from '../auth/authTypes.js';
 import type { UserStore } from '../users/userStore.js';
 import type { DevicePlatform, DeviceTokenStore } from './deviceTokenStore.js';
 
+// FCM registration tokens are ~150-250 URL-safe characters with ':' separators.
+const maxDeviceTokenLength = 4096;
+const isDeviceTokenShaped = (token: string) =>
+  token.length <= maxDeviceTokenLength && /^[A-Za-z0-9:_.-]+$/.test(token);
+
 const readPlatform = (value: unknown): DevicePlatform | undefined =>
   value === 'IOS' || value === 'ANDROID' || value === 'WEB' ? value : undefined;
 
@@ -51,6 +56,15 @@ export const registerDeviceRoutes = (
       response.status(400).json({
         status: 'error',
         message: 'token is required'
+      });
+      return;
+    }
+
+    if (!isDeviceTokenShaped(token)) {
+      response.status(400).json({
+        status: 'error',
+        code: 'DEVICE_TOKEN_INVALID',
+        message: 'token must be an FCM registration token'
       });
       return;
     }

@@ -120,12 +120,17 @@ import { OwnerOperationBusyError } from './modules/account/ownerOperationQueue.j
 import { createOwnerOperationRouter } from './modules/account/ownerOperationRouter.js';
 import { createPlatformPublisherFromConfig } from './workers/platformPublisherFactory.js';
 import { createPublishScheduler } from './workers/publishScheduler.js';
+import {
+  allowsSubscriptionPlanOverride,
+  createScheduledPublishPlanReader
+} from './workers/scheduledPublishPlan.js';
 import { registerPublishQueueRoutes } from './modules/queue/publishQueueRoutes.js';
 import {
   MediaDownloadError,
   aiEditAudioDownloadMaxBytes,
   aiMediaDownloadMaxBytes,
-  readAiMediaResponseBytes
+  readAiMediaResponseBytes,
+  type AiMediaFetchOptions
 } from './modules/storage/mediaDownload.js';
 import type { S3VideoStorageClient, VideoStorage } from './modules/storage/videoStorage.js';
 import { createVideoStorageFromConfig } from './modules/storage/videoStorageFactory.js';
@@ -180,7 +185,9 @@ type AppPrismaClient = PrismaTemplateClient &
   PrismaAiEditUsageClient &
   PrismaDeviceTokenClient &
   PrismaSocialConnectionClient &
-  PrismaUploadSessionClient & Partial<PrismaLinkInBioClient & PrismaLinkInBioImageClient>;
+  PrismaUploadSessionClient &
+  // The shared client's $transaction is typed by the stores above.
+  Partial<Omit<PrismaLinkInBioClient, '$transaction'> & PrismaLinkInBioImageClient>;
 
 type AppOptions = {
   adminDataSource?: AdminDataSource;
@@ -201,7 +208,8 @@ type AppOptions = {
   captionGenerator?: CaptionGenerator;
   realClipCaptionUsageStore?: RealClipCaptionUsageStore;
   realClipCaptionProvider?: RealClipCaptionProvider;
-  fetchClipMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>;
+  fetchClipMedia?: (videoS3Key: string, options?: AiMediaFetchOptions) => Promise<RealClipMediaPart>;
+  maxConcurrentAiMediaRequests?: number;
   transcriptionProvider?: TranscriptionProvider;
   editPlanProvider?: EditPlanProvider;
   soundEffectPlanProvider?: SoundEffectPlanProvider;
@@ -372,24 +380,35 @@ const createFetchAudioFromVideoStorage =
 
 // Downloads a stored object (clip or frame) as bytes + mime, for sending to a
 // multimodal caption provider (Gemini).
-const createFetchMediaFromVideoStorage =
-  (videoStorage: VideoStorage) =>
-  async (videoS3Key: string): Promise<RealClipMediaPart> => {
+export const createFetchMediaFromVideoStorage =
+  (videoStorage: VideoStorage, fetchImpl: typeof fetch = fetch) =>
+  async (videoS3Key: string, mediaOptions?: AiMediaFetchOptions): Promise<RealClipMediaPart> => {
     const access = await videoStorage.createDownloadAccess(videoS3Key);
 
     if (access.accessType !== 'signed-url' || !access.downloadUrl) {
       throw new Error('Signed download access is required for real-clip captioning');
     }
 
-    const response = await fetch(access.downloadUrl);
+    const response = await fetchImpl(access.downloadUrl);
 
     if (!response.ok) {
       throw new Error(`Media download failed with status ${response.status}`);
     }
 
+    const contentType = response.headers.get('content-type');
+
+    if (mediaOptions?.kind === 'frame' && !contentType?.trim().toLowerCase().startsWith('image/')) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new MediaDownloadError(
+        'AI caption frames must be images',
+        415,
+        'AI_CAPTION_FRAME_INVALID'
+      );
+    }
+
     return {
-      data: await readAiMediaResponseBytes(response),
-      mimeType: response.headers.get('content-type') ?? 'video/mp4'
+      data: await readAiMediaResponseBytes(response, mediaOptions?.maxBytes),
+      mimeType: contentType ?? 'video/mp4'
     };
   };
 
@@ -671,33 +690,51 @@ export const createApp = (options: AppOptions = {}) => {
     fetchClipMedia,
     videoStorage.deleteVideo,
     userStore,
-    { monthlyAddonStore, billingAddonsEnabled: config.billingAddonsEnabled, now: options.now }
+    {
+      monthlyAddonStore,
+      billingAddonsEnabled: config.billingAddonsEnabled,
+      now: options.now,
+      maxConcurrentMediaRequests: options.maxConcurrentAiMediaRequests
+    }
   );
+  // Account deletion still clears historical AI-edit usage rows.
   const aiEditUsageStore = createAiEditUsageStoreFromConfig({
     config,
     prisma: prismaClient
   });
-  const editPlanProvider =
-    options.editPlanProvider ?? createEditPlanProviderFromConfig({ config });
-  const soundEffectPlanProvider =
-    options.soundEffectPlanProvider ??
-    createSoundEffectPlanProviderFromConfig({ config });
-  const visualEditPlanProvider =
-    options.visualEditPlanProvider ??
-    createVisualEditPlanProviderFromConfig({ config });
-  registerAiEditRoutes(
-    router,
-    transcriptionProvider,
-    accountAwareAuthMiddleware,
-    subscriptionStore,
-    aiEditUsageStore,
-    editPlanProvider,
-    soundEffectPlanProvider,
-    videoStorage.deleteVideo,
-    visualEditPlanProvider,
-    fetchClipMedia,
-    userStore
-  );
+  if (config.aiEditingEnabled) {
+    const editPlanProvider =
+      options.editPlanProvider ?? createEditPlanProviderFromConfig({ config });
+    const soundEffectPlanProvider =
+      options.soundEffectPlanProvider ??
+      createSoundEffectPlanProviderFromConfig({ config });
+    const visualEditPlanProvider =
+      options.visualEditPlanProvider ??
+      createVisualEditPlanProviderFromConfig({ config });
+    registerAiEditRoutes(
+      router,
+      transcriptionProvider,
+      accountAwareAuthMiddleware,
+      subscriptionStore,
+      aiEditUsageStore,
+      editPlanProvider,
+      soundEffectPlanProvider,
+      videoStorage.deleteVideo,
+      visualEditPlanProvider,
+      fetchClipMedia,
+      userStore
+    );
+  } else {
+    // AI video editing was removed from the app. Answer every legacy route
+    // without reaching paid transcription or planning providers.
+    router.use('/ai-edits', (_request, response) => {
+      response.status(410).json({
+        status: 'error',
+        code: 'AI_EDITING_RETIRED',
+        message: 'AI video editing is no longer available.'
+      });
+    });
+  }
   registerPostRoutes(
     router,
     postStore,
@@ -707,8 +744,7 @@ export const createApp = (options: AppOptions = {}) => {
     subscriptionStore,
     platformPublishStore,
     {
-      allowSubscriptionPlanOverride:
-        config.nodeEnv !== 'production' && config.authProvider === 'mock',
+      allowSubscriptionPlanOverride: allowsSubscriptionPlanOverride(config),
       monthlyAddonStore,
       billingAddonsEnabled: config.billingAddonsEnabled,
       socialPublishingEnabled: config.socialPublisher !== 'disabled',
@@ -917,6 +953,10 @@ export const createApp = (options: AppOptions = {}) => {
       }),
       assertOwnerActive,
       runWithActiveOwner: runWithOwnerLifetime,
+      ...(managedUploadService
+        ? { sweepExpiredUploads: () => managedUploadService.sweepExpiredSessions() }
+        : {}),
+      readOwnerPlan: createScheduledPublishPlanReader({ config, subscriptionStore }),
       requireEmptyBacklogOnStart:
         config.socialPublisher === 'postpeer' &&
         config.socialPublishRequireEmptyBacklog

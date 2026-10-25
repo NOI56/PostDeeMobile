@@ -883,6 +883,10 @@ void main() {
     await tester.pump();
     await tester.tap(facebookSettings);
     await tester.pumpAndSettle();
+    expect(find.text('Facebook Reels'), findsWidgets);
+    expect(find.text('ส่งเป็น Facebook Reels ไปยังเพจที่แสดงด้านบน'),
+        findsOneWidget);
+    expect(find.text('Facebook Page Video'), findsNothing);
     await tester.tap(
       find.byKey(const ValueKey('uploader-facebook-page-draft')),
     );

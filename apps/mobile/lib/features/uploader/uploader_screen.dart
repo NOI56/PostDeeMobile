@@ -23,6 +23,7 @@ import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_press_feedback.dart';
 import '../shared/postdee_status_sheet.dart';
+import '../shared/postdee_time_picker.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
@@ -40,6 +41,7 @@ import 'publish_media_identity.dart';
 import 'publish_media_probe.dart';
 import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
+import 'publish_post_preview.dart';
 import 'post_video_preview_screen.dart';
 import 'tiktok_video_preparer.dart';
 import 'tiktok_publishing_settings_sheet.dart';
@@ -1069,6 +1071,53 @@ class _UploaderScreenState extends State<UploaderScreen>
             videoName: _selectedVideoName ?? 'คลิปของคุณ')));
   }
 
+  Future<void> _openPostPreview() async {
+    if (_formBusy || _isGeneratingCaption) return;
+    final path = _localFilePathController.text.trim();
+    if (path.isEmpty) return;
+    final ownerSession = PostDeeAuthSessionStore.instance.captureSession();
+    final caption = _captionController.text;
+    final settings = _resolvedPlatformSettings.resolvedForCaption(caption);
+    final identities = _reviewIdentities;
+    final selected = SocialPlatform.values.where(_selectedPlatforms.contains);
+    final preview = PublishPostPreviewData(
+      caption: caption,
+      channels: [
+        for (final platform in selected)
+          PublishPostPreviewChannel(
+            platform: platform,
+            caption: settings.effectiveCaption(platform, caption),
+            displayName: identities[platform] ?? '',
+            title: platform == SocialPlatform.youtubeShorts
+                ? settings.youtubeTitle
+                : null,
+            publishingNote: publishReviewOutcomeFor(
+              platform,
+              settings: settings,
+              scheduledAt: _readScheduledAt(),
+            ),
+          ),
+      ],
+      coverImagePath: _coverResult?.localImagePath,
+      coverImageBytes: _coverResult?.imageBytes,
+      watermarkEnabled: shouldApplyPostDeeWatermark(
+        requested: _activeDraftWatermarkEnabled ?? _requestedAutoWatermark,
+        selectedPlatforms: {
+          ..._selectedPlatforms,
+          ..._draftUnavailablePlatforms,
+        },
+      ),
+    );
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => PostVideoPreviewScreen(
+        videoFile: File(path),
+        videoName: _selectedVideoName ?? 'คลิปของคุณ',
+        postPreview: preview,
+        ownerSession: ownerSession,
+      ),
+    ));
+  }
+
   Future<void> _loadVideoPoster() async {
     final generation = ++_posterGeneration;
     final previous = _videoPoster;
@@ -1910,17 +1959,22 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _pickCustomScheduleTime() async {
+    final session = PostDeeAuthSessionStore.instance.captureSession();
+    final generation = _draftLoadGeneration;
+    bool stillCurrent() =>
+        mounted && session.isCurrent && generation == _draftLoadGeneration;
     if (_scheduleSubscription == null && await _loadSchedulePolicy() == null) {
       return;
     }
-    if (!mounted) return;
-    final picked = await showTimePicker(
+    if (!mounted || !stillCurrent()) return;
+    final picked = await showPostDeeTimePicker(
       context: context,
       initialTime:
           _selectedScheduleTime ?? const TimeOfDay(hour: 18, minute: 30),
+      date: _selectedScheduleDate ?? _scheduleDateFromToday(1),
     );
 
-    if (picked == null || !mounted) {
+    if (picked == null || !stillCurrent()) {
       return;
     }
 
@@ -5142,8 +5196,12 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 previewImageBytes: _videoPoster?.imageBytes,
                                 videoAspectLabel: _videoAspectLabel,
                                 showSchedule: false,
-                                onEditVideo: () => _goToStep(0),
-                                onEditCaption: () => _goToStep(1),
+                                onPreview: _localFilePathController.text
+                                            .trim()
+                                            .isEmpty ||
+                                        _isGeneratingCaption
+                                    ? null
+                                    : _openPostPreview,
                                 onEditPlatforms: () => _goToStep(2),
                               ),
                             ],
@@ -6895,7 +6953,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
             PlatformSettingsSection(
                 title: 'วิธีเผยแพร่บนเพจ',
                 description:
-                    'ส่งเป็น Facebook Page Video ไปยังเพจที่แสดงด้านบน',
+                    'ส่งเป็น Facebook Reels ไปยังเพจที่แสดงด้านบน',
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [

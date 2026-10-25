@@ -41,6 +41,10 @@ class PostDetailScreen extends StatefulWidget {
 
 class _PostDetailScreenState extends State<PostDetailScreen>
     with WidgetsBindingObserver {
+  // The API stops a scheduled post with this reason when the owner's paid plan
+  // ended before its time; reviewing the channel cannot fix it.
+  static const _paidPlanRequiredError = 'PAID_PLAN_REQUIRED';
+
   late final PostDeeApiClient _apiClient =
       widget.apiClient ?? PostDeeApiClient();
   final _sessions = PostDeeAuthSessionStore.instance;
@@ -349,6 +353,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
 
   String _localizedPlatformError(String message) {
     return switch (message) {
+      _paidPlanRequiredError =>
+        'แพ็กเกจหมดอายุก่อนถึงเวลาโพสต์ จึงยังไม่ได้ส่งโพสต์นี้ ต่ออายุแพ็กเกจ Starter หรือ Pro แล้วสร้างโพสต์ใหม่',
       'Publishing to this platform failed. Please try again later.' =>
         'โพสต์ไปยังช่องทางนี้ไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
       'TikTok rejected this video because its frame rate validation failed. Export the video again before retrying.' =>
@@ -390,6 +396,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     final errorMessage = result?.errorMessage?.trim();
     final externalReference = result?.externalPostId?.trim();
     final hasError = errorMessage != null && errorMessage.isNotEmpty;
+    final paidPlanEnded = errorMessage == _paidPlanRequiredError;
     final canTrustReference = result?.deliveryOutcome == null ||
         isKnownDeliveryOutcome(result?.deliveryOutcome);
     final hasReference = canTrustReference &&
@@ -463,8 +470,10 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                     ),
                   ),
                 ],
-                if (result?.status.toUpperCase() == 'FAILED' ||
-                    (result == null && _post.status.toUpperCase() == 'FAILED'))
+                if (!paidPlanEnded &&
+                    (result?.status.toUpperCase() == 'FAILED' ||
+                        (result == null &&
+                            _post.status.toUpperCase() == 'FAILED')))
                   TextButton.icon(
                     key: ValueKey('post-detail-review-${platform.apiValue}'),
                     onPressed: () => _reviewFailedChannel(platform),

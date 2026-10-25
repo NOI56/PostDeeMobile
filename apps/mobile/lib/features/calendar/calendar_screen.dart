@@ -16,11 +16,14 @@ import '../shared/postdee_notice.dart';
 import '../shared/postdee_press_feedback.dart';
 import '../shared/postdee_publishing_motion.dart';
 import '../shared/postdee_skeleton.dart';
+import '../shared/postdee_time_picker.dart';
 import '../shared/publishing_availability.dart';
 import 'calendar_cover_preview_cache.dart';
 
 typedef ScheduledPostsLoader = Future<List<ScheduledPostResult>> Function();
 typedef CalendarPostsLoader = Future<List<CalendarPostResult>> Function();
+typedef CalendarHistoryLoader = Future<List<CalendarPostResult>> Function(
+    DateTime activeSince);
 typedef ScheduledPostRescheduler = Future<ScheduledPostResult> Function(
   String postId,
   DateTime scheduledAt,
@@ -37,6 +40,7 @@ class CalendarScreen extends StatefulWidget {
     this.isActive = true,
     this.loadScheduledPosts,
     this.loadCalendarPosts,
+    this.loadCalendarPostsSince,
     this.reschedulePost,
     this.cancelPost,
     this.loadPost,
@@ -56,6 +60,10 @@ class CalendarScreen extends StatefulWidget {
   final bool isActive;
   final ScheduledPostsLoader? loadScheduledPosts;
   final CalendarPostsLoader? loadCalendarPosts;
+
+  /// Loads posts created, scheduled or published on or after the given time.
+  /// Used when no complete loader is injected; defaults to the paged API read.
+  final CalendarHistoryLoader? loadCalendarPostsSince;
   final ScheduledPostRescheduler? reschedulePost;
   final ScheduledPostCanceller? cancelPost;
   final Future<PostSummaryResult?> Function(String postId)? loadPost;
@@ -102,6 +110,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   List<CalendarPostResult> _posts = const [];
   Timer? _queuedRefreshTimer;
   late DateTime _visibleMonth;
+  // Start of the oldest period the user has viewed; history loads back to it.
+  late DateTime _historyStart;
   DateTime? _selectedDay;
   String _platformFilter = 'all';
   String? _pendingActionPostId;
@@ -120,6 +130,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     final now = _now();
     _visibleMonth = DateTime(now.year, now.month);
+    _historyStart = _initialHistoryStart(now);
     if (widget.isActive) {
       unawaited(_loadPosts());
     } else {
@@ -206,6 +217,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       _posts = const [];
       _selectedDay = null;
       _visibleMonth = DateTime(now.year, now.month);
+      _historyStart = _initialHistoryStart(now);
       _hasLoaded = false;
       _isLoading = widget.isActive;
       _isRefreshing = false;
@@ -345,7 +357,30 @@ class _CalendarScreenState extends State<CalendarScreen>
           .map(CalendarPostResult.fromScheduledPost)
           .toList();
     }
-    return _apiClient.listCalendarPosts();
+    final historyLoader = widget.loadCalendarPostsSince;
+    if (historyLoader != null) return historyLoader(_historyStart);
+    return _apiClient.listCalendarPosts(activeSince: _historyStart);
+  }
+
+  bool get _loadsHistoryWindow =>
+      widget.loadCalendarPosts == null && widget.loadScheduledPosts == null;
+
+  // The first window covers both the current month and the current week, which
+  // can start in the previous month (the default view is a Monday-first week).
+  DateTime _initialHistoryStart(DateTime now) {
+    final monthStart = DateTime(now.year, now.month);
+    final weekStart = DateTime(now.year, now.month, now.day - now.weekday + 1);
+    return weekStart.isBefore(monthStart) ? weekStart : monthStart;
+  }
+
+  // Loads further back when the visible period starts before the loaded window,
+  // after a day change or a week/month switch.
+  void _extendHistoryToVisiblePeriod() {
+    final periodStart = _periodStart;
+    if (_loadsHistoryWindow && periodStart.isBefore(_historyStart)) {
+      _historyStart = periodStart;
+      unawaited(_loadPosts(silent: true));
+    }
   }
 
   void _syncQueuedRefresh() {
@@ -428,6 +463,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       _selectedDay = DateTime(date.year, date.month, date.day);
       _visibleMonth = DateTime(date.year, date.month);
     });
+    _extendHistoryToVisiblePeriod();
   }
 
   bool get _hasAddAction =>
@@ -585,9 +621,10 @@ class _CalendarScreenState extends State<CalendarScreen>
       return;
     }
 
-    final time = await showTimePicker(
+    final time = await showPostDeeTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
+      date: date,
     );
     if (time == null || !mounted || !_loadStillOwned(generation, ownerUserId)) {
       return;
@@ -850,13 +887,19 @@ class _CalendarScreenState extends State<CalendarScreen>
                     label: 'สัปดาห์',
                     animate: _motionEnabled,
                     selected: _isWeekView,
-                    onTap: () => setState(() => _isWeekView = true)),
+                    onTap: () {
+                      setState(() => _isWeekView = true);
+                      _extendHistoryToVisiblePeriod();
+                    }),
                 _FilterChip(
                     key: const ValueKey('calendar-month-view'),
                     label: 'เดือน',
                     animate: _motionEnabled,
                     selected: !_isWeekView,
-                    onTap: () => setState(() => _isWeekView = false)),
+                    onTap: () {
+                      setState(() => _isWeekView = false);
+                      _extendHistoryToVisiblePeriod();
+                    }),
                 PostDeePressFeedback(
                   enabled: _motionEnabled,
                   child: TextButton.icon(

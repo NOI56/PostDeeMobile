@@ -16,6 +16,7 @@ void main() {
 
   Future<void> pumpSummary(
     WidgetTester tester, {
+    String videoName = 'seller-clip.mp4',
     String? previewImagePath,
     Uint8List? previewImageBytes,
     CoverEditorResult? coverResult,
@@ -25,13 +26,14 @@ void main() {
       SocialPlatform.tiktok: '@seller',
     },
     PlatformPublishSettings platformSettings = const PlatformPublishSettings(),
+    VoidCallback? onPreview,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: PublishReviewSummary(
-              videoName: 'seller-clip.mp4',
+              videoName: videoName,
               caption: 'แคปชั่นขายสินค้า',
               platforms: platforms,
               platformSettings: platformSettings,
@@ -42,6 +44,7 @@ void main() {
               previewImageBytes: previewImageBytes,
               videoAspectLabel: videoAspectLabel,
               coverResult: coverResult,
+              onPreview: onPreview,
             ),
           ),
         ),
@@ -323,7 +326,7 @@ void main() {
     expect(outcome, contains('ส่งออกจริงและใช้โควตาโพสต์'));
     expect(outcome, isNot(contains('เผยแพร่เวลา')));
     expect(publishReviewPlatformLabel(SocialPlatform.facebookReels),
-        'Facebook Page Video');
+        'Facebook Reels');
   });
 
   testWidgets('summary shows a real poster without claiming a custom cover',
@@ -533,45 +536,83 @@ void main() {
     expect(find.textContaining('ส่งออกจริงและใช้โควตาโพสต์'), findsOneWidget);
   });
 
-  testWidgets('summary edit actions return to their own form sections',
+  testWidgets('summary previews the clip while retaining platform editing',
       (tester) async {
-    var videoEdits = 0;
-    var captionEdits = 0;
+    var previews = 0;
     var platformEdits = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: PublishReviewSummary(
-              videoName: 'seller-clip.mp4',
-              caption: 'แคปชั่นขายสินค้า',
-              platforms: const [SocialPlatform.tiktok],
-              connectionDisplayNames: const {SocialPlatform.tiktok: '@seller'},
-              scheduledAt: null,
-              watermarkEnabled: false,
-              onEditVideo: () => videoEdits += 1,
-              onEditCaption: () => captionEdits += 1,
-              onEditPlatforms: () => platformEdits += 1,
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PublishReviewSummary(
+                videoName: 'seller-clip.mp4',
+                caption: 'แคปชั่นขายสินค้า',
+                platforms: const [SocialPlatform.tiktok],
+                connectionDisplayNames: const {
+                  SocialPlatform.tiktok: '@seller'
+                },
+                scheduledAt: null,
+                watermarkEnabled: false,
+                onPreview: () => previews += 1,
+                onEditPlatforms: () => platformEdits += 1,
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    for (final section in ['video', 'caption', 'platforms']) {
-      final edit = find.byKey(ValueKey('publish-review-edit-$section'));
+      final preview = find.byKey(const ValueKey('publish-review-preview'));
+      final thumbnail = find.byKey(const ValueKey('publish-review-thumbnail'));
+      expect(find.text('พรีวิว'), findsOneWidget);
+      expect(find.text('แก้คลิป'), findsNothing);
+      expect(find.byKey(const ValueKey('publish-review-edit-video')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('publish-review-edit-caption')),
+          findsNothing);
+      expect(find.text('แก้ไข'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp(r'^พรีวิววิดีโอ')), findsOneWidget);
+      expect(tester.getTopLeft(preview).dy,
+          greaterThanOrEqualTo(tester.getBottomLeft(thumbnail).dy));
+      await tester.tap(preview);
+      expect(previews, 1);
+      await tester.tap(thumbnail);
+      expect(previews, 2);
+      final edit = find.byKey(const ValueKey('publish-review-edit-platforms'));
       await tester.ensureVisible(edit);
       await tester.tap(edit);
+      expect(platformEdits, 1);
+      expect(find.byType(PublishReviewScreen), findsNothing);
+      expect(
+          find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+    } finally {
+      semantics.dispose();
     }
-    expect(videoEdits, 1);
-    expect(captionEdits, 1);
-    expect(platformEdits, 1);
-    expect(find.byType(PublishReviewScreen), findsNothing);
-    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
   });
 
-  testWidgets('editable embedded summary fits narrow phones with large text',
+  testWidgets(
+      'summary keeps preview visible but disabled without a clip action',
       (tester) async {
+    for (final videoName in ['', 'seller-clip.mp4']) {
+      await pumpSummary(tester, videoName: videoName);
+      final preview = find.byKey(const ValueKey('publish-review-preview'));
+      expect(find.text('พรีวิว'), findsOneWidget);
+      expect(tester.widget<TextButton>(preview).onPressed, isNull);
+      expect(
+          find.byKey(const ValueKey('publish-review-thumbnail')), findsNothing);
+      expect(find.byKey(const ValueKey('publish-review-edit-video')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('publish-review-edit-caption')),
+          findsNothing);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('preview and channel editing fit narrow phones with large text',
+      (tester) async {
+    var previews = 0;
+    var platformEdits = 0;
     tester.view.physicalSize = const Size(320, 740);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -594,9 +635,8 @@ void main() {
                 },
                 scheduledAt: DateTime(2026, 8, 15, 18, 30),
                 watermarkEnabled: false,
-                onEditVideo: () {},
-                onEditCaption: () {},
-                onEditPlatforms: () {},
+                onPreview: () => previews += 1,
+                onEditPlatforms: () => platformEdits += 1,
               ),
             ),
           ),
@@ -605,13 +645,18 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    for (final section in ['video', 'caption', 'platforms']) {
-      final edit = find.byKey(ValueKey('publish-review-edit-$section'));
-      await tester.ensureVisible(edit);
-      await tester.tap(edit);
+    for (final key in [
+      'publish-review-preview',
+      'publish-review-edit-platforms',
+    ]) {
+      final action = find.byKey(ValueKey(key));
+      await tester.ensureVisible(action);
+      await tester.tap(action);
       await tester.pump();
       expect(tester.takeException(), isNull);
     }
+    expect(previews, 1);
+    expect(platformEdits, 1);
   });
 
   testWidgets('standalone review still returns explicit confirmation',
@@ -694,7 +739,7 @@ void main() {
     expect(find.textContaining('ส่งออกจริงและใช้โควตาโพสต์'), findsNWidgets(2));
     expect(find.text('ส่วนตัว (Private)'), findsOneWidget);
     expect(find.text('Reels + ฟีด · เผยแพร่ตามบัญชี'), findsOneWidget);
-    expect(find.text('Facebook Page Video'), findsOneWidget);
+    expect(find.text('Facebook Reels'), findsOneWidget);
     expect(find.text('@seller'), findsOneWidget);
     expect(find.text('PostDee Channel'), findsOneWidget);
     expect(find.textContaining('เก็บเป็นร่างบนเพจ'), findsOneWidget);

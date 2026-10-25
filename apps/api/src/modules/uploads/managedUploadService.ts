@@ -104,7 +104,15 @@ export type ManagedUploadService = {
   ) => Promise<void>;
   prepareOwnerDeletion: (ownerId: string) => Promise<void>;
   finishOwnerDeletion: (ownerId: string) => Promise<void>;
+  // Aborts the R2 multipart upload of each expired UPLOADING session and
+  // retires the session, at most `limit` per call. Failed aborts are retried by
+  // a later sweep.
+  sweepExpiredSessions: (options?: { limit?: number }) => Promise<ExpiredUploadSweepResult>;
 };
+
+export type ExpiredUploadSweepResult = { retired: number; failed: number };
+
+export const defaultExpiredUploadSweepLimit = 25;
 
 export class ManagedUploadServiceError extends Error {
   constructor(
@@ -195,7 +203,8 @@ export const createManagedUploadService = ({
   sessionExpiresSeconds,
   now = () => new Date(),
   idFactory = randomUUID,
-  completionDrainSeconds = 120
+  completionDrainSeconds = 120,
+  expiredSessionGraceSeconds = 300
 }: {
   storage: ManagedMultipartStorage;
   store: UploadSessionStore;
@@ -204,6 +213,7 @@ export const createManagedUploadService = ({
   now?: () => Date;
   idFactory?: () => string;
   completionDrainSeconds?: number;
+  expiredSessionGraceSeconds?: number;
 }): ManagedUploadService => {
   const reconcileCompletion = async (session: UploadSession) => {
     if (session.status !== 'COMPLETING') {
@@ -506,6 +516,33 @@ export const createManagedUploadService = ({
       });
     }
   },
-  finishOwnerDeletion: (ownerId) => store.finishOwnerDeletion(ownerId)
+  finishOwnerDeletion: (ownerId) => store.finishOwnerDeletion(ownerId),
+  sweepExpiredSessions: async ({ limit = defaultExpiredUploadSweepLimit } = {}) => {
+    // An expired session can no longer issue parts or begin completion, so only
+    // an abort can still change it. The grace period covers requests that
+    // passed the expiry check just before the deadline.
+    const expiredBefore = new Date(
+      now().getTime() - expiredSessionGraceSeconds * 1000
+    ).toISOString();
+    const result: ExpiredUploadSweepResult = { retired: 0, failed: 0 };
+
+    for (const session of await store.listExpiredUploading({ expiredBefore, limit })) {
+      try {
+        // Abort first: if retiring fails, the next sweep repeats an idempotent
+        // abort instead of leaving an R2 upload with no session row.
+        await storage.abortUpload({
+          storageUploadId: session.storageUploadId,
+          videoS3Key: session.videoS3Key
+        });
+        if (await store.retireExpired({ id: session.id, expiredBefore })) {
+          result.retired += 1;
+        }
+      } catch {
+        result.failed += 1;
+      }
+    }
+
+    return result;
+  }
   };
 };

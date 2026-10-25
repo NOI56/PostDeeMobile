@@ -55,7 +55,7 @@ void main() {
         'TIKTOK',
         'YOUTUBE_SHORTS',
         'INSTAGRAM_REELS',
-        // The compatibility value is Facebook Page Video, not Facebook Reels.
+        // Facebook Reels are published to the connected Page.
         'FACEBOOK_REELS',
       ],
       status: 'PUBLISHING',

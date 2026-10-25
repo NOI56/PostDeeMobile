@@ -29,8 +29,19 @@
 > use YouTube `private` and TikTok `SELF_ONLY` (`draft: false`). Only explicitly
 > safe pre-accept failures are retried; unknown outcomes require checking the
 > provider before retry. `FACEBOOK_REELS` remains an internal compatibility key
-> for Facebook Page Video, not Reels. Real connected-account E2E is still
-> pending.
+> for Facebook Page Reels under the 2026-10-24 contract below. Real
+> connected-account E2E is still pending.
+
+> **Facebook Page Reels contract update (2026-10-24):** Retain `FACEBOOK_REELS`
+> and always send PostPeer `platform: 'facebook'` with
+> `platformSpecificData.contentType: 'reel'`. Require a video and never fall back
+> to a Page feed video. Preserve existing `PUBLISH|PAGE_DRAFT`, optional explicit
+> `isAiGenerated`, per-platform captions, immutable target snapshots and retry
+> safeguards. Optional signed `videoThumbnailUrl` is best effort; real-account
+> Reel/draft/thumbnail E2E is still pending. The provider may choose the cover.
+> Existing queued/scheduled Facebook jobs use this route after publisher deploy;
+> there are no new client fields, environment variables or migrations. Do not
+> apply Page Video duration/width limits to Page Reels.
 
 > **Current-state safety addendum (2026-08-10):** Authenticated
 > `GET /publishing/readiness` is a configuration-only preflight. Current Mobile calls

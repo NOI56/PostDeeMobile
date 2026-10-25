@@ -49,7 +49,8 @@ describe('upload routes', () => {
     abort: vi.fn(async () => undefined),
     assertReadyForUse: vi.fn(async () => undefined),
     prepareOwnerDeletion: vi.fn(async () => undefined),
-    finishOwnerDeletion: vi.fn(async () => undefined)
+    finishOwnerDeletion: vi.fn(async () => undefined),
+    sweepExpiredSessions: vi.fn(async () => ({ retired: 0, failed: 0 }))
   });
 
   it('requires authentication before creating upload URLs in Firebase mode', async () => {

@@ -90,7 +90,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('OK'));
+    await tester.tap(find.byKey(const ValueKey('postdee-time-confirm')));
     await tester.pumpAndSettle();
 
     expect(reschedules, 1);

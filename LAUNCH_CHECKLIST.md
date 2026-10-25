@@ -148,10 +148,12 @@
 - [x] Controlled-first request ใช้ YouTube `private` และ TikTok `SELF_ONLY`
       (`draft: false`) แล้ว; ก่อนเปิด public ต้องเพิ่มตัวเลือก privacy ที่ผู้ใช้ยืนยัน
 - [ ] ทดสอบโพสต์จริง 1 คลิปด้วยบัญชี disposable ที่เชื่อมแล้ว: TikTok,
-      YouTube Shorts, Instagram Reels และ Facebook Page Video พร้อมตรวจ URL/ID,
+      YouTube Shorts, Instagram Reels และ Facebook Page Reels พร้อมตรวจ URL/ID,
       partial/failed และ outcome-unknown ก่อน retry
-- หมายเหตุ: `FACEBOOK_REELS` เป็นชื่อ compatibility ภายใน แต่ PostPeer ปัจจุบัน
-  ส่ง Facebook Page Video ไม่ใช่ Reels จึงห้ามใช้คำว่า Facebook Reels ใน Store
+- หมายเหตุ: `FACEBOOK_REELS` ส่ง PostPeer `platform: 'facebook'` กับ
+  `platformSpecificData.contentType: 'reel'` เสมอ ไม่มี Page feed fallback;
+  คง `PUBLISH|PAGE_DRAFT` และ optional `isAiGenerated` และต้องผ่าน Reel/draft E2E
+  ด้วยบัญชีจริงก่อนใช้เป็นคำรับรอง production ใน Store
 - หมายเหตุ: Shopee/Lazada ยังไม่รองรับใน PostPeer mapping (เพิ่มภายหลัง)
 
 ---
@@ -217,7 +219,7 @@
       จากผู้ใช้ทั่วไป ระหว่างนี้ให้ทดสอบเฉพาะคลิปที่ทีมสร้างหรือเชื่อถือได้
 - [ ] ล็อกอิน Google + Apple + ยืนยันเบอร์ (OTP) สำเร็จ บนมือถือจริง
 - [ ] อัปคลิป → โพสต์ทันที → ขึ้นจริงทุก capability ที่ระบุไว้ → provider URL/ID
-      และ `GET /posts.platformResults` ตรงกัน (Facebook คือ Page Video)
+      และ `GET /posts.platformResults` ตรงกัน (Facebook ต้องเป็น Page Reel)
 - [ ] ตั้งเวลาโพสต์ → ปฏิทินแสดง → ถึงเวลาแล้วโพสต์จริง
 - [ ] AI แคปชั่นจากคลิป (Starter ฟัง / Pro ฟัง+ดูเฟรม)
 - [ ] AI ตัดต่อ/ซับ (Pro) + export บนเครื่อง

@@ -3,6 +3,7 @@ import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 
 import { countCurrentMonthPostUnits } from './postUsage.js';
+import type { PostPageCursor } from './postPageCursor.js';
 import {
   arePlatformSettingsEqual,
   type PlatformSettings
@@ -48,6 +49,14 @@ export type QueuedPost = {
   // Internal allocation, fixed when accepted; never reallocated after a plan change.
   addonPostUnits?: number;
 };
+
+// Fields the publish scheduler needs from a due post. It never reads the
+// media fingerprint or the add-on allocation.
+export type DuePost = Omit<QueuedPost, 'mediaContentFingerprint' | 'addonPostUnits'>;
+
+// One scheduler poll reads at most this many due posts. The rest wait for the
+// next poll, so a large backlog never loads every owner's rows at once.
+export const maxDuePostsPerPoll = 50;
 
 export type CreatePostInput = {
   userId: string;
@@ -150,7 +159,18 @@ export type PostStore = {
   // Internal startup recovery reads ids and platforms, never private content.
   listPublishing: () => Promise<Array<Pick<QueuedPost, 'id' | 'platforms'>>>;
   finalizeInterruptedPublish: (input: FinalizeInterruptedPublishInput) => Promise<boolean>;
-  list: (filter?: { userId?: string; scheduledOnly?: boolean }) => Promise<QueuedPost[]>;
+  // With limit, returns at most that many of the newest posts (createdAt desc).
+  list: (filter?: { userId?: string; scheduledOnly?: boolean; limit?: number }) => Promise<QueuedPost[]>;
+  // Keyset page of one owner's posts, newest created first (createdAt desc,
+  // id desc). `next` is present only when another page exists.
+  listPage: (input: {
+    userId: string;
+    scheduledOnly?: boolean;
+    limit: number;
+    after?: PostPageCursor;
+    // Calendar window: keep posts created, scheduled or published at/after it.
+    activeSince?: string;
+  }) => Promise<{ posts: QueuedPost[]; next?: PostPageCursor }>;
   // Direct owner-scoped reads must not scan or return another owner's history.
   findOwned: (input: { postId: string; userId: string }) => Promise<QueuedPost | undefined>;
   // Global aggregate only: used by the opt-in real-publisher activation guard.
@@ -166,11 +186,20 @@ export type PostStore = {
     input: CreatePostWithinMonthlyLimitInput
   ) => Promise<CreatePostWithinMonthlyLimitResult>;
   // Posts whose time has come: QUEUED with no schedule (post now) or scheduledAt
-  // at/before `now`. Used by the publish scheduler.
-  listDue: (input: { now: string }) => Promise<QueuedPost[]>;
+  // at/before `now`. Used by the publish scheduler; returns at most `limit`
+  // (default maxDuePostsPerPoll) posts per call.
+  // Results come in a stable order; `afterId` resumes after that post, so a
+  // caller can visit every due post in turn across calls.
+  listDue: (input: { now: string; limit?: number; afterId?: string }) => Promise<DuePost[]>;
   // Atomically moves a still-queued post into PUBLISHING before calling an
   // external publisher. Returns false for missing, already-running, or finished posts.
   claimForPublish: (input: ClaimPostForPublishInput) => Promise<boolean>;
+  // Same claim as claimForPublish in one atomic step, reporting whether the
+  // claimed row was still scheduled at expectedRunAt or had been switched to
+  // Publish now. Undefined when nothing was claimed.
+  claimForPublishWithSchedule: (
+    input: ClaimPostForPublishInput
+  ) => Promise<'scheduled' | 'immediate' | undefined>;
   updateStatus: (input: UpdatePostStatusInput) => Promise<void>;
   // Move a still-queued post (owned by userId) to a new time. Returns the
   // updated post, or undefined if it is missing, not owned, or already publishing.
@@ -251,17 +280,49 @@ export const createPostStore = ({
       if (publishedAt) post.publishedAt = publishedAt;
       return true;
     },
-    list: async (filter) =>
-      posts
+    list: async (filter) => {
+      const matching = posts
         .filter((post) => (filter?.userId ? post.userId === filter.userId : true))
-        .filter((post) => (filter?.scheduledOnly ? post.scheduledAt !== undefined : true))
-        .sort((left, right) => {
-          if (!filter?.scheduledOnly) {
-            return 0;
-          }
+        .filter((post) => (filter?.scheduledOnly ? post.scheduledAt !== undefined : true));
 
-          return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
-        }),
+      if (filter?.limit !== undefined) {
+        return matching
+          .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+          .slice(0, filter.limit);
+      }
+
+      return matching.sort((left, right) => {
+        if (!filter?.scheduledOnly) {
+          return 0;
+        }
+
+        return (left.scheduledAt ?? '').localeCompare(right.scheduledAt ?? '');
+      });
+    },
+    listPage: async ({ userId, scheduledOnly = false, limit, after, activeSince }) => {
+      const afterTime = after ? Date.parse(after.createdAt) : undefined;
+      const activeTime = activeSince ? Date.parse(activeSince) : undefined;
+      const isActive = (post: QueuedPost) => activeTime === undefined ||
+        [post.createdAt, post.scheduledAt, post.publishedAt]
+          .some((time) => time !== undefined && Date.parse(time) >= activeTime);
+      const ordered = posts
+        .filter((post) => post.userId === userId && (!scheduledOnly || post.scheduledAt !== undefined))
+        .filter(isActive)
+        .sort((left, right) =>
+          Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+          (right.id < left.id ? -1 : right.id > left.id ? 1 : 0))
+        .filter((post) => {
+          if (!after || afterTime === undefined) return true;
+          const time = Date.parse(post.createdAt);
+          return time < afterTime || (time === afterTime && post.id < after.id);
+        });
+      const page = ordered.slice(0, limit);
+      const last = page.at(-1);
+      return {
+        posts: page,
+        ...(ordered.length > limit && last ? { next: { createdAt: last.createdAt, id: last.id } } : {})
+      };
+    },
     findOwned: async ({ postId, userId }) => posts.find((post) => post.id === postId && post.userId === userId),
     countPublishBacklog: async () =>
       posts.filter(
@@ -316,12 +377,29 @@ export const createPostStore = ({
         created: true
       };
     }),
-    listDue: async ({ now }) =>
-      posts.filter(
-        (post) =>
-          post.status === 'QUEUED' &&
-          (post.scheduledAt === undefined || post.scheduledAt <= now)
-      ),
+    listDue: async ({ now, limit = maxDuePostsPerPoll, afterId }) => {
+      // Insertion order is this store's stable order.
+      const start = afterId === undefined ? 0 : posts.findIndex((post) => post.id === afterId) + 1;
+      return posts
+        .slice(start)
+        .filter(
+          (post) =>
+            post.status === 'QUEUED' &&
+            (post.scheduledAt === undefined || post.scheduledAt <= now)
+        )
+        .slice(0, limit);
+    },
+    claimForPublishWithSchedule: async ({ postId, expectedRunAt }) => {
+      const post = posts.find((candidate) => candidate.id === postId);
+
+      if (!post || post.status !== 'QUEUED' ||
+        (post.scheduledAt !== undefined && post.scheduledAt !== expectedRunAt)) {
+        return undefined;
+      }
+
+      post.status = 'PUBLISHING';
+      return post.scheduledAt === undefined ? 'immediate' : 'scheduled';
+    },
     claimForPublish: async ({ postId, expectedRunAt }) => {
       const post = posts.find((candidate) => candidate.id === postId);
 

@@ -1,4 +1,9 @@
-import type { CreateTemplateInput, TemplateStore, TextTemplate } from './templateStore.js';
+import {
+  maxTemplatesPerOwner,
+  type CreateTemplateInput,
+  type TemplateStore,
+  type TextTemplate
+} from './templateStore.js';
 
 type PrismaTemplate = {
   id: string;
@@ -11,7 +16,9 @@ type TemplateDelegate = {
   findMany: (args: {
     where: { userId: string };
     orderBy: { createdAt: 'desc' };
+    take: number;
   }) => Promise<PrismaTemplate[]>;
+  count: (args: { where: { userId: string } }) => Promise<number>;
   create: (args: {
     data: {
       userId: string;
@@ -40,11 +47,13 @@ export const createPrismaTemplateRepository = ({
   list: async ({ userId }) => {
     const templates = await prisma.template.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      take: maxTemplatesPerOwner
     });
 
     return templates.map(mapTemplate);
   },
+  count: ({ userId }) => prisma.template.count({ where: { userId } }),
   create: async (input: CreateTemplateInput) => {
     const template = await prisma.template.create({
       data: {

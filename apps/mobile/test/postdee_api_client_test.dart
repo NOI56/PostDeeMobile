@@ -2206,13 +2206,74 @@ void main() {
   test('SocialConnectLinkResult parses connect URLs', () {
     final result = SocialConnectLinkResult.fromJson({
       'connectUrl': 'https://postpeer.test/connect/youtube',
+      'nonce': 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE',
       'expiresAt': '2026-06-26T09:10:00.000Z',
     });
 
     expect(
         result.connectUrl.toString(), 'https://postpeer.test/connect/youtube');
+    expect(result.nonce, 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE');
     expect(result.expiresAt?.toUtc().toIso8601String(),
         '2026-06-26T09:10:00.000Z');
+  });
+
+  for (final consumed in <bool?>[true, false, null]) {
+    test(
+        'attempt refresh sends its nonce only in the authenticated request body and parses completion $consumed',
+        () async {
+      const nonce = 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE';
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final serverTask = () async {
+        final request = await server.first;
+        expect(request.method, 'POST');
+        expect(request.uri.path, '/social-connections/refresh');
+        expect(request.uri.queryParameters, isEmpty);
+        expect(request.headers.value(HttpHeaders.authorizationHeader),
+            'Bearer owner-token');
+        expect(await _readJsonRequest(request), {'nonce': nonce});
+        _writeJsonResponse(request.response, {
+          'connections': [
+            {'platform': 'TIKTOK', 'connected': true, 'displayName': '@seller'},
+          ],
+          if (consumed != null) 'connectAttemptConsumed': consumed,
+        });
+        await request.response.close();
+      }();
+      try {
+        final client = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+          authTokenProvider: () async => 'owner-token',
+        );
+        final result =
+            await client.refreshSocialConnectionsWithAttempt(nonce: nonce);
+        expect(result.connectAttemptConsumed, consumed == true);
+        expect(result.connections.single.displayName, '@seller');
+        await serverTask;
+      } finally {
+        await server.close(force: true);
+      }
+    });
+  }
+
+  test('ordinary refresh does not send a connect attempt nonce', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final serverTask = () async {
+      final request = await server.first;
+      expect(request.uri.path, '/social-connections/refresh');
+      expect(await _readJsonRequest(request), isEmpty);
+      _writeJsonResponse(request.response, {'connections': []});
+      await request.response.close();
+    }();
+    try {
+      final client = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authTokenProvider: () async => 'owner-token',
+      );
+      expect(await client.refreshSocialConnections(), isEmpty);
+      await serverTask;
+    } finally {
+      await server.close(force: true);
+    }
   });
 
   test(

@@ -1,5 +1,13 @@
 # PostPeer User Social Connections Implementation Plan
 
+> **Security Batch 2 addendum (2026-10-23, review candidate):** New account
+> admission now requires a hashed, one-use owner/platform/profile-bound attempt
+> with a 15-minute lifetime and pre-connect integration baseline. Authenticated
+> refresh without its nonce can maintain only saved exact identities. Database
+> uniqueness, duplicate preflight and API-before-Mobile rollout are documented
+> in the [Batch 2 record](2026-10-23-social-linking-security-batch2.md). This does
+> not implement a signed provider callback or verify the consenting human.
+
 > Historical implementation plan: the final runtime diverged from the proposed
 > signed-state callback architecture. It uses PostPeer profile state and
 > explicit `POST /social-connections/refresh` polling. Unchecked steps below do

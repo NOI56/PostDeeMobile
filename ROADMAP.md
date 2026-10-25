@@ -189,6 +189,27 @@ Build roadmap for PostDee.
   and backend deployment are not part of that Git delivery. Record results in the
   [wheel-picker plan](docs/superpowers/plans/2026-10-24-wheel-time-picker.md).
 
+## Social linking security Batch 2 (2026-10-23, review candidate)
+
+- Gate newly discovered integrations behind one-use owner/platform/profile
+  attempts, with 10-minute expiry, hashed nonces and pre-connect ID baselines.
+  Leftover same-platform integrations are deleted before the baseline, so an
+  abandoned attempt cannot block that account from reconnecting.
+- Enforce account ownership uniqueness atomically in memory and Prisma, return
+  safe 409 conflicts and show actionable Thai guidance in Mobile.
+- Preserve saved-account metadata refresh and protect newer links from stale
+  provider responses. Keep account deletion and disconnect cleanup scoped.
+- Add read-only duplicate preflight and a transactional migration that aborts
+  on duplicates without modifying user data. Real target duplicate counts
+  remain unverified; network access/suspension settings were not changed.
+- Deliver Batch 2 as a separate PR only. Before any separately authorized
+  rollout: resolve duplicates, apply migration/API, then update Mobile; old
+  clients cannot finish new links. Validate PostPeer shared-URL consent/browser
+  binding, stable external IDs and reconnect ID reuse before claiming full
+  initiating-human binding. No provider/dashboard change, deployment or app
+  installation is part of this task. Track exact checks in the
+  [Batch 2 record](docs/superpowers/plans/2026-10-23-social-linking-security-batch2.md).
+
 ## Compact caption AI controls (2026-10-23, Staging delivered)
 
 - Replace the advanced target chips with a uniform two-by-two grid under

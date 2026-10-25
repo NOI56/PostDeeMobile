@@ -55,6 +55,13 @@ export class PostPeerProfileOwnershipConflictError extends Error {
   }
 }
 
+export class SocialAccountAlreadyLinkedError extends Error {
+  constructor() {
+    super('Social account is already linked');
+    this.name = 'SocialAccountAlreadyLinkedError';
+  }
+}
+
 export type UpsertSocialConnectionInput = {
   userId: string;
   platform: SocialConnectionPlatform;
@@ -73,6 +80,59 @@ export type DisconnectSocialConnectionInput = {
   platform: SocialConnectionPlatform;
 };
 
+export type DisconnectSocialConnectionSnapshot = {
+  connection?: SocialConnection;
+  nonceHash?: string;
+};
+
+// The raw completion nonce is returned only to the initiating authenticated
+// client. Persist its hash and the integrations observed before OAuth starts.
+export type SocialConnectAttempt = {
+  userId: string;
+  platform: SocialConnectionPlatform;
+  profileId: string;
+  nonceHash: string;
+  expiresAt: string;
+  baselineIntegrationIds: string[];
+};
+
+export type CompleteSocialConnectAttemptInput = {
+  userId: string;
+  platform: SocialConnectionPlatform;
+  profileId: string;
+  nonceHash: string;
+  integration: Omit<UpsertSocialConnectionInput, 'userId' | 'platform'>;
+  now: string;
+};
+
+export type ReconcileExistingSocialConnectionInput = {
+  userId: string;
+  platform: SocialConnectionPlatform;
+  expectedPostPeerAccountId: string;
+  expectedExternalAccountId?: string;
+  integration?: Omit<UpsertSocialConnectionInput, 'userId' | 'platform'>;
+};
+
+export const isExpectedSocialConnection = (
+  connection: SocialConnection | undefined,
+  input: ReconcileExistingSocialConnectionInput
+): boolean => Boolean(connection &&
+  connection.postPeerAccountId === input.expectedPostPeerAccountId &&
+  connection.externalAccountId === input.expectedExternalAccountId &&
+  (!input.integration || (
+    input.integration.postPeerAccountId === input.expectedPostPeerAccountId &&
+    normalizeOptionalMetadata(input.integration.externalAccountId) === input.expectedExternalAccountId
+  )));
+
+export const isMatchingSocialConnectAttempt = (
+  attempt: SocialConnectAttempt | undefined,
+  input: CompleteSocialConnectAttemptInput
+): boolean => Boolean(attempt &&
+  attempt.userId === input.userId && attempt.platform === input.platform &&
+  attempt.profileId === input.profileId && attempt.nonceHash === input.nonceHash &&
+  Date.parse(attempt.expiresAt) > Date.parse(input.now) &&
+  !attempt.baselineIntegrationIds.includes(input.integration.postPeerAccountId));
+
 export type SocialConnectionStore = {
   listForUser: (userId: string) => Promise<SocialConnectionStatus[]>;
   getAccountId: (
@@ -82,11 +142,17 @@ export type SocialConnectionStore = {
     input: GetSocialConnectionAccountIdInput
   ) => Promise<SocialConnection | undefined>;
   upsert: (input: UpsertSocialConnectionInput) => Promise<SocialConnection>;
+  reconcileExistingConnection: (input: ReconcileExistingSocialConnectionInput) => Promise<SocialConnection | undefined>;
   disconnect: (input: DisconnectSocialConnectionInput) => Promise<boolean>;
+  getDisconnectSnapshot: (input: DisconnectSocialConnectionInput) => Promise<DisconnectSocialConnectionSnapshot>;
   // The PostPeer profile id groups all of a user's connected accounts. It is
   // created once per user and reused for connect URLs and integration polling.
   getProfileId: (userId: string) => Promise<string | undefined>;
   setProfileId: (input: { userId: string; profileId: string }) => Promise<string>;
+  beginConnectAttempt: (input: SocialConnectAttempt) => Promise<void>;
+  getConnectAttempt: (input: { userId: string; nonceHash: string }) => Promise<SocialConnectAttempt | undefined>;
+  completeConnectAttempt: (input: CompleteSocialConnectAttemptInput) => Promise<SocialConnection | undefined>;
+  cancelConnectAttempt: (input: { userId: string; platform: SocialConnectionPlatform; nonceHash?: string }) => Promise<void>;
   deleteAllForUser?: (userId: string) => Promise<void>;
 };
 
@@ -164,6 +230,37 @@ export const createInMemorySocialConnectionStore = ({
   const connections = new Map<string, SocialConnection>();
   const profiles = new Map<string, string>();
   const profileOwners = new Map<string, string>();
+  const attempts = new Map<string, SocialConnectAttempt>();
+  const providerAccountKeys = new Map<string, string>();
+  const externalAccountKeys = new Map<string, string>();
+
+  const removeConnection = (key: string): boolean => {
+    const existing = connections.get(key);
+    if (!existing) return false;
+    providerAccountKeys.delete(existing.postPeerAccountId);
+    if (existing.externalAccountId) externalAccountKeys.delete(`${existing.platform}:${existing.externalAccountId}`);
+    return connections.delete(key);
+  };
+
+  // No await occurs between uniqueness checks and the write, so competing
+  // in-memory claims cannot both observe an unclaimed account.
+  const upsertConnection = (input: UpsertSocialConnectionInput): SocialConnection => {
+    const key = connectionKey(input);
+    const externalAccountId = normalizeOptionalMetadata(input.externalAccountId);
+    const providerOwner = providerAccountKeys.get(input.postPeerAccountId);
+    const externalOwner = externalAccountId ? externalAccountKeys.get(`${input.platform}:${externalAccountId}`) : undefined;
+    if ((providerOwner && providerOwner !== key) || (externalOwner && externalOwner !== key)) {
+      throw new SocialAccountAlreadyLinkedError();
+    }
+    const existing = connections.get(key);
+    const timestamp = now();
+    const record = connectedConnection({ ...input, id: existing?.id ?? randomUUID(), connectedAt: existing?.connectedAt ?? timestamp, updatedAt: timestamp });
+    removeConnection(key);
+    connections.set(key, record);
+    providerAccountKeys.set(record.postPeerAccountId, key);
+    if (record.externalAccountId) externalAccountKeys.set(`${record.platform}:${record.externalAccountId}`, key);
+    return record;
+  };
 
   return {
     listForUser: async (userId) =>
@@ -174,22 +271,30 @@ export const createInMemorySocialConnectionStore = ({
     getAccountId: async (input) =>
       connections.get(connectionKey(input))?.postPeerAccountId,
     getConnection: async (input) => connections.get(connectionKey(input)),
-    upsert: async (input) => {
+    upsert: async (input) => upsertConnection(input),
+    reconcileExistingConnection: async (input) => {
       const key = connectionKey(input);
-      const existingConnection = connections.get(key);
-      const timestamp = now();
-      const record = connectedConnection({
-        ...input,
-        id: existingConnection?.id ?? randomUUID(),
-        connectedAt: existingConnection?.connectedAt ?? timestamp,
-        updatedAt: timestamp
-      });
-
-      connections.set(key, record);
-      return record;
+      if (!isExpectedSocialConnection(connections.get(key), input)) return undefined;
+      if (!input.integration) {
+        // A provider refresh may retire an old binding, but must never cancel a
+        // newer explicit connect attempt that is still waiting for OAuth.
+        removeConnection(key);
+        return undefined;
+      }
+      return upsertConnection({ userId: input.userId, platform: input.platform, ...input.integration });
     },
     disconnect: async (input) => {
-      return connections.delete(connectionKey(input));
+      attempts.delete(connectionKey(input));
+      return removeConnection(connectionKey(input));
+    },
+    getDisconnectSnapshot: async (input) => {
+      const key = connectionKey(input);
+      const connection = connections.get(key);
+      const nonceHash = attempts.get(key)?.nonceHash;
+      return {
+        ...(connection ? { connection: { ...connection } } : {}),
+        ...(nonceHash ? { nonceHash } : {})
+      };
     },
     getProfileId: async (userId) => profiles.get(userId),
     setProfileId: async ({ userId, profileId }) => {
@@ -209,6 +314,27 @@ export const createInMemorySocialConnectionStore = ({
       profileOwners.set(profileId, userId);
       return profileId;
     },
+    beginConnectAttempt: async (input) => {
+      attempts.set(connectionKey(input), { ...input, baselineIntegrationIds: [...input.baselineIntegrationIds] });
+    },
+    getConnectAttempt: async ({ userId, nonceHash }) => {
+      for (const platform of supportedSocialConnectionPlatforms) {
+        const attempt = attempts.get(connectionKey({ userId, platform }));
+        if (attempt?.nonceHash === nonceHash) return { ...attempt, baselineIntegrationIds: [...attempt.baselineIntegrationIds] };
+      }
+      return undefined;
+    },
+    completeConnectAttempt: async (input) => {
+      const key = connectionKey(input);
+      if (!isMatchingSocialConnectAttempt(attempts.get(key), input)) return undefined;
+      const connection = upsertConnection({ userId: input.userId, platform: input.platform, ...input.integration });
+      attempts.delete(key);
+      return connection;
+    },
+    cancelConnectAttempt: async ({ userId, platform, nonceHash }) => {
+      const key = connectionKey({ userId, platform });
+      if (nonceHash === undefined || attempts.get(key)?.nonceHash === nonceHash) attempts.delete(key);
+    },
     deleteAllForUser: async (userId) => {
       const profileId = profiles.get(userId);
 
@@ -219,9 +345,10 @@ export const createInMemorySocialConnectionStore = ({
       profiles.delete(userId);
       for (const [key, record] of connections) {
         if (record.userId === userId) {
-          connections.delete(key);
+          removeConnection(key);
         }
       }
+      for (const platform of supportedSocialConnectionPlatforms) attempts.delete(connectionKey({ userId, platform }));
     }
   };
 };

@@ -138,7 +138,9 @@ describe('social connection routes', () => {
     });
     expect(response.body).toEqual({
       status: 'ok',
-      connectUrl: 'https://postpeer.test/connect/tiktok'
+      connectUrl: 'https://postpeer.test/connect/tiktok',
+      nonce: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      expiresAt: expect.any(String)
     });
   });
 
@@ -351,7 +353,7 @@ describe('social connection routes', () => {
     expect(connectClient.createConnectUrl).not.toHaveBeenCalled();
   });
 
-  it('refreshes connections by polling PostPeer integrations', async () => {
+  it('refreshes a new connection only after its authenticated connect attempt', async () => {
     const store = createInMemorySocialConnectionStore({
       now: () => '2026-06-26T09:00:00.000Z'
     });
@@ -364,12 +366,16 @@ describe('social connection routes', () => {
           platformUserId: 'tt-1',
           displayName: '@seller_one'
         }
-      ])
+      ]).mockResolvedValueOnce([])
     });
     const { app } = createTestApp({ store, connectClient });
 
+    const connectResponse = await request(app)
+      .post('/social-connections/TIKTOK/connect')
+      .expect(200);
     const response = await request(app)
       .post('/social-connections/refresh')
+      .send({ nonce: connectResponse.body.nonce })
       .expect(200);
 
     expect(connectClient.listIntegrations).toHaveBeenCalledWith({
@@ -445,7 +451,7 @@ describe('social connection routes', () => {
     expect(response.body.status).toBe('ok');
   });
 
-  it('recovers a missing local profile mapping before refreshing integrations', async () => {
+  it('recovers a missing profile mapping without importing unbound integrations', async () => {
     const findProfile = vi.fn(async () => ({ profileId: 'profile-recovered' }));
     const listIntegrations = vi.fn(async () => [
       {
@@ -467,15 +473,14 @@ describe('social connection routes', () => {
     expect(listIntegrations).toHaveBeenCalledWith({ profileId: 'profile-recovered' });
     await expect(
       store.getAccountId({ userId: 'seller-social', platform: 'YOUTUBE_SHORTS' })
-    ).resolves.toBe('acct-youtube-existing');
+    ).resolves.toBeUndefined();
     expect(
       response.body.connections.find(
         (connection: { platform: string }) => connection.platform === 'YOUTUBE_SHORTS'
       )
     ).toMatchObject({
       platform: 'YOUTUBE_SHORTS',
-      connected: true,
-      displayName: '@seller_youtube'
+      connected: false
     });
   });
 
@@ -484,10 +489,10 @@ describe('social connection routes', () => {
     const store = createInMemorySocialConnectionStore({
       now: () => '2026-06-26T09:00:00.000Z'
     });
-    const originalDisconnect = store.disconnect;
-    store.disconnect = vi.fn(async (input) => {
+    const originalReconcile = store.reconcileExistingConnection;
+    store.reconcileExistingConnection = vi.fn(async (input) => {
       events.push('local');
-      return originalDisconnect(input);
+      return originalReconcile(input);
     });
     const disconnectIntegration = vi.fn(async () => {
       events.push('provider');

@@ -2,17 +2,31 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createPrismaSocialConnectionRepository,
-  type PrismaSocialConnectionClient
+  type PrismaSocialConnectionClient,
+  type PrismaSocialConnectionTransaction
 } from './prismaSocialConnectionRepository.js';
 import {
   PostPeerProfileOwnershipConflictError,
+  type CompleteSocialConnectAttemptInput,
   supportedSocialConnectionPlatforms
 } from './socialConnectionStore.js';
 
+const attemptRow = {
+  userId: 'owner-a', platform: 'TIKTOK', profileId: 'profile-a', nonceHash: 'hash-a',
+  expiresAt: new Date('2026-10-23T10:15:00.000Z'), baselineIntegrationIds: ['integration-old']
+};
+const completion: CompleteSocialConnectAttemptInput = {
+  userId: 'owner-a', platform: 'TIKTOK', profileId: 'profile-a', nonceHash: 'hash-a',
+  integration: { postPeerAccountId: 'integration-new', externalAccountId: 'external-new' },
+  now: '2026-10-23T10:01:00.000Z'
+};
+
 const createPrisma = (
   delegate: Partial<PrismaSocialConnectionClient['socialConnection']>,
-  profileDelegate: Partial<PrismaSocialConnectionClient['postPeerProfile']> = {}
-): PrismaSocialConnectionClient => ({
+  profileDelegate: Partial<PrismaSocialConnectionClient['postPeerProfile']> = {},
+  attemptDelegate: Partial<PrismaSocialConnectionClient['socialConnectAttempt']> = {}
+): PrismaSocialConnectionClient => {
+  const transaction: PrismaSocialConnectionTransaction = {
   socialConnection: {
     findMany: vi
       .fn<PrismaSocialConnectionClient['socialConnection']['findMany']>()
@@ -37,10 +51,171 @@ const createPrisma = (
       .fn<PrismaSocialConnectionClient['postPeerProfile']['deleteMany']>()
       .mockResolvedValue({ count: 0 }),
     ...profileDelegate
+  },
+  managedUploadOwner: {
+    upsert: vi.fn().mockResolvedValue({ status: 'ACTIVE' }),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 })
+  },
+  socialConnectAttempt: {
+    findUnique: vi.fn().mockResolvedValue(null),
+    upsert: vi.fn(),
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    ...attemptDelegate
   }
-});
+  };
+  return { ...transaction, $transaction: vi.fn(async (operation) => operation(transaction)) };
+};
 
 describe('createPrismaSocialConnectionRepository', () => {
+  it('reads a coherent disconnect snapshot under the owner lock without consuming its nonce or deleting its link', async () => {
+    const order: string[] = [];
+    const prisma = createPrisma({ findUnique: vi.fn(async () => {
+      order.push('read-connection');
+      return { id: 'connection-a', userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-old', externalAccountId: 'external-old', displayName: null, connectedAt: new Date(completion.now), updatedAt: new Date(completion.now) };
+    }) }, {}, { findUnique: vi.fn(async () => { order.push('read-attempt'); return attemptRow; }) });
+    prisma.managedUploadOwner.updateMany = vi.fn(async () => { order.push('owner-lock'); return { count: 1 }; });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await expect(repository.getDisconnectSnapshot({ userId: 'owner-a', platform: 'TIKTOK' })).resolves.toMatchObject({ connection: { postPeerAccountId: 'integration-old' }, nonceHash: 'hash-a' });
+    expect(order).toEqual(['owner-lock', 'read-connection', 'read-attempt']);
+    expect(prisma.socialConnectAttempt.findUnique).toHaveBeenCalledWith({ where: { userId_platform: { userId: 'owner-a', platform: 'TIKTOK' } } });
+    expect(prisma.socialConnectAttempt.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.socialConnection.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.socialConnection.upsert).not.toHaveBeenCalled();
+  });
+
+  it('snapshots a pending attempt even when no local connection exists', async () => {
+    const prisma = createPrisma({}, {}, { findUnique: vi.fn().mockResolvedValue(attemptRow) });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await expect(repository.getDisconnectSnapshot({ userId: 'owner-a', platform: 'TIKTOK' })).resolves.toEqual({ nonceHash: 'hash-a' });
+    expect(prisma.socialConnectAttempt.deleteMany).not.toHaveBeenCalled();
+  });
+  it.each([false, true])('does not overwrite or remove a newer stored binding using stale maintenance (missing integration: %s)', async (missing) => {
+    const prisma = createPrisma({ findUnique: vi.fn().mockResolvedValue({
+      id: 'connection-a', userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-new', externalAccountId: 'external-new', displayName: null,
+      connectedAt: new Date(completion.now), updatedAt: new Date(completion.now)
+    }) });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await expect(repository.reconcileExistingConnection({ userId: 'owner-a', platform: 'TIKTOK', expectedPostPeerAccountId: 'integration-old', expectedExternalAccountId: 'external-old',
+      ...(missing ? {} : { integration: { postPeerAccountId: 'integration-old', externalAccountId: 'external-old' } })
+    })).resolves.toBeUndefined();
+    expect(prisma.socialConnection.upsert).not.toHaveBeenCalled();
+    expect(prisma.socialConnection.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.socialConnectAttempt.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('retires the expected missing connection in an owner transaction without deleting attempts', async () => {
+    const prisma = createPrisma({ findUnique: vi.fn().mockResolvedValue({
+      id: 'connection-a', userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-old', externalAccountId: 'external-old', displayName: null,
+      connectedAt: new Date(completion.now), updatedAt: new Date(completion.now)
+    }) });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await repository.reconcileExistingConnection({ userId: 'owner-a', platform: 'TIKTOK', expectedPostPeerAccountId: 'integration-old', expectedExternalAccountId: 'external-old' });
+    expect(prisma.socialConnection.deleteMany).toHaveBeenCalledWith({ where: { userId: 'owner-a', platform: 'TIKTOK' } });
+    expect(prisma.socialConnectAttempt.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+  it('consumes a matching nonce and writes the connection in the same owner-fenced transaction', async () => {
+    const order: string[] = [];
+    const prisma = createPrisma({ upsert: vi.fn(async () => {
+      order.push('upsert');
+      return { id: 'connection-a', userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-new', externalAccountId: 'external-new', displayName: null, connectedAt: new Date(completion.now), updatedAt: new Date(completion.now) };
+    }) }, {}, {
+      findUnique: vi.fn().mockResolvedValue(attemptRow),
+      deleteMany: vi.fn(async () => { order.push('consume'); return { count: 1 }; })
+    });
+    prisma.managedUploadOwner.updateMany = vi.fn(async () => { order.push('owner-lock'); return { count: 1 }; });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    expect((await repository.completeConnectAttempt(completion))?.postPeerAccountId).toBe('integration-new');
+    expect(order).toEqual(['owner-lock', 'consume', 'upsert']);
+    expect(prisma.socialConnectAttempt.deleteMany).toHaveBeenCalledWith({ where: {
+      userId: 'owner-a', platform: 'TIKTOK', profileId: 'profile-a', nonceHash: 'hash-a', expiresAt: { gt: new Date(completion.now) }
+    } });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable', maxWait: 5000, timeout: 10000 });
+  });
+
+  it.each([
+    ['wrong owner', { userId: 'owner-b' }],
+    ['wrong platform', { platform: 'YOUTUBE_SHORTS' }],
+    ['wrong profile', { profileId: 'profile-b' }],
+    ['wrong nonce', { nonceHash: 'hash-b' }],
+    ['expired', { now: '2026-10-23T10:15:00.000Z' }],
+    ['pre-existing integration', { integration: { postPeerAccountId: 'integration-old' } }]
+  ] as const)('does not consume or write for %s completion', async (_label, override) => {
+    const prisma = createPrisma({}, {}, { findUnique: vi.fn().mockResolvedValue(attemptRow) });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await expect(repository.completeConnectAttempt({ ...completion, ...override })).resolves.toBeUndefined();
+    expect(prisma.socialConnectAttempt.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.socialConnection.upsert).not.toHaveBeenCalled();
+  });
+
+  it('does not write if another refresh already consumed the conditional nonce', async () => {
+    const prisma = createPrisma({}, {}, { findUnique: vi.fn().mockResolvedValue(attemptRow), deleteMany: vi.fn().mockResolvedValue({ count: 0 }) });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await expect(repository.completeConnectAttempt(completion)).resolves.toBeUndefined();
+    expect(prisma.socialConnection.upsert).not.toHaveBeenCalled();
+  });
+
+  it('throws a completion collision out of the transaction so its nonce deletion rolls back', async () => {
+    const prisma = createPrisma({ upsert: vi.fn().mockRejectedValue(Object.assign(new Error('unique'), { code: 'P2002' })) }, {}, {
+      findUnique: vi.fn().mockResolvedValue(attemptRow), deleteMany: vi.fn().mockResolvedValue({ count: 1 })
+    });
+    const rejectedTransaction = vi.fn();
+    const execute = prisma.$transaction;
+    prisma.$transaction = async (operation, options) => {
+      try { return await execute(operation, options); }
+      catch (error) { rejectedTransaction(error); throw error; }
+    };
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await expect(repository.completeConnectAttempt(completion)).rejects.toMatchObject({ name: 'SocialAccountAlreadyLinkedError' });
+    expect(rejectedTransaction).toHaveBeenCalledWith(expect.objectContaining({ code: 'P2002' }));
+  });
+
+  it('replaces the one user-platform attempt and stores only a hash and a baseline snapshot', async () => {
+    const prisma = createPrisma({});
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await repository.beginConnectAttempt({ ...attemptRow, platform: 'TIKTOK', expiresAt: attemptRow.expiresAt.toISOString() });
+    expect(prisma.socialConnectAttempt.upsert).toHaveBeenCalledWith({
+      where: { userId_platform: { userId: 'owner-a', platform: 'TIKTOK' } },
+      create: attemptRow,
+      update: { profileId: 'profile-a', nonceHash: 'hash-a', expiresAt: attemptRow.expiresAt, baselineIntegrationIds: ['integration-old'] }
+    });
+  });
+
+  it('does not expose another owner attempt and scopes stale cleanup to its nonce', async () => {
+    const prisma = createPrisma({}, {}, { findUnique: vi.fn().mockResolvedValue(attemptRow) });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await expect(repository.getConnectAttempt({ userId: 'owner-b', nonceHash: 'hash-a' })).resolves.toBeUndefined();
+    await repository.cancelConnectAttempt({ userId: 'owner-a', platform: 'TIKTOK', nonceHash: 'stale-hash' });
+    expect(prisma.socialConnectAttempt.deleteMany).toHaveBeenCalledWith({ where: { userId: 'owner-a', platform: 'TIKTOK', nonceHash: 'stale-hash' } });
+  });
+
+  it.each(['DELETING', 'DELETED'] as const)('never writes an attempt or connection after the owner becomes %s', async (status) => {
+    const prisma = createPrisma({});
+    prisma.managedUploadOwner.upsert = vi.fn().mockResolvedValue({ status });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await expect(repository.beginConnectAttempt({ ...attemptRow, platform: 'TIKTOK', expiresAt: attemptRow.expiresAt.toISOString() })).rejects.toMatchObject({ code: 'ACCOUNT_DELETION_IN_PROGRESS' });
+    await expect(repository.completeConnectAttempt(completion)).rejects.toMatchObject({ code: 'ACCOUNT_DELETION_IN_PROGRESS' });
+    await expect(repository.upsert({ userId: 'owner-a', platform: 'TIKTOK', postPeerAccountId: 'integration-a' })).rejects.toMatchObject({ code: 'ACCOUNT_DELETION_IN_PROGRESS' });
+    expect(prisma.socialConnectAttempt.upsert).not.toHaveBeenCalled();
+    expect(prisma.socialConnectAttempt.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.socialConnection.upsert).not.toHaveBeenCalled();
+  });
+
+  it('disconnect and account deletion remove pending attempts', async () => {
+    const prisma = createPrisma({});
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+    await repository.disconnect({ userId: 'owner-a', platform: 'TIKTOK' });
+    expect(prisma.socialConnectAttempt.deleteMany).toHaveBeenLastCalledWith({ where: { userId: 'owner-a', platform: 'TIKTOK' } });
+    await repository.deleteAllForUser?.('owner-a');
+    expect(prisma.socialConnectAttempt.deleteMany).toHaveBeenLastCalledWith({ where: { userId: 'owner-a' } });
+  });
+  it.each(['platform_externalAccountId', 'postPeerAccountId'])('maps %s account uniqueness conflicts to a safe ownership error', async (target) => {
+    const prisma = createPrisma({ upsert: vi.fn().mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002', meta: { target } })) });
+    const repository = createPrismaSocialConnectionRepository({ prisma });
+
+    await expect(repository.upsert({ userId: 'owner-b', platform: 'TIKTOK', postPeerAccountId: 'integration-owned', externalAccountId: 'external-owned' }))
+      .rejects.toMatchObject({ name: 'SocialAccountAlreadyLinkedError' });
+  });
   it.each(['YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const)('returns an opaque changing %s account revision', async (platform) => {
     const record = { id: 'local-connection', userId: 'owner', platform, postPeerAccountId: 'provider-secret-old', displayName: null, externalAccountId: null, connectedAt: new Date('2026-10-15T10:00:00.000Z'), updatedAt: new Date('2026-10-15T10:00:00.000Z') };
     const findMany = vi.fn<PrismaSocialConnectionClient['socialConnection']['findMany']>().mockResolvedValue([record]);

@@ -112,6 +112,11 @@ export const withAppPrismaFixture = <T extends {
       upsert: vi.fn<AppPrismaClient['socialConnection']['upsert']>(fail),
       deleteMany: vi.fn<AppPrismaClient['socialConnection']['deleteMany']>(fail)
     },
+    socialConnectAttempt: {
+      findUnique: vi.fn<AppPrismaClient['socialConnectAttempt']['findUnique']>(fail),
+      upsert: vi.fn<AppPrismaClient['socialConnectAttempt']['upsert']>(fail),
+      deleteMany: vi.fn<AppPrismaClient['socialConnectAttempt']['deleteMany']>(fail)
+    },
     postPeerProfile: {
       findUnique: vi.fn<AppPrismaClient['postPeerProfile']['findUnique']>(fail),
       create: vi.fn<AppPrismaClient['postPeerProfile']['create']>(fail),

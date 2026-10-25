@@ -3034,12 +3034,14 @@ class SocialConnectionResult {
 class SocialConnectLinkResult {
   const SocialConnectLinkResult({
     required this.connectUrl,
+    this.nonce,
     this.expiresAt,
   });
 
   /// Keep the provider URL exactly as returned by the API so security checks
   /// can detect syntax (such as an empty `userinfo@`) that [Uri] normalizes.
   final String connectUrl;
+  final String? nonce;
   final DateTime? expiresAt;
 
   Uri get connectUri => Uri.parse(connectUrl);
@@ -3047,10 +3049,21 @@ class SocialConnectLinkResult {
   factory SocialConnectLinkResult.fromJson(Map<String, Object?> json) =>
       SocialConnectLinkResult(
         connectUrl: json['connectUrl'] as String,
+        nonce: json['nonce'] is String ? json['nonce'] as String : null,
         expiresAt: json['expiresAt'] is String
             ? DateTime.tryParse(json['expiresAt'] as String)
             : null,
       );
+}
+
+class SocialConnectionsRefreshResult {
+  const SocialConnectionsRefreshResult({
+    required this.connections,
+    required this.connectAttemptConsumed,
+  });
+
+  final List<SocialConnectionResult> connections;
+  final bool connectAttemptConsumed;
 }
 
 class PostDeeApiClient {
@@ -3557,6 +3570,24 @@ class PostDeeApiClient {
 
   Future<List<SocialConnectionResult>> refreshSocialConnections() async {
     final response = await _postJson('/social-connections/refresh', {});
+    return _readRefreshedSocialConnections(response);
+  }
+
+  Future<SocialConnectionsRefreshResult> refreshSocialConnectionsWithAttempt({
+    required String nonce,
+  }) async {
+    final response = await _postJson('/social-connections/refresh', {
+      'nonce': nonce,
+    });
+    return SocialConnectionsRefreshResult(
+      connections: _readRefreshedSocialConnections(response),
+      connectAttemptConsumed: response['connectAttemptConsumed'] == true,
+    );
+  }
+
+  List<SocialConnectionResult> _readRefreshedSocialConnections(
+    Map<String, Object?> response,
+  ) {
     final connections = response['connections'];
 
     if (connections is! List<dynamic>) {

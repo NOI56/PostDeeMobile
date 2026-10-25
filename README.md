@@ -76,6 +76,32 @@ Deploy the additive API before the Mobile build. Older APIs returning `404`
 show quota unavailable/retry. There are no package-rule, flag, schema or
 migration changes, and this candidate is not a deployment receipt. See the
 [implementation plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+## Per-channel clip-duration alerts (2026-10-25, local candidate)
+
+The Mobile candidate warns about clip length after picking a video, receiving a
+prefilled video or restoring a draft. Connected channel rows show their own
+duration error. An incompatible unselected row cannot be selected; an already
+selected row stays selected and can be unchecked. Next and final confirmation
+remain blocked until selected duration errors are resolved. Select all adds only
+compatible channels and never removes an existing selection. No clip is trimmed
+and no destination is silently dropped.
+
+| Destination | Duration used by the Mobile guard |
+| --- | --- |
+| Facebook Page Reels | 3–90 seconds, inclusive |
+| YouTube Shorts | At most 180 seconds |
+| Instagram Reels | 3–900 seconds, inclusive |
+| TikTok Inbox | At most 600 seconds |
+| TikTok Direct | At most the lower of 600 seconds and the fresh connected creator limit |
+
+An unknown source-duration hint does not mean a clip passed. Final preflight still
+checks the actual outgoing file; YouTube/Instagram/Facebook block unknown required
+metadata, and TikTok retains its existing preparation and Direct validation.
+Owner-bound cached receipts and accepted-request recovery remain intact. There
+is no backend, schema or feature-flag change. Source requirements were reviewed
+on 2026-10-25; Mobile tests, analysis and Staging APK12052 build/package/signature
+checks pass. Installation, runtime and real-account PostPeer E2E remain unverified. See the
+[duration contract and sources](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate).
 
 ## Facebook Page Reels contract (2026-10-24)
 

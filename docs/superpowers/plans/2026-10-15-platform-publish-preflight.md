@@ -18,6 +18,88 @@ Implementation starts from freshly fetched canonical `main`/`origin/main`
 its old artifacts are preserved. Three pre-existing generated Windows changes,
 the stale original checkout and unrelated user work are not reset or included.
 
+## Per-channel duration alerts — 2026-10-25 local candidate
+
+The follow-up starts from fresh `main` `f29c701e93ce24f76aee58a36f726b8fcbc126d1`
+on `codex/clip-duration-alerts`. Mobile verification and the exact Staging APK12052
+build/package/signature checks pass as recorded below. Installation/runtime remain
+unverified. Older verification/delivery records later in this file describe earlier work.
+
+Warn as soon as source duration is available after video pick, prefill or draft
+restore. Each connected channel row shows its own duration problem. Disable
+unselected incompatible rows, but keep selected incompatible rows removable and
+block Next/final confirmation until the user resolves them. Select all adds only
+compatible channels and never drops an existing selection. Do not trim a clip or
+change destinations automatically.
+
+| Destination | Client duration policy |
+| --- | --- |
+| Facebook Page Reels | 3–90 seconds, inclusive; API publishing policy, not a claim about every Facebook app upload |
+| YouTube Shorts | At most 180 seconds |
+| Instagram Reels | 3–900 seconds, inclusive |
+| TikTok Inbox | At most the 600-second provider upload ceiling |
+| TikTok Direct | At most min(600 seconds, the fresh connected creator's `maxVideoPostDurationSec`) |
+
+Unknown source duration never proves compatibility. The early hint does not
+replace final preflight on the actual outgoing file. YouTube/Instagram/Facebook
+still block missing required metadata; TikTok retains its native preparation
+validation and fresh Direct creator/consent checks. Inbox does not fetch Direct
+creator options. Keep optional cached metadata and receipts, owner/fingerprint
+binding, old local drafts and the original uncertain request identity. Accepted
+submission recovery remains before new guards, with no silent reupload/resend.
+Cached TikTok Inbox uploads must also prove a positive, finite recorded duration
+at most 600 seconds. Unknown or over-limit duration blocks a new submission but
+keeps the old receipt and original request ID. The user must inspect/recover the
+original work before starting again; missing proof never triggers an automatic
+render, fresh upload or repeat post. A successful already accepted recovery keeps
+its existing result and does not create another post.
+Immediate and newly scheduled submissions use the same local guard; this does
+not change existing queued work, backend validation, quotas, schema or flags.
+
+Source requirements were reviewed on **2026-10-25** against the primary links
+below. Facebook's API guide documents 3–90 seconds and duration error 1363128;
+the old provider-only duration statement is superseded by this explicit client
+guard. Passing it does not prove PostPeer or a connected account accepts the
+actual file. Real-account publishing, Page-draft and thumbnail E2E remain
+unverified. Regression coverage includes inclusive endpoints, fractional
+over/under limits, unknown metadata, mixed selections, Select all, restored drafts,
+prefill, stale creator responses and retained receipt/recovery behavior.
+
+### Local automated verification — 2026-10-25
+
+- Targeted Mobile suite: **125 tests passed**.
+- Complete Mobile suite: **2,927 passed / six skipped** using
+  `flutter test --no-pub --concurrency=1 --reporter=expanded`. All six skips are
+  optional preview cases whose opt-in environment variables were absent.
+- Whole-project Flutter analysis reports no issues.
+- Both checked SDK locations resolve to Flutter **3.44.1**, revision
+  `924134a44`, with Dart **3.12.1**.
+- Installation, native device acceptance and real-account provider publication
+  are not verified by these automated checks. No live PostPeer post or E2E
+  success is claimed.
+
+### Exact Staging APK build receipt — 2026-10-25
+
+- Frozen source commit: `56408cf0bc8698f7e8a3498fef92af8990ba3d5d` on
+  `codex/clip-duration-alerts`. The following documentation receipt is separate
+  from the compiled source.
+- The Staging helper completed `build-apk --no-pub --build-number 12052` in
+  **193.8 seconds**, using Flutter **3.44.1**. The checked-in Staging example
+  supplies the Staging API, Firebase authentication enabled and mock auth
+  disabled. The existing Test Store overlay was validated without printing keys.
+- `aapt` confirms package `com.postdee.postdee_mobile.staging`, versionCode
+  **12052**, versionName **0.1.0-staging**, min SDK **24**, target SDK **36** and
+  launcher `MainActivity`.
+- `apksigner` verification exits **0**. Certificate SHA-256:
+  `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+- Artifact: `C:/Users/stopp/.codex/worktrees/clip-duration-alerts/PostDeeMobile/apps/mobile/build/app/outputs/flutter-apk/app-debug.apk`.
+  Size: **292,795,012 bytes**. APK SHA-256:
+  `6B132D6881DF631E9BC68033AF530CCE6A2413B54B5F31763F0E6E22FC1B2FAA`.
+- This verifies build identity, package metadata and signature only. The APK has
+  not been installed or exercised on a device for this feature. Native runtime,
+  live PostPeer publishing and provider E2E remain unverified; no real social
+  post was submitted.
+
 ## Caption contract
 
 - YouTube: exact trimmed description must fit 5,000 UTF-8 bytes and contain no
@@ -82,9 +164,10 @@ it does not depend on global callbacks from another Flutter engine.
 - Instagram Reels: MOV/MP4 container, 3–900 seconds, maximum 300,000,000 bytes, width at most 1,920,
   23–60 FPS, H.264 or HEVC; when audio is present, AAC mono/stereo at at most
   48 kHz. Missing required measurements remain unverified and block upload.
-- Facebook Page Reels (2026-10-24 contract): remove the Page Video duration and
-  width caps; do not invent Reel limits. Preserve verified media metadata and
-  general upload validation; the provider validates the actual Reel. Recommendations
+- Facebook Page Reels: keep the Page Video duration and width caps removed. The
+  2026-10-25 local candidate adds the separate documented API duration of 3–90
+  seconds. Preserve verified metadata and general upload validation; the provider
+  validates the actual Reel. Recommendations
   such as 30 FPS, dimensions divisible by 16 and preferred encoders are not
   introduced as mandatory rejection rules.
 
@@ -329,3 +412,7 @@ separate checks. This delivery does not certify provider public-post approval.
 - [PostPeer Instagram capabilities and media requirements](https://www.postpeer.dev/docs/platforms/instagram)
 - [PostPeer Instagram Reels scheduler caption limit](https://www.postpeer.dev/free-tools/instagram-reels-scheduler)
 - [PostPeer Facebook Page Reels routing and reconnect flag](https://www.postpeer.dev/docs/platforms/facebook)
+- [Meta Facebook Reels API publishing and duration errors](https://developers.facebook.com/docs/video-api/guides/reels-publishing/?locale=en_US)
+- [PostPeer TikTok upload duration and creator requirements](https://www.postpeer.dev/docs/platforms/tiktok)
+- [TikTok media transfer restrictions](https://developers.tiktok.com/docs/en/content-posting-api-media-transfer-guide)
+- [TikTok current creator duration limit](https://developers.tiktok.com/docs/en/content-posting-api-reference-query-creator-info)

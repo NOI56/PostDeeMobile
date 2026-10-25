@@ -75,6 +75,28 @@ follows the cost-confirmation contract above. No schema, migration,
 environment flag or provider change is required. This record does not claim a
 deployment; scope and verification are tracked in the
 [quota-strip plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+## Mobile per-channel duration checks (2026-10-25, local candidate)
+
+This Mobile-only candidate adds early duration warnings after video pick,
+prefill and draft restoration. Connected channel rows report incompatibility;
+unselected incompatible rows cannot be added, selected ones remain removable,
+and Next/final confirmation stay blocked until selected errors are resolved.
+Select all adds only compatible channels without deleting existing selections.
+
+Local limits are Facebook Page Reels 3–90 seconds, YouTube Shorts at most 180,
+Instagram Reels 3–900, TikTok Inbox at most 600, and TikTok Direct at most
+min(600 seconds, the fresh connected creator limit). These are client checks,
+not new trusted server media validation or a guarantee of provider acceptance.
+Unknown source hints do not establish compatibility. Actual outgoing-file
+validation and TikTok preparation/Direct guards remain required.
+
+No request field, backend route, schema, migration, quota or feature flag changes.
+Accepted idempotent recovery remains before new submission guards; cached receipts
+and original request IDs are retained. No already queued schedule is rewritten.
+Mobile tests, analysis and Staging APK12052 build/package/signature checks pass;
+installation and native runtime are still unverified.
+Primary source review on 2026-10-25 is recorded in the [preflight plan](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate);
+real-account PostPeer publication remains unverified.
 
 ## Mobile AI caption selection (2026-10-23, Staging Live)
 

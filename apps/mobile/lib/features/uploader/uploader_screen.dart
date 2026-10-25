@@ -7914,12 +7914,12 @@ class _AiCaptionPanel extends StatelessWidget {
                                 .titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w700)),
                       ),
-                      if (!stackBadge && quota?.isPaid != true) ...[
+                      if (!stackBadge && quota == null) ...[
                         const SizedBox(width: 8),
                         badge,
                       ],
                     ]),
-                    if (stackBadge && quota?.isPaid != true)
+                    if (stackBadge && quota == null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Align(
@@ -7977,7 +7977,7 @@ class _AiCaptionPanel extends StatelessWidget {
                   onPressed: isGenerating ? null : onRetryQuota,
                   icon: const Icon(Icons.refresh, size: 18)),
               ]),
-            ] else if (quota?.isPaid == true) ...[
+            ] else if (quota != null) ...[
               CaptionQuotaStrip(plan: quota!.plan, quota: quota!.quota),
               const SizedBox(height: 8),
             ],

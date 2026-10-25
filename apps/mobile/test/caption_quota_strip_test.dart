@@ -134,6 +134,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Basic shows its actual quota and hides inaccessible add-on bank',
+      (tester) async {
+    await tester.pumpWidget(_host(
+      plan: 'BASIC',
+      quota: const RealClipCaptionQuota(
+          limit: 0,
+          usedThisMonth: 7,
+          remainingThisMonth: 0,
+          addonRemaining: 8,
+          availableGenerations: 0),
+    ));
+    expect(find.text('Basic'), findsOneWidget);
+    expect(find.text('0 / 0 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ไป 7 เครดิต'), findsOneWidget);
+    expect(find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
+    expect(find.textContaining('เครดิตเติม'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final themeMode in [ThemeMode.light, ThemeMode.dark]) {
     testWidgets('fits narrow width and enlarged text in ${themeMode.name} mode',
         (tester) async {
@@ -160,6 +179,21 @@ void main() {
             .width,
         280,
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Basic access hint fits narrow large text in ${themeMode.name}',
+        (tester) async {
+      await tester.pumpWidget(_host(
+        plan: 'BASIC',
+        quota: const RealClipCaptionQuota(
+            limit: 0, usedThisMonth: 0, remainingThisMonth: 0),
+        width: 280,
+        textScaler: const TextScaler.linear(2),
+        themeMode: themeMode,
+      ));
+      expect(find.text('Basic'), findsOneWidget);
+      expect(find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

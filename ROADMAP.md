@@ -46,23 +46,29 @@ Build roadmap for PostDee.
   acceptance; track validation in the
   [credit-per-channel plan](docs/superpowers/plans/2026-10-25-caption-credit-per-channel.md).
 
-## Compact AI caption quota strip (2026-10-25, implementation candidate)
+## Compact AI caption quota strip (2026-10-25, visibility follow-up candidate)
 
-- Add the approved small strip above the existing AI generation action with
-  plan, monthly remainder/limit, used count and a thin remaining bar.
+- Show the approved small strip above the AI action in both shared/advanced
+  modes for every validated plan: actual plan badge, monthly remainder/limit,
+  used credits and a thin remaining bar. Basic shows zero monthly allowance,
+  retained historical usage and a small Starter/Pro eligibility hint, without
+  unlocking AI or presenting its retained bank as spendable.
 - Read actual authenticated quota through `GET /captions/quota` on composer
   entry/resume; update from generation independently of caption edits or
   advanced-preview acceptance. Retry failed reads and refresh after failures
   or pending refund recounts without inventing a zero balance.
 - Preserve nonexpiring add-on credits: show a short credit line only when a
-  bank remains, and disable AI when known paid total availability cannot cover
+  paid bank remains, and disable AI when known paid total availability cannot cover
   the selected request cost.
   Keep the existing wizard, selection/preview/undo, trial/owner guards and
   manual editing/posting behavior. No package-rule, flag or schema change.
 - Deliver the additive API before the Mobile build; older API `404` responses
   show unavailable/retry. This entry does not establish a deployment or real
-  provider/device acceptance. Track checks and delivery in the
+  provider/device acceptance. The visibility follow-up needs an updated Mobile
+  build/install; API deployment alone does not update this UI. Credits remain
+  the display unit and per-channel caption cost is unchanged. Track checks and delivery in the
   [quota-strip plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
 ## Per-channel clip-duration alerts (2026-10-25, local candidate)
 
 - Warn after video pick/prefill/draft restore and show a duration error beside

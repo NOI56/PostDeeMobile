@@ -110,9 +110,17 @@ class CaptionQuotaStrip extends StatelessWidget {
                     'แคปชั่น AI เหลือ ${quota.remainingThisMonth} จาก ${quota.limit} เครดิต',
               ),
             ),
-            if (quota.addonRemaining > 0) ...[
+            if ((plan.toUpperCase() == 'STARTER' ||
+                    plan.toUpperCase() == 'PRO') &&
+                quota.addonRemaining > 0) ...[
               const SizedBox(height: 4),
               Text('+ เครดิตเติม ${quota.addonRemaining} เครดิต',
+                  style: secondaryStyle),
+            ],
+            if (plan.toUpperCase() == 'BASIC') ...[
+              const SizedBox(height: 4),
+              Text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro',
+                  key: const ValueKey('uploader-ai-caption-quota-access-hint'),
                   style: secondaryStyle),
             ],
           ],

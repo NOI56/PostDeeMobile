@@ -5,6 +5,8 @@ This records the original quota-strip implementation. The later
 the strip but supersedes its zero-only generation gating: known combined
 availability must cover the complete selected-channel cost. The original tests
 below do not establish acceptance or deployment of that accounting change.
+The all-plan visibility follow-up at the end of this record also needs its own
+verification; retain the earlier implementation/proof below as history.
 
 ## Request and baseline
 
@@ -81,3 +83,70 @@ dirty-branch tests are not verification of this refreshed-main port.
   this uses the tracked Staging API/Firebase configuration with billing disabled.
 - The source diff is limited to this feature and its tests/documentation;
   the earlier dirty checkout remains untouched.
+
+## All-plan visibility follow-up — 2026-10-25, verification pending
+
+The user clarified that the missing item was the AI quota strip shown in their
+reference image. The existing `quota.isPaid` display condition hides it for
+Basic despite a successful quota response. Render the validated quota for all
+plans in both shared and advanced caption modes, keeping the compact card and
+actual plan badge. The image's Starter `38/50` is illustrative; never hardcode
+that balance or present it as a Basic entitlement.
+
+Basic keeps its actual zero monthly allowance/remainder and recorded historical
+usage after a downgrade, with a small hint that AI requires Starter/Pro. Its
+retained purchased bank must not be presented as spendable, and it still cannot
+generate AI captions. Paid monthly/add-on availability, nonexpiring balances,
+one credit per selected channel, fallback/refunds and loading/error retry remain
+unchanged. Use `เครดิต` rather than the older reference image's `ครั้ง`.
+
+Baseline: fresh `main` `7b98cbf0` on
+`codex/restore-caption-quota-visibility` in the existing clean managed worktree.
+Preserve the five newly integrated clip-duration alert commits, all prior
+caption/post-quota features and the unrelated original checkout. No API,
+schema, migration, environment, provider, price, package-limit or billing-rule
+change is required.
+
+Add focused regressions for Basic and paid visibility in both modes, Basic's
+retained usage/bank and paid-only generation, loading/retry, actual plan labels
+and narrow/enlarged-text presentation. Run the required Mobile checks and
+exact-source build; append actual results when completed. The earlier results
+above do not verify this visibility condition change, and no follow-up test or
+delivery result is claimed yet.
+
+The UI fix needs an updated Mobile build installed or distributed. Render/API
+deployment does not update an already installed Flutter app.
+
+### Verified restoration — 2026-10-25
+
+- The production patch changes only the uploader's quota visibility/badge
+  predicates and the strip's Basic access hint/paid-bank footer. Quota reads,
+  fresh subscription/resync preflight, one-credit-per-channel pricing and
+  publishing remain unchanged. Newly merged duration warnings/preflight remain
+  intact; the API tree is unchanged from the running Staging release.
+- Test-first Basic shared/advanced cases reproduced the hidden strip. Focused
+  regressions passed **73 tests**, including Basic no-upload/no-provider access
+  checks and cached Basic quota followed by a fresh paid entitlement. Three
+  real-font visual cases cover the paid Starter `38/50` reference, Basic's
+  actual zero allowance with retained usage and enlarged advanced-mode text.
+- The full Mobile suite passed **3,002 tests, 6 existing skips**. Full
+  `flutter analyze --no-pub` passed with no issues. `git diff --check` passed;
+  there are no schema, API, dependency, Android configuration or runtime flag
+  changes and no deleted baseline files.
+- Exact-source Staging APK **12054** built successfully with the existing
+  Staging example configuration. Metadata confirms
+  `com.postdee.postdee_mobile.staging`, version `0.1.0-staging`; signer
+  verification matches the installed debug app. `adb install -r` upgraded
+  **12053 to 12054** without uninstall, data clearing or downgrade. The existing
+  signed-in session and saved drafts remained present.
+- Actual emulator verification opened the caption step and confirmed the AI
+  quota label, real Basic plan badge and eligibility hint, with no loading/error
+  state. The visible numbers came from the authenticated API read. No AI
+  generation, upload, publishing or purchase was performed during device smoke.
+  Local proof and the versioned APK are under
+  `D:\PostDeeMobile\output\playwright\caption-quota-restored`, including
+  `emulator-caption-quota-current.png` and `postdee-staging-12054.apk`.
+
+Delivery follows the session's authorized main workflow. This visibility-only
+fix needs no Render redeploy because the API source is unchanged; it does not
+grant a paid plan or replace actual balances with the reference image's values.

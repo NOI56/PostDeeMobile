@@ -67,6 +67,15 @@ combines monthly remainder and that bank even when new add-on purchases are
 disabled. Basic can read a retained bank but has `availableGenerations: 0`;
 the read does not unlock paid AI access.
 
+The Mobile visibility follow-up renders this validated snapshot for all plans
+in both shared and advanced caption modes. Basic shows its actual `0` monthly
+limit/remainder and any retained `usedThisMonth`, plus a small paid-eligibility
+hint; its purchased bank must not be shown as spendable. Display units are
+credits. This is a Mobile presentation change using the existing response;
+Basic still cannot generate AI captions. Loading/failed reads remain retryable
+unknown states rather than fabricated zero balances. An updated Mobile build
+must be installed to see the follow-up; no API/schema or pricing change is needed.
+
 Deploy this additive API before distributing the quota-strip Mobile build.
 An older API returning `404` leaves the strip unavailable with a retry action,
 not an invented zero balance. The quota-read addition itself does not alter

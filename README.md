@@ -56,12 +56,16 @@ Mobile against the older API can quote more than that API charges. No schema,
 migration, provider or flag change is required. This is not deployment evidence;
 see the [credit-per-channel plan](docs/superpowers/plans/2026-10-25-caption-credit-per-channel.md).
 
-## Compact AI caption quota strip (2026-10-25, implementation candidate)
+## Compact AI caption quota strip (2026-10-25, visibility follow-up candidate)
 
 The composer adds a small quota strip directly above its existing AI generation
-action: effective plan, monthly remainder/limit, used count and a thin remaining
-quota bar. A purchased bank adds only a small `+ เครดิตเติม N เครดิต` line when
-nonzero. Monthly exhaustion does not block generation while paid add-on credits
+action in both shared and advanced caption modes, for every validated plan:
+actual plan badge, monthly remainder/limit, used credits and a thin remaining
+bar. Basic shows its actual zero monthly allowance and retained historical
+usage, with a short Starter/Pro eligibility hint; viewing the balance does not
+unlock AI. A paid user's nonempty purchased bank adds only a small
+`+ เครดิตเติม N เครดิต` line. Basic's retained bank is not presented as
+spendable. Monthly exhaustion does not block generation while paid add-on credits
 cover the selected cost; known total availability below that cost disables the
 AI action. Manual caption editing and posting keep their existing rules.
 
@@ -74,8 +78,12 @@ credits and existing generation/refund behavior are preserved.
 
 Deploy the additive API before the Mobile build. Older APIs returning `404`
 show quota unavailable/retry. There are no package-rule, flag, schema or
-migration changes, and this candidate is not a deployment receipt. See the
+migration changes. This visibility follow-up needs an updated Mobile build and
+installation; an API deployment does not update the installed screen. The
+reference image's `38/50` is an example, not a fixed balance. Units remain
+`เครดิต`, and this candidate is not a deployment receipt. See the
 [implementation plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
 ## Per-channel clip-duration alerts (2026-10-25, local candidate)
 
 The Mobile candidate warns about clip length after picking a video, receiving a

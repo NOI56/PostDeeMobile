@@ -71,7 +71,7 @@ add-on packs, provider configuration, flags and publishing remain unchanged.
 This candidate has no deployment claim. See the
 [credit-per-channel plan](docs/superpowers/plans/2026-10-25-caption-credit-per-channel.md).
 
-## Compact caption quota boundary (2026-10-25, implementation candidate)
+## Compact caption quota boundary (2026-10-25, visibility follow-up candidate)
 
 The pushed composer reads `GET /captions/quota` on entry and app resume. The
 authenticated, non-cacheable read combines the effective plan, shared UTC
@@ -80,9 +80,13 @@ Paid total availability includes the bank even when new purchases are disabled;
 Basic retains its bank but has no available generations. Monthly limits, trials,
 refunds and generation's existing atomic reservation rules remain authoritative.
 
-Mobile presents the monthly balance, plan, usage and remaining bar in one small
-strip immediately above the existing AI action. A nonempty bank gets a short
-conditional credit line; generation is disabled when known total availability
+Mobile presents the validated monthly balance, actual plan, usage and remaining
+bar in both shared and advanced modes, including Basic. Visibility follows a
+valid snapshot rather than paid eligibility. Basic keeps its zero monthly
+allowance and recorded historical use, with a small Starter/Pro access hint;
+its bank is not presented as spendable and AI generation remains paid-only.
+Units remain credits. A paid user's nonempty bank gets a short conditional
+credit line; generation is disabled when known total availability
 cannot cover the selected cost. Loading or failed reads do not fabricate a
 balance. Owner/request guards reject stale
 reads, while successful generation updates quota independently of text edits or
@@ -93,8 +97,11 @@ This ports only the approved presentation to current main, preserving the
 wizard, selected-platform generation, preview/apply/undo and owner boundaries.
 Deploy the additive API before the new Mobile build; an old API's `404` shows
 unavailable/retry rather than zero. No schema, migration, provider or flag
-change belongs to this feature. Verification and delivery status are in the
+change belongs to this feature. This visibility follow-up requires a new
+Mobile build/install; changing the Render API alone does not update Flutter UI.
+Verification and delivery status are in the
 [quota-strip plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
 ## Per-channel duration boundary (2026-10-25, local candidate)
 
 The Mobile candidate uses available source duration for early warnings at video

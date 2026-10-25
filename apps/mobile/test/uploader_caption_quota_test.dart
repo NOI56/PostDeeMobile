@@ -85,7 +85,8 @@ Future<void> _tick(WidgetTester tester) async {
 }
 
 Future<void> _advanced(WidgetTester tester) async {
-  final toggle = find.byKey(const ValueKey('uploader-platform-captions-toggle'));
+  final toggle =
+      find.byKey(const ValueKey('uploader-platform-captions-toggle'));
   await _show(tester, toggle);
   await tester.tap(toggle);
   await tester.pumpAndSettle();
@@ -119,6 +120,7 @@ void main() {
   Future<void> pumpUploader(
     WidgetTester tester, {
     required UploaderCaptionQuotaLoader loadQuota,
+    UploaderSubscriptionLoader? loadSubscription,
     UploaderRealClipCaptionGenerator? generate,
     UploaderUploadCreator? createUpload,
   }) async {
@@ -144,13 +146,14 @@ void main() {
           initialVideoHeight: 1920,
           loadSocialConnections: () async => const [],
           enableRevenueCatBilling: false,
-          loadSubscription: () async => const SubscriptionStatusResult(
-              userId: 'owner-a',
-              plan: 'STARTER',
-              status: 'ACTIVE',
-              canUseAiCaptions: true,
-              canSchedule: true,
-              canUseAnalytics: false),
+          loadSubscription: loadSubscription ??
+              () async => const SubscriptionStatusResult(
+                  userId: 'owner-a',
+                  plan: 'STARTER',
+                  status: 'ACTIVE',
+                  canUseAiCaptions: true,
+                  canSchedule: true,
+                  canUseAnalytics: false),
           createUpload: createUpload ??
               (_) async => const UploadResult(
                   id: 'clip',
@@ -230,8 +233,10 @@ void main() {
         loadQuota: () async => _quota(used: 49, addon: 2),
         createUpload: (_) async {
           uploads++;
-          return const UploadResult(id: 'clip',
-              videoS3Key: 'uploads/owner-a/clip.mp4', storageProvider: 'mock');
+          return const UploadResult(
+              id: 'clip',
+              videoS3Key: 'uploads/owner-a/clip.mp4',
+              storageProvider: 'mock');
         },
         generate: (request) async {
           requests.add(request);
@@ -262,7 +267,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('shared caption confirms one credit and cost rejection reloads quota',
+  testWidgets(
+      'shared caption confirms one credit and cost rejection reloads quota',
       (tester) async {
     var reads = 0;
     GenerateRealClipCaptionRequest? request;
@@ -270,8 +276,8 @@ void main() {
         loadQuota: () async => _quota(used: ++reads == 1 ? 12 : 13),
         generate: (value) async {
           request = value;
-          throw const ApiException('cost confirmation required', statusCode: 409,
-              code: 'AI_CAPTION_COST_CONFIRMATION_REQUIRED');
+          throw const ApiException('cost confirmation required',
+              statusCode: 409, code: 'AI_CAPTION_COST_CONFIRMATION_REQUIRED');
         });
     await _show(tester, find.byKey(_action));
     await tester.tap(find.byKey(_action));
@@ -390,14 +396,105 @@ void main() {
     expect(tester.widget<TextField>(field).controller!.text, 'เขียนเองได้');
   });
 
-  testWidgets('Basic is not shown as an exhausted paid package',
+  testWidgets('Basic shared mode shows real quota with its paid access gate',
       (tester) async {
+    var uploads = 0;
+    var generations = 0;
     await pumpUploader(tester,
-        loadQuota: () async => _quota(used: 0, plan: 'BASIC', addon: 8));
+        loadQuota: () async => _quota(used: 7, plan: 'BASIC', addon: 8),
+        loadSubscription: () async => const SubscriptionStatusResult(
+            userId: 'owner-a',
+            plan: 'BASIC',
+            status: 'ACTIVE',
+            canUseAiCaptions: false,
+            canSchedule: false,
+            canUseAnalytics: false),
+        createUpload: (_) async {
+          uploads++;
+          throw StateError('Basic must not upload an AI clip');
+        },
+        generate: (_) async {
+          generations++;
+          return _generated();
+        });
     await _show(tester, find.byKey(_action));
-    expect(find.byType(CaptionQuotaStrip), findsNothing);
+    expect(find.byType(CaptionQuotaStrip), findsOneWidget);
+    expect(strip(tester).plan, 'BASIC');
+    expect(strip(tester).quota.usedThisMonth, 7);
+    expect(find.text('0 / 0 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ไป 7 เครดิต'), findsOneWidget);
+    expect(find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
+    expect(find.text('Starter/Pro'), findsNothing);
+    expect(find.textContaining('เครดิตเติม'), findsNothing);
+    expect(find.textContaining('เครดิตไม่พอ'), findsNothing);
+    expect(uploads, 0);
+    expect(generations, 0);
     expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed,
         isNotNull);
+    await tester.tap(find.byKey(_action));
+    await tester.pumpAndSettle();
+    expect(uploads, 0);
+    expect(generations, 0);
+    expect(find.textContaining('กรุณาตรวจสอบแพ็กเกจของคุณ'), findsOneWidget);
+  });
+
+  testWidgets('cached Basic quota cannot override fresh paid AI entitlement',
+      (tester) async {
+    var generations = 0;
+    await pumpUploader(tester,
+        loadQuota: () async => _quota(used: 0, plan: 'BASIC'),
+        generate: (_) async {
+          generations++;
+          return _generated();
+        });
+    await _show(tester, find.byKey(_action));
+    expect(strip(tester).plan, 'BASIC');
+    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed,
+        isNotNull);
+    await tester.tap(find.byKey(_action));
+    await tester.pumpAndSettle();
+    expect(generations, 1);
+    expect(strip(tester).plan, 'STARTER');
+    expect(strip(tester).quota.remainingThisMonth, 37);
+  });
+
+  testWidgets('Basic advanced mode retains quota and per-channel pricing',
+      (tester) async {
+    var uploads = 0;
+    var generations = 0;
+    await pumpUploader(tester,
+        loadQuota: () async => _quota(used: 0, plan: 'BASIC', addon: 8),
+        loadSubscription: () async => const SubscriptionStatusResult(
+            userId: 'owner-a',
+            plan: 'BASIC',
+            status: 'ACTIVE',
+            canUseAiCaptions: false,
+            canSchedule: false,
+            canUseAnalytics: false),
+        createUpload: (_) async {
+          uploads++;
+          throw StateError('Basic must not upload an AI clip');
+        },
+        generate: (_) async {
+          generations++;
+          return _generated();
+        });
+    await _advanced(tester);
+    await _targets(tester, _platforms.take(2).toList());
+    expect(find.byType(CaptionQuotaStrip), findsOneWidget);
+    expect(strip(tester).plan, 'BASIC');
+    expect(find.text('0 / 0 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
+    expect(find.textContaining('เครดิตเติม'), findsNothing);
+    expect(find.textContaining('เครดิตไม่พอ'), findsNothing);
+    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).label,
+        'สร้างแคปชั่น · 2 เครดิต');
+    expect(uploads, 0);
+    expect(generations, 0);
+    await tester.tap(find.byKey(_action));
+    await tester.pumpAndSettle();
+    expect(uploads, 0);
+    expect(generations, 0);
   });
 
   testWidgets('account replacement discards old balance and late generation',

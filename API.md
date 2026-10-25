@@ -2527,8 +2527,13 @@ Behavior:
 - Lists every paginated integration in the user's PostPeer profile and
   disconnects each one through the provider before deleting local records.
   This includes integration ids for platforms PostDee does not yet recognize.
+  After every disconnect succeeds, the API deletes the emptied PostPeer profile
+  (`DELETE /v1/profiles/{id}`, `404` counts as already deleted) so a connect
+  flow still open in a browser cannot attach a new account to it, then drops
+  the local profile mapping so a later retry does not query that profile again.
   Provider cleanup failure returns `503 ACCOUNT_SOCIAL_CLEANUP_FAILED` so the
-  request can retry without losing local account data.
+  request can retry without losing local account data; the profile is kept
+  while any integration could not be disconnected.
 - A fresh multipart completion gets a short drain window and returns
   `409 ACCOUNT_UPLOADS_DRAINING` so the caller can retry. A stale completion is
   reconciled against the R2 object's exact size before persisted and orphan

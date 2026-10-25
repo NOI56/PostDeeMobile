@@ -961,4 +961,61 @@ describe('createPostPeerConnectClient', () => {
       client.disconnectIntegration?.({ integrationId: 'int-1' })
     ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
   });
+
+  it('deletes a profile through the official PostPeer endpoint', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new Error('DELETE response must not be parsed');
+      }
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test/',
+      fetchImpl
+    });
+
+    await expect(
+      client.deleteProfile?.({ profileId: 'profile/one' })
+    ).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.postpeer.test/v1/profiles/profile%2Fone',
+      { method: 'DELETE', headers: { 'x-access-key': 'pp-key' } }
+    );
+  });
+
+  it('treats an already-missing PostPeer profile as deleted', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({})
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.deleteProfile?.({ profileId: 'profile-missing' })
+    ).resolves.toBeUndefined();
+  });
+
+  it('surfaces non-404 profile deletion failures as provider errors', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({})
+    });
+    const client = createPostPeerConnectClient({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      fetchImpl
+    });
+
+    await expect(
+      client.deleteProfile?.({ profileId: 'profile-1' })
+    ).rejects.toBeInstanceOf(PostPeerConnectProviderError);
+  });
 });

@@ -69,7 +69,7 @@ These are present in `render.yaml` with fixed values or a Render-managed source.
 | `EDIT_PLAN_PROVIDER` | Blueprint value | `gemini` | Uses `GEMINI_API_KEY`; PostDee rules are the final fallback. |
 | `SOCIAL_PUBLISHER` | Blueprint value | `postpeer` | Requires `POSTPEER_API_KEY`. |
 | `AUTH_PROVIDER` | Blueprint value | `firebase` | Requires `FIREBASE_PROJECT_ID`. |
-| `FIREBASE_AUTH_DELETE_ENABLED` | Blueprint value | `false` | Temporarily disables destructive Firebase account deletion while the owner-mutation barrier is process-local. Re-enable only after a distributed/persistent barrier and a dedicated production concurrency smoke test. |
+| `FIREBASE_AUTH_DELETE_ENABLED` | Blueprint value | `false` | Temporarily disables destructive Firebase account deletion. The durable PostgreSQL owner drain is implemented and Live on Staging; re-enable only after a disposable account passes real Firebase/R2/PostPeer cleanup on Staging and `FIREBASE_SERVICE_ACCOUNT_JSON` is confirmed (startup fails without it). |
 | `PUSH_SENDER` | Blueprint value | `mock` | Safe until Firebase service account push is ready. |
 | `BILLING_PROVIDER` | Blueprint value | `revenuecat` | Requires the webhook token; current Restore also needs the server REST key below. |
 | `REVENUECAT_STARTER_ENTITLEMENT_ID` | Blueprint value | `starter` | Maps RevenueCat entitlement to Starter. |

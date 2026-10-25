@@ -2811,7 +2811,8 @@ Production account deletion is temporarily disabled with
 while Production rollout and real-provider acceptance remain pending. In a
 controlled environment, enabling the path also requires
 `FIREBASE_SERVICE_ACCOUNT_JSON`. When enabled, `DELETE /account` disconnects
-the user's PostPeer integrations, removes
+the user's PostPeer integrations, deletes the emptied PostPeer profile so a
+connect flow left open in a browser cannot attach a new account, removes
 the R2 owner prefix (or an S3-compatible client that implements owner-prefix
 listing), deletes local data, and deletes the Firebase identity last. Active
 Firebase users starting deletion must present a finite `auth_time` within five

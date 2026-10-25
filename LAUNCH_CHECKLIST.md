@@ -199,10 +199,13 @@
   1. ตั้ง `FIREBASE_SERVICE_ACCOUNT_JSON` ใน Render (service account key จาก Firebase Console → Project Settings → Service Accounts, เก็บเป็นความลับ)
   2. สลับ `PUSH_SENDER=firebase` (ทำหลังใส่ key แล้วเท่านั้น ไม่งั้น API จะ crash ตอนเริ่ม)
   3. ทดสอบส่ง push จริงบนเครื่อง
-- [ ] Production Blueprint ตั้ง `FIREBASE_AUTH_DELETE_ENABLED=true` แล้ว จึงต้อง
+- [ ] Production Blueprint ยังตั้ง `FIREBASE_AUTH_DELETE_ENABLED=false`
+      (durable PostgreSQL drain ทำเสร็จและอยู่บน Staging แล้ว) ก่อนเปลี่ยนเป็น
+      `true` ต้องผ่านการลบบัญชีทดสอบบน Staging ด้วย Firebase/R2/PostPeer จริง
       ยืนยันว่า `FIREBASE_SERVICE_ACCOUNT_JSON` มีอยู่ใน Production Dashboard
-      ก่อน deploy และทดสอบลบบัญชีจริงบน release candidate; repository ยืนยันค่า
-      secret ไม่ได้ โหมดนี้ใช้ Firebase Admin ตรวจ token ที่ถูก revoke/ลบแล้วด้วย
+      (ถ้าไม่มี API จะ crash ตอนเริ่ม) และทดสอบลบบัญชีจริงบน release candidate;
+      repository ยืนยันค่า secret ไม่ได้ โหมดนี้ใช้ Firebase Admin ตรวจ token ที่ถูก
+      revoke/ลบแล้วด้วย
 - [x] Staging Blueprint คง `FIREBASE_AUTH_DELETE_ENABLED=false` และไม่ประกาศ
       `FIREBASE_SERVICE_ACCOUNT_JSON` จนกว่าจะมี controlled deletion test ที่ใช้
       service account ชุด Staging โดยเฉพาะ

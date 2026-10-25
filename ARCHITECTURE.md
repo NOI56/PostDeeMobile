@@ -2120,7 +2120,9 @@ Redis/provider/Firebase,
 legacy upload/OAuth and device/slow-network acceptance.
 Queued jobs are then removed and PostPeer
 integration pages are listed so every external integration id can be
-disconnected. An active completion is allowed a short drain window; a stale
+disconnected. Only after every disconnect succeeds is the emptied PostPeer
+profile deleted, closing late browser OAuth completion, and its local mapping
+dropped so a retry skips the deleted profile. An active completion is allowed a short drain window; a stale
 completion is reconciled against the R2 object size before persisted and orphan
 multipart sessions are aborted. Every R2 object under the user's exact encoded
 owner prefix is attempted, user-scoped database records are deleted, and the

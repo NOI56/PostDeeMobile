@@ -101,7 +101,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | Pro AI ตัดต่อ | ElevenLabs ถอดเสียง, Gemini เลือกช่วง และ renderer จริงรองรับซับ/ตัดช่วงเงียบ/จัดการคำพูดซ้ำ/แสงสี | ทดสอบ provider + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
 | Analytics | API/UI ใช้ข้อมูล backend และไม่สร้างตัวเลขปลอม | ต้องมีผลโพสต์จริงจาก provider และตรวจช่วงวันที่/ยอดจากบัญชีจริง |
 | Push notification | FCM mobile/server code มี | เปิด Firebase sender, ทดสอบ permission, token refresh, logout/unregister และ invalid-token cleanup |
-| ลบบัญชีฝั่งบริการ | มี in-app flow, cleanup saga และ durable managed-upload marker แต่ Production ปิดชั่วคราวเพราะ owner coordinator ยัง process-local | ทำ durable full-user mutation barrier/drain, ตรวจ R2/PostPeer/Firebase cleanup, RevenueCat behavior, physical-device/slow-network race และ public deletion URL ก่อนเปิด; local draft/Application Support และ OS backup ไม่ถูกลบโดย flow ฝั่งบริการ ต้องมี copy/วิธีลบแยกที่ตรงกัน |
+| ลบบัญชีฝั่งบริการ | มี in-app flow, cleanup saga, durable managed-upload marker และ durable PostgreSQL owner drain (อยู่บน Staging แล้ว) แต่ Production ยังปิดจนกว่าจะทดสอบกับบริการจริง | ตรวจ R2/PostPeer/Firebase cleanup ด้วยบัญชีทดสอบบน Staging, RevenueCat behavior, physical-device/slow-network race และ public deletion URL ก่อนเปิด; local draft/Application Support และ OS backup ไม่ถูกลบโดย flow ฝั่งบริการ ต้องมี copy/วิธีลบแยกที่ตรงกัน |
 
 ### ห้ามนำไปใส่ Store listing หรือ screenshots ตอนนี้
 

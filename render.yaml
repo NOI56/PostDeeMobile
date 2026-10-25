@@ -107,9 +107,11 @@ services:
         value: mock
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
-      # The current owner barrier is process-local. Keep destructive Firebase
-      # account deletion disabled until a distributed/persistent barrier and a
-      # dedicated production concurrency smoke test are complete.
+      # The durable PostgreSQL owner drain is implemented and Live on Staging.
+      # Keep destructive Firebase account deletion disabled until a disposable
+      # account passes real Firebase/R2/PostPeer cleanup on Staging and
+      # FIREBASE_SERVICE_ACCOUNT_JSON is confirmed here; true without that key
+      # crashes the API on startup.
       - key: FIREBASE_AUTH_DELETE_ENABLED
         value: "false"
       - key: BILLING_PROVIDER

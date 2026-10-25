@@ -431,6 +431,16 @@ export const registerAccountRoutes = (
         cleanupFailed = true;
       }
 
+      // Delete the emptied profile so a connect flow still open in a browser
+      // cannot attach a new social account after the owner is gone.
+      if (!cleanupFailed && postPeerConnectClient.deleteProfile) {
+        try {
+          await postPeerConnectClient.deleteProfile({ profileId: postPeerProfileId });
+        } catch {
+          cleanupFailed = true;
+        }
+      }
+
       if (cleanupFailed) {
         response.status(503).json({
           status: 'error',
@@ -439,6 +449,10 @@ export const registerAccountRoutes = (
         });
         return;
       }
+
+      // The provider side is finished. Drop the local mapping now so a retry
+      // after a later failure does not query the deleted profile again.
+      await socialConnectionStore?.deleteAllForUser?.(userId);
     }
 
     try {

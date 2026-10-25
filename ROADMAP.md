@@ -2,6 +2,24 @@
 
 Build roadmap for PostDee.
 
+## Account deletion PostPeer profile cleanup (2026-10-25, source candidate)
+
+- The durable PostgreSQL owner drain and deletion authorization are already
+  Live on Staging since 2026-10-14; docs that still called the coordinator
+  process-local are corrected.
+- After every PostPeer integration disconnects, `DELETE /account` now deletes
+  the emptied PostPeer profile (`404` is idempotent) so a connect page left
+  open in a browser cannot attach an account after deletion, then drops the
+  local mapping so retries skip the deleted profile. A failed profile delete
+  keeps all data and returns the existing retryable
+  `503 ACCOUNT_SOCIAL_CLEANUP_FAILED`.
+- No schema, migration, flag, response field or Mobile change; API-only deploy.
+  `FIREBASE_AUTH_DELETE_ENABLED` stays `false` until a disposable Staging
+  account passes real Firebase/R2/PostPeer cleanup, legacy signed-PUT late
+  uploads are covered, the Production service account is confirmed and a
+  public deletion request page exists. See the
+  [profile cleanup plan](docs/superpowers/plans/2026-10-25-account-deletion-postpeer-profile.md).
+
 ## Post quota on the clip step (2026-10-25, follow-up candidate)
 
 - Show a compact strip immediately in the uploader's clip-selection step, even

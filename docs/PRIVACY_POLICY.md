@@ -117,18 +117,18 @@ API และฐานข้อมูล production ถูกกำหนดใ�
 - ระบบปฏิบัติการอาจรวม SharedPreferences และไฟล์ Application Support ใน device/cloud backup ตามแพลตฟอร์มและการตั้งค่า จึงต้องตรวจและเปิดเผย Android/iOS backup behavior ของ final binary ก่อนเผยแพร่
 - Flow ลบบัญชีปัจจุบันล้างข้อมูลฝั่งบริการและ session แต่ยังไม่ได้รับรองว่าจะล้างแบบร่างเฉพาะเครื่องทุกประเภทหรือสำเนาใน OS backup โดยอัตโนมัติ ผู้ใช้ควรลบร่าง ล้างข้อมูลแอป หรือลบแอปตามที่ระบบปฏิบัติการรองรับ
 
-การลบบัญชีฝั่งบริการถูกปิดใน Production ชั่วคราวจนกว่าจะมี durable barrier ที่
-หยุดและ drain งานของผู้ใช้ได้ครบทุก process; ระหว่างปิด API ต้อง fail closed ก่อน
+การลบบัญชีฝั่งบริการถูกปิดใน Production ชั่วคราวจนกว่าจะผ่านการทดสอบลบบัญชีกับ
+บริการจริงด้วยบัญชีทดสอบ; ระหว่างปิด API ต้อง fail closed ก่อน
 เปลี่ยนข้อมูล เอกสารฉบับเผยแพร่ต้องระบุช่องทาง web/support สำหรับคำขอลบที่ใช้งานได้จริง
 และสอดคล้องกับสถานะ release ในขณะนั้น
 
-เมื่อผู้ใช้กด **ลบบัญชี** และการลบสำเร็จ ระบบจะยกเลิกงานที่อยู่ในคิว ตัดการเชื่อมต่อ PostPeer ลบวิดีโอใต้ owner prefix ลบข้อมูลของผู้ใช้ในฐานข้อมูล และลบ Firebase identity เป็นลำดับสุดท้าย การลบบัญชี **ไม่ยกเลิกสมาชิกใน App Store หรือ Google Play** ผู้ใช้ต้องจัดการสมาชิกในร้านค้าก่อนหรือแยกต่างหาก
+เมื่อผู้ใช้กด **ลบบัญชี** และการลบสำเร็จ ระบบจะยกเลิกงานที่อยู่ในคิว ตัดการเชื่อมต่อ PostPeer และลบโปรไฟล์ PostPeer ของผู้ใช้ ลบวิดีโอใต้ owner prefix ลบข้อมูลของผู้ใช้ในฐานข้อมูล และลบ Firebase identity เป็นลำดับสุดท้าย การลบบัญชี **ไม่ยกเลิกสมาชิกใน App Store หรือ Google Play** ผู้ใช้ต้องจัดการสมาชิกในร้านค้าก่อนหรือแยกต่างหาก
 
 **[TODO: กำหนดและยืนยันระยะเวลาเก็บจริงสำหรับวิดีโอ บันทึกระบบ ข้อมูลความปลอดภัย Analytics/Crashlytics สำเนาสำรอง และข้อมูลที่ต้องเก็บตามกฎหมาย พร้อมตั้ง R2 lifecycle และ provider retention ให้ตรงกับนโยบาย]**
 
 ## 9. ความปลอดภัย
 
-มาตรการที่มีในระบบรวมถึง Firebase ID token verification, การแยกข้อมูลตามผู้ใช้, signed URL อายุสั้น, server-side secret, owner-scoped media key, HTTP security headers และ rate limiting ขั้นตอนลบบัญชีมี durable marker สำหรับ managed upload และ process-local coordinator สำหรับ authenticated mutations ใน API process เดียว แต่ยังไม่ใช่ full cross-process mutation barrier จึงยังปิดใน Production
+มาตรการที่มีในระบบรวมถึง Firebase ID token verification, การแยกข้อมูลตามผู้ใช้, signed URL อายุสั้น, server-side secret, owner-scoped media key, HTTP security headers และ rate limiting ขั้นตอนลบบัญชีมี durable marker สำหรับ managed upload และ durable owner barrier ในฐานข้อมูลที่รอให้งานของผู้ใช้ในทุก process เสร็จก่อนเริ่มลบ แต่ยังปิดใน Production จนกว่าจะผ่านการทดสอบกับบริการจริง
 
 อย่างไรก็ตาม ไม่มีระบบใดรับประกันความปลอดภัยได้ทั้งหมด หากสงสัยว่าบัญชีถูกเข้าถึงโดยไม่ได้รับอนุญาต โปรดติดต่อ `support@postdee.app` **[TODO: ยืนยันช่องทางและกระบวนการรับแจ้งเหตุข้อมูลรั่วไหล]**
 

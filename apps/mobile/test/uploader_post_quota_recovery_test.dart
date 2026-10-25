@@ -153,7 +153,7 @@ void main() {
     var quotaReads = 0;
     final recoveredRequests = <CreatePostRequest>[];
     await pump(tester,
-        loadQuota: () => ++quotaReads == 1
+        loadQuota: () => ++quotaReads <= 2
             ? Future.value(_quota())
             : freshQuota.future,
         recover: (request) {
@@ -161,17 +161,17 @@ void main() {
           return pending.future;
         });
     expect(find.text('108 / 120 หน่วย'), findsOneWidget);
-    expect(quotaReads, 1);
+    expect(quotaReads, 2);
 
     await recover(tester);
-    expect(quotaReads, 1);
+    expect(quotaReads, 2);
     expect(find.text('108 / 120 หน่วย'), findsOneWidget);
     expect(recoveredRequests.single.clientRequestId, draft.submissionRequestId);
     expect(recoveredRequests.single.platforms, hasLength(2));
 
     pending.complete(accepted('QUEUED'));
     await tester.pumpAndSettle();
-    expect(quotaReads, 2);
+    expect(quotaReads, 3);
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('uploader-post-quota-loading')), 150,
         scrollable: uploaderMainScroll);
@@ -194,12 +194,12 @@ void main() {
       (tester) async {
     var quotaReads = 0;
     await pump(tester,
-        loadQuota: () async => _quota(used: ++quotaReads == 1 ? 12 : 14),
+        loadQuota: () async => _quota(used: ++quotaReads <= 2 ? 12 : 14),
         recover: (_) async => accepted('FAILED'));
     expect(find.text('108 / 120 หน่วย'), findsOneWidget);
     await recover(tester);
     await tester.pumpAndSettle();
-    expect(quotaReads, 2);
+    expect(quotaReads, 3);
     await tester.scrollUntilVisible(find.byType(PostQuotaStrip), 150,
         scrollable: uploaderMainScroll);
     expect(find.text('106 / 120 หน่วย'), findsOneWidget);
@@ -226,16 +226,16 @@ void main() {
               : _quota();
         },
         recover: (_) => pending.future);
-    expect(quotaReads, 1);
+    expect(quotaReads, 2);
     await recover(tester);
     PostDeeAuthSessionStore.instance.signIn(AuthSession.authenticated(
         userId: _ownerB, idToken: 'recovery-token-b'));
     await tester.pumpAndSettle();
-    expect(quotaReads, 2);
+    expect(quotaReads, 3);
     expect(find.text('77 / 120 หน่วย'), findsOneWidget);
     pending.complete(accepted('PUBLISHED'));
     await tester.pumpAndSettle();
-    expect(quotaReads, 2);
+    expect(quotaReads, 3);
     expect(find.text('77 / 120 หน่วย'), findsOneWidget);
     expect(find.textContaining('accepted-original'), findsNothing);
     expect(sideEffects, isEmpty);

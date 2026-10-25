@@ -7,16 +7,18 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
-## Compact post quota after clip selection (2026-10-25, implementation candidate)
+## Compact post quota on the clip step (2026-10-25, follow-up candidate)
 
-The uploader's clip-selection step shows a small post-quota strip after a clip
-is selected. It uses the existing authenticated `GET /billing/subscription`
+The uploader's clip-selection step shows a small post-quota strip immediately
+on entry, including before a clip is selected. It uses the existing
+authenticated `GET /billing/subscription`
 snapshot: effective plan, monthly remaining/limit in `หน่วย`, used post units
 and a thin remaining bar. Paid members see a short purchased-credit line when
 their post bank is nonempty. Basic users who still need phone verification see
 that explanation rather than mistaking the gated balance for used-up quota.
 
-Load or refresh for an initial handed-in clip, selection/reselection, app
+Load on composer entry even with an empty clip, then refresh for handed-in
+clips, selection/reselection, app
 resume, auth-session changes, successful in-composer subscription resync and
 post acceptance/failure or recovery while the composer remains open. Billing or
 phone-verification changes are reread on the next such refresh. Owner/session/
@@ -25,7 +27,8 @@ loading, missing data or errors show loading/retry without inventing zero.
 Selecting a clip does not spend quota, publish, generate AI or open checkout.
 Existing post-unit rules, paid add-on access, phone gates and caption-credit
 work remain unchanged. No new endpoint, schema, migration or provider change
-is required. This is not deployment evidence; see the
+is required. An updated Mobile build is required to see this UI; deploying the
+Render API does not update an installed app. This is not deployment evidence; see the
 [post-quota strip plan](docs/superpowers/plans/2026-10-25-post-quota-strip.md).
 
 ## AI caption credits per channel (2026-10-25, implementation candidate)

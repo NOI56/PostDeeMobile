@@ -33,7 +33,18 @@ SubscriptionStatusResult quota(
 
 void main() {
   late PickedVideoFile clip;
+  var uploadCalls = 0;
+  var postCalls = 0;
+  var aiCalls = 0;
   setUp(() {
+    uploadCalls = 0;
+    postCalls = 0;
+    aiCalls = 0;
+    addTearDown(() {
+      expect(uploadCalls, 0);
+      expect(postCalls, 0);
+      expect(aiCalls, 0);
+    });
     SharedPreferences.setMockInitialValues({});
     final sessions = PostDeeAuthSessionStore.instance;
     final previous = sessions.session;
@@ -75,10 +86,18 @@ void main() {
       loadSocialConnections: () async => const [],
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       probePublishMedia: probeValidPublishMedia,
-      createUpload: (_) async =>
-          throw StateError('Selecting a clip must not upload'),
-      createPost: (_) async =>
-          throw StateError('Selecting a clip must not publish'),
+      createUpload: (_) async {
+        uploadCalls++;
+        throw StateError('Reading quota must not upload');
+      },
+      createPost: (_) async {
+        postCalls++;
+        throw StateError('Reading quota must not publish');
+      },
+      generateRealClipCaption: (_) async {
+        aiCalls++;
+        throw StateError('Reading quota must not spend AI credits');
+      },
     ))));
     await tester.pumpAndSettle();
   }
@@ -91,20 +110,27 @@ void main() {
   }
 
   testWidgets(
-      'loads only after picking a clip and displays real monthly post units',
+      'loads real monthly post units immediately before picking any clip',
       (tester) async {
     var reads = 0;
     await pump(tester, initialClip: false, load: () async {
       reads++;
       return quota();
     });
-    expect(reads, 0);
-    expect(find.byType(PostQuotaStrip), findsNothing);
+    expect(reads, 1);
+    await show(tester, find.byType(PostQuotaStrip));
+    expect(find.text('โพสต์คงเหลือ'), findsOneWidget);
+    expect(find.text('108 / 120 หน่วย'), findsOneWidget);
+    expect(find.text('ใช้ไป 12 หน่วย'), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-video-preview-open')),
+        findsNothing);
+    await show(
+        tester, find.byKey(const ValueKey('uploader-video-preview-picker')));
     await tester
         .tap(find.byKey(const ValueKey('uploader-video-preview-picker')));
     await tester.pumpAndSettle();
     await show(tester, find.byType(PostQuotaStrip));
-    expect(reads, 1);
+    expect(reads, 2);
     expect(find.text('โพสต์คงเหลือ'), findsOneWidget);
     expect(find.text('108 / 120 หน่วย'), findsOneWidget);
     expect(find.text('ใช้ไป 12 หน่วย'), findsOneWidget);
@@ -121,10 +147,10 @@ void main() {
     expect(find.byType(PostQuotaStrip), findsOneWidget);
   });
 
-  testWidgets('pending quota shows loading and never invents zero',
+  testWidgets('empty clip step shows initial loading and never invents zero',
       (tester) async {
     final pending = Completer<SubscriptionStatusResult>();
-    await pump(tester, load: () => pending.future);
+    await pump(tester, initialClip: false, load: () => pending.future);
     expect(find.byKey(const ValueKey('uploader-post-quota-loading')),
         findsOneWidget);
     expect(find.byType(PostQuotaStrip), findsNothing);
@@ -133,10 +159,11 @@ void main() {
     expect(find.text('108 / 120 หน่วย'), findsOneWidget);
   });
 
-  testWidgets('failed read has independent retry and does not block video flow',
+  testWidgets(
+      'empty clip step retries failed quota without blocking video flow',
       (tester) async {
     var reads = 0;
-    await pump(tester, load: () async {
+    await pump(tester, initialClip: false, load: () async {
       if (++reads == 1) throw const ApiException('offline');
       return quota(used: 15);
     });
@@ -147,6 +174,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(reads, 2);
     expect(find.text('105 / 120 หน่วย'), findsOneWidget);
+    final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
+    await show(tester, picker);
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);
     expect(find.byKey(const ValueKey('uploader-step-caption')), findsOneWidget);
   });
@@ -172,6 +203,7 @@ void main() {
     final older = Completer<SubscriptionStatusResult>();
     var reads = 0;
     await pump(tester,
+        initialClip: false,
         load: () =>
             ++reads == 1 ? older.future : Future.value(quota(used: 18)));
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);

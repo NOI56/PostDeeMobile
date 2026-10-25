@@ -2,10 +2,11 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Uploader post-quota presentation (2026-10-25, implementation candidate)
+## Uploader post-quota presentation (2026-10-25, follow-up candidate)
 
-The clip-selection step renders a compact post-quota strip only when a clip is
-selected. A dedicated optional `UploaderScreen.loadPostQuota` loader returns
+The clip-selection step renders a compact post-quota strip even with no clip
+selected, loading on composer entry. A dedicated optional
+`UploaderScreen.loadPostQuota` loader returns
 the existing `SubscriptionStatusResult`; its default uses the session-bound
 client's `loadCurrentSubscription` / `GET /billing/subscription`. It stays
 separate from imperative `loadSubscription` preflight calls, so background
@@ -18,7 +19,8 @@ phone-verification gates remain authoritative and receive explanatory copy.
 
 Reads capture owner/session, request identity and clip scope, reusing the
 existing caption-session listener rather than adding another auth listener.
-Refresh for initial handed-in clips, selection/reselection, resume, auth-session
+Load on entry with an empty or handed-in clip; refresh for selection/reselection,
+resume, auth-session
 changes, successful in-composer subscription resync and post acceptance/failure
 or recovery while the composer remains open. Billing/phone changes are observed
 on the next supported refresh. Late replies cannot
@@ -31,7 +33,9 @@ a new read-only contract or introduce checkout, AI, upload or publish work.
 Preserve the four-step wizard, quota/phone submission guards, one post unit per
 destination, monthly-first nonexpiring purchased credits and the pending
 caption-per-channel work. No plan/price, backend, schema, migration, provider or
-flag change. Candidate verification is tracked in the
+flag change. The follow-up requires a new Mobile build and installation/update;
+Render API deployment alone does not change this Flutter screen. Candidate
+verification is tracked in the
 [post-quota strip plan](docs/superpowers/plans/2026-10-25-post-quota-strip.md).
 
 ## Caption credit accounting per channel (2026-10-25, implementation candidate)

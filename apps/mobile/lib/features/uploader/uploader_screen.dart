@@ -1216,7 +1216,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       controller.addListener(_handleFeedbackTextChanged);
     }
     _localFilePathController.addListener(_handlePostQuotaClipChanged);
-    _handlePostQuotaClipChanged();
+    _postQuotaClipPath = _localFilePathController.text.trim();
+    unawaited(_loadPostQuota());
   }
 
   @override
@@ -1244,19 +1245,19 @@ class _UploaderScreenState extends State<UploaderScreen>
       _isLoadingPostQuota = false;
       _postQuotaLoadFailed = false;
     });
-    if (path.isNotEmpty) unawaited(_loadPostQuota());
+    unawaited(_loadPostQuota());
   }
 
   Future<void> _loadPostQuota() async {
-    final path = _localFilePathController.text.trim();
-    if (!mounted || path.isEmpty) return;
+    if (!mounted || !PostDeeAuthSessionStore.instance.session.isSignedIn) {
+      return;
+    }
     final session = _captionQuotaSession;
     final requestId = ++_postQuotaRequestId;
     bool isCurrent() =>
         mounted &&
         session.isCurrent &&
-        requestId == _postQuotaRequestId &&
-        path == _localFilePathController.text.trim();
+        requestId == _postQuotaRequestId;
     setState(() {
       _postQuota = null;
       _isLoadingPostQuota = true;
@@ -5220,9 +5221,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall),
-                                const SizedBox(height: 12),
-                                _buildPostQuota(),
                               ],
+                              const SizedBox(height: 12),
+                              _buildPostQuota(),
                             ],
                             if (_currentStep == 1) ...[
                               if (_selectedVideoName != null) ...[

@@ -47,7 +47,10 @@ class _Fixture {
   var aiCalls = 0;
   var postCalls = 0;
 
-  Widget app({required bool dark, required double textScale}) =>
+  Widget app(
+          {required bool dark,
+          required double textScale,
+          required bool initialClip}) =>
       RepaintBoundary(
         key: _captureKey,
         child: _appTheme(
@@ -56,11 +59,11 @@ class _Fixture {
           body: UploaderScreen(
             fullScreen: true,
             draftStore: store,
-            initialVideoPath: file.path,
-            initialVideoName: 'รีวิวสินค้า.mp4',
-            initialVideoSizeBytes: 512,
-            initialVideoWidth: 1080,
-            initialVideoHeight: 1920,
+            initialVideoPath: initialClip ? file.path : null,
+            initialVideoName: initialClip ? 'รีวิวสินค้า.mp4' : null,
+            initialVideoSizeBytes: initialClip ? 512 : null,
+            initialVideoWidth: initialClip ? 1080 : null,
+            initialVideoHeight: initialClip ? 1920 : null,
             enableRevenueCatBilling: false,
             probePublishMedia: probeValidPublishMedia,
             loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
@@ -142,11 +145,18 @@ void main() {
         userId: 'post-quota-visual-owner', idToken: 'local-visual-token'));
   });
 
-  for (final dark in [false, true]) {
+  for (final mode in [
+    (initialClip: false, dark: false),
+    (initialClip: false, dark: true),
+    (initialClip: true, dark: false),
+    (initialClip: true, dark: true),
+  ]) {
+    final initialClip = mode.initialClip;
+    final dark = mode.dark;
     testWidgets(
         'real-font post quota in actual '
-        '${dark ? 'dark narrow large-text' : 'light'} clip step',
-        (tester) async {
+        '${dark ? 'dark narrow large-text' : 'light'} '
+        '${initialClip ? 'selected' : 'empty'} clip step', (tester) async {
       final size = dark ? const Size(320, 900) : const Size(430, 1000);
       final textScale = dark ? 1.7 : 1.0;
       tester.view.physicalSize = size;
@@ -167,7 +177,8 @@ void main() {
       });
 
       final fixture = _Fixture();
-      await tester.pumpWidget(fixture.app(dark: dark, textScale: textScale));
+      await tester.pumpWidget(fixture.app(
+          dark: dark, textScale: textScale, initialClip: initialClip));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('uploader-step-video')), findsOneWidget);
       expect(find.byKey(const ValueKey('uploader-step-caption')), findsNothing);
@@ -186,11 +197,17 @@ void main() {
       expect(stripBounds.right, lessThanOrEqualTo(size.width));
       expect(stripBounds.top, greaterThanOrEqualTo(0));
       expect(stripBounds.bottom, lessThanOrEqualTo(size.height));
-      final cover = find.byKey(const ValueKey('uploader-cover-edit-button'));
       final change =
           find.byKey(const ValueKey('uploader-video-preview-picker'));
-      expect(tester.getBottomLeft(cover).dy + 8,
-          lessThanOrEqualTo(stripBounds.top));
+      final cover = find.byKey(const ValueKey('uploader-cover-edit-button'));
+      if (initialClip) {
+        expect(tester.getBottomLeft(cover).dy + 8,
+            lessThanOrEqualTo(stripBounds.top));
+      } else {
+        expect(cover, findsNothing);
+        expect(find.byKey(const ValueKey('uploader-video-preview-open')),
+            findsNothing);
+      }
       expect(tester.getBottomLeft(change).dy + 8,
           lessThanOrEqualTo(stripBounds.top));
       for (final label in [
@@ -214,8 +231,10 @@ void main() {
       }
       final capturedCard = tester.widget<PostQuotaStrip>(strip);
       final capturedCardSize = tester.getSize(strip);
-      final name =
-          dark ? 'post-quota-dark-320-large-text' : 'post-quota-light-430';
+      final state = initialClip ? '' : '-empty';
+      final name = dark
+          ? 'post-quota$state-dark-320-large-text'
+          : 'post-quota$state-light-430';
       await _capture(tester, '$name-page');
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();

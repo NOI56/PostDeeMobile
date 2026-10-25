@@ -3575,9 +3575,10 @@ preparation-aware app; read-only GET is a separate later rollout step.
 
 ### `GET /billing/subscription`
 
-Uploader post-quota display (2026-10-25, implementation candidate) reuses this
-existing authenticated response. Its strip appears in the clip-selection step
-only after a clip is selected. It reads `subscription.plan`, `monthlyPostLimit`,
+Uploader post-quota display (2026-10-25, follow-up candidate) reuses this
+existing authenticated response. Its strip appears on entry to the
+clip-selection step, including when no clip is selected. It reads
+`subscription.plan`, `monthlyPostLimit`,
 `usedPostsThisMonth` and `remainingPostsThisMonth` for the included monthly
 balance; `addonPostUnits` is the retained purchased bank and
 `availablePostUnits` is the usable combined total. Paid users can spend that
@@ -3586,8 +3587,10 @@ bank; Basic retains it without adding it to usable availability. The strip uses
 `canUseFreePostQuota` remains the existing eligibility field. A missing/failed
 snapshot, or absent monthly limit/used/remaining
 fields, is unavailable with retry, not a zero balance. This adds no endpoint,
-response field or accounting rule. Selecting
-a clip does not submit a post, reserve quota, start AI or initiate payment.
+response field or accounting rule. Opening the composer or selecting a clip
+does not submit a post, reserve quota, start AI or initiate payment. This UI
+requires an updated Mobile build; an API deployment does not update installed
+Mobile code.
 See the [post-quota strip plan](docs/superpowers/plans/2026-10-25-post-quota-strip.md).
 
 The 2026-10-21 usability follow-up adds optional ISO-8601

@@ -2,15 +2,17 @@
 
 Build roadmap for PostDee.
 
-## Post quota after selecting a clip (2026-10-25, implementation candidate)
+## Post quota on the clip step (2026-10-25, follow-up candidate)
 
-- Add a compact strip in the uploader's clip-selection step after a clip is
-  selected: effective plan badge, monthly remaining/limit in `หน่วย`, used post
+- Show a compact strip immediately in the uploader's clip-selection step, even
+  before a clip is selected: effective plan badge, monthly remaining/limit in
+  `หน่วย`, used post
   units and a thin progress bar. Show a small paid purchased-credit line only
   when nonempty; explain Basic's phone-verification gate.
 - Reuse `GET /billing/subscription` fields through a dedicated background
   post-quota loader, separate from imperative subscription preflight calls.
-  Refresh for initial handed-in clips, selection/reselection, resume, auth
+  Load on composer entry with an empty or handed-in clip; refresh for
+  selection/reselection, resume, auth
   changes, successful in-composer subscription resync and post acceptance/failure
   or recovery while the composer stays open. Billing/phone changes are observed
   on those refreshes. Guard owner/session/request/clip scope and show loading/retry
@@ -18,7 +20,9 @@ Build roadmap for PostDee.
 - Preserve post-unit limits, add-on consumption, phone/publish gates, the
   wizard and all caption-credit work. Selection does not spend quota, start AI,
   publish or initiate payment. No new API, backend, schema, migration, price,
-  provider or flag change. Record actual checks/delivery separately in the
+  provider or flag change. The UI needs an updated Mobile build and installation;
+  a Render API deployment does not update the installed screen. Record actual
+  checks/delivery separately in the
   [post-quota strip plan](docs/superpowers/plans/2026-10-25-post-quota-strip.md).
 
 ## AI caption credits per selected channel (2026-10-25, implementation candidate)

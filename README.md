@@ -343,9 +343,13 @@ not establish iOS monitoring runtime acceptance.
 
 Calendar no longer asks the API for the complete post history in one response.
 The app reads `GET /posts?pageSize=100` pages, newest created first, following
-`nextCursor`. It stops after the page that reaches 31 days before the oldest
-month or week the user has viewed, at the last page, or after 20 pages.
-Browsing to an earlier period loads further back. Plain `GET /posts` is
+`nextCursor`. Since 2026-10-25 it asks only for posts active since the start
+of the oldest month or week the user has viewed (`activeSince`: created,
+scheduled or published since then), so posts rescheduled far from their
+creation date are included. The first load also covers the current week when
+it starts in the previous month. It stops at the last page or after 20 pages.
+Browsing to an earlier period, or switching week/month view, loads further
+back. Plain `GET /posts` is
 unchanged for installed apps, and a new app works with an older API, which
 returns everything at once. No schema change or migration. Deploy the API
 before shipping the app build, although either order works. See
@@ -2786,9 +2790,10 @@ Queue/storage scaffold switches:
   schedules are therefore included. A non-zero total or inspection error blocks startup
   without loading post/user/media details. Staging enables this guard; its
   default is `false`, and the Production Blueprint is unchanged.
-- Each memory-scheduler poll reads at most 50 due posts (all owners combined)
-  with only the fields needed to publish; a larger backlog drains over later
-  polls. See
+- Each memory-scheduler poll reads due posts in batches of 50 (all owners
+  combined) with only the fields needed to publish, at most 10 batches per
+  poll. A cursor kept across polls resumes after the last post tried, so posts
+  it cannot start are visited once per cycle and never block other owners. See
   [`2026-10-24-due-post-read-bound.md`](docs/superpowers/plans/2026-10-24-due-post-read-bound.md).
 - API startup reads server configuration once and passes that same object to the
   app and scheduler diagnostics. It logs only the non-secret social mode,

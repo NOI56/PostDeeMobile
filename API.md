@@ -1804,6 +1804,7 @@ not sign media URLs. Optional query parameters:
 | `limit=<positive integer>` | Return newest-created posts first, capped at 50; invalid, zero, fractional, duplicate or unsafe-integer values return `400 INVALID_POST_LIMIT` |
 | `pageSize=<1-100>` | Since 2026-10-24: return one cursor page, newest created first (`createdAt` desc, then `id` desc), and add `nextCursor` |
 | `cursor=<nextCursor>` | Continue after the page that returned this cursor; `pageSize` defaults to 50 when omitted |
+| `activeSince=<RFC 3339 time>` | Since 2026-10-25, paging only: keep posts created, scheduled or published at or after this time. Calendar passes the start of the oldest period it shows; pass the same value on every page |
 
 Cursor pages (2026-10-24) let Calendar read history in bounded requests. A
 paged response adds `"nextCursor": "<opaque string>"`, or `null` on the last
@@ -1812,8 +1813,10 @@ one owner-scoped keyset query of at most `pageSize + 1` rows on the
 `(userId, createdAt)` index, so a forged cursor can only move within the
 caller's own posts. Posts created after the first page do not shift later
 pages. `scheduled=true` combines with paging. A `pageSize` outside 1-100, a
-cursor not issued by the API, or paging combined with `limit` or
-`includeMedia` returns `400 INVALID_POST_PAGE`.
+malformed cursor or `activeSince`, `activeSince` without paging, or paging
+combined with `limit` or `includeMedia` returns `400 INVALID_POST_PAGE`. The API
+does not sign cursors: a hand-built cursor in the right format is accepted, but
+it only moves the position within the caller's own posts.
 
 Plain `GET /posts` without `pageSize`/`cursor` is unchanged: it still returns
 the complete history with no `nextCursor`, so installed apps keep working. A new

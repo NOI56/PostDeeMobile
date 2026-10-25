@@ -141,7 +141,9 @@ describe('link in bio slug reservation (Prisma repository)', () => {
     });
     await expect(store.publish(publishAs('owner-b', 'my-shop'))).resolves.toMatchObject({ slug: 'my-shop' });
     expect($transaction).toHaveBeenCalledTimes(1);
-    expect(linkInBioSlugReservation.deleteMany).toHaveBeenCalledWith({ where: { slug: 'my-shop' } });
+    expect(linkInBioSlugReservation.deleteMany).toHaveBeenCalledWith({
+      where: { slug: 'my-shop', OR: [{ reservedUntil: { lte: at } }, { ownerId: 'owner-b' }] }
+    });
     expect(linkInBioProfile.upsert).toHaveBeenCalledTimes(1);
   });
 

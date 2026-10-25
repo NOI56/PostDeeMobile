@@ -27,15 +27,28 @@ const decodePostPageCursor = (value: string): PostPageCursor | undefined => {
   }
 };
 
-export type PostPageRequest = { pageSize: number; after?: PostPageCursor };
+export type PostPageRequest = { pageSize: number; after?: PostPageCursor; activeSince?: string };
+
+const readActiveSince = (value: unknown) => {
+  if (typeof value !== 'string' || value.length > 40) return undefined;
+  const time = new Date(value);
+  return Number.isFinite(time.getTime()) ? time.toISOString() : undefined;
+};
 
 // Undefined when the request asks for no page (the legacy complete list).
+// `activeSince` keeps posts created, scheduled or published at/after that time.
 export const readPostPageRequest = (query: {
   pageSize?: unknown;
   cursor?: unknown;
+  activeSince?: unknown;
 }): PostPageRequest | 'invalid' | undefined => {
-  const { pageSize: rawPageSize, cursor: rawCursor } = query;
-  if (rawPageSize === undefined && rawCursor === undefined) return undefined;
+  const { pageSize: rawPageSize, cursor: rawCursor, activeSince: rawActiveSince } = query;
+  if (rawPageSize === undefined && rawCursor === undefined) {
+    return rawActiveSince === undefined ? undefined : 'invalid';
+  }
+  const activeSince = rawActiveSince === undefined ? undefined : readActiveSince(rawActiveSince);
+  if (rawActiveSince !== undefined && !activeSince) return 'invalid';
+  const filter = activeSince ? { activeSince } : {};
 
   let pageSize = defaultPostPageSize;
   if (rawPageSize !== undefined) {
@@ -44,7 +57,7 @@ export const readPostPageRequest = (query: {
     if (pageSize < 1 || pageSize > maxPostPageSize) return 'invalid';
   }
 
-  if (rawCursor === undefined) return { pageSize };
+  if (rawCursor === undefined) return { pageSize, ...filter };
   const after = typeof rawCursor === 'string' ? decodePostPageCursor(rawCursor) : undefined;
-  return after ? { pageSize, after } : 'invalid';
+  return after ? { pageSize, after, ...filter } : 'invalid';
 };

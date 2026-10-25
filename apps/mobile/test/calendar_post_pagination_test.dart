@@ -67,21 +67,34 @@ void main() {
     }
   });
 
-  test('calendar stops after the page that reaches the requested history start',
+  test(
+      'calendar asks for posts active since the window start and pages past old creation dates',
       () async {
-    final (server, queries) = await _servePages((_) => {
-          'status': 'ok',
-          'posts': [
-            _post('recent', '2026-10-10T00:00:00.000Z'),
-            _post('older', '2026-08-20T00:00:00.000Z'),
-          ],
-          'nextCursor': 'more-history',
-        });
+    final (server, queries) =
+        await _servePages((query) => query['cursor'] == null
+            ? {
+                'status': 'ok',
+                'posts': [_post('recent', '2026-10-10T00:00:00.000Z')],
+                'nextCursor': 'more-history',
+              }
+            : {
+                'status': 'ok',
+                // Created in August, rescheduled into October.
+                'posts': [_post('rescheduled', '2026-08-01T00:00:00.000Z')],
+                'nextCursor': null,
+              });
     try {
       final posts = await _client(server)
-          .listCalendarPosts(createdSince: DateTime.utc(2026, 9, 1));
-      expect(posts.map((post) => post.id), ['recent', 'older']);
-      expect(queries, hasLength(1));
+          .listCalendarPosts(activeSince: DateTime.utc(2026, 10, 1));
+      expect(posts.map((post) => post.id), ['recent', 'rescheduled']);
+      expect(queries, [
+        {'pageSize': '100', 'activeSince': '2026-10-01T00:00:00.000Z'},
+        {
+          'pageSize': '100',
+          'activeSince': '2026-10-01T00:00:00.000Z',
+          'cursor': 'more-history'
+        },
+      ]);
     } finally {
       await server.close(force: true);
     }

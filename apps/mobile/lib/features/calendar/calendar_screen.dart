@@ -23,7 +23,7 @@ import 'calendar_cover_preview_cache.dart';
 typedef ScheduledPostsLoader = Future<List<ScheduledPostResult>> Function();
 typedef CalendarPostsLoader = Future<List<CalendarPostResult>> Function();
 typedef CalendarHistoryLoader = Future<List<CalendarPostResult>> Function(
-    DateTime createdSince);
+    DateTime activeSince);
 typedef ScheduledPostRescheduler = Future<ScheduledPostResult> Function(
   String postId,
   DateTime scheduledAt,
@@ -61,8 +61,8 @@ class CalendarScreen extends StatefulWidget {
   final ScheduledPostsLoader? loadScheduledPosts;
   final CalendarPostsLoader? loadCalendarPosts;
 
-  /// Loads posts created on or after the given time. Used when no complete
-  /// loader is injected; defaults to the paged API read.
+  /// Loads posts created, scheduled or published on or after the given time.
+  /// Used when no complete loader is injected; defaults to the paged API read.
   final CalendarHistoryLoader? loadCalendarPostsSince;
   final ScheduledPostRescheduler? reschedulePost;
   final ScheduledPostCanceller? cancelPost;
@@ -130,7 +130,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     final now = _now();
     _visibleMonth = DateTime(now.year, now.month);
-    _historyStart = _visibleMonth;
+    _historyStart = _initialHistoryStart(now);
     if (widget.isActive) {
       unawaited(_loadPosts());
     } else {
@@ -217,7 +217,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       _posts = const [];
       _selectedDay = null;
       _visibleMonth = DateTime(now.year, now.month);
-      _historyStart = _visibleMonth;
+      _historyStart = _initialHistoryStart(now);
       _hasLoaded = false;
       _isLoading = widget.isActive;
       _isRefreshing = false;
@@ -358,18 +358,30 @@ class _CalendarScreenState extends State<CalendarScreen>
           .toList();
     }
     final historyLoader = widget.loadCalendarPostsSince;
-    if (historyLoader != null) return historyLoader(_historyCreatedSince);
-    return _apiClient.listCalendarPosts(createdSince: _historyCreatedSince);
+    if (historyLoader != null) return historyLoader(_historyStart);
+    return _apiClient.listCalendarPosts(activeSince: _historyStart);
   }
 
   bool get _loadsHistoryWindow =>
       widget.loadCalendarPosts == null && widget.loadScheduledPosts == null;
 
-  // A post's calendar time is at most about 30 days after it was created (the
-  // schedule window), so posts shown from _historyStart onward were created no
-  // earlier than 31 days before it.
-  DateTime get _historyCreatedSince =>
-      DateTime(_historyStart.year, _historyStart.month, _historyStart.day - 31);
+  // The first window covers both the current month and the current week, which
+  // can start in the previous month (the default view is a Monday-first week).
+  DateTime _initialHistoryStart(DateTime now) {
+    final monthStart = DateTime(now.year, now.month);
+    final weekStart = DateTime(now.year, now.month, now.day - now.weekday + 1);
+    return weekStart.isBefore(monthStart) ? weekStart : monthStart;
+  }
+
+  // Loads further back when the visible period starts before the loaded window,
+  // after a day change or a week/month switch.
+  void _extendHistoryToVisiblePeriod() {
+    final periodStart = _periodStart;
+    if (_loadsHistoryWindow && periodStart.isBefore(_historyStart)) {
+      _historyStart = periodStart;
+      unawaited(_loadPosts(silent: true));
+    }
+  }
 
   void _syncQueuedRefresh() {
     _queuedRefreshTimer?.cancel();
@@ -451,11 +463,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       _selectedDay = DateTime(date.year, date.month, date.day);
       _visibleMonth = DateTime(date.year, date.month);
     });
-    final periodStart = _periodStart;
-    if (_loadsHistoryWindow && periodStart.isBefore(_historyStart)) {
-      _historyStart = periodStart;
-      unawaited(_loadPosts(silent: true));
-    }
+    _extendHistoryToVisiblePeriod();
   }
 
   bool get _hasAddAction =>
@@ -879,13 +887,19 @@ class _CalendarScreenState extends State<CalendarScreen>
                     label: 'สัปดาห์',
                     animate: _motionEnabled,
                     selected: _isWeekView,
-                    onTap: () => setState(() => _isWeekView = true)),
+                    onTap: () {
+                      setState(() => _isWeekView = true);
+                      _extendHistoryToVisiblePeriod();
+                    }),
                 _FilterChip(
                     key: const ValueKey('calendar-month-view'),
                     label: 'เดือน',
                     animate: _motionEnabled,
                     selected: !_isWeekView,
-                    onTap: () => setState(() => _isWeekView = false)),
+                    onTap: () {
+                      setState(() => _isWeekView = false);
+                      _extendHistoryToVisiblePeriod();
+                    }),
                 PostDeePressFeedback(
                   enabled: _motionEnabled,
                   child: TextButton.icon(

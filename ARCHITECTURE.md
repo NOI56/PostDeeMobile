@@ -2272,11 +2272,19 @@ Rules:
   - The app sends `GET /posts?pageSize=100`, then `cursor=<nextCursor>`. Each
     page is a `createdAt desc, id desc` keyset query of at most 101 rows on
     `(userId, createdAt)`.
-  - The app stops after the page that reaches 31 days before the oldest period
-    the user has viewed. A post's calendar time falls at most about 30 days
-    after its creation because of the schedule window. It also stops at
-    `nextCursor: null` or after 20 pages.
-  - Browsing to an earlier month or week extends that window and reloads.
+  - Since 2026-10-25 the app adds `activeSince` = the start of the oldest
+    period the user has viewed. The API then keeps only posts created,
+    scheduled or published at or after it (an `AND (createdAt >= s OR
+    scheduledAt >= s OR publishedAt >= s)` filter on the same keyset query).
+    The app pages until `nextCursor: null` or 20 pages.
+  - The earlier rule ("stop 31 days before the window, by creation time") was
+    replaced after the Codex review: every reschedule allows 30 days from the
+    reschedule, so a post can move arbitrarily far from its creation date.
+  - The first window starts at the earlier of the current month's first day
+    and the current week's Monday, because the default week view can begin in
+    the previous month.
+  - Browsing to an earlier month or week, or switching week/month view,
+    extends that window and reloads.
   - Plain `GET /posts` keeps returning the full history for installed apps. An
     older API that ignores `pageSize` returns everything in one response, which
     the new app treats as the last page.

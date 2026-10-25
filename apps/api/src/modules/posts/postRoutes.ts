@@ -504,7 +504,8 @@ export const registerPostRoutes = (
           userId: authUser.id,
           scheduledOnly,
           limit: pageRequest.pageSize,
-          ...(pageRequest.after ? { after: pageRequest.after } : {})
+          ...(pageRequest.after ? { after: pageRequest.after } : {}),
+          ...(pageRequest.activeSince ? { activeSince: pageRequest.activeSince } : {})
         })
       : undefined;
     let posts = (postPage?.posts ?? await store.list({

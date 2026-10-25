@@ -73,6 +73,9 @@ type PostDelegate = {
       OR?:
         | Array<{ scheduledAt: null } | { scheduledAt: { lte: Date } }>
         | [{ createdAt: { lt: Date } }, { createdAt: Date; id: { lt: string } }];
+      AND?: [{
+        OR: [{ createdAt: { gte: Date } }, { scheduledAt: { gte: Date } }, { publishedAt: { gte: Date } }];
+      }];
     };
     orderBy?:
       | { createdAt: 'desc' }
@@ -382,8 +385,9 @@ export const createPrismaPostRepository = ({
 
     return posts.map(mapPost);
   },
-  listPage: async ({ userId, scheduledOnly = false, limit, after }) => {
+  listPage: async ({ userId, scheduledOnly = false, limit, after, activeSince }) => {
     const afterTime = after ? new Date(after.createdAt) : undefined;
+    const activeTime = activeSince ? new Date(activeSince) : undefined;
     // One extra row tells whether another page exists; (userId, createdAt) is indexed.
     const rows = await prisma.post.findMany({
       where: {
@@ -391,6 +395,19 @@ export const createPrismaPostRepository = ({
         ...(scheduledOnly ? { scheduledAt: { not: null } } : {}),
         ...(after && afterTime
           ? { OR: [{ createdAt: { lt: afterTime } }, { createdAt: afterTime, id: { lt: after.id } }] }
+          : {}),
+        // A post can be rescheduled any number of times, so its Calendar time
+        // is not bounded by its creation time.
+        ...(activeTime
+          ? {
+              AND: [{
+                OR: [
+                  { createdAt: { gte: activeTime } },
+                  { scheduledAt: { gte: activeTime } },
+                  { publishedAt: { gte: activeTime } }
+                ]
+              }]
+            }
           : {})
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

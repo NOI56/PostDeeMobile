@@ -14,6 +14,7 @@ import '../link_in_bio/link_in_bio_publication_status.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/push_notification.dart';
 import '../platforms/social_platform.dart';
+import '../platforms/social_platform_logo.dart';
 import '../posts/post_detail_screen.dart';
 import '../posts/posts_screen.dart';
 import '../shared/post_delivery_outcome.dart';
@@ -1663,13 +1664,11 @@ class _LatestPostRow extends StatelessWidget {
                                 Row(
                                   children: [
                                     for (final platform in platforms.take(4)) ...[
-                                      Container(
-                                        width: 13,
-                                        height: 13,
-                                        margin: const EdgeInsets.only(right: 3),
-                                        decoration: BoxDecoration(
-                                          color: platform.displayColor,
-                                          borderRadius: BorderRadius.circular(4),
+                                      Padding(
+                                        padding: const EdgeInsets.only(right: 3),
+                                        child: SocialPlatformLogo(
+                                          platform: platform,
+                                          size: 16,
                                         ),
                                       ),
                                     ],

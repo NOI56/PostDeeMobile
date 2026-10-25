@@ -105,6 +105,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final generation = ++_loadGeneration;
     setState(() {
       _isLoading = true;
+      _summary = null;
       _errorMessage = null;
       _isProLocked = false;
     });
@@ -231,6 +232,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           const SizedBox(height: 13),
           if (_isLoading)
             _AnalyticsSkeleton()
+          else if (_errorMessage != null)
+            PostDeeNotice(
+              key: const ValueKey('analytics-load-error'),
+              message: _errorMessage!,
+              icon: Icons.error_outline,
+              actionLabel: 'ลองใหม่',
+              onAction: _loadAnalytics,
+            )
           else if (!_hasAnalyticsData)
             PostDeeNotice(
               message: !_screenSession.isCurrent
@@ -322,14 +331,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               ),
             ],
           ),
-          if (_errorMessage != null) ...[
-            const SizedBox(height: AppTheme.spaceMd),
-            PostDeeNotice(
-              message: _errorMessage!,
-              color: Theme.of(context).colorScheme.error,
-              icon: Icons.error_outline,
-            ),
-          ],
         ],
       ),
     );
@@ -778,21 +779,21 @@ class _AiToolCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.textPrimary,
-                            ),
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textPrimary,
                           ),
                         ),
-                        const SizedBox(width: 8),
                         PostDeeSoftPill(label: status, color: color),
                       ],
                     ),

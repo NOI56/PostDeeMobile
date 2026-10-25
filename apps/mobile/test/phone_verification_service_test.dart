@@ -72,6 +72,8 @@ class _FakePhoneAuth implements FirebasePhoneAuthAdapter {
   @override
   FirebasePhoneAuthUser? currentUser;
   final callbacks = <_VerificationCallbacks>[];
+  final phoneNumbers = <String>[];
+  final resendTokens = <int?>[];
 
   @override
   Future<void> verifyPhoneNumber({
@@ -80,8 +82,12 @@ class _FakePhoneAuth implements FirebasePhoneAuthAdapter {
     required firebase_auth.PhoneVerificationCompleted verificationCompleted,
     required firebase_auth.PhoneVerificationFailed verificationFailed,
     required firebase_auth.PhoneCodeSent codeSent,
-    required firebase_auth.PhoneCodeAutoRetrievalTimeout codeAutoRetrievalTimeout,
+    required firebase_auth.PhoneCodeAutoRetrievalTimeout
+        codeAutoRetrievalTimeout,
+    int? forceResendingToken,
   }) async {
+    phoneNumbers.add(phoneNumber);
+    resendTokens.add(forceResendingToken);
     callbacks.add(_VerificationCallbacks(
       completed: verificationCompleted,
       failed: verificationFailed,
@@ -163,6 +169,63 @@ Future<void> _flushAsync() async {
 }
 
 void main() {
+  test('resend reuses the provider token only for the same phone and session',
+      () async {
+    final fixture = _Fixture();
+    final first = fixture.gateway.sendCode('+66812345678');
+    fixture.auth.callbacks.last.sent('verification-a', 42);
+    await first;
+
+    final resent = fixture.gateway.sendCode('+66812345678');
+    expect(fixture.auth.resendTokens, [null, 42]);
+    fixture.auth.callbacks.last.sent('verification-new', 43);
+    await resent;
+
+    final differentPhone = fixture.gateway.sendCode('+66898765432');
+    expect(fixture.auth.resendTokens.last, isNull);
+    fixture.auth.callbacks.last.sent('verification-other', 44);
+    await differentPhone;
+  });
+
+  test('cancel and a new login cannot reuse a previous resend token', () async {
+    final fixture = _Fixture();
+    final first = fixture.gateway.sendCode('+66812345678');
+    fixture.auth.callbacks.last.sent('verification-a', 42);
+    await first;
+    fixture.gateway.cancelVerification();
+    fixture.store.clear();
+    fixture.store.signIn(_sessionA);
+    final next = fixture.gateway.sendCode('+66812345678');
+    expect(fixture.auth.resendTokens.last, isNull);
+    fixture.auth.callbacks.last.sent('verification-new-session', null);
+    await next;
+  });
+
+  for (final entry in {
+    'invalid-phone-number': 'ตรวจสอบเบอร์โทร',
+    'too-many-requests': 'รอสักครู่',
+    'quota-exceeded': 'ลองใหม่ภายหลัง',
+    'network-request-failed': 'อินเทอร์เน็ต',
+    'unknown-provider-error': 'ลองใหม่',
+  }.entries) {
+    test('phone provider failure ${entry.key} gives actionable Thai copy',
+        () async {
+      final fixture = _Fixture();
+      final sent = fixture.gateway.sendCode('+66812345678');
+      final expectation = expectLater(
+          sent,
+          throwsA(
+            isA<AuthUnavailableException>().having(
+                (error) => error.message, 'message', contains(entry.value)),
+          ));
+      fixture.auth.callbacks.last.failed(firebase_auth.FirebaseAuthException(
+        code: entry.key,
+        message: 'Technical provider message',
+      ));
+      await expectation;
+    });
+  }
+
   test('automatic verification stays bound to the requesting UID', () async {
     final fixture = _Fixture();
     final sent = fixture.gateway.sendCode('+66812345678');
@@ -179,7 +242,8 @@ void main() {
     expect(fixture.userB.tokenCalls, 0);
   });
 
-  test('native UID changes are rejected even before the store changes', () async {
+  test('native UID changes are rejected even before the store changes',
+      () async {
     final fixture = _Fixture();
     await fixture.sendSms();
     fixture.switchToB(updateStore: false);
@@ -253,7 +317,8 @@ void main() {
     expect(fixture.userA.linkCalls, 1);
   });
 
-  test('cancel closes a pending automatic request and late callbacks', () async {
+  test('cancel closes a pending automatic request and late callbacks',
+      () async {
     final fixture = _Fixture();
     final sent = fixture.gateway.sendCode('+66812345678');
     final expectation = expectLater(
@@ -345,7 +410,8 @@ void main() {
   });
 
   for (final stage in ['link', 'reload', 'token']) {
-    test('switching account during $stage cannot return B credentials', () async {
+    test('switching account during $stage cannot return B credentials',
+        () async {
       final fixture = _Fixture();
       await fixture.sendSms();
       final pending = Completer<void>();
@@ -470,7 +536,8 @@ void main() {
     expect(fixture.userB.linkCalls, 0);
   });
 
-  test('initial native and app UID mismatch fails before sending SMS', () async {
+  test('initial native and app UID mismatch fails before sending SMS',
+      () async {
     final fixture = _Fixture();
     fixture.switchToB(updateStore: false);
     await expectLater(

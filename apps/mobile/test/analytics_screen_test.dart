@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -248,6 +249,92 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('analytics-range-7d')));
     await tester.pumpAndSettle();
     expect(requestedRanges, ['30d', '7d']);
+  });
+
+  for (final failure in <String, Object>{
+    'network': const SocketException('offline'),
+    'API': const ApiException('Unavailable', statusCode: 503),
+    'unexpected': StateError('unavailable'),
+  }.entries) {
+    testWidgets('does not label old totals with a failed new range (${failure.key})',
+        (tester) async {
+      final requestedRanges = <String>[];
+      var failSevenDays = true;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnalyticsScreen(loadAnalyticsForRange: (range) async {
+            requestedRanges.add(range);
+            if (range == '7d' && failSevenDays) throw failure.value;
+            return AnalyticsSummaryResult(
+              range: range,
+              totalViews: range == '30d' ? 150 : 70,
+              totalLikes: 7,
+              platforms: const [],
+            );
+          }),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('150'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('analytics-range-7d')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('150'), findsNothing);
+      expect(find.byKey(const ValueKey('analytics-load-error')), findsOneWidget);
+      expect(find.text('ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด'),
+          findsNothing);
+      failSevenDays = false;
+      await tester.tap(find.text('ลองใหม่'));
+      await tester.pumpAndSettle();
+      expect(requestedRanges, ['30d', '7d', '7d']);
+      expect(find.text('70'), findsWidgets);
+      expect(find.byKey(const ValueKey('analytics-load-error')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('shows a first-load error with visible retry instead of no data',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: const TextScaler.linear(1.5),
+        ),
+        child: child!,
+      ),
+      home: Scaffold(
+        body: AnalyticsScreen(loadAnalytics: () async {
+          calls++;
+          if (calls == 1) throw const SocketException('offline');
+          return const AnalyticsSummaryResult(
+            totalViews: 0,
+            totalLikes: 0,
+            platforms: [],
+          );
+        }),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final retry = find.text('ลองใหม่');
+    expect(find.byKey(const ValueKey('analytics-load-error')), findsOneWidget);
+    expect(retry.hitTestable(), findsOneWidget);
+    expect(find.text('ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด'),
+        findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.byKey(const ValueKey('analytics-load-error')), findsNothing);
+    expect(find.text('ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด'),
+        findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('does not fall back to demo analytics when summary is empty',

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -81,6 +83,9 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
 
   _PhoneStep _step = _PhoneStep.enterPhone;
   String _verificationId = '';
+  String? _sentPhone;
+  Timer? _resendTimer;
+  int _resendSecondsRemaining = 0;
   bool _isLoading = false;
   String? _errorMessage;
   FirebasePhoneVerificationGateway? _firebasePhoneVerificationGateway;
@@ -101,6 +106,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   void dispose() {
     _sessionStore.removeListener(_handleSessionChanged);
     _cancelVerification();
+    _resendTimer?.cancel();
     _phoneController.dispose();
     _codeController.dispose();
     super.dispose();
@@ -108,14 +114,14 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
 
   FirebasePhoneVerificationGateway get _activeFirebaseGateway =>
       widget.firebasePhoneVerificationGateway ??
-      (_firebasePhoneVerificationGateway ??=
-          FirebasePhoneVerificationGateway(
-            sessionStore: _sessionStore,
-            runNativeAuthOperation: widget.runNativeAuthOperation,
-          ));
+      (_firebasePhoneVerificationGateway ??= FirebasePhoneVerificationGateway(
+        sessionStore: _sessionStore,
+        runNativeAuthOperation: widget.runNativeAuthOperation,
+      ));
 
-  void _cancelVerification() {
+  void _cancelVerification({bool cancelGateway = true}) {
     _operationGeneration += 1;
+    if (!cancelGateway) return;
     (widget.firebasePhoneVerificationGateway ??
             _firebasePhoneVerificationGateway)
         ?.cancelVerification();
@@ -124,9 +130,12 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   void _handleSessionChanged() {
     if (_screenSession.isCurrent) return;
     _cancelVerification();
+    _resendTimer?.cancel();
     if (!mounted) return;
     setState(() {
       _verificationId = '';
+      _sentPhone = null;
+      _resendSecondsRemaining = 0;
       _phoneController.clear();
       _codeController.clear();
       _step = _PhoneStep.enterPhone;
@@ -136,9 +145,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   bool _isCurrentOperation(int generation) =>
-      mounted &&
-      _screenSession.isCurrent &&
-      _operationGeneration == generation;
+      mounted && _screenSession.isCurrent && _operationGeneration == generation;
 
   PhoneVerificationCodeSender get _sender {
     final sender = widget.sendCode;
@@ -187,25 +194,59 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     );
   }
 
-  Future<void> _sendCode() async {
+  void _startResendCooldown() {
+    _resendTimer?.cancel();
+    _resendSecondsRemaining = 30;
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || !_screenSession.isCurrent) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _resendSecondsRemaining -= 1);
+      if (_resendSecondsRemaining <= 0) timer.cancel();
+    });
+  }
+
+  void _changePhone() {
     if (_isLoading) return;
+    _cancelVerification();
+    setState(() {
+      _verificationId = '';
+      _sentPhone = null;
+      _codeController.clear();
+      _errorMessage = null;
+      _step = _PhoneStep.enterPhone;
+    });
+  }
+
+  Future<void> _sendCode({bool isResend = false}) async {
+    if (_isLoading || _resendSecondsRemaining > 0) return;
     if (!_screenSession.isCurrent) {
       _handleSessionChanged();
       return;
     }
-    final phone = _phoneController.text.trim();
+    final phone = isResend
+        ? _sentPhone
+        : normalizePhoneVerificationNumber(_phoneController.text);
 
-    if (phone.length < 9) {
-      setState(() => _errorMessage = 'กรอกเบอร์โทรให้ถูกต้อง');
+    if (phone == null) {
+      setState(() => _errorMessage =
+          'กรอกเบอร์โทรมือถือไทย 10 หลัก เช่น 0812345678 หรือเบอร์ต่างประเทศพร้อมรหัสประเทศ');
       return;
     }
 
-    _cancelVerification();
+    // Let the gateway retain its same-session resend token until sendCode claims
+    // a new request; a changed number or disposed screen cancels it completely.
+    _cancelVerification(cancelGateway: !isResend);
     final generation = _operationGeneration;
 
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _verificationId = '';
+      _codeController.clear();
+      _sentPhone = phone;
+      _phoneController.text = phone;
     });
 
     try {
@@ -227,6 +268,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       setState(() {
         _verificationId = result.verificationId;
         _step = _PhoneStep.enterCode;
+        _startResendCooldown();
       });
     } on AuthSessionChangedException {
       if (_isCurrentOperation(generation)) {
@@ -244,7 +286,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   Future<void> _confirmCode() async {
-    if (_isLoading) return;
+    if (_isLoading || _verificationId.isEmpty) return;
     if (!_screenSession.isCurrent) {
       _handleSessionChanged();
       return;
@@ -289,6 +331,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     }
     _verifiedSession = session;
     _cancelVerification();
+    _resendTimer?.cancel();
     if (mounted && _screenSession.isCurrent) {
       setState(() {
         _isLoading = false;
@@ -375,12 +418,12 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             key: const ValueKey('phone-verification-phone-field'),
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9+]')),
-            ],
             decoration: const InputDecoration(
               labelText: 'เบอร์โทร',
-              hintText: '+66XXXXXXXXX',
+              hintText: '0812345678 หรือ +66812345678',
+              helperText:
+                  'ใส่เบอร์ไทย 10 หลัก หรือเบอร์ต่างประเทศพร้อม +รหัสประเทศ',
+              helperMaxLines: 2,
               prefixIcon: Icon(Icons.phone_outlined),
             ),
           ),
@@ -394,9 +437,15 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
           const SizedBox(height: AppTheme.spaceLg),
           _GreenActionButton(
             key: const ValueKey('phone-verification-send-code'),
-            label: _isLoading ? 'กำลังส่งรหัส...' : 'ส่งรหัส OTP',
+            label: _isLoading
+                ? 'กำลังส่งรหัส...'
+                : _resendSecondsRemaining > 0
+                    ? 'ส่งรหัส OTP (รอ $_resendSecondsRemaining วินาที)'
+                    : 'ส่งรหัส OTP',
             icon: Icons.sms_outlined,
-            onPressed: _isLoading ? null : _sendCode,
+            onPressed: _isLoading || _resendSecondsRemaining > 0
+                ? null
+                : () => _sendCode(),
           ),
         ],
       ),
@@ -494,21 +543,15 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             key: const ValueKey('phone-verification-confirm-code'),
             label: _isLoading ? 'กำลังยืนยัน...' : 'ยืนยัน',
             icon: Icons.verified_outlined,
-            onPressed: _isLoading ? null : _confirmCode,
+            onPressed:
+                _isLoading || _verificationId.isEmpty ? null : _confirmCode,
           ),
           const SizedBox(height: 6),
           TextButton(
-            onPressed: _isLoading
+            key: const ValueKey('phone-verification-resend-code'),
+            onPressed: _isLoading || _resendSecondsRemaining > 0
                 ? null
-                : () {
-                    _cancelVerification();
-                    setState(() {
-                      _verificationId = '';
-                      _codeController.clear();
-                      _errorMessage = null;
-                      _step = _PhoneStep.enterPhone;
-                    });
-                  },
+                : () => _sendCode(isResend: true),
             style: TextButton.styleFrom(
               foregroundColor: AppTheme.accentCyanInk,
               textStyle: const TextStyle(
@@ -516,7 +559,14 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            child: const Text('เปลี่ยนเบอร์ / ส่งรหัสอีกครั้ง'),
+            child: Text(_resendSecondsRemaining > 0
+                ? 'ส่งรหัสอีกครั้ง (รอ $_resendSecondsRemaining วินาที)'
+                : 'ส่งรหัสอีกครั้ง'),
+          ),
+          TextButton(
+            key: const ValueKey('phone-verification-change-phone'),
+            onPressed: _isLoading ? null : _changePhone,
+            child: const Text('เปลี่ยนเบอร์'),
           ),
         ],
       ),

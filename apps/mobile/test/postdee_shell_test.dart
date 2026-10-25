@@ -198,13 +198,19 @@ BoxDecoration _navMotionHalo(WidgetTester tester, int slot) =>
 Finder _navMotionIcon(String label) => find.descendant(
     of: _referenceNavButton(label), matching: find.byType(Icon));
 
+void _expectNavSquare(WidgetTester tester, Finder finder, double dimension) {
+  final size = tester.getRect(finder).size;
+  expect(size.width, closeTo(dimension, .0001));
+  expect(size.height, closeTo(dimension, .0001));
+}
+
 Color? _navMotionIconColor(WidgetTester tester, String label) =>
     tester.widget<Icon>(_navMotionIcon(label)).color;
 
 void _expectNavMotionSelection(WidgetTester tester, String selected) {
   for (final entry in _navMotionTabs.entries) {
     final active = entry.key == selected;
-    expect(tester.getRect(_navMotionIcon(entry.key)).size, const Size(22, 22));
+    _expectNavSquare(tester, _navMotionIcon(entry.key), 26);
     expect(_navMotionLift(tester, entry.value), active ? -2 : 0);
     expect(_navMotionHalo(tester, entry.value).color!.a,
         closeTo(active ? .12 : 0, .0001));
@@ -289,7 +295,7 @@ class _NavMotionFixture {
 }
 
 void main() {
-  testWidgets('bottom nav keeps all five icons and button surfaces equal',
+  testWidgets('bottom nav keeps larger icons equal and labels readable',
       (tester) async {
     tester.view.physicalSize = const Size(320, 852);
     tester.view.devicePixelRatio = 1;
@@ -305,14 +311,22 @@ void main() {
         expect(tester.getSize(_referenceNavButton(label)), tabSize);
         expect(tabSize.height, 84);
         expect(tabSize.width, greaterThanOrEqualTo(48));
-        expect(tester.getRect(_navMotionIcon(label)).size, const Size(22, 22));
+        _expectNavSquare(tester, _navMotionIcon(label), 26);
+        if (label != 'Create post') {
+          final text = find.descendant(
+              of: _referenceNavButton(label), matching: find.text(label));
+          expect(tester.widget<Text>(text).style!.fontSize, 12);
+          final labelBox = find.ancestor(
+              of: text, matching: find.byType(FittedBox)).first;
+          expect(tester.getSize(labelBox).height, 18);
+          expect(tester.getRect(text).bottom,
+              lessThan(tester.getRect(_navMotionIndicator()).top));
+        }
       }
-      final createSize = tester
-          .getRect(find.byKey(const ValueKey('postdee-nav-create-surface')))
-          .size;
-      expect(createSize, const Size(36, 36));
+      _expectNavSquare(tester,
+          find.byKey(const ValueKey('postdee-nav-create-surface')), 42);
       for (final slot in _navMotionTabs.values) {
-        expect(tester.getRect(_navMotionKey('halo', slot)).size, createSize);
+        _expectNavSquare(tester, _navMotionKey('halo', slot), 42);
       }
     }
 
@@ -325,6 +339,20 @@ void main() {
       await tester.pumpAndSettle();
       expectEqualSizes();
     }
+    final navRect = tester.getRect(_referenceNav());
+    final createSurface =
+        find.byKey(const ValueKey('postdee-nav-create-surface'));
+    final gesture = await tester.startGesture(
+        tester.getCenter(_referenceNavButton('Create post')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.cancel();
+    for (var frame = 0; frame < 6; frame++) {
+      await tester.pump(const Duration(milliseconds: 30));
+      final circle = tester.getRect(createSurface);
+      expect(navRect.contains(circle.topLeft), isTrue);
+      expect(navRect.contains(circle.bottomRight), isTrue);
+    }
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
@@ -339,7 +367,7 @@ void main() {
       _expectNavMotionSelection(tester, entry.key);
       for (final slot in _navMotionTabs.values) {
         final halo = _navMotionHalo(tester, slot);
-        expect(tester.getSize(_navMotionKey('halo', slot)), const Size(36, 36));
+        expect(tester.getSize(_navMotionKey('halo', slot)), const Size(42, 42));
         expect(halo.shape, BoxShape.circle);
         expect(halo.boxShadow ?? const <BoxShadow>[], isEmpty);
         expect(halo.gradient, isNull);
@@ -412,8 +440,7 @@ void main() {
       expect(tester.getSemantics(_referenceNavButton('Home')),
           isSemantics(isSelected: false));
       await tester.pump(const Duration(milliseconds: 80));
-      expect(tester.getRect(_navMotionIcon('Calendar')).size,
-          const Size(22, 22));
+      _expectNavSquare(tester, _navMotionIcon('Calendar'), 26);
       expect(_navMotionLift(tester, 1), inExclusiveRange(-2, 0));
       expect(_navMotionHalo(tester, 1).color!.a, inExclusiveRange(0, .12));
       expect(_navMotionIconColor(tester, 'Calendar'),
@@ -2815,7 +2842,7 @@ void main() {
     expect(profileSize.height, greaterThanOrEqualTo(44));
   });
 
-  for (final width in const [360.0, 393.0, 411.0]) {
+  for (final width in const [320.0, 360.0, 393.0, 411.0]) {
     for (final textScale in const [1.45, 2.0]) {
       testWidgets(
           'shows Thai bottom nav labels at ${width}dp with ${textScale}x text',

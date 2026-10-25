@@ -771,8 +771,9 @@ class _PostDeeBottomNav extends StatefulWidget {
 
   // Includes 8 dp above the surface for the raised upload action.
   static const _height = 84.0;
-  static const _iconSize = 22.0;
-  static const _iconBackgroundSize = 36.0;
+  static const _iconSize = 26.0;
+  static const _iconBackgroundSize = 42.0;
+  static const _labelHeight = 18.0;
 
   int? get _selectedSlot => switch (currentIndex) {
         0 => 0,
@@ -1013,7 +1014,7 @@ class _RunningNavDotState extends State<_RunningNavDot>
               Positioned(
                 left: center - _width / 2,
                 // Align with the reserved 4 dp space beneath every label.
-                bottom: 8.5,
+                bottom: 7,
                 width: _width,
                 height: 4,
                 child: DecoratedBox(
@@ -1186,7 +1187,7 @@ class _ReferenceNavButtonState extends State<_ReferenceNavButton>
                         height: 44,
                         child: widget.isCreateAction
                             ? Transform.translate(
-                                offset: const Offset(0, -8),
+                                offset: const Offset(0, -7),
                                 transformHitTests: false,
                                 child: Transform.scale(
                                   scale: widget.createScale,
@@ -1218,7 +1219,7 @@ class _ReferenceNavButtonState extends State<_ReferenceNavButton>
                       ),
                       const SizedBox(height: 1),
                       if (widget.isCreateAction)
-                        const SizedBox(height: 15)
+                        const SizedBox(height: _PostDeeBottomNav._labelHeight)
                       else
                         _ReferenceNavLabel(
                             label: widget.label, selected: widget.selected),
@@ -1328,7 +1329,7 @@ class _ReferenceNavLabel extends StatelessWidget {
       maxScaleFactor: 1.3,
       child: SizedBox(
         width: double.infinity,
-        height: 15,
+        height: _PostDeeBottomNav._labelHeight,
         child: FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.center,
@@ -1337,7 +1338,7 @@ class _ReferenceNavLabel extends StatelessWidget {
             maxLines: 1,
             style: TextStyle(
               color: selected ? AppTheme.navActive : AppTheme.textSecondary,
-              fontSize: 11,
+              fontSize: 12,
               height: 1.1,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),

@@ -2188,8 +2188,23 @@ Rules:
     and sends the usual failure push.
   - Units charged at creation stay counted.
   - Post-now posts are not re-checked.
-  - The plan is read before the post is claimed, so a read failure leaves it
-    `QUEUED` for the pre-publish retry.
+  - The plan is read before the owner's operation lifetime and before the post
+    is claimed. A read failure leaves the post `QUEUED` for the pre-publish
+    retry and never keeps the owner's operation ticket, which would otherwise
+    block a later account deletion.
+  - With an ended plan, the worker claims the row with one atomic
+    `UPDATE ... RETURNING "scheduledAt"` (`claimForPublishWithSchedule`). It
+    accepts a row still scheduled at its run time or one the owner switched to
+    Publish now, and reports which:
+    - Still scheduled: the post fails with `PAID_PLAN_REQUIRED`.
+    - Switched to Publish now: the post publishes in the same run, because
+      post-now is not plan-checked.
+
+    A single statement leaves no gap in which a schedule rollback could strand
+    the row without a job, which matters in BullMQ mode where nothing polls.
+    There is no extra read inside the owner lifetime. Scheduled-at and
+    updated-at values are compared and written as UTC timestamps without time
+    zone, so the session time zone doesn't matter.
   - Local mock auth, whose plan came from a request header, skips the check.
   - The scheduler and the BullMQ worker share the rule.
 
@@ -2276,10 +2291,14 @@ Rules:
   status wording.
 - Provider retries are explicit-safe-only. Unknown network/polling outcomes are
   terminal and tell the user to inspect the destination before trying again.
-- Each in-process scheduler poll reads at most 50 due posts across all owners
-  (`take: 50`, ordered by `scheduledAt`), selecting only publish fields (no media
-  fingerprint or add-on allocation). Remaining due posts wait for the next
-  poll, about five seconds later.
+- Each in-process scheduler poll reads due posts in batches of 50 across all
+  owners (`take: 50`, in `id` order), selecting only publish fields (no media
+  fingerprint or add-on allocation). A cursor kept across polls resumes after
+  the last post tried (`id > cursor`) and wraps to the start at the end of the
+  due list. Posts the scheduler cannot start, for example an owner whose
+  account deletion is in progress, are visited once per cycle and never hide
+  later owners' posts. One poll reads at most 10 batches (500 posts), and the
+  next poll continues about five seconds later.
 
 The mobile HTTP client applies an end-to-end 20-second deadline to ordinary
 JSON requests, including token refresh, connection, and body consumption.

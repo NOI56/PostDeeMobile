@@ -23,7 +23,7 @@ describe('due post read for the publish scheduler', () => {
         status: 'QUEUED',
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date('2026-10-24T01:00:00.000Z') } }]
       },
-      orderBy: { scheduledAt: 'asc' },
+      orderBy: { id: 'asc' },
       take: maxDuePostsPerPoll,
       select: {
         id: true, userId: true, caption: true, videoS3Key: true, coverImageS3Key: true,
@@ -40,6 +40,39 @@ describe('due post read for the publish scheduler', () => {
     await repository.listDue({ now: '2026-10-24T01:00:00.000Z', limit: 5 });
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 5 }));
+  });
+
+  it('resumes after the last post the scheduler tried', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const repository = createPrismaPostRepository({ prisma: withPostRepositoryFixture({ post: { findMany } }) });
+
+    await repository.listDue({ now: '2026-10-24T01:00:00.000Z', afterId: 'tried-2' });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { gt: 'tried-2' }, status: 'QUEUED' }),
+      orderBy: { id: 'asc' }
+    }));
+  });
+
+  it('claims in one UPDATE ... RETURNING and reports whether the row was still scheduled', async () => {
+    const $queryRaw = vi.fn()
+      .mockResolvedValueOnce([{ scheduledAt: new Date('2026-10-24T00:00:00.000Z') }])
+      .mockResolvedValueOnce([{ scheduledAt: null }])
+      .mockResolvedValueOnce([]);
+    const prisma = withPostRepositoryFixture({ post: {} });
+    const repository = createPrismaPostRepository({ prisma: { ...prisma, $queryRaw } as typeof prisma });
+    const input = { postId: 'post-1', expectedRunAt: '2026-10-24T00:00:00.000Z' };
+
+    await expect(repository.claimForPublishWithSchedule(input)).resolves.toBe('scheduled');
+    await expect(repository.claimForPublishWithSchedule(input)).resolves.toBe('immediate');
+    await expect(repository.claimForPublishWithSchedule(input)).resolves.toBeUndefined();
+
+    expect($queryRaw).toHaveBeenCalledTimes(3);
+    const sql = String($queryRaw.mock.calls[0]![0].strings.join('?'));
+    expect(sql).toMatch(/UPDATE "Post"/);
+    expect(sql).toMatch(/"scheduledAt" IS NULL OR "scheduledAt" = timezone\('UTC'/);
+    expect(sql).toMatch(/RETURNING "scheduledAt"/);
+    expect($queryRaw.mock.calls[0]![0].values).toEqual(['post-1', '2026-10-24T00:00:00.000Z']);
   });
 
   it('bounds the in-memory store the same way', async () => {

@@ -186,10 +186,18 @@ export type PostStore = {
   // Posts whose time has come: QUEUED with no schedule (post now) or scheduledAt
   // at/before `now`. Used by the publish scheduler; returns at most `limit`
   // (default maxDuePostsPerPoll) posts per call.
-  listDue: (input: { now: string; limit?: number }) => Promise<DuePost[]>;
+  // Results come in a stable order; `afterId` resumes after that post, so a
+  // caller can visit every due post in turn across calls.
+  listDue: (input: { now: string; limit?: number; afterId?: string }) => Promise<DuePost[]>;
   // Atomically moves a still-queued post into PUBLISHING before calling an
   // external publisher. Returns false for missing, already-running, or finished posts.
   claimForPublish: (input: ClaimPostForPublishInput) => Promise<boolean>;
+  // Same claim as claimForPublish in one atomic step, reporting whether the
+  // claimed row was still scheduled at expectedRunAt or had been switched to
+  // Publish now. Undefined when nothing was claimed.
+  claimForPublishWithSchedule: (
+    input: ClaimPostForPublishInput
+  ) => Promise<'scheduled' | 'immediate' | undefined>;
   updateStatus: (input: UpdatePostStatusInput) => Promise<void>;
   // Move a still-queued post (owned by userId) to a new time. Returns the
   // updated post, or undefined if it is missing, not owned, or already publishing.
@@ -362,14 +370,29 @@ export const createPostStore = ({
         created: true
       };
     }),
-    listDue: async ({ now, limit = maxDuePostsPerPoll }) =>
-      posts
+    listDue: async ({ now, limit = maxDuePostsPerPoll, afterId }) => {
+      // Insertion order is this store's stable order.
+      const start = afterId === undefined ? 0 : posts.findIndex((post) => post.id === afterId) + 1;
+      return posts
+        .slice(start)
         .filter(
           (post) =>
             post.status === 'QUEUED' &&
             (post.scheduledAt === undefined || post.scheduledAt <= now)
         )
-        .slice(0, limit),
+        .slice(0, limit);
+    },
+    claimForPublishWithSchedule: async ({ postId, expectedRunAt }) => {
+      const post = posts.find((candidate) => candidate.id === postId);
+
+      if (!post || post.status !== 'QUEUED' ||
+        (post.scheduledAt !== undefined && post.scheduledAt !== expectedRunAt)) {
+        return undefined;
+      }
+
+      post.status = 'PUBLISHING';
+      return post.scheduledAt === undefined ? 'immediate' : 'scheduled';
+    },
     claimForPublish: async ({ postId, expectedRunAt }) => {
       const post = posts.find((candidate) => candidate.id === postId);
 

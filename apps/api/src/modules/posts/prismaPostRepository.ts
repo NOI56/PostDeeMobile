@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type {
   CreatePostInput,
   CreatePostWithinMonthlyLimitInput,
@@ -64,6 +65,7 @@ type PostDelegate = {
   }) => Promise<number>;
   findMany: (args: {
     where: {
+      id?: { gt: string };
       userId?: string;
       status?: PrismaPostStatus;
       scheduledAt?: { not: null };
@@ -75,6 +77,7 @@ type PostDelegate = {
     orderBy?:
       | { createdAt: 'desc' }
       | { scheduledAt: 'asc' }
+      | { id: 'asc' }
       | [{ createdAt: 'desc' }, { id: 'desc' }];
     take?: number;
     select?:
@@ -123,6 +126,8 @@ type PrismaPostTransaction = PrismaOwnerLifecycleTransaction & Partial<PrismaMon
   post: PostDelegate;
 };
 export type PrismaPostClient = PrismaPostTransaction & {
+  // Used only by claimForPublishWithSchedule's single UPDATE ... RETURNING.
+  $queryRaw?: <T = unknown>(query: Prisma.Sql) => Promise<T>;
   $transaction: <Result>(
     operation: (client: PrismaPostTransaction) => Promise<Result>,
     options: { isolationLevel: 'Serializable'; maxWait?: number; timeout?: number }
@@ -414,19 +419,37 @@ export const createPrismaPostRepository = ({
     return persisted ? mapPost(persisted) : undefined;
   },
   createWithinMonthlyLimit: async (input) => createWithinMonthlyLimit(prisma, input),
-  listDue: async ({ now, limit = maxDuePostsPerPoll }) => {
-    // A global read across owners: keep it to one bounded batch per poll.
+  listDue: async ({ now, limit = maxDuePostsPerPoll, afterId }) => {
+    // A global read across owners: one bounded batch per call, in id order so
+    // the scheduler can resume after the last post it tried.
     const posts = await prisma.post.findMany({
       where: {
+        ...(afterId ? { id: { gt: afterId } } : {}),
         status: 'QUEUED',
         OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date(now) } }]
       },
-      orderBy: { scheduledAt: 'asc' },
+      orderBy: { id: 'asc' },
       take: limit,
       select: duePostSelect
     });
 
     return posts.map(mapPost);
+  },
+  claimForPublishWithSchedule: async ({ postId, expectedRunAt }: ClaimPostForPublishInput) => {
+    if (!prisma.$queryRaw) throw new Error('Atomic publish claim requires raw queries');
+    // One statement claims either a row still scheduled at its run time or a
+    // row switched to Publish now, and returns which. scheduledAt and
+    // updatedAt are UTC timestamps without time zone.
+    const rows = await prisma.$queryRaw<Array<{ scheduledAt: Date | null }>>(Prisma.sql`
+      UPDATE "Post"
+      SET "status" = 'PUBLISHING', "updatedAt" = timezone('UTC', now())
+      WHERE "id" = ${postId}
+        AND "status" = 'QUEUED'
+        AND ("scheduledAt" IS NULL OR "scheduledAt" = timezone('UTC', ${expectedRunAt}::timestamptz))
+      RETURNING "scheduledAt"`);
+    const row = rows[0];
+    if (!row) return undefined;
+    return row.scheduledAt === null ? 'immediate' : 'scheduled';
   },
   claimForPublish: async ({ postId, expectedRunAt }: ClaimPostForPublishInput) => {
     const result = await prisma.post.updateMany({

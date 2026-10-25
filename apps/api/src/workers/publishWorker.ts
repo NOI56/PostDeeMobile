@@ -420,22 +420,33 @@ export const processPublishJobForPost = async ({
   deleteVideoAfterPublish?: boolean;
   now?: () => string;
 }): Promise<PublishWorkerResult> => {
+  // Scheduling is a paid feature. Read the plan before the owner lifetime and
+  // the claim: a read failure then leaves the post QUEUED for the caller's
+  // pre-publish retry and never retains the owner's operation ticket.
+  const ownerPlanEnded =
+    jobData.status === 'SCHEDULED' && readOwnerPlan && jobData.userId
+      ? (await readOwnerPlan(jobData.userId)) === 'BASIC'
+      : false;
+
   const processForOwner = async (): Promise<PublishWorkerResult> => {
     if (assertOwnerActive && jobData.userId) {
       await assertOwnerActive(jobData.userId);
     }
 
-    // Scheduling is a paid feature. Read the plan before claiming, so a read
-    // failure leaves the post QUEUED for the caller's pre-publish retry.
-    const paidPlanEnded =
-      jobData.status === 'SCHEDULED' && readOwnerPlan && jobData.userId
-        ? (await readOwnerPlan(jobData.userId)) === 'BASIC'
-        : false;
-
-    const claimed = await postStore.claimForPublish({
-      postId: jobData.postId,
-      expectedRunAt: jobData.runAt
-    });
+    // With an ended plan, one atomic claim also reports whether the row was
+    // still scheduled (fail it) or switched to Publish now (publish it as
+    // post-now, which is not plan-checked). A single step leaves no gap in
+    // which a schedule rollback could strand the row without a job.
+    const claimInput = { postId: jobData.postId, expectedRunAt: jobData.runAt };
+    let claimed: boolean;
+    let claimedAsScheduled = false;
+    if (ownerPlanEnded) {
+      const claimedSchedule = await postStore.claimForPublishWithSchedule(claimInput);
+      claimed = claimedSchedule !== undefined;
+      claimedAsScheduled = claimedSchedule === 'scheduled';
+    } else {
+      claimed = await postStore.claimForPublish(claimInput);
+    }
 
     if (!claimed) {
       return createSkippedPublishResult(jobData);
@@ -459,7 +470,7 @@ export const processPublishJobForPost = async ({
         await assertOwnerActive(jobData.userId);
       }
 
-      if (paidPlanEnded) {
+      if (claimedAsScheduled) {
         // Never contact a provider. Units used at creation are not refunded.
         const platformResults: PlatformPublishResult[] = jobData.platforms.map((platform) => ({
           platform,

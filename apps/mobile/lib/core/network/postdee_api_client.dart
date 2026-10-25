@@ -1664,6 +1664,7 @@ class GenerateRealClipCaptionRequest {
     this.deleteAfterUse = false,
     this.writingStyle,
     this.platforms = const [],
+    this.expectedCredits,
   });
 
   final String videoS3Key;
@@ -1672,6 +1673,7 @@ class GenerateRealClipCaptionRequest {
   final bool deleteAfterUse;
   final CaptionWritingStyle? writingStyle;
   final List<String> platforms;
+  final int? expectedCredits;
 
   Map<String, Object?> toJson() => {
         'videoS3Key': videoS3Key,
@@ -1682,6 +1684,7 @@ class GenerateRealClipCaptionRequest {
         if (deleteAfterUse) 'deleteAfterUse': true,
         if (writingStyle != null) 'writingStyle': writingStyle!.toJson(),
         if (platforms.isNotEmpty) 'platforms': platforms,
+        if (expectedCredits != null) 'expectedCredits': expectedCredits,
       };
 }
 
@@ -1751,6 +1754,7 @@ class RealClipCaptionQuota {
     required this.usedThisMonth,
     required this.remainingThisMonth,
     this.charged = true,
+    this.usageRefreshPending = false,
     this.addonRemaining = 0,
     this.availableGenerations,
   });
@@ -1759,6 +1763,7 @@ class RealClipCaptionQuota {
   final int usedThisMonth;
   final int remainingThisMonth;
   final bool charged;
+  final bool usageRefreshPending;
   final int addonRemaining;
   final int? availableGenerations;
 
@@ -1768,9 +1773,58 @@ class RealClipCaptionQuota {
         usedThisMonth: json['usedThisMonth'] as int,
         remainingThisMonth: json['remainingThisMonth'] as int,
         charged: json['charged'] as bool? ?? true,
+        usageRefreshPending: json['usageRefreshPending'] as bool? ?? false,
         addonRemaining: json['addonRemaining'] as int? ?? 0,
         availableGenerations: json['availableGenerations'] as int?,
       );
+}
+
+class CaptionQuotaResult {
+  const CaptionQuotaResult({required this.plan, required this.quota});
+
+  final String plan;
+  final RealClipCaptionQuota quota;
+
+  bool get isPaid => plan == 'STARTER' || plan == 'PRO';
+
+  int get availableCount => !isPaid
+      ? 0
+      : quota.availableGenerations ??
+          quota.remainingThisMonth + quota.addonRemaining;
+
+  factory CaptionQuotaResult.fromJson(Map<String, Object?> json) {
+    final plan = json['plan'];
+    final quota = json['quota'];
+    if (plan is! String ||
+        !const ['BASIC', 'STARTER', 'PRO'].contains(plan) ||
+        quota is! Map<String, Object?>) {
+      throw const ApiException('Caption quota response is missing quota data');
+    }
+    final limit = quota['limit'];
+    final used = quota['usedThisMonth'];
+    final remaining = quota['remainingThisMonth'];
+    final addon = quota['addonRemaining'];
+    final available = quota['availableGenerations'];
+    final charged = quota['charged'];
+    final usageRefreshPending = quota['usageRefreshPending'];
+    if (limit is! int ||
+        used is! int ||
+        remaining is! int ||
+        limit < 0 ||
+        used < 0 ||
+        remaining < 0 ||
+        remaining > limit ||
+        (addon != null && (addon is! int || addon < 0)) ||
+        (available != null && (available is! int || available < 0)) ||
+        (charged != null && charged is! bool) ||
+        (usageRefreshPending != null && usageRefreshPending is! bool)) {
+      throw const ApiException('Caption quota response is invalid');
+    }
+    return CaptionQuotaResult(
+      plan: plan,
+      quota: RealClipCaptionQuota.fromJson(quota),
+    );
+  }
 }
 
 class RealClipCaptionResult {
@@ -3714,6 +3768,11 @@ class PostDeeApiClient {
     );
 
     return CaptionResult.fromJson(response);
+  }
+
+  Future<CaptionQuotaResult> fetchAiCaptionQuota() async {
+    final response = await _getJson('/captions/quota');
+    return CaptionQuotaResult.fromJson(response);
   }
 
   Future<RealClipCaptionResult> generateCaptionFromClip(

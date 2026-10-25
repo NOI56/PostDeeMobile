@@ -140,7 +140,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       if (!_canUpdateScreen) return;
       _showOwnedDialog((context) => AlertDialog(
         title: const Text('เติมเครดิตสำเร็จ'),
-        content: const Text('เพิ่มเครดิตโพสต์ 100 หน่วย และ AI แคปชั่น 50 ครั้งแล้ว เครดิตซื้อเพิ่มไม่หมดอายุ และใช้โควตารายเดือนก่อน'),
+        content: const Text('เพิ่มเครดิตโพสต์ 100 หน่วย และ AI แคปชั่น 50 เครดิตแล้ว เครดิตซื้อเพิ่มไม่หมดอายุ และใช้โควตารายเดือนก่อน'),
         actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('ตกลง'))],
       ));
       unawaited(_loadAddon());
@@ -368,7 +368,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         features: const [
           _PlanFeature('โพสต์หลายช่องทาง 120 หน่วย/เดือน'),
           _PlanFeature('ตั้งเวลาล่วงหน้า 14 วัน + ปฏิทิน + เทมเพลต'),
-          _PlanFeature('AI แคปชั่นจากเสียงคลิป 50 ครั้ง/เดือน'),
+          _PlanFeature('AI แคปชั่นจากเสียงคลิป 50 เครดิต/เดือน'),
           _PlanFeature('ลายน้ำอัตโนมัติ'),
         ],
       ),
@@ -382,7 +382,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _PlanFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
           _PlanFeature('ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ'),
           _PlanFeature('ตั้งเวลาล่วงหน้า 30 วัน'),
-          _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 ครั้ง/เดือน'),
+          _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 เครดิต/เดือน'),
         ],
       ),
     ];
@@ -670,14 +670,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('แพ็กเติม ซื้อครั้งเดียว', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
-        const Text('โพสต์เพิ่ม 100 หน่วย + AI แคปชั่น 50 ครั้ง', style: TextStyle(fontWeight: FontWeight.w600)),
+        const Text('โพสต์เพิ่ม 100 หน่วย + AI แคปชั่น 50 เครดิต', style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
         Text('ราคาไทย 49 บาท · ชำระตามราคาที่ร้านค้าแสดง', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         const SizedBox(height: 8),
         Text(message, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         if (catalog != null && (catalog.addonPostUnits > 0 || catalog.addonAiCaptions > 0)) ...[
           const SizedBox(height: 6),
-          Text('เครดิตคงเหลือ: โพสต์ ${catalog.addonPostUnits} หน่วย · AI ${catalog.addonAiCaptions} ครั้ง',
+          Text('เครดิตคงเหลือ: โพสต์ ${catalog.addonPostUnits} หน่วย · AI ${catalog.addonAiCaptions} เครดิต',
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
         ],
         const SizedBox(height: 6),

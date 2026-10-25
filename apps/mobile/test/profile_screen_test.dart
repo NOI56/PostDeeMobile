@@ -60,7 +60,7 @@ void main() {
     await tester.scrollUntilVisible(delete, 400);
     await tester.tap(delete);
     await tester.pumpAndSettle();
-    expect(find.textContaining('โพสต์ 70 หน่วย · AI 25 ครั้ง'), findsWidgets);
+    expect(find.textContaining('โพสต์ 70 หน่วย · AI 25 เครดิต'), findsWidgets);
     expect(find.textContaining('หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้'), findsOneWidget);
     expect(find.textContaining('ไม่คืนเงิน'), findsNothing);
   });
@@ -115,9 +115,9 @@ void main() {
         addonAiCaptions: 50, canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true));
     await tester.pumpWidget(_hostProfile(apiClient: apiClient));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), 200);
+    await tester.scrollUntilVisible(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'), 200);
     expect(find.text('เหลือโพสต์ 248 / 250 หน่วยเดือนนี้'), findsOneWidget);
-    expect(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    expect(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'), findsOneWidget);
     expect(find.text('โพสต์ได้รวม 348 หน่วย'), findsOneWidget);
   });
 
@@ -129,7 +129,7 @@ void main() {
     await tester.pumpWidget(_hostProfile(apiClient: apiClient));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'), 200);
-    expect(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    expect(find.text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'), findsOneWidget);
     expect(find.textContaining('โพสต์ได้รวม'), findsNothing);
   });
 

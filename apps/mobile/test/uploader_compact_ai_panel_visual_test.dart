@@ -191,7 +191,7 @@ void main() {
         'YouTube Shorts',
         'Instagram Reels',
         'Facebook Reels',
-        'สร้างแคปชั่น · 1 เครดิต',
+        'สร้างแคปชั่น · 2 เครดิต',
       ]) {
         final text = inside(find.text(label));
         expect(text, findsOneWidget);

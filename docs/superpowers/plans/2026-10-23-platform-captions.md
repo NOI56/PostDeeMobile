@@ -1,5 +1,11 @@
 # Four-platform advanced captions — 2026-10-23
 
+This is the original implementation/release record. Its one-credit-per-set
+accounting below is superseded by the
+[2026-10-25 credit-per-channel contract](2026-10-25-caption-credit-per-channel.md).
+Keep the historical verification evidence; it does not verify the new pricing
+or its coordinated API/Mobile rollout.
+
 ## Request and baseline
 
 The user approved the advanced-caption prototype: opening advanced settings

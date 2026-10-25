@@ -3,7 +3,7 @@ import { createInMemoryRealClipCaptionUsageStore } from './captionUsageStore.js'
 import { createInMemoryUploadSessionStore } from '../uploads/uploadSessionStore.js';
 
 describe('caption reservation release', () => {
-  it('drains an async bank reservation before account deletion and rejects late writes', async () => {
+  it.each([1, 4])('drains an async %i-credit bank reservation before account deletion and rejects late writes', async units => {
     const lifecycle = createInMemoryUploadSessionStore();
     let release!: () => void;
     let started!: () => void;
@@ -11,7 +11,7 @@ describe('caption reservation release', () => {
     const reading = new Promise<void>(resolve => { started = resolve; });
     const store = createInMemoryRealClipCaptionUsageStore({ runWithActiveOwner: lifecycle.runWithActiveOwner,
       monthlyAddonStore: { readCredits: async () => { started(); await pending; return { postUnits: 100, aiCaptions: 50 }; } } });
-    const input = { userId: 'deleting-caption-owner', monthKey: '2026-10', limit: 0,
+    const input = { userId: 'deleting-caption-owner', monthKey: '2026-10', limit: 0, units,
       includeMonthlyAddons: true, now: '2026-10-21T00:00:00.000Z' };
     const reservation = store.reserve(input);
     await reading;

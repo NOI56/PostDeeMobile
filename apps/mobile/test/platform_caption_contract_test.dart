@@ -232,6 +232,28 @@ void main() {
     );
   });
 
+  test('AI request explicitly confirms the selected caption credit cost', () {
+    expect(
+      const GenerateRealClipCaptionRequest(
+        videoS3Key: 'video.mp4',
+        platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
+        expectedCredits: 2,
+      ).toJson(),
+      {
+        'videoS3Key': 'video.mp4',
+        'platforms': ['TIKTOK', 'YOUTUBE_SHORTS'],
+        'expectedCredits': 2,
+      },
+    );
+    expect(
+      const GenerateRealClipCaptionRequest(
+        videoS3Key: 'video.mp4',
+        expectedCredits: 1,
+      ).toJson()['expectedCredits'],
+      1,
+    );
+  });
+
   Map<String, Object?> aiResponse() => {
         'caption': 'Shared',
         'captionOptions': ['Shared'],

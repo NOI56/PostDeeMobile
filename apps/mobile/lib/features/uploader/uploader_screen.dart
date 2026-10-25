@@ -27,6 +27,7 @@ import '../shared/postdee_time_picker.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
+import 'caption_quota_strip.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
@@ -53,6 +54,7 @@ export '../shared/post_schedule_policy.dart';
 typedef UploaderTemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef UploaderSubscriptionLoader = Future<SubscriptionStatusResult>
     Function();
+typedef UploaderCaptionQuotaLoader = Future<CaptionQuotaResult> Function();
 typedef UploaderSubscriptionResync = Future<void> Function();
 typedef UploaderCaptionGenerator = Future<CaptionResult> Function(
     List<String> keywords);
@@ -161,6 +163,7 @@ class UploaderScreen extends StatefulWidget {
     super.key,
     this.loadTemplates,
     this.loadSubscription,
+    this.loadCaptionQuota,
     this.resyncRevenueCatSubscription,
     this.enableRevenueCatBilling = AppConfig.enableRevenueCatBilling,
     this.captionWritingStyleStore =
@@ -205,6 +208,7 @@ class UploaderScreen extends StatefulWidget {
 
   final UploaderTemplateLoader? loadTemplates;
   final UploaderSubscriptionLoader? loadSubscription;
+  final UploaderCaptionQuotaLoader? loadCaptionQuota;
   final UploaderSubscriptionResync? resyncRevenueCatSubscription;
   final bool enableRevenueCatBilling;
   final CaptionWritingStyleStore captionWritingStyleStore;
@@ -309,6 +313,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _isPreparingSubmission = false;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
+  CaptionQuotaResult? _captionQuota;
+  bool _isLoadingCaptionQuota = false;
+  bool _captionQuotaLoadFailed = false;
+  int _captionQuotaRequestId = 0;
+  late AuthSessionBinding _captionQuotaSession;
   bool _isLoadingConnections = true;
   int _connectionLoadGeneration = 0;
   String? _connectionsOwnerUserId;
@@ -1157,6 +1166,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
+    PostDeeAuthSessionStore.instance
+        .addListener(_handleCaptionQuotaSessionChanged);
+    unawaited(_loadCaptionQuota());
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _appIsResumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     _savedFormSnapshot = _formSnapshot;
@@ -1204,6 +1217,58 @@ class _UploaderScreenState extends State<UploaderScreen>
         _appIsResumed = resumed;
         if (!resumed) _clearDraftSavedFeedback();
       });
+      if (resumed) unawaited(_loadCaptionQuota());
+    }
+  }
+
+  Future<void> _loadCaptionQuota() async {
+    if (_isGeneratingCaption) return;
+    final requestId = ++_captionQuotaRequestId;
+    final session = _captionQuotaSession;
+    setState(() {
+      _captionQuota = null;
+      _isLoadingCaptionQuota = true;
+      _captionQuotaLoadFailed = false;
+    });
+    try {
+      final loader = widget.loadCaptionQuota ??
+          PostDeeApiClient(
+            authHeaders: PostDeeApiAuthHeaders(sessionBinding: session),
+          ).fetchAiCaptionQuota;
+      final result = await loader();
+      if (!mounted ||
+          !session.isCurrent ||
+          requestId != _captionQuotaRequestId) {
+        return;
+      }
+      setState(() {
+        _captionQuota = result;
+        _isLoadingCaptionQuota = false;
+      });
+    } catch (_) {
+      if (!mounted ||
+          !session.isCurrent ||
+          requestId != _captionQuotaRequestId) {
+        return;
+      }
+      setState(() {
+        _isLoadingCaptionQuota = false;
+        _captionQuotaLoadFailed = true;
+      });
+    }
+  }
+
+  void _handleCaptionQuotaSessionChanged() {
+    if (_captionQuotaSession.isCurrent) return;
+    _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
+    _captionQuotaRequestId++;
+    setState(() {
+      _captionQuota = null;
+      _isLoadingCaptionQuota = false;
+      _captionQuotaLoadFailed = false;
+    });
+    if (PostDeeAuthSessionStore.instance.session.isSignedIn) {
+      unawaited(_loadCaptionQuota());
     }
   }
 
@@ -1737,6 +1802,9 @@ class _UploaderScreenState extends State<UploaderScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PostDeeAuthSessionStore.instance
+        .removeListener(_handleCaptionQuotaSessionChanged);
+    _captionQuotaRequestId++;
     _connectionLoadGeneration++;
     _captionGeneration++;
     _captionStyleGeneration++;
@@ -2391,6 +2459,10 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Future<void> _generateAiCaption() async {
     if (_formBusy || _isGeneratingCaption || _isSavingCaptionStyle) return;
+    if (_captionQuota?.isPaid == true && _captionQuota!.availableCount == 0) {
+      return;
+    }
+    final quotaSession = _captionQuotaSession;
     final advanced = _platformSettings.usePlatformCaptions;
     final requestedPlatforms = [
       if (advanced)
@@ -2415,6 +2487,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     bool stillCurrent() =>
         mounted &&
+        quotaSession.isCurrent &&
         generation == _captionGeneration &&
         sourcePath == _localFilePathController.text &&
         owner == PostDeeAuthSessionStore.instance.session.stableUserId;
@@ -2428,8 +2501,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
 
+    var quotaUpdated = false;
+    final quotaRequestId = ++_captionQuotaRequestId;
     setState(() {
       _isGeneratingCaption = true;
+      _isLoadingCaptionQuota = false;
       _aiCaptionErrorMessage = null;
     });
 
@@ -2504,6 +2580,18 @@ class _UploaderScreenState extends State<UploaderScreen>
         ),
       );
       final nextCaption = _formatRealClipCaption(caption);
+
+      // Usage was committed even if the seller edited text or rejects preview.
+      if (mounted &&
+          quotaSession.isCurrent &&
+          quotaRequestId == _captionQuotaRequestId) {
+        setState(() {
+          _captionQuota = CaptionQuotaResult(
+              plan: subscription.plan, quota: caption.quota);
+          _captionQuotaLoadFailed = false;
+        });
+        quotaUpdated = !caption.quota.usageRefreshPending;
+      }
 
       if (!stillCurrent()) {
         return;
@@ -2635,6 +2723,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           _isGeneratingCaption = false;
         });
       }
+      if (mounted && !quotaUpdated) unawaited(_loadCaptionQuota());
     }
   }
 
@@ -5585,6 +5674,10 @@ class _UploaderScreenState extends State<UploaderScreen>
         isSavingStyle: _isSavingCaptionStyle,
         onOpenStyle: _openCaptionWritingStyle,
         onGenerate: _generateAiCaption,
+        quota: _captionQuota,
+        isLoadingQuota: _isLoadingCaptionQuota,
+        quotaLoadFailed: _captionQuotaLoadFailed,
+        onRetryQuota: _loadCaptionQuota,
         selectedPlatformCount: _platformSettings.usePlatformCaptions
             ? _platformSettings.aiCaptionPlatforms.length
             : null,
@@ -7372,6 +7465,10 @@ class _AiCaptionPanel extends StatelessWidget {
     required this.captionReady,
     required this.formBusy,
     required this.onGenerate,
+    required this.quota,
+    required this.isLoadingQuota,
+    required this.quotaLoadFailed,
+    required this.onRetryQuota,
     required this.styleSummary,
     required this.onOpenStyle,
     required this.isSavingStyle,
@@ -7389,6 +7486,10 @@ class _AiCaptionPanel extends StatelessWidget {
   final bool formBusy;
   final String? errorMessage;
   final VoidCallback onGenerate;
+  final CaptionQuotaResult? quota;
+  final bool isLoadingQuota;
+  final bool quotaLoadFailed;
+  final VoidCallback onRetryQuota;
   final String styleSummary;
   final VoidCallback onOpenStyle;
   final bool isSavingStyle;
@@ -7401,6 +7502,7 @@ class _AiCaptionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final clipName = selectedVideoName?.trim();
     final compact = platformTargets != null;
+    final quotaExhausted = quota?.isPaid == true && quota!.availableCount == 0;
 
     return DecoratedBox(
       key: const ValueKey('uploader-ai-caption-panel'),
@@ -7474,12 +7576,12 @@ class _AiCaptionPanel extends StatelessWidget {
                                 .titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w700)),
                       ),
-                      if (!stackBadge) ...[
+                      if (!stackBadge && quota?.isPaid != true) ...[
                         const SizedBox(width: 8),
                         badge,
                       ],
                     ]),
-                    if (stackBadge)
+                    if (stackBadge && quota?.isPaid != true)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Align(
@@ -7520,8 +7622,30 @@ class _AiCaptionPanel extends StatelessWidget {
               platformTargets!,
               const SizedBox(height: 12),
             ],
+            if (isLoadingQuota) ...[
+              Text('กำลังโหลดโควตา...',
+                  key: const ValueKey('uploader-ai-quota-loading'),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textSecondary)),
+              const SizedBox(height: 8),
+            ] else if (quotaLoadFailed) ...[
+              Row(children: [
+                Expanded(child: Text('โหลดโควตาไม่สำเร็จ',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textSecondary))),
+                IconButton(
+                  key: const ValueKey('uploader-ai-quota-retry'),
+                  tooltip: 'โหลดโควตาอีกครั้ง',
+                  onPressed: isGenerating ? null : onRetryQuota,
+                  icon: const Icon(Icons.refresh, size: 18)),
+              ]),
+            ] else if (quota?.isPaid == true) ...[
+              CaptionQuotaStrip(plan: quota!.plan, quota: quota!.quota),
+              const SizedBox(height: 8),
+            ],
             PostDeePressFeedback(
               enabled: animate &&
+                  !quotaExhausted &&
                   !formBusy &&
                   !isGenerating &&
                   !isSavingStyle &&
@@ -7534,11 +7658,14 @@ class _AiCaptionPanel extends StatelessWidget {
                     ? 'กำลังเตรียมแคปชัน...'
                     : isSavingStyle
                         ? 'กำลังบันทึกสไตล์...'
-                        : compact
-                            ? 'สร้างแคปชั่น · 1 เครดิต'
-                            : 'ให้ AI ช่วยเขียน',
+                        : quotaExhausted
+                            ? 'โควตา AI เดือนนี้หมดแล้ว'
+                            : compact
+                                ? 'สร้างแคปชั่น · 1 เครดิต'
+                                : 'ให้ AI ช่วยเขียน',
                 icon: Icons.auto_awesome,
                 onPressed: formBusy ||
+                        quotaExhausted ||
                         isGenerating ||
                         isSavingStyle ||
                         selectedPlatformCount == 0

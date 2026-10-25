@@ -2,6 +2,23 @@
 
 Build roadmap for PostDee.
 
+## Compact AI caption quota strip (2026-10-25, implementation candidate)
+
+- Add the approved small strip above the existing AI generation action with
+  plan, monthly remainder/limit, used count and a thin remaining bar.
+- Read actual authenticated quota through `GET /captions/quota` on composer
+  entry/resume; update from generation independently of caption edits or
+  advanced-preview acceptance. Retry failed reads and refresh after failures
+  or pending refund recounts without inventing a zero balance.
+- Preserve nonexpiring add-on credits: show a short credit line only when a
+  bank remains, and disable AI only when paid total availability is zero.
+  Keep the existing wizard, selection/preview/undo, trial/owner guards and
+  manual editing/posting behavior. No package-rule, flag or schema change.
+- Deliver the additive API before the Mobile build; older API `404` responses
+  show unavailable/retry. This entry does not establish a deployment or real
+  provider/device acceptance. Track checks and delivery in the
+  [quota-strip plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
 ## Facebook Page Reels only (2026-10-24)
 
 - Retain `FACEBOOK_REELS` and always send PostPeer `platform: 'facebook'` with

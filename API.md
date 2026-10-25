@@ -2,6 +2,46 @@
 
 PostDee backend API reference.
 
+## Caption quota read (2026-10-25, implementation candidate)
+
+### `GET /captions/quota`
+
+Returns the authenticated user's effective plan and current AI caption quota
+with `Cache-Control: no-store`. This read does not generate captions, upload
+media, reserve usage, consume purchased credits or accept caller-selected
+user/plan/month overrides. Missing authentication returns `401`.
+
+```json
+{
+  "status": "ok",
+  "plan": "STARTER",
+  "quota": {
+    "limit": 50,
+    "usedThisMonth": 12,
+    "remainingThisMonth": 38,
+    "addonRemaining": 20,
+    "availableGenerations": 58
+  }
+}
+```
+
+Monthly limits remain Basic `0`, Starter `50` and Pro `120`. The usage ledger
+and current UTC month are the same as caption generation; the route uses the
+existing server clock. `remainingThisMonth` is `max(limit - usedThisMonth, 0)`,
+retaining recorded use after a downgrade. `addonRemaining` is the existing
+nonexpiring purchased bank after add-on usage. Paid `availableGenerations`
+combines monthly remainder and that bank even when new add-on purchases are
+disabled. Basic can read a retained bank but has `availableGenerations: 0`;
+the read does not unlock paid AI access.
+
+Deploy this additive API before distributing the quota-strip Mobile build.
+An older API returning `404` leaves the strip unavailable with a retry action,
+not an invented zero balance. Existing generation/fallback/refund, trial,
+selection and credit-spend rules remain unchanged. No schema, migration,
+environment flag or provider change is required. This record does not claim a
+deployment; scope and verification are tracked in the
+[quota-strip plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
 ## Mobile AI caption selection (2026-10-23, Staging Live)
 
 The advanced composer can request captions for an explicitly chosen subset of

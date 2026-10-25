@@ -2,6 +2,30 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Compact caption quota boundary (2026-10-25, implementation candidate)
+
+The pushed composer reads `GET /captions/quota` on entry and app resume. The
+authenticated, non-cacheable read combines the effective plan, shared UTC
+monthly usage and existing nonexpiring add-on bank without reserving a use.
+Paid total availability includes the bank even when new purchases are disabled;
+Basic retains its bank but has no available generations. Monthly limits, trials,
+refunds and generation's existing atomic reservation rules remain authoritative.
+
+Mobile presents the monthly balance, plan, usage and remaining bar in one small
+strip immediately above the existing AI action. A nonempty bank gets a short
+conditional credit line; exhaustion depends on total availability. Loading or
+failed reads do not fabricate a balance. Owner/request guards reject stale
+reads, while successful generation updates quota independently of text edits or
+advanced-preview acceptance. Errors and a pending refund recount trigger a
+read refresh; manual editing and posting remain separate from AI quota.
+
+This ports only the approved presentation to current main, preserving the
+wizard, selected-platform generation, preview/apply/undo and owner boundaries.
+Deploy the additive API before the new Mobile build; an old API's `404` shows
+unavailable/retry rather than zero. No schema, migration, provider or flag
+change belongs to this feature. Verification and delivery status are in the
+[quota-strip plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
 ## Local post-preview boundary (2026-10-24, local candidate)
 
 The review summary uses one nullable `onPreview` action beneath the thumbnail,
@@ -1780,6 +1804,7 @@ Main route groups:
 - `PATCH /posts/:id`
 - `POST /posts/:id/publish-now`
 - `DELETE /posts/:id`
+- `GET /captions/quota`
 - `POST /captions/generate`
 - `GET /ai-edits/quota`
 - `POST /ai-edits/transcribe`

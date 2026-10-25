@@ -7,6 +7,27 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Compact AI caption quota strip (2026-10-25, implementation candidate)
+
+The composer adds a small quota strip directly above its existing AI generation
+action: effective plan, monthly remainder/limit, used count and a thin remaining
+quota bar. A purchased bank adds only a small `+ เครดิตเติม N ครั้ง` line when
+nonzero. Monthly exhaustion does not block generation while paid add-on credits
+remain; only zero total availability disables the AI action. Manual caption
+editing and posting keep their existing rules.
+
+`GET /captions/quota` loads the authenticated quota on composer entry and app
+resume. Generation responses update it even if the user changes text or cancels
+the advanced-caption preview. Failures and pending refund refreshes reread it;
+loading/errors never become a fabricated zero and offer retry when unavailable.
+The pushed four-step wizard, account guards, per-platform captions, nonexpiring
+credits and existing generation/refund behavior are preserved.
+
+Deploy the additive API before the Mobile build. Older APIs returning `404`
+show quota unavailable/retry. There are no package-rule, flag, schema or
+migration changes, and this candidate is not a deployment receipt. See the
+[implementation plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
 ## Facebook Page Reels contract (2026-10-24)
 
 Facebook now requests Page Reels only through the existing PostPeer integration.

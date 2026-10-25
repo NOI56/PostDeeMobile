@@ -200,6 +200,40 @@ export const registerCaptionRoutes = (
     try { return await readAddonRemaining(userId, now); }
     catch { return Math.max(0, fallback); }
   };
+  router.get('/captions/quota', authMiddleware, async (_request, response) => {
+    const authUser = readAuthUser(response.locals);
+
+    if (!authUser) {
+      response.status(401).json({
+        status: 'error',
+        message: 'Authenticated user is required'
+      });
+      return;
+    }
+
+    const plan = await subscriptionStore.getPlan(authUser);
+    const now = (options.now?.() ?? new Date()).toISOString();
+    const monthKey = readCurrentRealClipCaptionMonthKey(new Date(now));
+    const limit = monthlyAiCaptionGenerationLimits[plan];
+    const [usedThisMonth, addonRemaining] = await Promise.all([
+      realClipCaptionUsageStore.countForMonth({ userId: authUser.id, monthKey }),
+      readAddonRemaining(authUser.id, now)
+    ]);
+    const remainingThisMonth = Math.max(limit - usedThisMonth, 0);
+
+    response.set('Cache-Control', 'no-store').json({
+      status: 'ok',
+      plan,
+      quota: {
+        limit,
+        usedThisMonth,
+        remainingThisMonth,
+        addonRemaining,
+        availableGenerations: plan === 'BASIC' ? 0 : remainingThisMonth + addonRemaining
+      }
+    });
+  });
+
   router.post('/captions/generate', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
 

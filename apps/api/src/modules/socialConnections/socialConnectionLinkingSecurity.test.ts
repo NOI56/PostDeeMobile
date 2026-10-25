@@ -13,7 +13,10 @@ import {
 import { registerSocialConnectionRoutes } from './socialConnectionRoutes.js';
 import { createInMemorySocialConnectionStore } from './socialConnectionStore.js';
 
-const createLinkingFixture = ({ now }: { now?: () => Date } = {}) => {
+const createLinkingFixture = ({
+  now,
+  cleanup = false
+}: { now?: () => Date; cleanup?: boolean } = {}) => {
   const store = createInMemorySocialConnectionStore();
   const integrationsByProfile = new Map<string, PostPeerIntegration[]>();
   const connectClient: PostPeerConnectClient = {
@@ -23,7 +26,21 @@ const createLinkingFixture = ({ now }: { now?: () => Date } = {}) => {
     })),
     listIntegrations: vi.fn(async ({ profileId }) =>
       integrationsByProfile.get(profileId) ?? []
-    )
+    ),
+    ...(cleanup
+      ? {
+          supportsIntegrationCleanup: true,
+          // Mirrors PostPeer: a deleted integration disappears from every profile listing.
+          disconnectIntegration: vi.fn(async ({ integrationId }: { integrationId: string }) => {
+            for (const [profileId, integrations] of integrationsByProfile) {
+              integrationsByProfile.set(
+                profileId,
+                integrations.filter(({ id }) => id !== integrationId)
+              );
+            }
+          })
+        }
+      : {})
   };
   const app = express();
   app.use(express.json());
@@ -144,7 +161,8 @@ describe('social connection linking security regression', () => {
 
     expect(response.headers['cache-control']).toBe('private, no-store');
     expect(response.body.nonce).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(response.body.expiresAt).toBe('2026-10-23T09:15:00.000Z');
+    // Matches PostPeer's 10-minute single-use connect URL lifetime.
+    expect(response.body.expiresAt).toBe('2026-10-23T09:10:00.000Z');
     expect(begin).toHaveBeenCalledWith({
       userId: 'caller', platform: 'TIKTOK', profileId: 'profile-caller',
       nonceHash: createHash('sha256').update(response.body.nonce).digest('hex'),
@@ -166,6 +184,94 @@ describe('social connection linking security regression', () => {
     expect(refresh.body.connectAttemptConsumed).toBe(false);
     await expect(store.getConnection({ userId: 'caller', platform: 'TIKTOK' }))
       .resolves.toBeUndefined();
+  });
+
+  // PostPeer saves an integration before redirecting and reuses its id when the
+  // same account reconnects to the same profile. A leftover from an abandoned
+  // attempt would otherwise sit in every later baseline and block reconnecting.
+  it('removes a leftover same-platform integration before the snapshot so the account can reconnect', async () => {
+    const { app, store, connectClient, integrationsByProfile } =
+      createLinkingFixture({ cleanup: true });
+    const begin = vi.spyOn(store, 'beginConnectAttempt');
+    await store.setProfileId({ userId: 'caller', profileId: 'profile-caller' });
+    await store.upsert({
+      userId: 'caller', platform: 'YOUTUBE_SHORTS',
+      postPeerAccountId: 'saved-youtube', externalAccountId: 'youtube-account'
+    });
+    integrationsByProfile.set('profile-caller', [
+      { id: 'leftover-tiktok', platform: 'TIKTOK', platformUserId: 'tiktok-account' },
+      { id: 'saved-youtube', platform: 'YOUTUBE_SHORTS', platformUserId: 'youtube-account' },
+      { id: 'leftover-instagram', platform: 'INSTAGRAM_REELS', platformUserId: 'ig-account' }
+    ]);
+
+    const connect = await request(app).post('/social-connections/TIKTOK/connect')
+      .set('x-postdee-user-id', 'caller').expect(200);
+
+    expect(connectClient.disconnectIntegration).toHaveBeenCalledTimes(1);
+    expect(connectClient.disconnectIntegration)
+      .toHaveBeenCalledWith({ integrationId: 'leftover-tiktok' });
+    expect(begin).toHaveBeenCalledWith(expect.objectContaining({
+      baselineIntegrationIds: ['saved-youtube', 'leftover-instagram']
+    }));
+
+    // OAuth completes and PostPeer hands back the same integration id.
+    integrationsByProfile.set('profile-caller', [
+      ...(integrationsByProfile.get('profile-caller') ?? []),
+      { id: 'leftover-tiktok', platform: 'TIKTOK', platformUserId: 'tiktok-account' }
+    ]);
+    const refresh = await request(app).post('/social-connections/refresh')
+      .set('x-postdee-user-id', 'caller').send({ nonce: connect.body.nonce }).expect(200);
+
+    expect(refresh.body.connectAttemptConsumed).toBe(true);
+    await expect(store.getConnection({ userId: 'caller', platform: 'TIKTOK' }))
+      .resolves.toMatchObject({
+        postPeerAccountId: 'leftover-tiktok', externalAccountId: 'tiktok-account'
+      });
+    await expect(store.getAccountId({ userId: 'caller', platform: 'YOUTUBE_SHORTS' }))
+      .resolves.toBe('saved-youtube');
+  });
+
+  it('keeps the integration already saved for the platform being reconnected', async () => {
+    const { app, store, connectClient, integrationsByProfile } =
+      createLinkingFixture({ cleanup: true });
+    await store.setProfileId({ userId: 'caller', profileId: 'profile-caller' });
+    await store.upsert({
+      userId: 'caller', platform: 'TIKTOK',
+      postPeerAccountId: 'saved-tiktok', externalAccountId: 'tiktok-account'
+    });
+    integrationsByProfile.set('profile-caller', [
+      { id: 'saved-tiktok', platform: 'TIKTOK', platformUserId: 'tiktok-account' },
+      { id: 'leftover-tiktok', platform: 'TIKTOK', platformUserId: 'other-tiktok-account' }
+    ]);
+
+    await request(app).post('/social-connections/TIKTOK/connect')
+      .set('x-postdee-user-id', 'caller').expect(200);
+
+    expect(connectClient.disconnectIntegration).toHaveBeenCalledTimes(1);
+    expect(connectClient.disconnectIntegration)
+      .toHaveBeenCalledWith({ integrationId: 'leftover-tiktok' });
+    await expect(store.getAccountId({ userId: 'caller', platform: 'TIKTOK' }))
+      .resolves.toBe('saved-tiktok');
+  });
+
+  it('does not start an attempt when removing a leftover integration fails', async () => {
+    const { app, store, connectClient, integrationsByProfile } =
+      createLinkingFixture({ cleanup: true });
+    const begin = vi.spyOn(store, 'beginConnectAttempt');
+    vi.mocked(connectClient.disconnectIntegration!).mockRejectedValueOnce(
+      new PostPeerConnectProviderError(500)
+    );
+    await store.setProfileId({ userId: 'caller', profileId: 'profile-caller' });
+    integrationsByProfile.set('profile-caller', [
+      { id: 'leftover-tiktok', platform: 'TIKTOK', platformUserId: 'tiktok-account' }
+    ]);
+
+    const response = await request(app).post('/social-connections/TIKTOK/connect')
+      .set('x-postdee-user-id', 'caller').expect(502);
+
+    expect(response.body.code).toBe('SOCIAL_CONNECTION_FAILED');
+    expect(begin).not.toHaveBeenCalled();
+    expect(connectClient.createConnectUrl).not.toHaveBeenCalled();
   });
 
   it('does not import a different platform during a TikTok connect attempt', async () => {

@@ -106,7 +106,9 @@ Build roadmap for PostDee.
 ## Social linking security Batch 2 (2026-10-23, review candidate)
 
 - Gate newly discovered integrations behind one-use owner/platform/profile
-  attempts, with 15-minute expiry, hashed nonces and pre-connect ID baselines.
+  attempts, with 10-minute expiry, hashed nonces and pre-connect ID baselines.
+  Leftover same-platform integrations are deleted before the baseline, so an
+  abandoned attempt cannot block that account from reconnecting.
 - Enforce account ownership uniqueness atomically in memory and Prisma, return
   safe 409 conflicts and show actionable Thai guidance in Mobile.
 - Preserve saved-account metadata refresh and protect newer links from stale

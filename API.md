@@ -2212,7 +2212,15 @@ succeeds.
 Creates/loads the user's PostPeer profile and returns
 `{ status: "ok", connectUrl, nonce, expiresAt }` for the requested supported
 platform. `nonce` is a cryptographically random 32-byte base64url value (43
-characters); `expiresAt` is an ISO timestamp 15 minutes after attempt creation.
+characters); `expiresAt` is an ISO timestamp 10 minutes after attempt creation, matching
+PostPeer's single-use connect URL lifetime.
+Before taking the baseline, the API deletes this platform's leftover PostPeer
+integrations in the user's profile, meaning any not saved as the user's
+connection, unless an explicit disconnect in this API instance is already
+deleting them. PostPeer saves an integration before redirecting and reuses its
+id when the same account reconnects, so a leftover would otherwise block that
+account from ever being admitted again. If that delete fails, the route
+returns `502 SOCIAL_CONNECTION_FAILED` and creates no attempt.
 The API stores only its SHA-256 hash, bound to the authenticated user, platform,
 claimed profile and the integration IDs listed before issuing the URL. There
 is at most one pending attempt per user/platform; a new attempt replaces the

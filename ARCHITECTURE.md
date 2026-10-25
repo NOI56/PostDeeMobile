@@ -139,7 +139,14 @@ remain pending. See the
 
 Batch 2 replaces profile-only import with a durable, single-use attempt. The
 authenticated connect route snapshots provider integration IDs and creates a
-15-minute, owner/platform/profile-bound nonce. Only its SHA-256 hash is stored.
+10-minute, owner/platform/profile-bound nonce. Only its SHA-256 hash is stored.
+Before the snapshot, it deletes the platform's leftover integrations: any
+integration in the user's own PostPeer profile that is not the saved
+connection and is not already being deleted by an explicit disconnect in this
+instance. PostPeer confirmed (2026-10-25) that integrations are saved before
+the redirect and keep their id when the same account reconnects, so a leftover
+from an abandoned attempt would otherwise sit in every later baseline. A
+failed delete aborts the attempt with 502.
 `SocialConnectAttempt` has one row per user/platform, a unique nonce hash and a
 cascading User foreign key. Starting a new attempt replaces that platform's old
 one; expiry is checked at admission and rows remain bounded to four per user.

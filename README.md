@@ -146,7 +146,7 @@ full history. No schema change, migration or mobile change. See
 ## Social linking security Batch 2 (2026-10-23, review candidate)
 
 Connecting TikTok, YouTube Shorts, Instagram Reels or Facebook Page Video now
-requires a 15-minute, single-use attempt tied to the signed-in user, platform
+requires a 10-minute, single-use attempt tied to the signed-in user, platform
 and provider profile. Refresh cannot silently import integrations without that
 attempt. Atomic database uniqueness prevents an account already claimed by
 another connection from being linked twice, and Mobile explains conflicts in

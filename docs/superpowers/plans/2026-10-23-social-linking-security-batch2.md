@@ -61,7 +61,13 @@ and observed failing before their respective fixes:
 ## Implementation
 
 - `socialConnectionRoutes.ts`: pre-URL baseline snapshot, 32-byte random nonce,
-  SHA-256 hash, 15-minute expiry and authenticated owner/platform/profile scope.
+  SHA-256 hash, 10-minute expiry and authenticated owner/platform/profile scope.
+  Before the snapshot, it deletes the platform's leftover integrations in the
+  user's profile, skipping the saved connection and any delete already in
+  flight. Tests (red first on 2026-10-25):
+  `removes a leftover same-platform integration before the snapshot so the account can reconnect`,
+  `keeps the integration already saved for the platform being reconnected` and
+  `does not start an attempt when removing a leftover integration fails`.
   New attempts replace the same user's same-platform attempt; failed URL
   creation only cancels the matching hash. Return a no-store
   `{status, connectUrl, nonce, expiresAt}` response.
@@ -167,29 +173,49 @@ changed by this task.
 
 ## PostPeer validation and residual limits
 
-- Confirm connect URL lifetime/single use and browser/profile binding, consent
-  identity presentation, signed/echoed completion state and profile isolation.
-  The local nonce only gates admission by the initiating authenticated app;
-  it cannot prove that a different human consenting through a forwarded URL is
-  that same initiator. An otherwise-unbound social account remains exposed to
-  that provider-dependent shared-link scenario. Do not claim complete phishing
-  or initiating-human protection.
-- Confirm every platform supplies a stable physical-account `platformUserId`,
-  including Facebook Page Video. If missing, uniqueness only detects identical
-  provider IDs and cannot recognize different integrations for the same account.
-- Verify connecting one social account across PostPeer profiles and replacing
-  or reconnecting an account. The baseline intentionally rejects pre-existing
-  IDs. An unbound integration whose ID PostPeer reuses needs operator/provider resolution;
-  do not disable the baseline check to make it pass. Already-saved exact
-  identities remain maintainable without a new attempt.
-- Closing/restarting the app loses its in-memory nonce. A provider integration
-  completed before that loss is not imported by a new attempt's baseline. Real
-  reconnect and cleanup guidance needs owner/provider validation.
-- If completion succeeds but the response is lost, retry returns an expired or
-  replayed attempt; ordinary refresh can read the already-saved connection.
-  Check status before reconnecting. This patch adds no consumed-nonce ledger.
-- No live PostPeer connect/refresh or cross-profile flow was executed. These
-  external checks remain open, separate from passing local regression tests.
+PostPeer answered the owner's questions by email on 2026-10-25:
+
+- **Connect URL:** single-use, expires after 10 minutes, and is bound to the
+  project and profile but not to a browser. It is a bearer link: if it is
+  forwarded and used within that window, the account of whoever uses it is
+  linked. The consent screen shows the app and the user's platform account,
+  not the PostPeer profile.
+- **Completion:** there is no signed response. PostPeer recommends putting our
+  own nonce in `redirectUri` and confirming with
+  `GET /v1/connect/integrations`. Batch 2 already confirms through the
+  integration list, and the nonce never travels through the browser.
+- **Identity:** `platformUserId` is always present and stable for TikTok,
+  YouTube, Instagram and Facebook Pages, across reconnects and profiles.
+  `(platform, platformUserId)` is the uniqueness key, which matches the Batch 2
+  `(platform, externalAccountId)` index. A TikTok `open_id` is app-scoped.
+- **Reuse:** one account can link to several profiles, and integration IDs are
+  globally unique. Reconnecting the same account to the same profile reuses
+  the same integration ID.
+- **Orphans:** the integration is saved before the redirect. Recover it from
+  the integration list by `platformUserId`, then attach it or DELETE it.
+
+Consequences for Batch 2:
+
+- The forwarded-URL scenario remains a residual, provider-dependent risk, now
+  bounded to PostPeer's 10-minute single-use window. Batch 2 does not claim
+  complete phishing or initiating-human protection. The attempt lifetime was
+  shortened from 15 to 10 minutes to match.
+- **Fixed (2026-10-25):** an abandoned attempt (for example, the app closed
+  after OAuth) used to leave an integration that sat in every later baseline.
+  Because PostPeer reuses its ID on reconnect, that account could never be
+  admitted again. The connect route now deletes the platform's leftover
+  integrations in the user's own profile before taking the baseline. It skips
+  the saved connection and any delete an explicit disconnect in this instance
+  already owns. A failed delete returns 502 without creating an attempt.
+  Security is unchanged: admission still needs an OAuth completion after the
+  attempt starts.
+- If completion succeeds but the response is lost, a retry returns an expired
+  or replayed attempt. An ordinary refresh can read the already-saved
+  connection, so check status before reconnecting. This patch adds no
+  consumed-nonce ledger.
+- No live PostPeer connect/refresh or cross-profile flow was executed. Real
+  reconnect validation with disposable accounts remains open, separate from
+  the passing local regression tests.
 
 ## Deployment monitoring
 

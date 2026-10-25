@@ -25,7 +25,8 @@ export type SocialConnectionRouteDependencies = {
   now?: () => Date;
 };
 
-const connectAttemptLifetimeMs = 15 * 60 * 1_000;
+// PostPeer connect URLs are single-use and expire after 10 minutes.
+const connectAttemptLifetimeMs = 10 * 60 * 1_000;
 const hashNonce = (nonce: string): string =>
   createHash('sha256').update(nonce).digest('hex');
 
@@ -151,6 +152,20 @@ export const registerSocialConnectionRoutes = (
   // duplicate external profiles when a user double-taps or two platforms are
   // opened at nearly the same time.
   const inFlightProfileCreations = new Map<string, Promise<string>>();
+  // PostPeer integration deletes running in this API instance, so a new
+  // connect attempt does not repeat a delete an explicit disconnect owns.
+  const integrationDeletesInFlight = new Set<string>();
+  const deleteIntegration = async (
+    disconnectIntegration: NonNullable<PostPeerConnectClient['disconnectIntegration']>,
+    integrationId: string
+  ) => {
+    integrationDeletesInFlight.add(integrationId);
+    try {
+      await disconnectIntegration({ integrationId });
+    } finally {
+      integrationDeletesInFlight.delete(integrationId);
+    }
+  };
 
   router.get('/social-connections', authMiddleware, async (_request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -215,7 +230,32 @@ export const registerSocialConnectionRoutes = (
         );
         // Snapshot before issuing the URL. Pre-existing integrations cannot
         // prove completion of this authenticated user's new connect attempt.
-        const integrations = await connectClient.listIntegrations({ profileId });
+        let integrations = await connectClient.listIntegrations({ profileId });
+
+        // PostPeer saves an integration before redirecting and reuses its id
+        // when the same account reconnects to the same profile. A leftover from
+        // an abandoned attempt would sit in every later baseline and block that
+        // account for good, so remove this platform's unsaved integrations
+        // before taking the baseline. The profile belongs to this user only.
+        if (
+          connectClient.supportsIntegrationCleanup !== false &&
+          connectClient.disconnectIntegration
+        ) {
+          const savedIntegrationId = await store.getAccountId({ userId: authUser.id, platform });
+          const leftoverIds = integrations
+            .filter((integration) =>
+              integration.platform === platform &&
+              integration.id !== savedIntegrationId &&
+              // An explicit disconnect already owns this delete.
+              !integrationDeletesInFlight.has(integration.id)
+            )
+            .map(({ id }) => id);
+          for (const integrationId of leftoverIds) {
+            await deleteIntegration(connectClient.disconnectIntegration, integrationId);
+          }
+          integrations = integrations.filter(({ id }) => !leftoverIds.includes(id));
+        }
+
         const nonce = randomBytes(32).toString('base64url');
         const nonceHash = hashNonce(nonce);
         const expiresAt = new Date(now().getTime() + connectAttemptLifetimeMs).toISOString();
@@ -444,7 +484,7 @@ export const registerSocialConnectionRoutes = (
       }
 
       try {
-        await connectClient.disconnectIntegration({ integrationId: connection.postPeerAccountId });
+        await deleteIntegration(connectClient.disconnectIntegration, connection.postPeerAccountId);
         await store.reconcileExistingConnection({
           ...connectionInput,
           expectedPostPeerAccountId: connection.postPeerAccountId,

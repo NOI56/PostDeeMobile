@@ -771,6 +771,8 @@ class _PostDeeBottomNav extends StatefulWidget {
 
   // Includes 8 dp above the surface for the raised upload action.
   static const _height = 84.0;
+  static const _iconSize = 22.0;
+  static const _iconBackgroundSize = 36.0;
 
   int? get _selectedSlot => switch (currentIndex) {
         0 => 0,
@@ -1128,32 +1130,27 @@ class _ReferenceNavButtonState extends State<_ReferenceNavButton>
             key: ValueKey('postdee-nav-icon-lift-${widget.slot}'),
             offset: Offset(0, -2 * progress),
             transformHitTests: false,
-            child: Transform.scale(
-              key: ValueKey('postdee-nav-icon-selection-${widget.slot}'),
-              scale: 1 + .08 * progress,
-              transformHitTests: false,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox.square(
-                    dimension: 36,
-                    child: DecoratedBox(
-                      key: ValueKey('postdee-nav-icon-halo-${widget.slot}'),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppTheme.navActive
-                            .withValues(alpha: .12 * progress),
-                      ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox.square(
+                  dimension: _PostDeeBottomNav._iconBackgroundSize,
+                  child: DecoratedBox(
+                    key: ValueKey('postdee-nav-icon-halo-${widget.slot}'),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppTheme.navActive
+                          .withValues(alpha: .12 * progress),
                     ),
                   ),
-                  Icon(
-                    widget.icon,
-                    size: 22,
-                    color: Color.lerp(
-                        AppTheme.textSecondary, AppTheme.navActive, progress),
-                  ),
-                ],
-              ),
+                ),
+                Icon(
+                  widget.icon,
+                  size: _PostDeeBottomNav._iconSize,
+                  color: Color.lerp(
+                      AppTheme.textSecondary, AppTheme.navActive, progress),
+                ),
+              ],
             ),
           ),
         );
@@ -1194,15 +1191,26 @@ class _ReferenceNavButtonState extends State<_ReferenceNavButton>
                                 child: Transform.scale(
                                   scale: widget.createScale,
                                   transformHitTests: false,
-                                  child: DecoratedBox(
-                                    key: const ValueKey(
-                                        'postdee-nav-create-surface'),
-                                    decoration: const BoxDecoration(
-                                      color: AppTheme.accent,
-                                      shape: BoxShape.circle,
+                                  child: Center(
+                                    child: SizedBox.square(
+                                      dimension:
+                                          _PostDeeBottomNav._iconBackgroundSize,
+                                      child: DecoratedBox(
+                                        key: const ValueKey(
+                                            'postdee-nav-create-surface'),
+                                        decoration: const BoxDecoration(
+                                          color: AppTheme.accent,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Center(
+                                          child: Icon(
+                                            widget.icon,
+                                            color: Colors.white,
+                                            size: _PostDeeBottomNav._iconSize,
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    child: Icon(widget.icon,
-                                        color: Colors.white, size: 25),
                                   ),
                                 ),
                               )

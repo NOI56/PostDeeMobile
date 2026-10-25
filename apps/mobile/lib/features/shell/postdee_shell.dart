@@ -874,7 +874,7 @@ class _PostDeeBottomNavState extends State<_PostDeeBottomNav>
                               reduceMotion: reduceMotion,
                               label: widget.l10n.captionTab,
                               icon: Icons.calendar_today_outlined,
-                              iconSize: 24,
+                              iconSize: 22,
                               selected: widget.currentIndex == 3,
                               onPressed: widget.onCalendar,
                             ),

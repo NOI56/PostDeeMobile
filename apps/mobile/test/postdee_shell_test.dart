@@ -211,7 +211,7 @@ void _expectNavMotionSelection(WidgetTester tester, String selected) {
   for (final entry in _navMotionTabs.entries) {
     final active = entry.key == selected;
     _expectNavSquare(
-        tester, _navMotionIcon(entry.key), entry.key == 'Calendar' ? 24 : 26);
+        tester, _navMotionIcon(entry.key), entry.key == 'Calendar' ? 22 : 26);
     expect(_navMotionLift(tester, entry.value), active ? -2 : 0);
     expect(_navMotionHalo(tester, entry.value).color!.a,
         closeTo(active ? .12 : 0, .0001));
@@ -313,7 +313,7 @@ void main() {
         expect(tabSize.height, 84);
         expect(tabSize.width, greaterThanOrEqualTo(48));
         _expectNavSquare(
-            tester, _navMotionIcon(label), label == 'Calendar' ? 24 : 26);
+            tester, _navMotionIcon(label), label == 'Calendar' ? 22 : 26);
         if (label != 'Create post') {
           final text = find.descendant(
               of: _referenceNavButton(label), matching: find.text(label));
@@ -442,7 +442,7 @@ void main() {
       expect(tester.getSemantics(_referenceNavButton('Home')),
           isSemantics(isSelected: false));
       await tester.pump(const Duration(milliseconds: 80));
-      _expectNavSquare(tester, _navMotionIcon('Calendar'), 24);
+      _expectNavSquare(tester, _navMotionIcon('Calendar'), 22);
       expect(_navMotionLift(tester, 1), inExclusiveRange(-2, 0));
       expect(_navMotionHalo(tester, 1).color!.a, inExclusiveRange(0, .12));
       expect(_navMotionIconColor(tester, 'Calendar'),

@@ -65,7 +65,11 @@ type PrismaLinkInBioTransaction = {
       where: { ownerId: string };
       data: { ownerId: null };
     }) => Promise<{ count: number }>;
-    deleteMany: (args: { where: { slug: string | { in: string[] } } }) => Promise<{ count: number }>;
+    deleteMany: (args: {
+      where:
+        | { slug: { in: string[] } }
+        | { slug: string; OR: [{ reservedUntil: { lte: Date } }, { ownerId: string }] };
+    }) => Promise<{ count: number }>;
   };
 };
 
@@ -87,7 +91,13 @@ const assertSlugClaimable = async (
   const reservation = await transaction.linkInBioSlugReservation.findUnique({ where: { slug } });
   if (!reservation) return;
   if (reservation.ownerId !== userId && reservation.reservedUntil > now) throw slugTakenError();
-  await transaction.linkInBioSlugReservation.deleteMany({ where: { slug } });
+  // Delete only while the row is still expired or the claimant's own. A rename
+  // that re-reserved the slug after the read leaves nothing to delete, and the
+  // claim then fails instead of removing that fresh reservation.
+  const removed = await transaction.linkInBioSlugReservation.deleteMany({
+    where: { slug, OR: [{ reservedUntil: { lte: now } }, { ownerId: userId }] }
+  });
+  if (removed.count === 0) throw slugTakenError();
 };
 
 const reserveReleasedSlug = async (

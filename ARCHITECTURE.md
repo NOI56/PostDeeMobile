@@ -1248,8 +1248,13 @@ Since 2026-10-24 a released slug is not recycled at once:
 - A claim of a new slug runs in one transaction. It rejects brand and system
   names, then reads the profile holding that slug before reading the
   reservation. Because a rename commits both rows together, one of those two
-  reads always sees the slug as taken. It then removes an expired or own
-  reservation before the profile upsert.
+  reads always sees a rename that finished before the claim started. An
+  expired or own reservation is then removed with a conditional delete
+  (`reservedUntil <= now OR ownerId = claimant`). If a concurrent reclaim and
+  rename re-reserved the slug after the read, nothing is deleted and the claim
+  fails with `409` instead of removing that fresh reservation (Codex review
+  2026-10-25). Real-PostgreSQL coverage is in
+  `linkInBioSlugReservation.database.test.ts`.
 - Each owner keeps at most three reservations, newest first, so repeated
   renames cannot squat on names. The answer is the existing
   `409 LINK_IN_BIO_SLUG_TAKEN`, so Mobile needs no change.

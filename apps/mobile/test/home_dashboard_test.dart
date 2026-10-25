@@ -89,7 +89,7 @@ void main() {
       addonAiCaptions: 50, canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true))));
     await tester.pumpAndSettle();
     expect(find.text('เหลือ 248/250 หน่วย'), findsOneWidget);
-    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'), findsOneWidget);
     expect(find.text('โพสต์ได้รวม 348 หน่วย'), findsOneWidget);
     expect(find.textContaining('348/250'), findsNothing);
   });
@@ -101,7 +101,7 @@ void main() {
       availablePostUnits: 3, canSchedule: false, canUseAiCaptions: false, canUseAnalytics: false))));
     await tester.pumpAndSettle();
     expect(find.text('เหลือ 3/3 หน่วย'), findsOneWidget);
-    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 ครั้ง'), findsOneWidget);
+    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'), findsOneWidget);
     expect(find.text('เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'), findsOneWidget);
     expect(find.textContaining('โพสต์ได้รวม'), findsNothing);
   });

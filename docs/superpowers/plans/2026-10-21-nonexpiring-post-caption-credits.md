@@ -1,5 +1,12 @@
 # Non-expiring purchased post/caption credits, 2026-10-21
 
+Caption metering follow-up (2026-10-25, implementation candidate): the pack
+still grants 50 caption credits at the same price. Advanced caption requests
+now consume one per selected channel, with shared requests costing one; full
+batch accounting and compatibility are tracked in the
+[credit-per-channel plan](2026-10-25-caption-credit-per-channel.md). The
+non-expiry, included-first ordering and historical release evidence below remain.
+
 Security follow-up: Batch 1 on 2026-10-23 also restricts Test Store add-on
 purchase grants to SANDBOX in confirmation, webhooks and both ledger adapters.
 Production accepts App Store/Play Store only. Non-expiry, quantities, monthly

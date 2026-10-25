@@ -104,7 +104,7 @@ describe('platform-specific real-clip captions', () => {
     await expect(provider.generate(input())).rejects.toThrow('platform captions');
   });
 
-  it('reserves one generation and cleans the owned media once for all four variants', async () => {
+  it('reserves four credits and cleans the owned media once for all four variants', async () => {
     const usage = createInMemoryRealClipCaptionUsageStore();
     const reserve = vi.spyOn(usage, 'reserve');
     const { provider, fetchImpl } = makeProvider({ ...providerPayload, platformCaptions });
@@ -114,9 +114,9 @@ describe('platform-specific real-clip captions', () => {
       realClipCaptionUsageStore: usage });
     const response = await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'STARTER')
-      .send({ videoS3Key, platforms, deleteAfterUse: true }).expect(200);
+      .send({ videoS3Key, platforms, expectedCredits: 4, deleteAfterUse: true }).expect(200);
     expect(response.body.platformCaptions).toEqual(platformCaptions);
-    expect(response.body.quota).toMatchObject({ limit: 50, usedThisMonth: 1, remainingThisMonth: 49 });
+    expect(response.body.quota).toMatchObject({ limit: 50, usedThisMonth: 4, remainingThisMonth: 46, chargedCredits: 4 });
     expect(response.body.isFallback).toBeUndefined();
     expect(reserve).toHaveBeenCalledOnce();
     expect(generate).toHaveBeenCalledOnce();
@@ -127,7 +127,7 @@ describe('platform-specific real-clip captions', () => {
   it.each([
     { selected: ['YOUTUBE_SHORTS'] as Platform[] },
     { selected: ['TIKTOK', 'INSTAGRAM_REELS'] as Platform[] }
-  ])('returns only selected $selected captions and charges one generation for the request', async ({ selected }) => {
+  ])('returns only selected $selected captions and charges one credit per channel', async ({ selected }) => {
     const usage = createInMemoryRealClipCaptionUsageStore();
     const reserve = vi.spyOn(usage, 'reserve');
     const release = vi.spyOn(usage, 'release');
@@ -137,11 +137,12 @@ describe('platform-specific real-clip captions', () => {
 
     const response = await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'STARTER')
-      .send({ videoS3Key, platforms: selected }).expect(200);
+      .send({ videoS3Key, platforms: selected, expectedCredits: selected.length }).expect(200);
 
     expect(response.body.platformCaptions).toEqual(Object.fromEntries(selected.map(platform => [platform, platformCaptions[platform]])));
     expect(Object.keys(response.body.platformCaptions)).toEqual(selected);
-    expect(response.body.quota).toMatchObject({ limit: 50, usedThisMonth: 1, remainingThisMonth: 49 });
+    expect(response.body.quota).toMatchObject({ limit: 50, usedThisMonth: selected.length,
+      remainingThisMonth: 50 - selected.length, chargedCredits: selected.length });
     expect(response.body.isFallback).toBeUndefined();
     expect(reserve).toHaveBeenCalledOnce();
     expect(release).not.toHaveBeenCalled();
@@ -154,12 +155,13 @@ describe('platform-specific real-clip captions', () => {
   it.each([
     { selected: ['YOUTUBE_SHORTS'] as Platform[] },
     { selected: ['TIKTOK', 'INSTAGRAM_REELS'] as Platform[] }
-  ])('refunds selected $selected fallback once without returning unrequested captions or removing prior usage', async ({ selected }) => {
+  ])('refunds all selected $selected credits without returning unrequested captions or removing prior usage', async ({ selected }) => {
     const usage = createInMemoryRealClipCaptionUsageStore();
     const monthKey = new Date().toISOString().slice(0, 7);
     await usage.record({ userId: 'platform-caption-owner', monthKey });
     const reserve = vi.spyOn(usage, 'reserve');
     const release = vi.spyOn(usage, 'release');
+    const releaseMany = vi.spyOn(usage, 'releaseMany');
     const { provider, fetchImpl } = makeProvider({
       ...providerPayload, platformCaptions: { FACEBOOK_REELS: platformCaptions.FACEBOOK_REELS }
     });
@@ -168,11 +170,11 @@ describe('platform-specific real-clip captions', () => {
 
     const response = await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'STARTER')
-      .send({ videoS3Key, platforms: selected }).expect(200);
+      .send({ videoS3Key, platforms: selected, expectedCredits: selected.length }).expect(200);
 
     expect(response.body).toMatchObject({
       isFallback: true, model: 'local-real-clip-template',
-      quota: { charged: false, usedThisMonth: 1, remainingThisMonth: 49 }
+      quota: { charged: false, chargedCredits: 0, usedThisMonth: 1, remainingThisMonth: 49 }
     });
     expect(Object.keys(response.body.platformCaptions)).toEqual(selected);
     for (const entry of Object.values(response.body.platformCaptions) as Array<{ caption: string; hashtags: string[] }>) {
@@ -182,7 +184,15 @@ describe('platform-specific real-clip captions', () => {
     expect(reserve).toHaveBeenCalledOnce();
     const reservation = await reserve.mock.results[0].value;
     expect(reservation.ok).toBe(true);
-    if (reservation.ok) expect(release).toHaveBeenCalledExactlyOnceWith(reservation.record);
+    if (reservation.ok) {
+      if (selected.length > 1) {
+        expect(releaseMany).toHaveBeenCalledExactlyOnceWith(reservation.records);
+        expect(release).not.toHaveBeenCalled();
+      } else {
+        expect(release).toHaveBeenCalledExactlyOnceWith(reservation.record);
+        expect(releaseMany).not.toHaveBeenCalled();
+      }
+    }
     expect(await usage.countForMonth({ userId: 'platform-caption-owner', monthKey })).toBe(1);
     expect(generate).toHaveBeenCalledOnce();
     expect(fetchImpl).toHaveBeenCalledOnce();
@@ -196,7 +206,7 @@ describe('platform-specific real-clip captions', () => {
       realClipCaptionUsageStore: usage });
     const response = await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'PRO')
-      .send({ videoS3Key, platforms, deleteAfterUse: true }).expect(200);
+      .send({ videoS3Key, platforms, expectedCredits: 4, deleteAfterUse: true }).expect(200);
     expect(response.body).toMatchObject({ isFallback: true, model: 'local-real-clip-template', quota: { charged: false, usedThisMonth: 0 } });
     expect(Object.keys(response.body.platformCaptions)).toEqual(platforms);
     expect(deleteObject).toHaveBeenCalledExactlyOnceWith({ bucket: 'caption-test-bucket', key: videoS3Key });
@@ -210,7 +220,7 @@ describe('platform-specific real-clip captions', () => {
     const app = createApp();
     const response = await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'STARTER')
-      .send({ videoS3Key, platforms }).expect(200);
+      .send({ videoS3Key, platforms, expectedCredits: 4 }).expect(200);
     expect(response.body).toMatchObject({ isFallback: true, model: 'local-real-clip-template', quota: { charged: false, usedThisMonth: 0 } });
     expect(Object.keys(response.body.platformCaptions)).toEqual(platforms);
   });
@@ -224,7 +234,7 @@ describe('platform-specific real-clip captions', () => {
     const app = createApp({ realClipCaptionProvider: { generate }, fetchClipMedia: async () => media, realClipCaptionUsageStore: usage });
     const response = await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'STARTER')
-      .send({ videoS3Key, platforms }).expect(200);
+      .send({ videoS3Key, platforms, expectedCredits: 4 }).expect(200);
     expect(generate).toHaveBeenCalledOnce();
     expect(response.body).toMatchObject({ isFallback: true, model: 'local-real-clip-template', quota: { charged: false, usedThisMonth: 0 } });
     expect(Object.keys(response.body.platformCaptions)).toEqual(platforms);
@@ -243,7 +253,7 @@ describe('platform-specific real-clip captions', () => {
     const app = createApp({ ...cleanupOptions(deleteObject), realClipCaptionProvider: provider, fetchClipMedia, realClipCaptionUsageStore: usage });
     await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'PRO')
-      .send({ videoS3Key, platforms, selectedFrameKeys: [frameKey], deleteAfterUse: true }).expect(410);
+      .send({ videoS3Key, platforms, expectedCredits: 4, selectedFrameKeys: [frameKey], deleteAfterUse: true }).expect(410);
     expect(reserve).not.toHaveBeenCalled();
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(deleteObject).toHaveBeenCalledTimes(2);
@@ -261,7 +271,7 @@ describe('platform-specific real-clip captions', () => {
     const app = createApp({ ...cleanupOptions(deleteObject), realClipCaptionProvider: provider, fetchClipMedia, realClipCaptionUsageStore: usage });
     const response = await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'STARTER')
-      .send({ videoS3Key, platforms, deleteAfterUse: true }).expect(429);
+      .send({ videoS3Key, platforms, expectedCredits: 4, deleteAfterUse: true }).expect(429);
     expect(response.body.quota).toMatchObject({ limit: 50, usedThisMonth: 50, remainingThisMonth: 0 });
     expect(fetchClipMedia).not.toHaveBeenCalled();
     expect(fetchImpl).not.toHaveBeenCalled();

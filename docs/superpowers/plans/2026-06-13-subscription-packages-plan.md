@@ -2,6 +2,15 @@
 
 > Status: planning source of truth for package positioning. Do not treat this as fully implemented behavior until the matching backend and mobile gates are updated.
 
+> Caption metering update (2026-10-25, implementation candidate): monthly
+> allowances remain Starter 50 / Pro 120 credits; advanced AI captions cost one
+> credit per selected channel (1–4), while shared and legacy keyword requests
+> cost one. One provider operation still produces a set. New Mobile confirms
+> the displayed cost with `expectedCredits`; older multi-channel clients need
+> an update. Whole-batch reservation/refunds and coordinated rollout are in the
+> [credit-per-channel plan](2026-10-25-caption-credit-per-channel.md). No price,
+> add-on quantity, schema or migration change; this note is not deployment proof.
+
 > Product update (2026-10-05): a hosted profile link replaces AI video editing.
 > Every package gets one page with up to 20 custom links. AI caption quotas and
 > existing prices stay the same; editing-minute quotas and top-ups are retired
@@ -95,14 +104,15 @@ Starter should feel useful enough for a small shop to pay without needing analyt
 - Schedule posts up to 14 days ahead.
 - Calendar view for scheduled posts.
 - Caption templates.
-- AI caption from real clip, audio-only: 50 generations per month.
+- AI caption from real clip, audio-only: 50 caption credits per month.
   - The user uploads/selects a video first.
   - AI listens to the clip audio and uses the real spoken content.
   - AI should infer language and market from the selected clip automatically.
   - Optional guidance is the override path for a seller who wants a specific
     language, market, or style.
   - Output must include SEO wording, hashtag suggestions, caption options, and hook ideas.
-  - Pressing generate/change again counts as another generation.
+  - Each selected AI channel costs one credit; shared-caption generation costs
+    one. Pressing generate/change again consumes the same selected cost.
   - Do not sell a separate prompt-only caption generator as the main package feature.
 - Auto watermark.
 - EP clip splitting UI and future simple EP workflow.
@@ -124,14 +134,15 @@ Pro should be the plan for serious sellers, creators, and shops that want to gro
 - Schedule posts up to 30 days ahead.
 - Calendar view for scheduled posts.
 - Caption templates.
-- AI caption from real clip, audio + visual frames: 120 generations per month.
+- AI caption from real clip, audio + visual frames: 120 caption credits per month.
   - AI listens to the clip audio.
   - AI can also inspect selected video frames/images from the clip.
   - AI should infer language and market from the selected clip automatically.
   - Optional guidance is the override path for a seller who wants a specific
     language, market, or style.
   - Output must include SEO wording, hashtag suggestions, caption options, and hook ideas.
-  - Pressing generate/change again counts as another generation.
+  - Each selected AI channel costs one credit; shared-caption generation costs
+    one. Pressing generate/change again consumes the same selected cost.
   - Do not sell a separate prompt-only caption generator as the main package feature.
 - Auto watermark.
 - EP clip splitting.
@@ -154,7 +165,7 @@ Pro should be the plan for serious sellers, creators, and shops that want to gro
 
 - AI editing-minute top-ups are no longer offered in the current mobile product.
 - Post/caption add-on (2026-10-21): a repeatable, one-time 49 THB purchase adds
-  100 post units and 50 real-clip AI caption generations for effective Starter
+  100 post units and 50 real-clip AI caption credits for effective Starter
   and Pro members. It does not change the subscription or unlock another tier.
 - Purchased credits never expire. Included UTC calendar-month quota is consumed
   first, then the purchased balance. One video sent to two destinations costs

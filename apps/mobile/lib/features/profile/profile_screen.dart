@@ -1224,7 +1224,7 @@ class _CurrentPlanCard extends StatelessWidget {
                 ],
                 if (subscription.addonPostUnits > 0 || subscription.addonAiCaptions > 0) ...[
                   const SizedBox(height: 4),
-                  Text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription.addonPostUnits} หน่วย · AI ${subscription.addonAiCaptions} ครั้ง',
+                  Text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription.addonPostUnits} หน่วย · AI ${subscription.addonAiCaptions} เครดิต',
                     style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
                   const SizedBox(height: 4),
                   Text(isPaid ? 'เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน'
@@ -1376,7 +1376,7 @@ class _DeleteAccountButton extends StatelessWidget {
                   const SizedBox(height: 14),
                   Text(
                     subscription != null && (subscription!.addonPostUnits > 0 || subscription!.addonAiCaptions > 0)
-                        ? 'คุณมีเครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription!.addonPostUnits} หน่วย · AI ${subscription!.addonAiCaptions} ครั้ง '
+                        ? 'คุณมีเครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription!.addonPostUnits} หน่วย · AI ${subscription!.addonAiCaptions} เครดิต '
                           'หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้ กรุณาตรวจสอบก่อนยืนยัน'
                         : 'หากมีเครดิตซื้อเพิ่มคงเหลือ หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้ '
                           'กรุณาตรวจสอบยอดก่อนยืนยัน',

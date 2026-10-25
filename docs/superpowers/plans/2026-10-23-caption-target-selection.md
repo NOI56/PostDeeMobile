@@ -1,9 +1,14 @@
 # Choose AI caption channels — 2026-10-23
 
+The fixed one-credit-per-set accounting below is historical and superseded by
+the [2026-10-25 credit-per-channel contract](2026-10-25-caption-credit-per-channel.md).
+The selection/preview/draft behavior remains; prior release/test evidence does
+not verify the new accounting or its coordinated API/Mobile rollout.
+
 The original selection UI and its release evidence are recorded below. A later
 approved presentation follow-up replaces the chip/actions layout with a compact
 two-by-two grid and moves style/guidance behind a style action, while retaining
-this selection and quota contract. Its new implementation and pending delivery
+this selection behavior and the then-current quota contract. Its implementation and delivery
 are tracked separately in the
 [compact AI panel plan](2026-10-23-caption-ai-compact-panel.md).
 

@@ -2,14 +2,100 @@
 
 Build roadmap for PostDee.
 
+## Post quota on the clip step (2026-10-25, follow-up candidate)
+
+- Show a compact strip immediately in the uploader's clip-selection step, even
+  before a clip is selected: effective plan badge, monthly remaining/limit in
+  `หน่วย`, used post
+  units and a thin progress bar. Show a small paid purchased-credit line only
+  when nonempty; explain Basic's phone-verification gate.
+- Reuse `GET /billing/subscription` fields through a dedicated background
+  post-quota loader, separate from imperative subscription preflight calls.
+  Load on composer entry with an empty or handed-in clip; refresh for
+  selection/reselection, resume, auth
+  changes, successful in-composer subscription resync and post acceptance/failure
+  or recovery while the composer stays open. Billing/phone changes are observed
+  on those refreshes. Guard owner/session/request/clip scope and show loading/retry
+  unless all monthly limit/used/remaining fields are valid, without inventing zero.
+- Preserve post-unit limits, add-on consumption, phone/publish gates, the
+  wizard and all caption-credit work. Selection does not spend quota, start AI,
+  publish or initiate payment. No new API, backend, schema, migration, price,
+  provider or flag change. The UI needs an updated Mobile build and installation;
+  a Render API deployment does not update the installed screen. Record actual
+  checks/delivery separately in the
+  [post-quota strip plan](docs/superpowers/plans/2026-10-25-post-quota-strip.md).
+
+## AI caption credits per selected channel (2026-10-25, implementation candidate)
+
+- Charge 1/2/3/4 credits for 1/2/3/4 selected AI caption channels. Keep one
+  provider operation and show `สร้างแคปชั่น · N เครดิต` on the existing action.
+  Shared-caption and legacy keyword requests remain one credit.
+- Reserve the whole request atomically, monthly credits before retained add-on
+  credits. Insufficient total balance must not partially debit or call AI.
+  Refund the entire batch for fallback/failed/incomplete generation; successful
+  generation remains charged if its preview is dismissed.
+- Derive cost on the API and confirm the displayed cost with `expectedCredits`.
+  Reject old/mismatched multi-platform requests with `409
+  AI_CAPTION_COST_CONFIRMATION_REQUIRED` before charge or provider work. Return
+  `requestedCredits`, `chargedCredits` and existing `charged` quota metadata;
+  insufficient quota includes actual remaining balance and required cost.
+- Coordinate API/Mobile rollout: older multi-platform apps require an update,
+  and newer Mobile against the older API can overquote its one-credit charge.
+  No plan allowance/price, add-on pack, schema, migration, provider or flag
+  change. This record does not establish deployment or real-provider/device
+  acceptance; track validation in the
+  [credit-per-channel plan](docs/superpowers/plans/2026-10-25-caption-credit-per-channel.md).
+
+## Compact AI caption quota strip (2026-10-25, visibility follow-up candidate)
+
+- Show the approved small strip above the AI action in both shared/advanced
+  modes for every validated plan: actual plan badge, monthly remainder/limit,
+  used credits and a thin remaining bar. Basic shows zero monthly allowance,
+  retained historical usage and a small Starter/Pro eligibility hint, without
+  unlocking AI or presenting its retained bank as spendable.
+- Read actual authenticated quota through `GET /captions/quota` on composer
+  entry/resume; update from generation independently of caption edits or
+  advanced-preview acceptance. Retry failed reads and refresh after failures
+  or pending refund recounts without inventing a zero balance.
+- Preserve nonexpiring add-on credits: show a short credit line only when a
+  paid bank remains, and disable AI when known paid total availability cannot cover
+  the selected request cost.
+  Keep the existing wizard, selection/preview/undo, trial/owner guards and
+  manual editing/posting behavior. No package-rule, flag or schema change.
+- Deliver the additive API before the Mobile build; older API `404` responses
+  show unavailable/retry. This entry does not establish a deployment or real
+  provider/device acceptance. The visibility follow-up needs an updated Mobile
+  build/install; API deployment alone does not update this UI. Credits remain
+  the display unit and per-channel caption cost is unchanged. Track checks and delivery in the
+  [quota-strip plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
+## Per-channel clip-duration alerts (2026-10-25, local candidate)
+
+- Warn after video pick/prefill/draft restore and show a duration error beside
+  each connected channel. Disable incompatible unselected rows while allowing
+  selected incompatible rows to be unchecked; never trim or silently deselect.
+- Block Next/final confirmation while a selected channel has a duration error.
+  Select all adds compatible channels without removing existing selections.
+- Use Facebook Page Reels 3–90 seconds, YouTube Shorts at most 180 seconds,
+  Instagram Reels 3–900 seconds, TikTok Inbox at most 600 seconds and TikTok
+  Direct at most min(600 seconds, fresh connected creator limit).
+- Unknown source duration is not a pass. Preserve actual outgoing-file checks,
+  TikTok preparation/consent, cached receipts, accepted recovery, owner scope,
+  quotas and already accepted schedules. No backend/schema/flag change.
+- Mobile tests, analysis and Staging APK12052 build/package/signature checks pass;
+  installation, runtime and provider E2E remain unverified.
+  Source review dated 2026-10-25 is not real-account publishing evidence. See the
+  [contract and source record](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate).
+
 ## Facebook Page Reels only (2026-10-24)
 
 - Retain `FACEBOOK_REELS` and always send PostPeer `platform: 'facebook'` with
   `platformSpecificData.contentType: 'reel'`; never fall back to a Page feed video.
 - Preserve `PUBLISH|PAGE_DRAFT`, optional `isAiGenerated`, per-platform captions,
   immutable target snapshots, existing TikTok Direct and billing safeguards.
-- Remove feed-specific Facebook media limits without inventing Reel limits;
-  keep actual-media verification and provider validation. Signed thumbnails
+- Remove feed-specific Facebook media limits; the 2026-10-25 local candidate
+  separately adds the documented 3–90-second API Reel duration guard. Keep
+  actual-media verification and provider validation. Signed thumbnails
   remain best effort, with Reel display and real-account publish/draft E2E pending.
 - No new client fields, environment variables or migrations. Updated publishers
   also route existing queued/scheduled Facebook jobs to Page Reels.
@@ -130,10 +216,12 @@ Build roadmap for PostDee.
   `ให้ AI ช่วยเขียน` and `เลือกช่องทางที่ต้องการ`.
 - Put the full existing writing profile and clip guidance behind `สไตล์`.
   Remove select-all/clear and the standalone cost row. Show the cost on the
-  single action `สร้างแคปชั่น · 1 เครดิต`, disabled when no channel is selected.
+  single action, now `สร้างแคปชั่น · N เครดิต` under the 2026-10-25 contract,
+  disabled when no channel is selected.
 - Preserve four manual editors, draft targets, selected-only AI preview/apply/
-  undo and one credit per request of 1–4 channels. No API, contract, quota,
-  schema or backend change is introduced.
+  undo. The original fixed one-credit rule is superseded by the 2026-10-25
+  per-channel contract. The original presentation release introduced no API,
+  contract, quota, schema or backend change.
 - Follow-up source `4a1c0f9` is merged/pushed to main; Staging APK 12045 is
   installed with account, UID and internal storage retained. Selected targets
   show only a green border and unobscured logos. Analyzer, 35 Staging checks,
@@ -141,7 +229,8 @@ Build roadmap for PostDee.
   all-four native interaction was stopped after independent screen changes.
   Earlier compact-panel full-suite/style-cancel evidence is recorded separately.
   No live AI request, profile save or publication was made.
-  The UI uses the existing API without a backend redeploy. Track results in the
+  The original UI used the then-current API without a backend redeploy; the
+  later pricing change requires coordinated delivery. Track results in the
   [compact-panel plan](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
 ## Select AI caption channels (2026-10-23, Staging Live)
@@ -154,10 +243,10 @@ Build roadmap for PostDee.
 - Remember targets in the current local draft across mode switches and reopening;
   exclude them from reusable channel/account preferences and post/recovery API
   settings. Historical drafts without target metadata remain readable.
-- Keep existing pricing: one monthly/add-on AI credit per request/set of 1–4
-  channels, with no discount for requesting fewer. Preserve existing fallback
-  refunds and plan/owner/media checks. The API already supports subsets; this
-  work needs no backend runtime or deployment change, schema or migration.
+- The original fixed one-credit rule for a set is superseded by the
+  2026-10-25 per-channel contract. Preserve fallback refunds and plan/owner/media
+  checks. The selection release's API already supported subsets; that work
+  needed no backend runtime or deployment change, schema or migration.
 - Checks pass 2,787 Mobile tests, 2,504 API tests, static/schema checks and
   28 Staging-configured widget smoke tests. Staging APK 12043 builds and package
   configuration checks pass. Feature `dab94fb` is on `main`/GitHub with passing
@@ -185,8 +274,9 @@ Build roadmap for PostDee.
   trimmed whitespace) without falling back to shared text, while retaining
   title/settings requirements and rejecting empty overrides for the other three.
 - Generate platform-adapted variants from the selected clip in one provider
-  operation/one quota reservation per set; keep writing style and grounded
-  evidence rules. Incomplete/malformed output is a labeled local fallback and
+  operation; the 2026-10-25 contract atomically reserves one credit per selected
+  channel. Keep writing style and grounded evidence rules.
+  Incomplete/malformed output is a labeled local fallback and
   uses the existing quota refund path. No new provider, credential or migration.
 - Keep per-post captions out of reusable channel defaults. Derive an automatic
   YouTube title from its effective description and preserve explicit titles.
@@ -1299,7 +1389,7 @@ Core items:
 - Firebase Auth (Google Sign-In, Phone Auth) and Firebase Cloud Messaging (FCM) for Push Notifications.
 - RevenueCat for cross-platform subscription management (Apple App Store / Google Play).
 - Post/caption consumable add-on: target 49 THB once for 100 post units and 50
-  caption generations, Starter/Pro only, with non-expiring purchased balances
+  caption credits, Starter/Pro only, with non-expiring purchased balances
   and included monthly quota consumed first. This is separate from retired editing-minute top-ups. The
   server gate starts disabled; migration, store/RevenueCat configuration and
   native purchase/refund acceptance are required before selling it. Delivery
@@ -1753,8 +1843,8 @@ removed so this package plan does not compete with a separate review feature.
 | Tier | Price | Main Value | Intended Limits |
 | --- | ---: | --- | --- |
 | Basic | Free | Try posting and publish a profile page | Phone verification required for 3 real-time test posts per month; one profile page with up to 20 links |
-| Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling up to 14 days ahead, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 20 links, and 50 real-clip AI caption generations/month |
-| Pro | 299 THB/month | Growth tools, analytics, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling up to 30 days ahead, calendar, templates, auto watermark, EP clip splitting, full analytics, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption generations/month |
+| Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling up to 14 days ahead, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 20 links, and 50 real-clip AI caption credits/month |
+| Pro | 299 THB/month | Growth tools, analytics, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling up to 30 days ahead, calendar, templates, auto watermark, EP clip splitting, full analytics, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption credits/month |
 
 Package rules:
 
@@ -1773,6 +1863,9 @@ Package rules:
   wording, hashtags, caption options, and hook ideas.
 - Pro AI captioning can use audio plus selected visual frames from the clip for
   stronger suggestions.
+- AI caption credits count by generation target: one credit per selected
+  channel, with shared-caption requests costing one. Repeating generation
+  consumes the same selected cost; preview dismissal does not refund success.
 - Upload AI captioning should auto-detect language and market from the selected
   clip. Sellers can override through optional guidance instead of extra fields.
 - Do not sell prompt-only AI captioning as the main paid feature. Text guidance

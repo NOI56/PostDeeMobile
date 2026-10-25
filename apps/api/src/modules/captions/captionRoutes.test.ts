@@ -925,13 +925,14 @@ describe('caption routes', () => {
     expect(response.body).toEqual({
       status: 'error',
       code: 'AI_CAPTION_QUOTA_REACHED',
-      message: 'Starter is limited to 50 real-clip AI caption generations per month',
+      message: 'Starter has insufficient AI caption credits for 1 selected channel(s)',
       quota: {
         limit: 50,
         usedThisMonth: 50,
         remainingThisMonth: 0,
         addonRemaining: 0,
-        availableGenerations: 0
+        availableGenerations: 0,
+        requiredCredits: 1
       }
     });
   });

@@ -2,6 +2,110 @@
 
 PostDee backend API reference.
 
+## Caption cost confirmation (2026-10-25, implementation candidate)
+
+`POST /captions/generate-from-clip` derives its cost from validated `platforms`:
+1–4 distinct destinations cost 1–4 credits. Omitting `platforms` costs one
+credit for shared-caption generation; `POST /captions/generate` also remains
+one credit. Starter/Pro monthly limits (50/120), add-on packs and prices are
+unchanged. One provider generation operation still produces the selected set.
+
+The new Mobile sends `expectedCredits` equal to its displayed cost. When
+supplied it must match the server-derived cost; multi-platform requests must
+include it. Missing/mismatched confirmation returns `409` with code
+`AI_CAPTION_COST_CONFIRMATION_REQUIRED` before quota reservation or provider
+work. Its error `quota` contains `requiredCredits` and `chargedCredits: 0`.
+Legacy shared/one-platform requests may omit it. Invalid platform values remain
+`400`; the API never accepts a client price as authoritative.
+
+The complete cost is reserved atomically, included monthly quota first and then
+the nonexpiring add-on bank. Insufficient combined balance returns `429
+AI_CAPTION_QUOTA_REACHED` with actual remaining quota and `quota.requiredCredits`,
+without partial debit or provider work. A failed/fallback/incomplete result
+releases the entire batch. Quota metadata adds `requestedCredits` and
+`chargedCredits`; the latter equals the cost when charged or zero after a
+successful full refund. The existing `charged` boolean remains optional: it is
+reported for fallback results, and omission on normal success means `true`.
+Rejecting a successfully generated preview does not refund the generation.
+
+Coordinate API and Mobile rollout. Older multi-platform clients must update
+instead of silently being charged more than their fixed one-credit display.
+New Mobile against the older API can quote multiple credits while that API
+still charges one. No schema, migration, provider or environment flag change is
+required. This is not a deployment receipt; see the
+[credit-per-channel plan](docs/superpowers/plans/2026-10-25-caption-credit-per-channel.md).
+
+## Caption quota read (2026-10-25, implementation candidate)
+
+### `GET /captions/quota`
+
+Returns the authenticated user's effective plan and current AI caption quota
+with `Cache-Control: no-store`. This read does not generate captions, upload
+media, reserve usage, consume purchased credits or accept caller-selected
+user/plan/month overrides. Missing authentication returns `401`.
+
+```json
+{
+  "status": "ok",
+  "plan": "STARTER",
+  "quota": {
+    "limit": 50,
+    "usedThisMonth": 12,
+    "remainingThisMonth": 38,
+    "addonRemaining": 20,
+    "availableGenerations": 58
+  }
+}
+```
+
+Monthly limits remain Basic `0`, Starter `50` and Pro `120`. The usage ledger
+and current UTC month are the same as caption generation; the route uses the
+existing server clock. `remainingThisMonth` is `max(limit - usedThisMonth, 0)`,
+retaining recorded use after a downgrade. `addonRemaining` is the existing
+nonexpiring purchased bank after add-on usage. Paid `availableGenerations`
+combines monthly remainder and that bank even when new add-on purchases are
+disabled. Basic can read a retained bank but has `availableGenerations: 0`;
+the read does not unlock paid AI access.
+
+The Mobile visibility follow-up renders this validated snapshot for all plans
+in both shared and advanced caption modes. Basic shows its actual `0` monthly
+limit/remainder and any retained `usedThisMonth`, plus a small paid-eligibility
+hint; its purchased bank must not be shown as spendable. Display units are
+credits. This is a Mobile presentation change using the existing response;
+Basic still cannot generate AI captions. Loading/failed reads remain retryable
+unknown states rather than fabricated zero balances. An updated Mobile build
+must be installed to see the follow-up; no API/schema or pricing change is needed.
+
+Deploy this additive API before distributing the quota-strip Mobile build.
+An older API returning `404` leaves the strip unavailable with a retry action,
+not an invented zero balance. The quota-read addition itself does not alter
+generation/fallback/refund, trial or selection rules; current credit spending
+follows the cost-confirmation contract above. No schema, migration,
+environment flag or provider change is required. This record does not claim a
+deployment; scope and verification are tracked in the
+[quota-strip plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+## Mobile per-channel duration checks (2026-10-25, local candidate)
+
+This Mobile-only candidate adds early duration warnings after video pick,
+prefill and draft restoration. Connected channel rows report incompatibility;
+unselected incompatible rows cannot be added, selected ones remain removable,
+and Next/final confirmation stay blocked until selected errors are resolved.
+Select all adds only compatible channels without deleting existing selections.
+
+Local limits are Facebook Page Reels 3–90 seconds, YouTube Shorts at most 180,
+Instagram Reels 3–900, TikTok Inbox at most 600, and TikTok Direct at most
+min(600 seconds, the fresh connected creator limit). These are client checks,
+not new trusted server media validation or a guarantee of provider acceptance.
+Unknown source hints do not establish compatibility. Actual outgoing-file
+validation and TikTok preparation/Direct guards remain required.
+
+No request field, backend route, schema, migration, quota or feature flag changes.
+Accepted idempotent recovery remains before new submission guards; cached receipts
+and original request IDs are retained. No already queued schedule is rewritten.
+Mobile tests, analysis and Staging APK12052 build/package/signature checks pass;
+installation and native runtime are still unverified.
+Primary source review on 2026-10-25 is recorded in the [preflight plan](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate);
+real-account PostPeer publication remains unverified.
 ## Social linking security Batch 2 (2026-10-23, review candidate)
 
 New links require an authenticated, single-use connect attempt. The updated
@@ -28,13 +132,13 @@ the four supported channels. The initial AI selection is empty; requesting
 generation requires 1–4 selections. These are generation targets, independent
 of destinations selected for publishing. The client sends only their existing
 API enum values in `POST /captions/generate-from-clip`'s optional `platforms`
-array. The deployed contract already supports this subset; no backend runtime
-or deployment change is required for this Mobile follow-up.
+array. The then-deployed contract already supported this subset; the original
+Mobile selection follow-up required no backend runtime or deployment change.
 
-One request/set still reserves **one monthly/add-on AI credit**, whether it
-contains one, two, three or four channels. There is no per-channel discount or
-new pricing rule. Missing/malformed output retains the existing whole-request
-fallback and refund behavior; `quota.charged` reflects whether release succeeded.
+The original release used one credit per set; that rule is superseded by the
+2026-10-25 cost-confirmation contract above. Missing/malformed output retains
+whole-request fallback and refunds the entire reserved batch;
+`quota.charged` reflects whether release succeeded.
 The client previews/applies/undoes only the requested captions and preserves all
 unselected text. The four manual editors remain available regardless of the
 generation selection.
@@ -1365,7 +1469,7 @@ whose complete provider/device flow has passed its release gate.
 | Real-time posting | Yes | Yes | Yes |
 | Cloud scheduling | No | Yes | Yes |
 | Calendar for scheduled posts | No | Yes | Yes |
-| AI caption from real clip | No | Audio-only, 50 generations/month implemented; production provider/device verification remains | Audio + selected frames, 120 generations/month implemented; production provider/device verification remains |
+| AI caption from real clip | No | Audio-only, 50 credits/month; shared requests cost 1, advanced requests cost 1 per selected channel; production provider/device verification remains | Audio + selected frames, 120 credits/month; same per-channel rule; production provider/device verification remains |
 | Public profile link page | One page, up to 20 links | One page, up to 20 links | One page, up to 20 links |
 | AI audio review as a separate feature | No | No | No |
 | Unified Analytics | No | No | Yes |
@@ -2531,17 +2635,21 @@ Generates a mock-safe AI caption package from a selected clip key.
 
 Requires Starter or Pro.
 
-- Starter retains `AUDIO_ONLY` mode and is limited to 50 generations/month.
-- Pro retains `AUDIO_WITH_FRAMES` mode and is limited to 120 generations/month.
+- Starter retains `AUDIO_ONLY` mode and includes 50 caption credits/month.
+- Pro retains `AUDIO_WITH_FRAMES` mode and includes 120 caption credits/month.
   These historical enum values are unchanged. Both Gemini modes receive the
   whole MP4; `AUDIO_ONLY` does not describe an isolated audio transport. Pro
   additionally supplies up to three selected frames under the existing rules.
-- Each successful generate/change request counts as one generation.
+- Shared-caption generate/change requests cost one credit. Requests with
+  `platforms` cost one credit for each of their 1–4 selected channels.
 - Local development can keep quota usage in memory with
   `CAPTION_USAGE_STORE=memory`. Production should use
   `CAPTION_USAGE_STORE=prisma` so monthly usage survives API restarts.
 - It uses `videoS3Key`, optional `guidance`, optional `writingStyle`, optional
-  `selectedFrameKeys`, optional `deleteAfterUse`, and optional `platforms`.
+  `selectedFrameKeys`, optional `deleteAfterUse`, optional `platforms`, and
+  `expectedCredits` for confirmation of the displayed cost. Multi-platform
+  requests require matching confirmation; shared/one-platform legacy requests
+  may omit it.
 - Mobile creates the clip upload with `purpose: "ai-caption-video"`; its source
   aspect ratio does not change Starter/Pro access, media ownership, generation
   quota or existing server media-processing limits.
@@ -2552,8 +2660,10 @@ Requires Starter or Pro.
   `"deleteAfterUse": true`; the backend then attempts to delete the clip and
   selected frames after the request. Cleanup failures are logged but do not
   block a successful caption response.
-- Usage is reserved before the AI provider is called so simultaneous requests
-  cannot exceed the monthly quota within the configured usage store.
+- The full request cost is reserved atomically before the AI provider is called,
+  using monthly quota before retained add-on credits. Insufficient combined
+  capacity creates no partial usage and makes no provider call; simultaneous
+  requests cannot overspend the configured usage store.
 - Media downloaded for AI processing is capped to protect API memory.
 - This flow transfers the clip and optional Pro frames to configured
   storage/providers and may consume mobile data. The aspect-ratio fix has not
@@ -2587,7 +2697,7 @@ Requires Starter or Pro.
   remains the simple override path when a seller wants a specific language,
   market, or style.
 
-Optional platform-caption generation (2026-10-23, Staging Live):
+Optional platform-caption generation (2026-10-23; accounting revised 2026-10-25):
 
 - Omit `platforms` to retain the existing request/result behavior. When supplied,
   it must contain 1–4 unique values from `TIKTOK`, `YOUTUBE_SHORTS`,
@@ -2598,27 +2708,31 @@ Optional platform-caption generation (2026-10-23, Staging Live):
   `caption`, `hashtags`, context and quota fields remain present. Unrequested
   channels are not returned as generated variants.
 - One requested set invokes the provider's generation operation once and
-  reserves one monthly/add-on generation, including when requesting all four.
-  Requesting fewer channels still uses one credit; there is no per-channel
-  price reduction. Mobile's selection starts empty and the user chooses which
-  channels to request before generation, independently of publish destinations.
-  Existing transient HTTP retries remain possible inside that operation.
+  atomically reserves one credit per channel: 1/2/3/4 channels cost 1/2/3/4.
+  Mobile's selection starts empty and the user chooses channels independently
+  of publish destinations. It sends matching `expectedCredits` with the
+  displayed cost. Missing/mismatched confirmation for multiple channels returns
+  `409 AI_CAPTION_COST_CONFIRMATION_REQUIRED` before reservation/provider work.
+  Existing transient HTTP retries remain possible inside the single operation.
 - Gemini is instructed to adapt wording for each platform from the same clip
   evidence and writing style, without inventing prices, products, claims or
   promotions. YouTube's variant is its description, not its separate title.
 - Missing/malformed variants fail the whole generated set into the transparent
   local fallback. It returns editable placeholders for every requested channel,
-  `isFallback: true`, and `quota.charged: false` when the reservation is released.
-  Failed refunds retain `charged: true`; no-provider/legacy-template selected
-  sets are also labeled fallback. Existing legacy requests remain unchanged.
+  `isFallback: true`, `quota.charged: false` and `quota.chargedCredits: 0` when
+  the complete reservation is released. Failed refunds retain `charged: true`
+  and the full `chargedCredits`; no-provider/legacy-template selected sets are
+  also labeled fallback. `quota.requestedCredits` always records the derived
+  cost. Successful generation remains charged if the preview is dismissed.
 - Paid-plan, owner/media checks, monthly/add-on quota, media limits and requested
   cleanup continue to apply. Opening advanced settings does not call AI.
 
-Example additional request field (alongside the existing clip fields):
+Example additional request fields (alongside the existing clip fields):
 
 ```json
 {
-  "platforms": ["TIKTOK", "YOUTUBE_SHORTS", "INSTAGRAM_REELS", "FACEBOOK_REELS"]
+  "platforms": ["TIKTOK", "YOUTUBE_SHORTS", "INSTAGRAM_REELS", "FACEBOOK_REELS"],
+  "expectedCredits": 4
 }
 ```
 
@@ -2718,7 +2832,8 @@ Request:
     "uploads/local-dev-user/frame-upload-1/demo-1.jpg",
     "uploads/local-dev-user/frame-upload-2/demo-2.jpg"
   ],
-  "deleteAfterUse": true
+  "deleteAfterUse": true,
+  "expectedCredits": 1
 }
 ```
 
@@ -2750,25 +2865,49 @@ Starter response shape (illustrative Gemini output):
   "quota": {
     "limit": 50,
     "usedThisMonth": 1,
-    "remainingThisMonth": 49
+    "remainingThisMonth": 49,
+    "requestedCredits": 1,
+    "chargedCredits": 1
   }
 }
 ```
 
-Quota reached:
+Quota reached (`429`; the response retains actual remaining quota and includes
+the required request cost, including when the balance is positive but too small):
 
 ```json
 {
   "status": "error",
   "code": "AI_CAPTION_QUOTA_REACHED",
-  "message": "Starter is limited to 50 real-clip AI caption generations per month",
+  "message": "Not enough AI caption credits for the selected channels",
   "quota": {
-    "limit": 50,
-    "usedThisMonth": 50,
-    "remainingThisMonth": 0
+    "limit": 120,
+    "usedThisMonth": 119,
+    "remainingThisMonth": 1,
+    "addonRemaining": 2,
+    "availableGenerations": 3,
+    "requiredCredits": 4
   }
 }
 ```
+
+Cost confirmation required (`409`; no reservation or provider call):
+
+```json
+{
+  "status": "error",
+  "code": "AI_CAPTION_COST_CONFIRMATION_REQUIRED",
+  "message": "Confirm the current AI caption cost before generating",
+  "quota": {
+    "requiredCredits": 4,
+    "chargedCredits": 0
+  }
+}
+```
+
+Error messages above are illustrative; clients should use the code and quota
+fields. The 429 example reports the three credits actually available rather
+than fabricating an exhausted balance for a four-credit request.
 
 Production direction:
 
@@ -3445,12 +3584,14 @@ An unsupported range returns `400 INVALID_ANALYTICS_RANGE`.
 
 The catalog product `postdee_post100_caption50` represents one repeatable
 consumable purchase at a target price of 49 THB: 100 post units and 50 real-clip
-caption generations. Quantities come from the server catalog, never the client.
+caption credits. Quantities come from the server catalog, never the client.
 Only effective Starter/Pro members can buy/use it; no subscription or tier
 feature is changed. Purchased credits never expire. Included monthly quota is
 consumed first; only the excess is allocated to purchased credits. One video
 sent to two destinations uses two units and may split its allocation between
-monthly quota and purchased credits. Basic retains purchased balances but
+monthly quota and purchased credits. AI captions likewise cost one credit per
+selected generation channel under the 2026-10-25 contract; a shared-caption
+request costs one. Basic retains purchased balances but
 cannot spend them until Starter/Pro becomes effective again. Refunds revoke
 that transaction's grant without removing existing posts or usage records.
 Previously spent purchased credits remain charged internally after a refund;
@@ -3542,6 +3683,24 @@ remain separate from a new payment. Install the additive API first, then the
 preparation-aware app; read-only GET is a separate later rollout step.
 
 ### `GET /billing/subscription`
+
+Uploader post-quota display (2026-10-25, follow-up candidate) reuses this
+existing authenticated response. Its strip appears on entry to the
+clip-selection step, including when no clip is selected. It reads
+`subscription.plan`, `monthlyPostLimit`,
+`usedPostsThisMonth` and `remainingPostsThisMonth` for the included monthly
+balance; `addonPostUnits` is the retained purchased bank and
+`availablePostUnits` is the usable combined total. Paid users can spend that
+bank; Basic retains it without adding it to usable availability. The strip uses
+`requiresPhoneVerification` to explain Basic's existing phone gate;
+`canUseFreePostQuota` remains the existing eligibility field. A missing/failed
+snapshot, or absent monthly limit/used/remaining
+fields, is unavailable with retry, not a zero balance. This adds no endpoint,
+response field or accounting rule. Opening the composer or selecting a clip
+does not submit a post, reserve quota, start AI or initiate payment. This UI
+requires an updated Mobile build; an API deployment does not update installed
+Mobile code.
+See the [post-quota strip plan](docs/superpowers/plans/2026-10-25-post-quota-strip.md).
 
 The 2026-10-21 usability follow-up adds optional ISO-8601
 `subscription.monthlyQuotaResetsAt`, the start of the next UTC calendar month

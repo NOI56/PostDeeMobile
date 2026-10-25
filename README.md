@@ -7,6 +7,110 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+## Compact post quota on the clip step (2026-10-25, follow-up candidate)
+
+The uploader's clip-selection step shows a small post-quota strip immediately
+on entry, including before a clip is selected. It uses the existing
+authenticated `GET /billing/subscription`
+snapshot: effective plan, monthly remaining/limit in `หน่วย`, used post units
+and a thin remaining bar. Paid members see a short purchased-credit line when
+their post bank is nonempty. Basic users who still need phone verification see
+that explanation rather than mistaking the gated balance for used-up quota.
+
+Load on composer entry even with an empty clip, then refresh for handed-in
+clips, selection/reselection, app
+resume, auth-session changes, successful in-composer subscription resync and
+post acceptance/failure or recovery while the composer remains open. Billing or
+phone-verification changes are reread on the next such refresh. Owner/session/
+request/clip guards reject late results;
+loading, missing data or errors show loading/retry without inventing zero.
+Selecting a clip does not spend quota, publish, generate AI or open checkout.
+Existing post-unit rules, paid add-on access, phone gates and caption-credit
+work remain unchanged. No new endpoint, schema, migration or provider change
+is required. An updated Mobile build is required to see this UI; deploying the
+Render API does not update an installed app. This is not deployment evidence; see the
+[post-quota strip plan](docs/superpowers/plans/2026-10-25-post-quota-strip.md).
+
+## AI caption credits per channel (2026-10-25, implementation candidate)
+
+Advanced AI caption generation costs **one credit per selected channel**:
+one, two, three or four selected channels cost 1, 2, 3 or 4 credits. The button
+shows `สร้างแคปชั่น · N เครดิต` without adding another cost row. Shared-caption
+generation and the legacy keyword endpoint still cost one credit. Starter/Pro
+monthly allowances (50/120), plan and add-on prices, and credit expiry rules
+remain unchanged.
+
+The API derives the cost from the validated channel selection and reserves the
+whole amount atomically, using monthly credits before the retained add-on bank.
+Insufficient total credits produce no partial debit or provider call. One
+provider operation still produces the selected set. A fallback or failed set
+releases the entire reservation; dismissing a successfully generated preview
+does not refund it. Responses report requested and actually charged credits.
+
+New Mobile sends `expectedCredits` with the displayed cost. Multiple-channel
+requests without a matching confirmation return `409
+AI_CAPTION_COST_CONFIRMATION_REQUIRED` before any charge, so older apps cannot
+silently spend more than their displayed one-credit price. Coordinate the API
+and Mobile rollout: older multi-channel clients need an update, while new
+Mobile against the older API can quote more than that API charges. No schema,
+migration, provider or flag change is required. This is not deployment evidence;
+see the [credit-per-channel plan](docs/superpowers/plans/2026-10-25-caption-credit-per-channel.md).
+
+## Compact AI caption quota strip (2026-10-25, visibility follow-up candidate)
+
+The composer adds a small quota strip directly above its existing AI generation
+action in both shared and advanced caption modes, for every validated plan:
+actual plan badge, monthly remainder/limit, used credits and a thin remaining
+bar. Basic shows its actual zero monthly allowance and retained historical
+usage, with a short Starter/Pro eligibility hint; viewing the balance does not
+unlock AI. A paid user's nonempty purchased bank adds only a small
+`+ เครดิตเติม N เครดิต` line. Basic's retained bank is not presented as
+spendable. Monthly exhaustion does not block generation while paid add-on credits
+cover the selected cost; known total availability below that cost disables the
+AI action. Manual caption editing and posting keep their existing rules.
+
+`GET /captions/quota` loads the authenticated quota on composer entry and app
+resume. Generation responses update it even if the user changes text or cancels
+the advanced-caption preview. Failures and pending refund refreshes reread it;
+loading/errors never become a fabricated zero and offer retry when unavailable.
+The pushed four-step wizard, account guards, per-platform captions, nonexpiring
+credits and existing generation/refund behavior are preserved.
+
+Deploy the additive API before the Mobile build. Older APIs returning `404`
+show quota unavailable/retry. There are no package-rule, flag, schema or
+migration changes. This visibility follow-up needs an updated Mobile build and
+installation; an API deployment does not update the installed screen. The
+reference image's `38/50` is an example, not a fixed balance. Units remain
+`เครดิต`, and this candidate is not a deployment receipt. See the
+[implementation plan](docs/superpowers/plans/2026-10-25-caption-quota-strip.md).
+
+## Per-channel clip-duration alerts (2026-10-25, local candidate)
+
+The Mobile candidate warns about clip length after picking a video, receiving a
+prefilled video or restoring a draft. Connected channel rows show their own
+duration error. An incompatible unselected row cannot be selected; an already
+selected row stays selected and can be unchecked. Next and final confirmation
+remain blocked until selected duration errors are resolved. Select all adds only
+compatible channels and never removes an existing selection. No clip is trimmed
+and no destination is silently dropped.
+
+| Destination | Duration used by the Mobile guard |
+| --- | --- |
+| Facebook Page Reels | 3–90 seconds, inclusive |
+| YouTube Shorts | At most 180 seconds |
+| Instagram Reels | 3–900 seconds, inclusive |
+| TikTok Inbox | At most 600 seconds |
+| TikTok Direct | At most the lower of 600 seconds and the fresh connected creator limit |
+
+An unknown source-duration hint does not mean a clip passed. Final preflight still
+checks the actual outgoing file; YouTube/Instagram/Facebook block unknown required
+metadata, and TikTok retains its existing preparation and Direct validation.
+Owner-bound cached receipts and accepted-request recovery remain intact. There
+is no backend, schema or feature-flag change. Source requirements were reviewed
+on 2026-10-25; Mobile tests, analysis and Staging APK12052 build/package/signature
+checks pass. Installation, runtime and real-account PostPeer E2E remain unverified. See the
+[duration contract and sources](docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate).
+
 ## Facebook Page Reels contract (2026-10-24)
 
 Facebook now requests Page Reels only through the existing PostPeer integration.
@@ -172,12 +276,15 @@ change or app installation is authorized. Details and validation are in the
 
 The advanced caption panel uses the header `ให้ AI ช่วยเขียน`, a `สไตล์`
 action and a uniform two-by-two channel grid beneath `เลือกช่องทางที่ต้องการ`.
-The action `สร้างแคปชั่น · 1 เครดิต` stays disabled until a channel is chosen.
+The action shows `สร้างแคปชั่น · N เครดิต` for the selected channel count and
+stays disabled until a channel is chosen.
 Select-all/clear actions and a separate cost row are removed; writing style and
 clip guidance remain available behind the style action. The four manual
-editors, remembered draft targets, selected-only preview/apply/undo and existing
-one-credit request for 1–4 channels are retained. This changes no API, contract,
-quota or backend runtime. Follow-up source `4a1c0f9` is on main and Staging APK
+editors, remembered draft targets and selected-only preview/apply/undo are
+retained. The original fixed one-credit label and accounting are superseded by
+the 2026-10-25 credit-per-channel contract above. The original presentation
+release changed no backend runtime. Follow-up source `4a1c0f9` is on main and
+Staging APK
 **12045** is installed with the existing account and storage retained. Selected
 channels now use only a green outline, with no checkmark covering their logos.
 The follow-up passes analysis, 35 Staging-configured checks and light/dark
@@ -185,7 +292,8 @@ real-font rendering checks. Native checks confirm the new appearance and
 zero/two-target behavior; complete four-target native interaction was stopped
 when the screen changed independently. Earlier compact-panel full-suite and
 style-cancel evidence remains recorded separately. No AI credit was spent or
-post published. The current API supports this UI without a redeploy. See the
+post published. The original presentation used the then-current API without a
+redeploy; the later pricing change requires coordinated delivery. See the
 [compact-panel record](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
 ## Mobile and CI hardening (2026-10-24, security Batch 6)
@@ -216,10 +324,9 @@ application and undo cover only those channels; other captions remain intact.
 Local post drafts remember the selection through mode switches and reopening.
 It is not a reusable channel/account preference or a field in post submissions.
 
-Existing billing stays at **one AI credit per request/set of 1–4 channels**;
-selecting fewer channels avoids unnecessary variants but does not discount that
-request. The existing fallback/refund rules remain unchanged. The deployed API
-already accepts a selected `platforms` subset; this follow-up introduces no
+The original release used one credit per set; that rule is superseded by the
+2026-10-25 per-channel contract above. The selection release's deployed API
+already accepted a selected `platforms` subset; that follow-up introduced no
 backend runtime, schema, migration or configuration change. The user explicitly
 requested a synchronized Staging deployment during release.
 Checks pass: 2,787 Mobile tests, 2,504 API tests, Mobile analyze,
@@ -254,9 +361,10 @@ Facebook overrides must remain nonempty; YouTube's existing title/settings
 requirements still apply.
 `POST /captions/generate-from-clip` accepts optional selected `platforms` and
 returns a matching `platformCaptions` map alongside its existing fields. One
-set reserves one generation and calls the provider once, retaining the existing
-transient retry policy. Incomplete/malformed AI output becomes a labeled local
-fallback, with quota refunded when release succeeds.
+provider operation produces the selected set, retaining the existing transient
+retry policy. Under the 2026-10-25 contract, the set atomically reserves one
+credit per channel. Incomplete/malformed AI output becomes a labeled local
+fallback, with the entire batch refunded when release succeeds.
 
 The feature is merged and pushed to `main`; Staging API `a391bc4` includes
 the caption implementation and a bounded owner-transaction conflict fix found
@@ -1735,11 +1843,13 @@ access, owner checks, media limits and generation quota remain unchanged. This
 fix has not performed real remote user uploads, provider generation or paid
 state changes; production generation remains unverified.
 
-- Starter retains the historical `AUDIO_ONLY` mode and 50 generations/month.
+- Starter retains the historical `AUDIO_ONLY` mode and 50 caption credits/month.
 - Pro retains `AUDIO_WITH_FRAMES`, adds up to three selected frames, and has
-  120 generations/month. Both Gemini modes receive the whole MP4; the mode name
+  120 caption credits/month. Both Gemini modes receive the whole MP4; the mode name
   does not mean an isolated audio upload or a new package rule.
-- Each successful generate/change request counts as one generation.
+- Shared-caption generate/change requests cost one credit; advanced requests
+  cost one credit per selected channel. The API atomically reserves the full
+  cost, using monthly quota before nonexpiring add-on credits.
 - The current scaffold returns caption options, hooks, hashtags, SEO keywords,
   a search title, auto language/market context, source mode, and remaining
   quota.
@@ -2676,12 +2786,13 @@ Required services for later milestones:
 
 The post/caption add-on is a separate, repeatable consumable purchase: target
 price 49 THB for 100 additional post units and 50 additional real-clip caption
-generations. Native Android and iPhone use the same non-expiring purchased
+credits. Native Android and iPhone use the same non-expiring purchased
 credit policy. Only effective Starter/Pro members can buy/use it. Included
 monthly quota is consumed first; purchased credits cover only the remainder
 and carry over across monthly resets. A post to two destinations uses two
-units. Purchased balances remain stored during a downgrade to Basic and become
-usable again with Starter/Pro. Existing tier features and subscription prices
+units. AI caption generation costs one credit per selected channel, or one for
+a shared-caption request. Purchased balances remain stored during a downgrade
+to Basic and become usable again with Starter/Pro. Existing tier features and subscription prices
 do not change. The app displays the store's actual localized checkout price.
 
 Purchases stay disabled by default (`BILLING_ADDONS_ENABLED=false`) until the

@@ -2,6 +2,27 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Per-channel clip-duration alerts (2026-10-25, local candidate)
+
+Show early duration warnings after video pick, prefill or draft restore, with an
+error on each incompatible connected channel. Unselected incompatible rows are
+disabled; selected incompatible rows can still be unchecked and block Next/final
+confirmation until resolved. Select all adds compatible channels without removing
+existing selections. There is no automatic trimming or destination removal.
+
+The limits are Facebook Page Reels 3–90 seconds, YouTube Shorts at most 180,
+Instagram Reels 3–900, TikTok Inbox at most 600 and TikTok Direct at most
+min(600 seconds, fresh connected creator limit). Unknown source hints are not a
+pass. Keep final outgoing-file metadata checks and TikTok preparation/Direct
+validation, including existing consent and account freshness requirements.
+Retain cached receipts, local drafts and accepted-request recovery without
+reuploading or resending uncertain work. No API/schema/flag change is needed.
+
+Mobile tests, analysis and Staging APK12052 build/package/signature checks pass;
+installation and native runtime remain unverified. See the
+[2026-10-25 source review and contract](../../docs/superpowers/plans/2026-10-15-platform-publish-preflight.md#per-channel-duration-alerts--2026-10-25-local-candidate);
+no real-account PostPeer publication is claimed.
+
 ## Release hardening (2026-10-24, security Batch 6)
 
 Android disables backup and device transfer of app data
@@ -185,9 +206,10 @@ units and Facebook 63,206 conservative UTF-16 units. An owned FFprobe session wi
 bounded execution checks the final outgoing file after rendering, rather than
 guessing from the original clip. YouTube Shorts is limited to 180 seconds;
 Instagram checks MOV/MP4 container/duration/size/dimensions/FPS/codecs/audio.
-Facebook Page Reels no longer inherits Page Video duration/width caps; do not
-invent Reel limits. Verified metadata and general upload safeguards remain,
-and the provider validates the actual Reel. Unknown metadata blocks the affected media check.
+Facebook Page Reels does not inherit Page Video duration/width caps. The
+2026-10-25 local duration-alert candidate adds a separate 3–90-second API Reel
+guard. Verified metadata and general upload safeguards remain, and the provider
+validates the actual Reel. Unknown metadata blocks the affected media check.
 
 Channel-readiness loads at channel selection and is refreshed before upload and
 post creation. Explicit reconnect/permission problems block submission; unknown

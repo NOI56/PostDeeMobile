@@ -8,6 +8,8 @@ import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/home/home_screen.dart';
+import 'package:postdee_mobile/features/platforms/social_platform.dart';
+import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
 import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1093,6 +1095,74 @@ void main() {
       ['เครื่องมือเติบโต', 'ช่วยให้ขายดี', 'แจ้งเตือนคลิปไวรัล'],
     );
   });
+  testWidgets('latest posts show matching platform logos in post order',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 852));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          loadSubscription: _previewSubscription,
+          loadDrafts: () async => const [],
+          loadConnections: () async => const [],
+          loadScheduledPosts: () async => const [],
+          loadLinkProfile: () async => null,
+          loadRecentPosts: () async => [
+            PostSummaryResult(
+              id: 'platform-logos',
+              caption: 'โพสต์ครบทุกแพลตฟอร์ม',
+              videoS3Key: 'clip.mp4',
+              platforms: const [
+                'INSTAGRAM_REELS',
+                'YOUTUBE_SHORTS',
+                'TIKTOK',
+                'FACEBOOK_REELS',
+              ],
+              status: 'PUBLISHED',
+              createdAt: DateTime(2026, 10, 25),
+            ),
+            PostSummaryResult(
+              id: 'single-platform-logo',
+              caption: 'โพสต์ TikTok',
+              videoS3Key: 'single-clip.mp4',
+              platforms: const ['TIKTOK'],
+              status: 'PUBLISHED',
+              createdAt: DateTime(2026, 10, 25),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final logos = find.byType(SocialPlatformLogo);
+    expect(
+      tester.widgetList<SocialPlatformLogo>(logos).map((logo) => logo.platform),
+      [
+        SocialPlatform.instagramReels,
+        SocialPlatform.youtubeShorts,
+        SocialPlatform.tiktok,
+        SocialPlatform.facebookReels,
+        SocialPlatform.tiktok,
+      ],
+    );
+    expect(
+      tester
+          .widgetList<Image>(
+            find.descendant(of: logos, matching: find.byType(Image)),
+          )
+          .map((image) => (image.image as AssetImage).assetName),
+      [
+        'assets/images/platforms/instagram_reels.png',
+        'assets/images/platforms/youtube_shorts.png',
+        'assets/images/platforms/tiktok.png',
+        'assets/images/platforms/facebook_reels.png',
+        'assets/images/platforms/tiktok.png',
+      ],
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows real latest posts on the home dashboard', (tester) async {
     final publishedAt = DateTime.now().subtract(const Duration(hours: 2));
 

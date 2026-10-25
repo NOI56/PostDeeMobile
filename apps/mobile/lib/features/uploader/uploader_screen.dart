@@ -27,6 +27,8 @@ import '../shared/postdee_time_picker.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
+import 'caption_quota_strip.dart';
+import 'post_quota_strip.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
@@ -53,6 +55,7 @@ export '../shared/post_schedule_policy.dart';
 typedef UploaderTemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef UploaderSubscriptionLoader = Future<SubscriptionStatusResult>
     Function();
+typedef UploaderCaptionQuotaLoader = Future<CaptionQuotaResult> Function();
 typedef UploaderSubscriptionResync = Future<void> Function();
 typedef UploaderCaptionGenerator = Future<CaptionResult> Function(
     List<String> keywords);
@@ -161,6 +164,8 @@ class UploaderScreen extends StatefulWidget {
     super.key,
     this.loadTemplates,
     this.loadSubscription,
+    this.loadCaptionQuota,
+    this.loadPostQuota,
     this.resyncRevenueCatSubscription,
     this.enableRevenueCatBilling = AppConfig.enableRevenueCatBilling,
     this.captionWritingStyleStore =
@@ -178,6 +183,7 @@ class UploaderScreen extends StatefulWidget {
     this.loadSocialConnections,
     this.loadSocialPublishingReadiness,
     this.probePublishMedia,
+    this.readVideoMetadata,
     this.loadTikTokPublishingOptions,
     this.onScheduledPostCreated,
     this.onPublishFinished,
@@ -200,11 +206,14 @@ class UploaderScreen extends StatefulWidget {
     this.initialVideoSizeBytes,
     this.initialVideoWidth,
     this.initialVideoHeight,
+    this.initialVideoDurationSeconds,
     this.fullScreen = false,
   });
 
   final UploaderTemplateLoader? loadTemplates;
   final UploaderSubscriptionLoader? loadSubscription;
+  final UploaderCaptionQuotaLoader? loadCaptionQuota;
+  final UploaderSubscriptionLoader? loadPostQuota;
   final UploaderSubscriptionResync? resyncRevenueCatSubscription;
   final bool enableRevenueCatBilling;
   final CaptionWritingStyleStore captionWritingStyleStore;
@@ -220,6 +229,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderConnectionsLoader? loadSocialConnections;
   final UploaderSocialReadinessLoader? loadSocialPublishingReadiness;
   final PublishMediaProbe? probePublishMedia;
+  final VideoMetadataReader? readVideoMetadata;
   final UploaderTikTokOptionsLoader? loadTikTokPublishingOptions;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
@@ -255,6 +265,7 @@ class UploaderScreen extends StatefulWidget {
   final int? initialVideoSizeBytes;
   final int? initialVideoWidth;
   final int? initialVideoHeight;
+  final double? initialVideoDurationSeconds;
   final bool fullScreen;
 
   @override
@@ -309,6 +320,16 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _isPreparingSubmission = false;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
+  CaptionQuotaResult? _captionQuota;
+  bool _isLoadingCaptionQuota = false;
+  bool _captionQuotaLoadFailed = false;
+  int _captionQuotaRequestId = 0;
+  late AuthSessionBinding _captionQuotaSession;
+  SubscriptionStatusResult? _postQuota;
+  bool _isLoadingPostQuota = false;
+  bool _postQuotaLoadFailed = false;
+  int _postQuotaRequestId = 0;
+  String _postQuotaClipPath = '';
   bool _isLoadingConnections = true;
   int _connectionLoadGeneration = 0;
   String? _connectionsOwnerUserId;
@@ -336,6 +357,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _captionNeedsReview = false;
   List<String> _aiCaptionSeoKeywords = const [];
   String? _selectedVideoName;
+  double? _videoDurationSeconds;
+  int _videoDurationReadGeneration = 0;
+  bool _isReadingVideoDuration = false;
+  Timer? _videoDurationReadTimer;
+  Completer<VideoDimensions?>? _videoDurationReadResult;
   CoverEditorResult? _coverResult;
   List<PublishDraft> _drafts = const [];
   String? _activeDraftId;
@@ -485,7 +511,128 @@ class _UploaderScreenState extends State<UploaderScreen>
       !_isLoadingConnections &&
       _connectionsErrorMessage == null &&
       _selectedReadinessIssue == null &&
+      _selectedDurationProblem == null &&
       _draftUnavailablePlatforms.isEmpty;
+
+  PublishPreflightProblem? _durationProblem(SocialPlatform platform) =>
+      validatePlatformVideoDuration(
+        platform: platform,
+        durationSeconds: _videoDurationSeconds,
+        tikTokMaxDurationSeconds:
+            _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost
+                ? _tikTokPublishingOptions?.creatorInfo.maxVideoPostDurationSec
+                : null,
+      );
+
+  PublishPreflightProblem? get _selectedDurationProblem {
+    for (final platform
+        in SocialPlatform.values.where(_selectedPlatforms.contains)) {
+      final problem = _durationProblem(platform);
+      if (problem != null) return problem;
+    }
+    return null;
+  }
+
+  Map<SocialPlatform, String> get _durationWarnings => {
+        for (final platform
+            in SocialPlatform.values.where(_connectedPlatforms.contains))
+          if (_durationProblem(platform) case final problem?)
+            platform: '${problem.message} จึงโพสต์ช่องทางนี้ไม่ได้',
+      };
+
+  // Source metadata is an early hint. The exact outgoing file is checked again
+  // after preparation, before any remote upload.
+  void _setVideoDuration(double? seconds) {
+    _videoDurationReadGeneration++;
+    _cancelVideoDurationRead();
+    _videoDurationSeconds = seconds != null && seconds.isFinite && seconds > 0
+        ? seconds
+        : null;
+    _isReadingVideoDuration = false;
+  }
+
+  void _cancelVideoDurationRead() {
+    _videoDurationReadTimer?.cancel();
+    _videoDurationReadTimer = null;
+    final result = _videoDurationReadResult;
+    _videoDurationReadResult = null;
+    if (result != null && !result.isCompleted) result.complete(null);
+  }
+
+  Future<void> _readSelectedVideoDuration() async {
+    final path = _localFilePathController.text.trim();
+    if (path.isEmpty || _videoDurationSeconds != null) return;
+    if (widget.readVideoMetadata == null &&
+        !Platform.isAndroid && !Platform.isIOS) {
+      return;
+    }
+    final generation = ++_videoDurationReadGeneration;
+    _cancelVideoDurationRead();
+    final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
+    final result = Completer<VideoDimensions?>();
+    _videoDurationReadResult = result;
+    _videoDurationReadTimer = Timer(const Duration(seconds: 15), () {
+      if (!result.isCompleted) result.complete(null);
+    });
+    setState(() => _isReadingVideoDuration = true);
+    final readMetadata =
+        widget.readVideoMetadata ?? const FfmpegVideoMetadataReader().call;
+    unawaited(Future<VideoDimensions?>.sync(() => readMetadata(path))
+        .then<void>((metadata) {
+      if (!result.isCompleted) result.complete(metadata);
+    }, onError: (Object _, StackTrace __) {
+      if (!result.isCompleted) result.complete(null);
+    }));
+    final metadata = await result.future;
+    if (identical(_videoDurationReadResult, result)) {
+      _cancelVideoDurationRead();
+    }
+    if (!mounted ||
+        generation != _videoDurationReadGeneration ||
+        owner != PostDeeAuthSessionStore.instance.session.stableUserId) {
+      return;
+    }
+    final seconds = metadata?.durationSeconds;
+    setState(() {
+      _videoDurationSeconds = seconds != null && seconds.isFinite && seconds > 0
+          ? seconds
+          : null;
+      _isReadingVideoDuration = false;
+    });
+  }
+
+  String _durationClock(double seconds) {
+    final total = seconds.ceil();
+    return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildDurationWarnings() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_videoDurationSeconds == null &&
+              _localFilePathController.text.isNotEmpty)
+            Text(
+              _isReadingVideoDuration
+                  ? 'กำลังอ่านความยาวคลิป...'
+                  : 'ยังอ่านความยาวคลิปไม่ได้ จะตรวจซ้ำก่อนส่ง',
+              key: const ValueKey('uploader-duration-status'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          for (final entry in _durationWarnings.entries)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Semantics(
+                liveRegion: true,
+                child: PostDeeNotice(
+                  key: ValueKey('uploader-duration-warning-${entry.key.apiValue}'),
+                  message: entry.value,
+                  icon: Icons.timer_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ),
+        ],
+      );
 
   String? get _selectedReadinessIssue {
     if (_selectedPlatforms.isEmpty) return null;
@@ -858,6 +1005,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     final height = _readPositiveInt(_heightController);
     final size = _readPositiveInt(_sizeBytesController);
     final parts = <String>[
+      if (_videoDurationSeconds case final seconds?)
+        '${_durationClock(seconds)} นาที',
       if (width != null && height != null) '$width × $height px',
       if (_videoAspectLabel != null) '9:16',
       if (size != null)
@@ -935,6 +1084,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       } else if (_selectedPlatformWithoutIdentity != null) {
         error =
             'ยังยืนยันบัญชีหรือเพจปลายทางไม่ได้ กรุณารีเฟรชช่องทางหรือเชื่อมต่อใหม่';
+      } else if (_selectedDurationProblem case final problem?) {
+        error = '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่';
       } else if (_postTextValidationError() case final message?) {
         error = message;
       } else {
@@ -1157,10 +1308,15 @@ class _UploaderScreenState extends State<UploaderScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
+    PostDeeAuthSessionStore.instance
+        .addListener(_handleCaptionQuotaSessionChanged);
+    unawaited(_loadCaptionQuota());
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _appIsResumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     _savedFormSnapshot = _formSnapshot;
     _prefillInitialVideo();
+    unawaited(_readSelectedVideoDuration());
     final requestedDate = widget.initialScheduleDate?.toLocal();
     if (requestedDate != null &&
         !(widget.initialDraftId?.trim().isNotEmpty ?? false)) {
@@ -1194,6 +1350,9 @@ class _UploaderScreenState extends State<UploaderScreen>
     ]) {
       controller.addListener(_handleFeedbackTextChanged);
     }
+    _localFilePathController.addListener(_handlePostQuotaClipChanged);
+    _postQuotaClipPath = _localFilePathController.text.trim();
+    unawaited(_loadPostQuota());
   }
 
   @override
@@ -1204,6 +1363,128 @@ class _UploaderScreenState extends State<UploaderScreen>
         _appIsResumed = resumed;
         if (!resumed) _clearDraftSavedFeedback();
       });
+      if (resumed) {
+        unawaited(_loadCaptionQuota());
+        unawaited(_loadPostQuota());
+      }
+    }
+  }
+
+  void _handlePostQuotaClipChanged() {
+    final path = _localFilePathController.text.trim();
+    if (path == _postQuotaClipPath) return;
+    _postQuotaClipPath = path;
+    _postQuotaRequestId++;
+    setState(() {
+      _postQuota = null;
+      _isLoadingPostQuota = false;
+      _postQuotaLoadFailed = false;
+    });
+    unawaited(_loadPostQuota());
+  }
+
+  Future<void> _loadPostQuota() async {
+    if (!mounted || !PostDeeAuthSessionStore.instance.session.isSignedIn) {
+      return;
+    }
+    final session = _captionQuotaSession;
+    final requestId = ++_postQuotaRequestId;
+    bool isCurrent() =>
+        mounted &&
+        session.isCurrent &&
+        requestId == _postQuotaRequestId;
+    setState(() {
+      _postQuota = null;
+      _isLoadingPostQuota = true;
+      _postQuotaLoadFailed = false;
+    });
+    try {
+      final loader = widget.loadPostQuota ??
+          PostDeeApiClient(
+            authHeaders: PostDeeApiAuthHeaders(sessionBinding: session),
+          ).loadCurrentSubscription;
+      final result = await loader();
+      if (!isCurrent()) return;
+      final limit = result.monthlyPostLimit;
+      final used = result.usedPostsThisMonth;
+      final remaining = result.remainingPostsThisMonth;
+      if (limit == null ||
+          used == null ||
+          remaining == null ||
+          limit < 0 ||
+          used < 0 ||
+          remaining < 0 ||
+          remaining > limit ||
+          result.addonPostUnits < 0 ||
+          (session.userId != null && result.userId != session.userId)) {
+        throw const ApiException('Post quota response is unavailable');
+      }
+      setState(() {
+        _postQuota = result;
+        _isLoadingPostQuota = false;
+      });
+    } catch (_) {
+      if (!isCurrent()) return;
+      setState(() {
+        _isLoadingPostQuota = false;
+        _postQuotaLoadFailed = true;
+      });
+    }
+  }
+
+  Future<void> _loadCaptionQuota() async {
+    if (_isGeneratingCaption) return;
+    final requestId = ++_captionQuotaRequestId;
+    final session = _captionQuotaSession;
+    setState(() {
+      _captionQuota = null;
+      _isLoadingCaptionQuota = true;
+      _captionQuotaLoadFailed = false;
+    });
+    try {
+      final loader = widget.loadCaptionQuota ??
+          PostDeeApiClient(
+            authHeaders: PostDeeApiAuthHeaders(sessionBinding: session),
+          ).fetchAiCaptionQuota;
+      final result = await loader();
+      if (!mounted ||
+          !session.isCurrent ||
+          requestId != _captionQuotaRequestId) {
+        return;
+      }
+      setState(() {
+        _captionQuota = result;
+        _isLoadingCaptionQuota = false;
+      });
+    } catch (_) {
+      if (!mounted ||
+          !session.isCurrent ||
+          requestId != _captionQuotaRequestId) {
+        return;
+      }
+      setState(() {
+        _isLoadingCaptionQuota = false;
+        _captionQuotaLoadFailed = true;
+      });
+    }
+  }
+
+  void _handleCaptionQuotaSessionChanged() {
+    if (_captionQuotaSession.isCurrent) return;
+    _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
+    _captionQuotaRequestId++;
+    _postQuotaRequestId++;
+    setState(() {
+      _captionQuota = null;
+      _isLoadingCaptionQuota = false;
+      _captionQuotaLoadFailed = false;
+      _postQuota = null;
+      _isLoadingPostQuota = false;
+      _postQuotaLoadFailed = false;
+    });
+    if (PostDeeAuthSessionStore.instance.session.isSignedIn) {
+      unawaited(_loadCaptionQuota());
+      unawaited(_loadPostQuota());
     }
   }
 
@@ -1410,6 +1691,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _activeDraftWatermarkEnabled = null;
       _activeDraftUploadedMedia = null;
       _selectedVideoName = null;
+      _setVideoDuration(null);
       _coverResult = null;
       _captionController.clear();
       _captionNeedsReview = false;
@@ -1719,6 +2001,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         : _readFileNameFromPath(path);
 
     _selectedVideoName = name;
+    _setVideoDuration(widget.initialVideoDurationSeconds);
     _localFilePathController.text = path;
     _fileNameController.text = name;
 
@@ -1737,7 +2020,14 @@ class _UploaderScreenState extends State<UploaderScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PostDeeAuthSessionStore.instance
+        .removeListener(_handleCaptionQuotaSessionChanged);
+    _captionQuotaRequestId++;
     _connectionLoadGeneration++;
+    _videoDurationReadGeneration++;
+    _cancelVideoDurationRead();
+    _postQuotaRequestId++;
+    _localFilePathController.removeListener(_handlePostQuotaClipChanged);
     _captionGeneration++;
     _captionStyleGeneration++;
     _captionValidationGeneration++;
@@ -2391,6 +2681,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Future<void> _generateAiCaption() async {
     if (_formBusy || _isGeneratingCaption || _isSavingCaptionStyle) return;
+    final quotaSession = _captionQuotaSession;
     final advanced = _platformSettings.usePlatformCaptions;
     final requestedPlatforms = [
       if (advanced)
@@ -2399,6 +2690,13 @@ class _UploaderScreenState extends State<UploaderScreen>
     ];
     if (advanced && requestedPlatforms.isEmpty) {
       setState(() => _aiCaptionErrorMessage = 'เลือกช่องทางให้ AI เขียนก่อน');
+      return;
+    }
+    final requiredCredits = advanced ? requestedPlatforms.length : 1;
+    if (_captionQuota?.isPaid == true &&
+        _captionQuota!.availableCount < requiredCredits) {
+      setState(() => _aiCaptionErrorMessage =
+          'เครดิตไม่พอ ต้องใช้ $requiredCredits เครดิต ลดช่องทางหรือเติมเครดิตแล้วลองใหม่');
       return;
     }
     final generation = ++_captionGeneration;
@@ -2415,6 +2713,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     bool stillCurrent() =>
         mounted &&
+        quotaSession.isCurrent &&
         generation == _captionGeneration &&
         sourcePath == _localFilePathController.text &&
         owner == PostDeeAuthSessionStore.instance.session.stableUserId;
@@ -2428,8 +2727,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
 
+    var quotaUpdated = false;
+    final quotaRequestId = ++_captionQuotaRequestId;
     setState(() {
       _isGeneratingCaption = true;
+      _isLoadingCaptionQuota = false;
       _aiCaptionErrorMessage = null;
     });
 
@@ -2454,6 +2756,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           // Only the fresh server subscription decides access and frame mode.
           subscription = await _loadSubscription();
           if (!stillCurrent()) return;
+          unawaited(_loadPostQuota());
         } catch (_) {
           if (!stillCurrent()) return;
           setState(() {
@@ -2501,9 +2804,22 @@ class _UploaderScreenState extends State<UploaderScreen>
           deleteAfterUse: true,
           writingStyle: writingStyle,
           platforms: requestedPlatforms.map((p) => p.apiValue).toList(),
+          expectedCredits: requiredCredits,
         ),
       );
       final nextCaption = _formatRealClipCaption(caption);
+
+      // Usage was committed even if the seller edited text or rejects preview.
+      if (mounted &&
+          quotaSession.isCurrent &&
+          quotaRequestId == _captionQuotaRequestId) {
+        setState(() {
+          _captionQuota = CaptionQuotaResult(
+              plan: subscription.plan, quota: caption.quota);
+          _captionQuotaLoadFailed = false;
+        });
+        quotaUpdated = !caption.quota.usageRefreshPending;
+      }
 
       if (!stillCurrent()) {
         return;
@@ -2605,7 +2921,11 @@ class _UploaderScreenState extends State<UploaderScreen>
           'PRO_REQUIRED' =>
             'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ',
           'AI_CAPTION_QUOTA_REACHED' =>
-            'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว สมาชิก Starter หรือ Pro ดูแพ็กเติมได้ในหน้าเลือกแพ็กเกจ หรือรอรอบเดือนถัดไป',
+            requiredCredits > 1
+                ? 'เครดิตไม่พอ ต้องใช้ $requiredCredits เครดิต ลดช่องทางหรือเติมเครดิตแล้วลองใหม่'
+                : 'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว สมาชิก Starter หรือ Pro ดูแพ็กเติมได้ในหน้าเลือกแพ็กเกจ หรือรอรอบเดือนถัดไป',
+          'AI_CAPTION_COST_CONFIRMATION_REQUIRED' =>
+            'กรุณาอัปเดตแอปหรือตรวจสอบช่องทางที่เลือก แล้วลองสร้างแคปชั่นใหม่',
           'UPLOAD_AI_CAPTION_VIDEO_INVALID' =>
             'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
           _ => apiErrorMessage(error,
@@ -2635,6 +2955,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           _isGeneratingCaption = false;
         });
       }
+      if (mounted && !quotaUpdated) unawaited(_loadCaptionQuota());
     }
   }
 
@@ -2772,6 +3093,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           }
         }
         _selectedVideoName = fileName;
+        _setVideoDuration(video.durationSeconds);
         _coverResult = null;
         _localFilePathController.text = video.path;
         _fileNameController.text = fileName;
@@ -2786,6 +3108,8 @@ class _UploaderScreenState extends State<UploaderScreen>
         unawaited(previousCover.cleanupTemporaryFiles());
       }
       unawaited(_loadVideoPoster());
+      unawaited(_readSelectedVideoDuration());
+      if (!sourceChanged) unawaited(_loadPostQuota());
       unawaited(_analytics.logVideoSelected(
         hasDimensions: video.width != null && video.height != null,
       ));
@@ -3068,22 +3392,31 @@ class _UploaderScreenState extends State<UploaderScreen>
             .contains(SocialPlatform.tiktok)) {
       return false;
     }
-    final needsDurationProof =
-        _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost &&
-            (receipt.videoDurationSeconds == null ||
-                !receipt.videoDurationSeconds!.isFinite ||
-                receipt.videoDurationSeconds! <= 0);
+    final needsDurationProof = receipt.videoDurationSeconds == null ||
+        !receipt.videoDurationSeconds!.isFinite ||
+        receipt.videoDurationSeconds! <= 0;
+    final durationProblem = validatePlatformVideoDuration(
+      platform: SocialPlatform.tiktok,
+      durationSeconds: receipt.videoDurationSeconds,
+      tikTokMaxDurationSeconds:
+          _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost
+              ? _tikTokPublishingOptions?.creatorInfo.maxVideoPostDurationSec
+              : null,
+    );
     if (receipt.videoPreparationPolicy == tikTokVideoPreparationPolicy &&
-        !needsDurationProof) {
+        !needsDurationProof &&
+        durationProblem == null) {
       return false;
     }
     setState(() {
       final id = _activeDraftId;
       if (id != null) _blockedSubmissionDraftIds.add(id);
       _errorMessage = needsDurationProof
-          ? 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่มีข้อมูลระยะเวลาสำหรับโพสต์ตรง กรุณาตรวจรายการเดิมก่อนเริ่มรายการโพสต์ใหม่'
-          : 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
-              'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่';
+          ? 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่มีข้อมูลระยะเวลาสำหรับ TikTok กรุณาตรวจรายการเดิมก่อนเริ่มรายการโพสต์ใหม่'
+          : durationProblem != null
+              ? '${durationProblem.message} กรุณาตรวจรายการเดิมก่อนเริ่มรายการโพสต์ใหม่'
+              : 'ร่างนี้มีไฟล์อัปโหลดเดิมที่ยังไม่ผ่านการเตรียมวิดีโอ TikTok '
+                  'กรุณาตรวจรายการโพสต์และปลายทางก่อนเริ่มรายการโพสต์ใหม่';
       _successMessage = null;
     });
     _setUploadStatus(_errorMessage!);
@@ -3130,6 +3463,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     _activeDraftWatermarkEnabled = null;
     _activeDraftUploadedMedia = null;
     _selectedVideoName = null;
+    _setVideoDuration(null);
     _coverResult = null;
     _captionController.clear();
     _captionNeedsReview = false;
@@ -3189,6 +3523,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _activeDraftWatermarkEnabled = draft.watermarkEnabled;
       _activeDraftUploadedMedia = draft.uploadedMedia;
       _selectedVideoName = draft.videoName;
+      _setVideoDuration(null);
       _localFilePathController.text = draft.videoPath;
       _fileNameController.text = draft.videoName;
       _sizeBytesController.text = draft.videoSizeBytes.toString();
@@ -3240,6 +3575,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       unawaited(previousCover.cleanupTemporaryFiles());
     }
     unawaited(_loadVideoPoster());
+    unawaited(_readSelectedVideoDuration());
   }
 
   Future<void> _deleteDraft(PublishDraft draft) async {
@@ -3525,6 +3861,14 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
 
+    if (_selectedDurationProblem case final problem?) {
+      setState(() {
+        _currentStep = 2;
+        _errorMessage = '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่';
+      });
+      return;
+    }
+
     final selectedVideoName = (_selectedVideoName ?? '').trim();
 
     if (selectedVideoName.isEmpty) {
@@ -3698,6 +4042,9 @@ class _UploaderScreenState extends State<UploaderScreen>
               'ตรวจผลการส่งเดิมไม่สำเร็จ ร่างยังอยู่ในเครื่อง กรุณาลองใหม่'));
     } finally {
       if (mounted) setState(() => _isRecoveringSubmission = false);
+      if (isCurrent() && recoverySession.isCurrent) {
+        unawaited(_loadPostQuota());
+      }
     }
   }
 
@@ -4071,7 +4418,7 @@ class _UploaderScreenState extends State<UploaderScreen>
             maxDurationSeconds: isTikTokDirect
                 ? directOptions!.creatorInfo.maxVideoPostDurationSec
                     .clamp(1, 600)
-                : null,
+                : 600,
           ));
           generatedTikTokVideo = prepared;
           preparedDurationSeconds = prepared.durationSeconds;
@@ -4116,6 +4463,10 @@ class _UploaderScreenState extends State<UploaderScreen>
               media: verifiedMedia,
               requireMedia: true);
           if (problem != null) {
+            if (problem.code.contains('DURATION')) {
+              final seconds = verifiedMedia.durationSeconds;
+              setState(() => _setVideoDuration(seconds));
+            }
             throw ApiException(problem.message,
                 statusCode: 400, code: problem.code);
           }
@@ -4506,6 +4857,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         setState(() {
           _isSubmitting = false;
         });
+        if (submissionStillOwned()) unawaited(_loadPostQuota());
       }
     }
   }
@@ -4560,6 +4912,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _setPlatformSelected(SocialPlatform platform, bool isSelected) {
+    if (isSelected && _durationProblem(platform) != null) return;
     setState(() {
       _clearTikTokFreshness();
       if (isSelected && _connectedPlatforms.contains(platform)) {
@@ -4821,11 +5174,12 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _selectAllConnectedPlatforms() {
+    final compatible = _connectedPlatforms
+        .where((platform) => _durationProblem(platform) == null)
+        .toList();
     setState(() {
       _clearTikTokFreshness();
-      _selectedPlatforms
-        ..clear()
-        ..addAll(_connectedPlatforms);
+      _selectedPlatforms.addAll(compatible);
     });
   }
 
@@ -5002,6 +5356,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 const SizedBox(height: 12),
                                 _buildVideoMetadata(
                                     textAlign: TextAlign.center),
+                                _buildDurationWarnings(),
                                 const SizedBox(height: 6),
                                 Wrap(
                                     alignment: WrapAlignment.center,
@@ -5035,6 +5390,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                                           .textTheme
                                           .bodySmall),
                               ],
+                              const SizedBox(height: 12),
+                              _buildPostQuota(),
                             ],
                             if (_currentStep == 1) ...[
                               if (_selectedVideoName != null) ...[
@@ -5079,6 +5436,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 const SizedBox(height: 20),
                               ],
                               _buildCaptionCard(context),
+                              _buildDurationWarnings(),
                             ],
                             if (_currentStep == 2)
                               _PlatformSelectorSection(
@@ -5103,6 +5461,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 animate: _uploaderMotionAllowed(
                                     context, _appIsResumed),
                                 platformSettings: _resolvedPlatformSettings,
+                                durationWarnings: _durationWarnings,
                                 validationPlatform: _platformValidationTarget,
                                 validationMessage: _platformValidationTarget == null
                                     ? null : _platformSettingsError(_platformValidationTarget!),
@@ -5128,6 +5487,13 @@ class _UploaderScreenState extends State<UploaderScreen>
                                   message: message,
                                   actionLabel: 'แก้แคปชัน',
                                   onAction: () => _goToStep(1),
+                                ),
+                              if (_selectedDurationProblem case final problem?)
+                                PostDeeNotice(
+                                  key: const ValueKey('uploader-selected-duration-error'),
+                                  message: '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่',
+                                  actionLabel: 'แก้ช่องทาง',
+                                  onAction: () => _goToStep(2),
                                 ),
                               if (_connectionsErrorMessage != null)
                                 PostDeeNotice(
@@ -5573,6 +5939,38 @@ class _UploaderScreenState extends State<UploaderScreen>
         ],
       );
 
+  Widget _buildPostQuota() {
+    if (_isLoadingPostQuota) {
+      return Text('กำลังโหลดโควตาโพสต์...',
+          key: const ValueKey('uploader-post-quota-loading'),
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: AppTheme.textSecondary));
+    }
+    if (_postQuotaLoadFailed) {
+      return Row(children: [
+        Expanded(
+          child: Text('โหลดโควตาโพสต์ไม่สำเร็จ',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
+        ),
+        IconButton(
+          key: const ValueKey('uploader-post-quota-retry'),
+          tooltip: 'โหลดโควตาโพสต์ใหม่',
+          onPressed: _loadPostQuota,
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+      ]);
+    }
+    final quota = _postQuota;
+    return quota == null
+        ? const SizedBox.shrink()
+        : PostQuotaStrip(subscription: quota);
+  }
+
   Widget _buildAiCaptionPanel() => _AiCaptionPanel(
         guidanceController: _aiGuidanceController,
         selectedVideoName: _selectedVideoName,
@@ -5585,6 +5983,10 @@ class _UploaderScreenState extends State<UploaderScreen>
         isSavingStyle: _isSavingCaptionStyle,
         onOpenStyle: _openCaptionWritingStyle,
         onGenerate: _generateAiCaption,
+        quota: _captionQuota,
+        isLoadingQuota: _isLoadingCaptionQuota,
+        quotaLoadFailed: _captionQuotaLoadFailed,
+        onRetryQuota: _loadCaptionQuota,
         selectedPlatformCount: _platformSettings.usePlatformCaptions
             ? _platformSettings.aiCaptionPlatforms.length
             : null,
@@ -6200,6 +6602,7 @@ class _PlatformSelectorSection extends StatelessWidget {
     required this.onRetryConnections,
     this.connectionDisplayNames = const {},
     this.readinessLabels = const {},
+    this.durationWarnings = const {},
     this.validationPlatform,
     this.validationMessage,
     this.validationAnchors = const {},
@@ -6214,6 +6617,7 @@ class _PlatformSelectorSection extends StatelessWidget {
   final PlatformPublishSettings platformSettings;
   final Map<SocialPlatform, String> connectionDisplayNames;
   final Map<SocialPlatform, String> readinessLabels;
+  final Map<SocialPlatform, String> durationWarnings;
   final SocialPlatform? validationPlatform;
   final String? validationMessage;
   final Map<SocialPlatform, GlobalKey> validationAnchors;
@@ -6383,14 +6787,18 @@ class _PlatformSelectorSection extends StatelessWidget {
             children: [
               TextButton(
                 key: const ValueKey('uploader-select-all-platforms'),
-                onPressed: selectedPlatforms.length == visiblePlatforms.length
+                onPressed: !visiblePlatforms.any((platform) =>
+                        !selectedPlatforms.contains(platform) &&
+                        !durationWarnings.containsKey(platform))
                     ? null
                     : onSelectAll,
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 9),
                 ),
-                child: const Text('เลือกทั้งหมด'),
+                child: Text(durationWarnings.isEmpty
+                    ? 'เลือกทั้งหมด'
+                    : 'เลือกทั้งหมดที่รองรับ'),
               ),
               TextButton(
                 key: const ValueKey('uploader-clear-all-platforms'),
@@ -6430,6 +6838,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                     connectionDisplayName:
                         connectionDisplayNames[visiblePlatforms[index]],
                     readinessLabel: readinessLabels[visiblePlatforms[index]],
+                    blockedReason: durationWarnings[visiblePlatforms[index]],
                     animate: animate,
                     isSelected: selectedPlatforms.contains(
                       visiblePlatforms[index],
@@ -6526,6 +6935,7 @@ class _PlatformRow extends StatelessWidget {
     required this.onOpenSettings,
     this.connectionDisplayName,
     this.readinessLabel,
+    this.blockedReason,
     this.animate = true,
   });
 
@@ -6537,6 +6947,7 @@ class _PlatformRow extends StatelessWidget {
   final VoidCallback onOpenSettings;
   final String? connectionDisplayName;
   final String? readinessLabel;
+  final String? blockedReason;
   final bool animate;
 
   @override
@@ -6544,9 +6955,9 @@ class _PlatformRow extends StatelessWidget {
     final identity = connectionDisplayName?.trim();
     return Semantics(
       label: publishReviewPlatformLabel(platform),
-      hint: subLabel,
+      hint: blockedReason ?? subLabel,
       button: true,
-      enabled: true,
+      enabled: blockedReason == null || isSelected,
       selected: isSelected,
       child: _UploaderDecorationTransition(
         animate: animate,
@@ -6561,7 +6972,9 @@ class _PlatformRow extends StatelessWidget {
               enabled: _uploaderMotionAllowed(context, animate),
               child: InkWell(
                 key: ValueKey('uploader-platform-${platform.apiValue}'),
-                onTap: () => onChanged(!isSelected),
+                onTap: blockedReason != null && !isSelected
+                    ? null
+                    : () => onChanged(!isSelected),
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -6596,7 +7009,10 @@ class _PlatformRow extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 3),
-                            Text(settingsSummary,
+                            Text(
+                                blockedReason == null
+                                    ? settingsSummary
+                                    : 'โพสต์ช่องทางนี้ไม่ได้',
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: AppTheme.textSecondary)),
@@ -6609,6 +7025,17 @@ class _PlatformRow extends StatelessWidget {
                                       fontSize: 11,
                                       color: AppTheme.textSecondary)),
                             ],
+                            if (blockedReason != null) ...[
+                              const SizedBox(height: 4),
+                              Semantics(
+                                liveRegion: true,
+                                child: Text(blockedReason!,
+                                    key: ValueKey('uploader-platform-duration-${platform.apiValue}'),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.error)),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -6617,7 +7044,9 @@ class _PlatformRow extends StatelessWidget {
                         child: Icon(
                             isSelected
                                 ? Icons.check_circle_rounded
-                                : Icons.radio_button_unchecked_rounded,
+                                : blockedReason != null
+                                    ? Icons.block_rounded
+                                    : Icons.radio_button_unchecked_rounded,
                             color: isSelected
                                 ? AppTheme.accent
                                 : AppTheme.textMuted,
@@ -7372,6 +7801,10 @@ class _AiCaptionPanel extends StatelessWidget {
     required this.captionReady,
     required this.formBusy,
     required this.onGenerate,
+    required this.quota,
+    required this.isLoadingQuota,
+    required this.quotaLoadFailed,
+    required this.onRetryQuota,
     required this.styleSummary,
     required this.onOpenStyle,
     required this.isSavingStyle,
@@ -7389,6 +7822,10 @@ class _AiCaptionPanel extends StatelessWidget {
   final bool formBusy;
   final String? errorMessage;
   final VoidCallback onGenerate;
+  final CaptionQuotaResult? quota;
+  final bool isLoadingQuota;
+  final bool quotaLoadFailed;
+  final VoidCallback onRetryQuota;
   final String styleSummary;
   final VoidCallback onOpenStyle;
   final bool isSavingStyle;
@@ -7401,6 +7838,9 @@ class _AiCaptionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final clipName = selectedVideoName?.trim();
     final compact = platformTargets != null;
+    final requiredCredits = selectedPlatformCount ?? 1;
+    final insufficientCredits = quota?.isPaid == true &&
+        quota!.availableCount < requiredCredits;
 
     return DecoratedBox(
       key: const ValueKey('uploader-ai-caption-panel'),
@@ -7474,12 +7914,12 @@ class _AiCaptionPanel extends StatelessWidget {
                                 .titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w700)),
                       ),
-                      if (!stackBadge) ...[
+                      if (!stackBadge && quota == null) ...[
                         const SizedBox(width: 8),
                         badge,
                       ],
                     ]),
-                    if (stackBadge)
+                    if (stackBadge && quota == null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Align(
@@ -7520,8 +7960,39 @@ class _AiCaptionPanel extends StatelessWidget {
               platformTargets!,
               const SizedBox(height: 12),
             ],
+            if (isLoadingQuota) ...[
+              Text('กำลังโหลดโควตา...',
+                  key: const ValueKey('uploader-ai-quota-loading'),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textSecondary)),
+              const SizedBox(height: 8),
+            ] else if (quotaLoadFailed) ...[
+              Row(children: [
+                Expanded(child: Text('โหลดโควตาไม่สำเร็จ',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textSecondary))),
+                IconButton(
+                  key: const ValueKey('uploader-ai-quota-retry'),
+                  tooltip: 'โหลดโควตาอีกครั้ง',
+                  onPressed: isGenerating ? null : onRetryQuota,
+                  icon: const Icon(Icons.refresh, size: 18)),
+              ]),
+            ] else if (quota != null) ...[
+              CaptionQuotaStrip(plan: quota!.plan, quota: quota!.quota),
+              const SizedBox(height: 8),
+            ],
+            if (insufficientCredits) ...[
+              Text(compact
+                      ? 'เครดิตไม่พอ ลดช่องทางหรือเติมเครดิต'
+                      : 'เครดิตไม่พอ เติมเครดิตเพื่อให้ AI ช่วยเขียน',
+                  key: const ValueKey('uploader-ai-insufficient-credits'),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error)),
+              const SizedBox(height: 8),
+            ],
             PostDeePressFeedback(
               enabled: animate &&
+                  !insufficientCredits &&
                   !formBusy &&
                   !isGenerating &&
                   !isSavingStyle &&
@@ -7535,10 +8006,15 @@ class _AiCaptionPanel extends StatelessWidget {
                     : isSavingStyle
                         ? 'กำลังบันทึกสไตล์...'
                         : compact
-                            ? 'สร้างแคปชั่น · 1 เครดิต'
-                            : 'ให้ AI ช่วยเขียน',
+                            ? requiredCredits == 0
+                                ? 'เลือกช่องทางให้ AI เขียน'
+                                : 'สร้างแคปชั่น · $requiredCredits เครดิต'
+                            : insufficientCredits
+                                ? 'เครดิต AI หมดแล้ว'
+                                : 'ให้ AI ช่วยเขียน',
                 icon: Icons.auto_awesome,
                 onPressed: formBusy ||
+                        insufficientCredits ||
                         isGenerating ||
                         isSavingStyle ||
                         selectedPlatformCount == 0

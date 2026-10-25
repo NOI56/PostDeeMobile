@@ -1162,8 +1162,8 @@ class _PlanSummaryCard extends StatelessWidget {
                           style: TextStyle(
                               fontSize: 12, color: AppTheme.textSecondary)),
                     if (hasBank) Text(isThai
-                        ? 'เครดิตเติมคงเหลือ: โพสต์ $bankPosts หน่วย · AI $bankCaptions ครั้ง'
-                        : 'Purchased balance: $bankPosts post units · $bankCaptions AI captions',
+                        ? 'เครดิตเติมคงเหลือ: โพสต์ $bankPosts หน่วย · AI $bankCaptions เครดิต'
+                        : 'Purchased balance: $bankPosts post units · $bankCaptions AI credits',
                       key: const ValueKey('home-addon-balance'),
                       style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                     if (hasBank && canSpendCredits && availablePosts != null)

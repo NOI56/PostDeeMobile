@@ -17,7 +17,7 @@ import 'support/uploader_wizard_test_navigation.dart';
 
 CaptionQuotaResult _quota(
     {int used = 12, int addon = 0, String plan = 'STARTER'}) {
-  final limit = plan == 'BASIC' ? 0 : 50;
+  final limit = plan == 'BASIC' ? 0 : (plan == 'PRO' ? 120 : 50);
   final remaining = (limit - used).clamp(0, limit);
   return CaptionQuotaResult(
       plan: plan,
@@ -31,7 +31,10 @@ CaptionQuotaResult _quota(
 }
 
 RealClipCaptionResult _generated(
-        {int used = 13, int addon = 0, bool refreshPending = false}) =>
+        {int used = 13,
+        int addon = 0,
+        int limit = 50,
+        bool refreshPending = false}) =>
     RealClipCaptionResult.fromJson({
       'caption': 'แคปชั่นใหม่',
       'captionOptions': <String>[],
@@ -45,19 +48,26 @@ RealClipCaptionResult _generated(
         'selectedFrameCount': 0
       },
       'quota': {
-        'limit': 50,
+        'limit': limit,
         'usedThisMonth': used,
-        'remainingThisMonth': (50 - used).clamp(0, 50),
+        'remainingThisMonth': (limit - used).clamp(0, limit),
         'addonRemaining': addon,
-        'availableGenerations': (50 - used).clamp(0, 50) + addon,
+        'availableGenerations': (limit - used).clamp(0, limit) + addon,
         'usageRefreshPending': refreshPending,
       },
       'platformCaptions': {
-        'TIKTOK': {'caption': 'แคปชั่น TikTok', 'hashtags': <String>[]}
+        for (final platform in _platforms)
+          platform: {'caption': 'แคปชั่น $platform', 'hashtags': <String>[]}
       },
     });
 
 const _action = ValueKey('uploader-ai-generate-button');
+const _platforms = [
+  'TIKTOK',
+  'YOUTUBE_SHORTS',
+  'INSTAGRAM_REELS',
+  'FACEBOOK_REELS',
+];
 
 Future<void> _show(WidgetTester tester, Finder target) async {
   if (find.byKey(const ValueKey('uploader-step-caption')).evaluate().isEmpty) {
@@ -72,6 +82,26 @@ Future<void> _tick(WidgetTester tester) async {
   for (var i = 0; i < 12; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
+}
+
+Future<void> _advanced(WidgetTester tester) async {
+  final toggle = find.byKey(const ValueKey('uploader-platform-captions-toggle'));
+  await _show(tester, toggle);
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _targets(WidgetTester tester, List<String> platforms) async {
+  for (final platform in _platforms) {
+    final target = find.byKey(ValueKey('ai-caption-target-$platform'));
+    if (tester.widget<FilterChip>(target).selected !=
+        platforms.contains(platform)) {
+      await _show(tester, target);
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+  }
+  await _show(tester, find.byKey(_action));
 }
 
 void main() {
@@ -134,6 +164,124 @@ void main() {
 
   CaptionQuotaStrip strip(WidgetTester tester) =>
       tester.widget<CaptionQuotaStrip>(find.byType(CaptionQuotaStrip));
+
+  testWidgets('selected channel count quotes four, two and no caption credits',
+      (tester) async {
+    await pumpUploader(tester, loadQuota: () async => _quota());
+    await _advanced(tester);
+    await _targets(tester, _platforms);
+    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).label,
+        'สร้างแคปชั่น · 4 เครดิต');
+    await _targets(tester, _platforms.take(2).toList());
+    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).label,
+        'สร้างแคปชั่น · 2 เครดิต');
+    await _targets(tester, []);
+    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed,
+        isNull);
+  });
+
+  testWidgets('four channels apply the server balance from 107 to 103',
+      (tester) async {
+    GenerateRealClipCaptionRequest? request;
+    await pumpUploader(tester,
+        loadQuota: () async => _quota(used: 13, plan: 'PRO'),
+        generate: (value) async {
+          request = value;
+          return _generated(used: 17, limit: 120);
+        });
+    await _advanced(tester);
+    await _targets(tester, _platforms);
+    expect(strip(tester).quota.remainingThisMonth, 107);
+    await tester.tap(find.byKey(_action));
+    await tester.pumpAndSettle();
+    expect(request!.toJson()['expectedCredits'], 4);
+    expect(request!.platforms, _platforms);
+    expect(strip(tester).quota.remainingThisMonth, 103);
+    await tester.tap(find.byTooltip('กลับไปเขียนเอง'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('four purchased credits cover four channels with monthly zero',
+      (tester) async {
+    GenerateRealClipCaptionRequest? request;
+    await pumpUploader(tester,
+        loadQuota: () async => _quota(used: 50, addon: 4),
+        generate: (value) async {
+          request = value;
+          return _generated(used: 50);
+        });
+    await _advanced(tester);
+    await _targets(tester, _platforms);
+    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed,
+        isNotNull);
+    await tester.tap(find.byKey(_action));
+    await tester.pumpAndSettle();
+    expect(request!.toJson()['expectedCredits'], 4);
+    expect(strip(tester).quota.addonRemaining, 0);
+    await tester.tap(find.byTooltip('กลับไปเขียนเอง'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('three credits block four channels before upload and allow three',
+      (tester) async {
+    var uploads = 0;
+    final requests = <GenerateRealClipCaptionRequest>[];
+    await pumpUploader(tester,
+        loadQuota: () async => _quota(used: 49, addon: 2),
+        createUpload: (_) async {
+          uploads++;
+          return const UploadResult(id: 'clip',
+              videoS3Key: 'uploads/owner-a/clip.mp4', storageProvider: 'mock');
+        },
+        generate: (request) async {
+          requests.add(request);
+          return _generated(used: 50);
+        });
+    await _advanced(tester);
+    await _targets(tester, _platforms.take(3).toList());
+    final earlierAction =
+        tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed!;
+    await _targets(tester, _platforms);
+    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed,
+        isNull);
+    expect(find.textContaining('เครดิตไม่พอ'), findsOneWidget);
+    expect(find.textContaining('ลดช่องทาง'), findsOneWidget);
+    await tester.tap(find.byKey(_action));
+    earlierAction();
+    await tester.pumpAndSettle();
+    expect(uploads, 0);
+    expect(requests, isEmpty);
+    await _targets(tester, _platforms.take(3).toList());
+    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed,
+        isNotNull);
+    await tester.tap(find.byKey(_action));
+    await tester.pumpAndSettle();
+    expect(uploads, 1);
+    expect(requests.single.toJson()['expectedCredits'], 3);
+    await tester.tap(find.byTooltip('กลับไปเขียนเอง'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('shared caption confirms one credit and cost rejection reloads quota',
+      (tester) async {
+    var reads = 0;
+    GenerateRealClipCaptionRequest? request;
+    await pumpUploader(tester,
+        loadQuota: () async => _quota(used: ++reads == 1 ? 12 : 13),
+        generate: (value) async {
+          request = value;
+          throw const ApiException('cost confirmation required', statusCode: 409,
+              code: 'AI_CAPTION_COST_CONFIRMATION_REQUIRED');
+        });
+    await _show(tester, find.byKey(_action));
+    await tester.tap(find.byKey(_action));
+    await tester.pumpAndSettle();
+    expect(request!.toJson()['expectedCredits'], 1);
+    expect(request!.platforms, isEmpty);
+    expect(reads, 2);
+    expect(strip(tester).quota.remainingThisMonth, 37);
+    expect(find.textContaining('ตรวจสอบช่องทาง'), findsOneWidget);
+  });
 
   testWidgets('loads real quota and places compact strip above the AI action',
       (tester) async {

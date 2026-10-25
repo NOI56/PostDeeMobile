@@ -272,7 +272,7 @@ void main() {
         find.byKey(const ValueKey('uploader-ai-guidance-field')), findsNothing);
     final button = find.byKey(const ValueKey('uploader-ai-generate-button'));
     expect(tester.widget<PostDeeGradientButton>(button).label,
-        'สร้างแคปชั่น · 1 เครดิต');
+        'เลือกช่องทางให้ AI เขียน');
     expect(tester.widget<PostDeeGradientButton>(button).onPressed, isNull);
     await _selectTargets(tester, ['TIKTOK']);
     expect(tester.widget<PostDeeGradientButton>(button).label,
@@ -398,6 +398,7 @@ void main() {
     await _generate(tester, selectAll: false, pending: true);
     expect(fixture.requests.single.toJson()['platforms'],
         ['TIKTOK', 'INSTAGRAM_REELS']);
+    expect(fixture.requests.single.toJson()['expectedCredits'], 2);
     expect(
         tester
             .widget<FilterChip>(
@@ -505,6 +506,7 @@ void main() {
     await _generate(tester);
     expect(fixture.requests, hasLength(1));
     expect(fixture.requests.single.toJson()['platforms'], _platforms);
+    expect(fixture.requests.single.toJson()['expectedCredits'], 4);
     expect(find.byKey(const ValueKey('uploader-platform-ai-preview')),
         findsOneWidget);
     expect(_text(tester, _field('TIKTOK')), 'ข้อความที่พิมพ์ไว้');
@@ -555,7 +557,7 @@ void main() {
         findsNothing);
   });
 
-  testWidgets('leaving advanced mode rejects a late AI response',
+  testWidgets('changing later selections preserves the in-flight credit snapshot',
       (tester) async {
     final fixture = _Fixture()..gate = Completer<RealClipCaptionResult>();
     await _start(tester, fixture);
@@ -565,6 +567,15 @@ void main() {
     await _show(tester, find.byKey(_mode));
     await tester.tap(find.byKey(_mode));
     await tester.pump();
+    await _toggle(tester);
+    await _selectTargets(tester, ['INSTAGRAM_REELS', 'FACEBOOK_REELS']);
+    expect(
+        tester.widget<PostDeeGradientButton>(find.byKey(
+            const ValueKey('uploader-ai-generate-button'))).label,
+        'สร้างแคปชั่น · 2 เครดิต');
+    expect(fixture.requests.single.toJson()['expectedCredits'], 4);
+    expect(fixture.requests.single.toJson()['platforms'], _platforms);
+    await _toggle(tester);
     fixture.gate!.complete(_result());
     await tester.pumpAndSettle();
     expect(_text(tester, find.byKey(_main)), 'หลัก');
@@ -595,7 +606,7 @@ void main() {
     await _toggle(tester);
     final actionLabel = find.descendant(
         of: find.byKey(const ValueKey('uploader-ai-generate-button')),
-        matching: find.text('สร้างแคปชั่น · 1 เครดิต'));
+        matching: find.text('เลือกช่องทางให้ AI เขียน'));
     expect(tester.renderObject<RenderParagraph>(actionLabel).didExceedMaxLines,
         isFalse,
         reason: 'The cost must remain visible with enlarged text');

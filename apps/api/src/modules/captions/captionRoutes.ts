@@ -60,9 +60,12 @@ const releaseFailedCaptionUsage = async (
   store: RealClipCaptionUsageStore,
   reservation?: RealClipCaptionUsageReservation
 ) => {
-  if (!reservation?.ok || !store.release) return false;
+  if (!reservation?.ok) return false;
   try {
-    return await store.release(reservation.record);
+    if (reservation.records && reservation.records.length > 1) {
+      return store.releaseMany ? await store.releaseMany(reservation.records) : false;
+    }
+    return store.release ? await store.release(reservation.record) : false;
   } catch (error) {
     console.error('Could not release failed AI caption usage:', error);
     return false;
@@ -98,23 +101,29 @@ const sendQuotaReachedResponse = ({
   response,
   plan,
   limit,
-  usedThisMonth
+  usedThisMonth,
+  addonRemaining,
+  requiredCredits
 }: {
   response: Response;
   plan: Parameters<typeof readPlanLabel>[0];
   limit: number;
   usedThisMonth: number;
+  addonRemaining: number;
+  requiredCredits: number;
 }) => {
+  const remainingThisMonth = Math.max(limit - usedThisMonth, 0);
   response.status(429).json({
     status: 'error',
     code: 'AI_CAPTION_QUOTA_REACHED',
-    message: `${readPlanLabel(plan)} is limited to ${limit} real-clip AI caption generations per month`,
+    message: `${readPlanLabel(plan)} has insufficient AI caption credits for ${requiredCredits} selected channel(s)`,
     quota: {
       limit,
       usedThisMonth,
-      remainingThisMonth: 0,
-      addonRemaining: 0,
-      availableGenerations: 0
+      remainingThisMonth,
+      addonRemaining,
+      availableGenerations: remainingThisMonth + addonRemaining,
+      requiredCredits
     }
   });
 };
@@ -410,6 +419,21 @@ export const registerCaptionRoutes = (
       }
     };
 
+    // The server derives price from validated channels. Old apps displaying one
+    // credit must acknowledge the new price before any multi-channel debit.
+    const requiredCredits = validation.request.platforms?.length ?? 1;
+    const expectedCredits: unknown = request.body?.expectedCredits;
+    if ((requiredCredits > 1 || expectedCredits !== undefined) && expectedCredits !== requiredCredits) {
+      await cleanupRequestedMedia();
+      response.status(409).json({
+        status: 'error',
+        code: 'AI_CAPTION_COST_CONFIRMATION_REQUIRED',
+        message: 'Please update the app to confirm the AI caption credit cost.',
+        quota: { requiredCredits, chargedCredits: 0 }
+      });
+      return;
+    }
+
     const now = (options.now?.() ?? new Date()).toISOString();
     const monthKey = readCurrentRealClipCaptionMonthKey(new Date(now));
     const baseLimit = monthlyAiCaptionGenerationLimits[plan];
@@ -421,13 +445,15 @@ export const registerCaptionRoutes = (
       monthKey
     });
 
-    if (usedThisMonth >= limit && addonRemaining === 0) {
+    if (Math.max(limit - usedThisMonth, 0) + addonRemaining < requiredCredits) {
       await cleanupRequestedMedia();
       sendQuotaReachedResponse({
         response,
         plan,
         limit,
-        usedThisMonth
+        usedThisMonth,
+        addonRemaining,
+        requiredCredits
       });
       return;
     }
@@ -446,6 +472,7 @@ export const registerCaptionRoutes = (
         userId: authUser.id,
         monthKey,
         limit: baseLimit,
+        ...(requiredCredits > 1 ? { units: requiredCredits } : {}),
         ...(includeMonthlyAddons ? { includeMonthlyAddons: true, now } : {})
       });
 
@@ -455,7 +482,9 @@ export const registerCaptionRoutes = (
           response,
           plan,
           limit,
-          usedThisMonth: nextReservation.usedThisMonth
+          usedThisMonth: nextReservation.usedThisMonth,
+          addonRemaining: await readFinalAddonRemaining(authUser.id, now, 0),
+          requiredCredits
         });
         return undefined;
       }
@@ -587,8 +616,10 @@ export const registerCaptionRoutes = (
     const finalUsage = await readUsageAfterFallback(realClipCaptionUsageStore,
       { userId: authUser.id, monthKey }, releasedFallbackUsage,
       reservation?.usedThisMonth ?? usedThisMonth);
+    const chargedAddonCredits = reservation?.ok && !releasedFallbackUsage
+      ? (reservation.records ?? [reservation.record]).filter(record => record.usesAddonCredit).length : 0;
     const finalAddonRemaining = await readFinalAddonRemaining(authUser.id, now,
-      addonRemaining - (reservation?.ok && reservation.record.usesAddonCredit && !releasedFallbackUsage ? 1 : 0));
+      addonRemaining - chargedAddonCredits);
     response.json({
       status: 'ok',
       ...caption,
@@ -599,6 +630,8 @@ export const registerCaptionRoutes = (
         remainingThisMonth: Math.max(limit - finalUsage.usedThisMonth, 0),
         addonRemaining: finalAddonRemaining,
         availableGenerations: Math.max(limit - finalUsage.usedThisMonth, 0) + finalAddonRemaining,
+        requestedCredits: requiredCredits,
+        chargedCredits: releasedFallbackUsage ? 0 : requiredCredits,
         ...(isFallback ? { charged: !releasedFallbackUsage } : {})
       }
     });

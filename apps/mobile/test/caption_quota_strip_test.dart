@@ -29,13 +29,13 @@ void main() {
 
     expect(find.text('Starter'), findsOneWidget);
     expect(find.text('แคปชั่น AI คงเหลือ'), findsOneWidget);
-    expect(find.text('38 / 50 ครั้ง', findRichText: true), findsOneWidget);
-    expect(find.text('ใช้ไป 12 ครั้ง'), findsOneWidget);
+    expect(find.text('38 / 50 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ไป 12 เครดิต'), findsOneWidget);
     final progress = tester.widget<LinearProgressIndicator>(
       find.byType(LinearProgressIndicator),
     );
     expect(progress.value, closeTo(0.76, 0.0001));
-    expect(progress.semanticsLabel, 'แคปชั่น AI เหลือ 38 จาก 50 ครั้ง');
+    expect(progress.semanticsLabel, 'แคปชั่น AI เหลือ 38 จาก 50 เครดิต');
     expect(
       tester
           .getSize(find.byKey(
@@ -59,8 +59,8 @@ void main() {
     ));
 
     expect(find.text('Pro'), findsOneWidget);
-    expect(find.text('117 / 120 ครั้ง', findRichText: true), findsOneWidget);
-    expect(find.text('ใช้ไป 3 ครั้ง'), findsOneWidget);
+    expect(find.text('117 / 120 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ไป 3 เครดิต'), findsOneWidget);
     expect(
       tester
           .widget<LinearProgressIndicator>(
@@ -82,8 +82,8 @@ void main() {
       ),
     ));
 
-    expect(find.text('0 / 50 ครั้ง', findRichText: true), findsOneWidget);
-    expect(find.text('ใช้ไป 63 ครั้ง'), findsOneWidget);
+    expect(find.text('0 / 50 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ไป 63 เครดิต'), findsOneWidget);
     expect(
       tester
           .widget<LinearProgressIndicator>(
@@ -107,8 +107,8 @@ void main() {
         availableGenerations: 8,
       ),
     ));
-    expect(find.text('0 / 50 ครั้ง', findRichText: true), findsOneWidget);
-    expect(find.text('+ เครดิตเติม 8 ครั้ง'), findsOneWidget);
+    expect(find.text('0 / 50 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('+ เครดิตเติม 8 เครดิต'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -150,8 +150,8 @@ void main() {
       ));
 
       expect(find.text('Starter'), findsOneWidget);
-      expect(find.text('38 / 50 ครั้ง', findRichText: true), findsOneWidget);
-      expect(find.text('ใช้ไป 12 ครั้ง'), findsOneWidget);
+      expect(find.text('38 / 50 เครดิต', findRichText: true), findsOneWidget);
+      expect(find.text('ใช้ไป 12 เครดิต'), findsOneWidget);
       expect(
         tester
             .getSize(find.byKey(

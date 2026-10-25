@@ -28,6 +28,7 @@ import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
 import 'caption_quota_strip.dart';
+import 'post_quota_strip.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
@@ -164,6 +165,7 @@ class UploaderScreen extends StatefulWidget {
     this.loadTemplates,
     this.loadSubscription,
     this.loadCaptionQuota,
+    this.loadPostQuota,
     this.resyncRevenueCatSubscription,
     this.enableRevenueCatBilling = AppConfig.enableRevenueCatBilling,
     this.captionWritingStyleStore =
@@ -209,6 +211,7 @@ class UploaderScreen extends StatefulWidget {
   final UploaderTemplateLoader? loadTemplates;
   final UploaderSubscriptionLoader? loadSubscription;
   final UploaderCaptionQuotaLoader? loadCaptionQuota;
+  final UploaderSubscriptionLoader? loadPostQuota;
   final UploaderSubscriptionResync? resyncRevenueCatSubscription;
   final bool enableRevenueCatBilling;
   final CaptionWritingStyleStore captionWritingStyleStore;
@@ -318,6 +321,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _captionQuotaLoadFailed = false;
   int _captionQuotaRequestId = 0;
   late AuthSessionBinding _captionQuotaSession;
+  SubscriptionStatusResult? _postQuota;
+  bool _isLoadingPostQuota = false;
+  bool _postQuotaLoadFailed = false;
+  int _postQuotaRequestId = 0;
+  String _postQuotaClipPath = '';
   bool _isLoadingConnections = true;
   int _connectionLoadGeneration = 0;
   String? _connectionsOwnerUserId;
@@ -1207,6 +1215,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     ]) {
       controller.addListener(_handleFeedbackTextChanged);
     }
+    _localFilePathController.addListener(_handlePostQuotaClipChanged);
+    _handlePostQuotaClipChanged();
   }
 
   @override
@@ -1217,7 +1227,72 @@ class _UploaderScreenState extends State<UploaderScreen>
         _appIsResumed = resumed;
         if (!resumed) _clearDraftSavedFeedback();
       });
-      if (resumed) unawaited(_loadCaptionQuota());
+      if (resumed) {
+        unawaited(_loadCaptionQuota());
+        unawaited(_loadPostQuota());
+      }
+    }
+  }
+
+  void _handlePostQuotaClipChanged() {
+    final path = _localFilePathController.text.trim();
+    if (path == _postQuotaClipPath) return;
+    _postQuotaClipPath = path;
+    _postQuotaRequestId++;
+    setState(() {
+      _postQuota = null;
+      _isLoadingPostQuota = false;
+      _postQuotaLoadFailed = false;
+    });
+    if (path.isNotEmpty) unawaited(_loadPostQuota());
+  }
+
+  Future<void> _loadPostQuota() async {
+    final path = _localFilePathController.text.trim();
+    if (!mounted || path.isEmpty) return;
+    final session = _captionQuotaSession;
+    final requestId = ++_postQuotaRequestId;
+    bool isCurrent() =>
+        mounted &&
+        session.isCurrent &&
+        requestId == _postQuotaRequestId &&
+        path == _localFilePathController.text.trim();
+    setState(() {
+      _postQuota = null;
+      _isLoadingPostQuota = true;
+      _postQuotaLoadFailed = false;
+    });
+    try {
+      final loader = widget.loadPostQuota ??
+          PostDeeApiClient(
+            authHeaders: PostDeeApiAuthHeaders(sessionBinding: session),
+          ).loadCurrentSubscription;
+      final result = await loader();
+      if (!isCurrent()) return;
+      final limit = result.monthlyPostLimit;
+      final used = result.usedPostsThisMonth;
+      final remaining = result.remainingPostsThisMonth;
+      if (limit == null ||
+          used == null ||
+          remaining == null ||
+          limit < 0 ||
+          used < 0 ||
+          remaining < 0 ||
+          remaining > limit ||
+          result.addonPostUnits < 0 ||
+          (session.userId != null && result.userId != session.userId)) {
+        throw const ApiException('Post quota response is unavailable');
+      }
+      setState(() {
+        _postQuota = result;
+        _isLoadingPostQuota = false;
+      });
+    } catch (_) {
+      if (!isCurrent()) return;
+      setState(() {
+        _isLoadingPostQuota = false;
+        _postQuotaLoadFailed = true;
+      });
     }
   }
 
@@ -1262,13 +1337,18 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (_captionQuotaSession.isCurrent) return;
     _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
     _captionQuotaRequestId++;
+    _postQuotaRequestId++;
     setState(() {
       _captionQuota = null;
       _isLoadingCaptionQuota = false;
       _captionQuotaLoadFailed = false;
+      _postQuota = null;
+      _isLoadingPostQuota = false;
+      _postQuotaLoadFailed = false;
     });
     if (PostDeeAuthSessionStore.instance.session.isSignedIn) {
       unawaited(_loadCaptionQuota());
+      unawaited(_loadPostQuota());
     }
   }
 
@@ -1806,6 +1886,8 @@ class _UploaderScreenState extends State<UploaderScreen>
         .removeListener(_handleCaptionQuotaSessionChanged);
     _captionQuotaRequestId++;
     _connectionLoadGeneration++;
+    _postQuotaRequestId++;
+    _localFilePathController.removeListener(_handlePostQuotaClipChanged);
     _captionGeneration++;
     _captionStyleGeneration++;
     _captionValidationGeneration++;
@@ -2459,9 +2541,6 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Future<void> _generateAiCaption() async {
     if (_formBusy || _isGeneratingCaption || _isSavingCaptionStyle) return;
-    if (_captionQuota?.isPaid == true && _captionQuota!.availableCount == 0) {
-      return;
-    }
     final quotaSession = _captionQuotaSession;
     final advanced = _platformSettings.usePlatformCaptions;
     final requestedPlatforms = [
@@ -2471,6 +2550,13 @@ class _UploaderScreenState extends State<UploaderScreen>
     ];
     if (advanced && requestedPlatforms.isEmpty) {
       setState(() => _aiCaptionErrorMessage = 'เลือกช่องทางให้ AI เขียนก่อน');
+      return;
+    }
+    final requiredCredits = advanced ? requestedPlatforms.length : 1;
+    if (_captionQuota?.isPaid == true &&
+        _captionQuota!.availableCount < requiredCredits) {
+      setState(() => _aiCaptionErrorMessage =
+          'เครดิตไม่พอ ต้องใช้ $requiredCredits เครดิต ลดช่องทางหรือเติมเครดิตแล้วลองใหม่');
       return;
     }
     final generation = ++_captionGeneration;
@@ -2530,6 +2616,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           // Only the fresh server subscription decides access and frame mode.
           subscription = await _loadSubscription();
           if (!stillCurrent()) return;
+          unawaited(_loadPostQuota());
         } catch (_) {
           if (!stillCurrent()) return;
           setState(() {
@@ -2577,6 +2664,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           deleteAfterUse: true,
           writingStyle: writingStyle,
           platforms: requestedPlatforms.map((p) => p.apiValue).toList(),
+          expectedCredits: requiredCredits,
         ),
       );
       final nextCaption = _formatRealClipCaption(caption);
@@ -2693,7 +2781,11 @@ class _UploaderScreenState extends State<UploaderScreen>
           'PRO_REQUIRED' =>
             'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ',
           'AI_CAPTION_QUOTA_REACHED' =>
-            'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว สมาชิก Starter หรือ Pro ดูแพ็กเติมได้ในหน้าเลือกแพ็กเกจ หรือรอรอบเดือนถัดไป',
+            requiredCredits > 1
+                ? 'เครดิตไม่พอ ต้องใช้ $requiredCredits เครดิต ลดช่องทางหรือเติมเครดิตแล้วลองใหม่'
+                : 'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว สมาชิก Starter หรือ Pro ดูแพ็กเติมได้ในหน้าเลือกแพ็กเกจ หรือรอรอบเดือนถัดไป',
+          'AI_CAPTION_COST_CONFIRMATION_REQUIRED' =>
+            'กรุณาอัปเดตแอปหรือตรวจสอบช่องทางที่เลือก แล้วลองสร้างแคปชั่นใหม่',
           'UPLOAD_AI_CAPTION_VIDEO_INVALID' =>
             'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
           _ => apiErrorMessage(error,
@@ -2875,6 +2967,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         unawaited(previousCover.cleanupTemporaryFiles());
       }
       unawaited(_loadVideoPoster());
+      if (!sourceChanged) unawaited(_loadPostQuota());
       unawaited(_analytics.logVideoSelected(
         hasDimensions: video.width != null && video.height != null,
       ));
@@ -3787,6 +3880,9 @@ class _UploaderScreenState extends State<UploaderScreen>
               'ตรวจผลการส่งเดิมไม่สำเร็จ ร่างยังอยู่ในเครื่อง กรุณาลองใหม่'));
     } finally {
       if (mounted) setState(() => _isRecoveringSubmission = false);
+      if (isCurrent() && recoverySession.isCurrent) {
+        unawaited(_loadPostQuota());
+      }
     }
   }
 
@@ -4595,6 +4691,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         setState(() {
           _isSubmitting = false;
         });
+        if (submissionStillOwned()) unawaited(_loadPostQuota());
       }
     }
   }
@@ -5123,6 +5220,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall),
+                                const SizedBox(height: 12),
+                                _buildPostQuota(),
                               ],
                             ],
                             if (_currentStep == 1) ...[
@@ -5661,6 +5760,38 @@ class _UploaderScreenState extends State<UploaderScreen>
               ]),
         ],
       );
+
+  Widget _buildPostQuota() {
+    if (_isLoadingPostQuota) {
+      return Text('กำลังโหลดโควตาโพสต์...',
+          key: const ValueKey('uploader-post-quota-loading'),
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: AppTheme.textSecondary));
+    }
+    if (_postQuotaLoadFailed) {
+      return Row(children: [
+        Expanded(
+          child: Text('โหลดโควตาโพสต์ไม่สำเร็จ',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
+        ),
+        IconButton(
+          key: const ValueKey('uploader-post-quota-retry'),
+          tooltip: 'โหลดโควตาโพสต์ใหม่',
+          onPressed: _loadPostQuota,
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+      ]);
+    }
+    final quota = _postQuota;
+    return quota == null
+        ? const SizedBox.shrink()
+        : PostQuotaStrip(subscription: quota);
+  }
 
   Widget _buildAiCaptionPanel() => _AiCaptionPanel(
         guidanceController: _aiGuidanceController,
@@ -7502,7 +7633,9 @@ class _AiCaptionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final clipName = selectedVideoName?.trim();
     final compact = platformTargets != null;
-    final quotaExhausted = quota?.isPaid == true && quota!.availableCount == 0;
+    final requiredCredits = selectedPlatformCount ?? 1;
+    final insufficientCredits = quota?.isPaid == true &&
+        quota!.availableCount < requiredCredits;
 
     return DecoratedBox(
       key: const ValueKey('uploader-ai-caption-panel'),
@@ -7643,9 +7776,18 @@ class _AiCaptionPanel extends StatelessWidget {
               CaptionQuotaStrip(plan: quota!.plan, quota: quota!.quota),
               const SizedBox(height: 8),
             ],
+            if (insufficientCredits) ...[
+              Text(compact
+                      ? 'เครดิตไม่พอ ลดช่องทางหรือเติมเครดิต'
+                      : 'เครดิตไม่พอ เติมเครดิตเพื่อให้ AI ช่วยเขียน',
+                  key: const ValueKey('uploader-ai-insufficient-credits'),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error)),
+              const SizedBox(height: 8),
+            ],
             PostDeePressFeedback(
               enabled: animate &&
-                  !quotaExhausted &&
+                  !insufficientCredits &&
                   !formBusy &&
                   !isGenerating &&
                   !isSavingStyle &&
@@ -7658,14 +7800,16 @@ class _AiCaptionPanel extends StatelessWidget {
                     ? 'กำลังเตรียมแคปชัน...'
                     : isSavingStyle
                         ? 'กำลังบันทึกสไตล์...'
-                        : quotaExhausted
-                            ? 'โควตา AI เดือนนี้หมดแล้ว'
-                            : compact
-                                ? 'สร้างแคปชั่น · 1 เครดิต'
+                        : compact
+                            ? requiredCredits == 0
+                                ? 'เลือกช่องทางให้ AI เขียน'
+                                : 'สร้างแคปชั่น · $requiredCredits เครดิต'
+                            : insufficientCredits
+                                ? 'เครดิต AI หมดแล้ว'
                                 : 'ให้ AI ช่วยเขียน',
                 icon: Icons.auto_awesome,
                 onPressed: formBusy ||
-                        quotaExhausted ||
+                        insufficientCredits ||
                         isGenerating ||
                         isSavingStyle ||
                         selectedPlatformCount == 0

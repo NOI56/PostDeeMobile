@@ -1,5 +1,11 @@
 # Compact AI caption quota strip — 2026-10-25
 
+This records the original quota-strip implementation. The later
+[credit-per-channel contract](2026-10-25-caption-credit-per-channel.md) retains
+the strip but supersedes its zero-only generation gating: known combined
+availability must cover the complete selected-channel cost. The original tests
+below do not establish acceptance or deployment of that accounting change.
+
 ## Request and baseline
 
 The user approved a small strip above the caption-generation action, showing

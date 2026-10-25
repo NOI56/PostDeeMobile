@@ -1664,6 +1664,7 @@ class GenerateRealClipCaptionRequest {
     this.deleteAfterUse = false,
     this.writingStyle,
     this.platforms = const [],
+    this.expectedCredits,
   });
 
   final String videoS3Key;
@@ -1672,6 +1673,7 @@ class GenerateRealClipCaptionRequest {
   final bool deleteAfterUse;
   final CaptionWritingStyle? writingStyle;
   final List<String> platforms;
+  final int? expectedCredits;
 
   Map<String, Object?> toJson() => {
         'videoS3Key': videoS3Key,
@@ -1682,6 +1684,7 @@ class GenerateRealClipCaptionRequest {
         if (deleteAfterUse) 'deleteAfterUse': true,
         if (writingStyle != null) 'writingStyle': writingStyle!.toJson(),
         if (platforms.isNotEmpty) 'platforms': platforms,
+        if (expectedCredits != null) 'expectedCredits': expectedCredits,
       };
 }
 

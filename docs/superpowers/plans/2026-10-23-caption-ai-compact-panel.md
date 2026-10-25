@@ -1,5 +1,11 @@
 # Compact caption AI panel — 2026-10-23
 
+This is the original presentation/release record. The fixed one-credit action
+and one-credit-per-set accounting below are superseded by the
+[2026-10-25 credit-per-channel contract](2026-10-25-caption-credit-per-channel.md).
+The compact layout remains; historical tests and installed-APK evidence do not
+verify the new displayed cost/accounting or its coordinated API/Mobile rollout.
+
 ## Request and baseline
 
 The user approved a compact AI panel for advanced caption mode. The existing

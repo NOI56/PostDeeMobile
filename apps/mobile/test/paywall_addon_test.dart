@@ -43,7 +43,7 @@ void main() {
       (tester) async {
     final addon = _Addon();
     await show(tester, addon);
-    expect(find.text('โพสต์เพิ่ม 100 หน่วย + AI แคปชั่น 50 ครั้ง'),
+    expect(find.text('โพสต์เพิ่ม 100 หน่วย + AI แคปชั่น 50 เครดิต'),
         findsOneWidget);
     expect(find.text('ซื้อครั้งเดียว €1.49'), findsOneWidget);
     var callbacks = 0;
@@ -77,7 +77,7 @@ void main() {
     final addon =
         _Addon(enabled: false, addonPostUnits: 70, addonAiCaptions: 25);
     await show(tester, addon);
-    expect(find.text('เครดิตคงเหลือ: โพสต์ 70 หน่วย · AI 25 ครั้ง'),
+    expect(find.text('เครดิตคงเหลือ: โพสต์ 70 หน่วย · AI 25 เครดิต'),
         findsOneWidget);
     expect(find.textContaining('เครดิตซื้อเพิ่มไม่หมดอายุ'), findsOneWidget);
     expect(

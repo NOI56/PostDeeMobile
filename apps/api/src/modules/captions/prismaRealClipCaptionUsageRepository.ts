@@ -3,7 +3,7 @@ import type {
   RealClipCaptionUsageRecord,
   RealClipCaptionUsageStore
 } from './captionUsageStore.js';
-import { readCurrentRealClipCaptionMonthKey } from './captionUsageStore.js';
+import { readCurrentRealClipCaptionMonthKey, readRealClipCaptionReservationUnits } from './captionUsageStore.js';
 import { readPrismaMonthlyAddonCredits, type PrismaMonthlyAddonReadTransaction } from '../billing/prismaMonthlyAddonRepository.js';
 import { lockActiveOwner, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
 
@@ -61,6 +61,8 @@ const mapUsageRecord = (
   ...(record.usesAddonCredit ? { usesAddonCredit: true } : {})
 });
 
+class CaptionBatchReleaseMismatchError extends Error {}
+
 export const createPrismaRealClipCaptionUsageRepository = ({
   prisma
 }: {
@@ -79,12 +81,14 @@ export const createPrismaRealClipCaptionUsageRepository = ({
       userId,
       monthKey,
       limit,
+      units = 1,
       includeMonthlyAddons,
       now
     }: {
       userId: string;
       monthKey: string;
       limit: number;
+      units?: number;
       includeMonthlyAddons?: boolean;
       now?: string;
     }
@@ -110,30 +114,36 @@ export const createPrismaRealClipCaptionUsageRepository = ({
       }
     });
 
-    const usesAddonCredit = usedThisMonth >= limit;
     const usedAddon = includeMonthlyAddons ? await client.realClipCaptionUsage.count({
       where: { userId, usesAddonCredit: true }
     }) : 0;
-    if (usesAddonCredit && usedAddon >= addonAiCaptions) {
+    const monthlyUnits = Math.min(units, Math.max(0, limit - usedThisMonth));
+    const addonUnits = units - monthlyUnits;
+    if (addonUnits > Math.max(0, addonAiCaptions - usedAddon)) {
       return {
         ok: false,
         usedThisMonth
       };
     }
 
-    const record = await client.realClipCaptionUsage.create({
-      data: {
-        userId,
-        monthKey,
-        ...(usesAddonCredit ? { usesAddonCredit: true } : {})
-      },
-      select: usageSelect
-    });
+    const records: RealClipCaptionUsageRecord[] = [];
+    for (let index = 0; index < units; index += 1) {
+      const record = await client.realClipCaptionUsage.create({
+        data: {
+          userId,
+          monthKey,
+          ...(index >= monthlyUnits ? { usesAddonCredit: true } : {})
+        },
+        select: usageSelect
+      });
+      records.push(mapUsageRecord(record));
+    }
 
     return {
       ok: true,
-      usedThisMonth: usedThisMonth + (usesAddonCredit ? 0 : 1),
-      record: mapUsageRecord(record)
+      usedThisMonth: usedThisMonth + monthlyUnits,
+      record: records[0],
+      ...(units > 1 ? { records } : {})
     };
   };
 
@@ -165,7 +175,34 @@ export const createPrismaRealClipCaptionUsageRepository = ({
       });
       return result.count === 1;
     },
+    releaseMany: async (records) => {
+      const batch = records.map(record => ({ ...record }));
+      const first = batch[0];
+      if (!prisma.$transaction || !first || new Set(batch.map(record => record.id)).size !== batch.length ||
+          batch.some(record => !record.id || record.userId !== first.userId || record.monthKey !== first.monthKey)) return false;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          return await prisma.$transaction(async client => {
+            if (!client.realClipCaptionUsage.deleteMany) throw new CaptionBatchReleaseMismatchError();
+            for (const record of batch) {
+              const deleted = await client.realClipCaptionUsage.deleteMany({
+                where: { id: record.id!, userId: record.userId, monthKey: record.monthKey }
+              });
+              if (deleted.count !== 1) throw new CaptionBatchReleaseMismatchError();
+            }
+            return true;
+          }, { isolationLevel: 'Serializable' });
+        } catch (error) {
+          if (error instanceof CaptionBatchReleaseMismatchError) return false;
+          if (attempt === 3 || !error || typeof error !== 'object' ||
+              !('code' in error) || error.code !== 'P2034') throw error;
+        }
+      }
+      return false;
+    },
     reserve: async (input) => {
+      const units = readRealClipCaptionReservationUnits(input.units);
+      if (units > 1 && !prisma.$transaction) throw new Error('Caption credit batches require transaction support');
       if (prisma.$transaction) {
         for (let attempt = 1; attempt <= 3; attempt += 1) {
           try {

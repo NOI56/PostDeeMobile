@@ -2,6 +2,71 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Uploader post-quota presentation (2026-10-25, implementation candidate)
+
+The clip-selection step renders a compact post-quota strip only when a clip is
+selected. A dedicated optional `UploaderScreen.loadPostQuota` loader returns
+the existing `SubscriptionStatusResult`; its default uses the session-bound
+client's `loadCurrentSubscription` / `GET /billing/subscription`. It stays
+separate from imperative `loadSubscription` preflight calls, so background
+refreshes do not consume operation-loader sequences. There is no new quota
+endpoint, DTO or local ledger.
+Monthly limit/used/remaining fields describe included post units. A paid tier's
+nonempty `addonPostUnits` bank gets a short separate line, while
+`availablePostUnits` keeps the server's existing usable-total semantics. Basic
+phone-verification gates remain authoritative and receive explanatory copy.
+
+Reads capture owner/session, request identity and clip scope, reusing the
+existing caption-session listener rather than adding another auth listener.
+Refresh for initial handed-in clips, selection/reselection, resume, auth-session
+changes, successful in-composer subscription resync and post acceptance/failure
+or recovery while the composer remains open. Billing/phone changes are observed
+on the next supported refresh. Late replies cannot
+write into a different session, clip or superseded request. Render a numeric
+strip only when monthly limit/used/remaining fields are all valid. Loading,
+absent values and failures remain distinct from a known zero and offer retry. The existing
+GET's legacy canonical-user preparation is retained; this UI does not make it
+a new read-only contract or introduce checkout, AI, upload or publish work.
+
+Preserve the four-step wizard, quota/phone submission guards, one post unit per
+destination, monthly-first nonexpiring purchased credits and the pending
+caption-per-channel work. No plan/price, backend, schema, migration, provider or
+flag change. Candidate verification is tracked in the
+[post-quota strip plan](docs/superpowers/plans/2026-10-25-post-quota-strip.md).
+
+## Caption credit accounting per channel (2026-10-25, implementation candidate)
+
+The clip-caption route derives `requestedCredits` from its validated `platforms`:
+one credit for each of 1–4 unique supported destinations, or one for an omitted
+list/shared result. The legacy keyword route remains one credit. New Mobile
+shows the derived selection cost in its existing action and sends it as
+`expectedCredits`; a multi-platform request without matching confirmation
+returns `409 AI_CAPTION_COST_CONFIRMATION_REQUIRED` before reservation or
+provider work. Legacy shared/one-platform requests may omit the confirmation.
+
+Memory and Prisma stores reserve a credit batch atomically with the current
+owner/month and retained add-on bank. They allocate included monthly credits
+first, then purchased credits, preserving the existing one-row-per-credit
+ledger without a migration. A balance below the complete cost returns `429
+AI_CAPTION_QUOTA_REACHED` with actual remaining quota and `quota.requiredCredits`; it
+creates no partial debit and calls no provider. Concurrent requests cannot
+overspend the same balance.
+
+One provider generation operation still produces the requested set. Failure,
+fallback or incomplete output releases every row of that request's batch
+atomically; other requests' records remain untouched. Success quota metadata
+adds `requestedCredits` and `chargedCredits`; the latter is zero after a
+successful full refund and otherwise equals the request cost, alongside the
+existing `charged` boolean. Successful generation remains charged when a user
+dismisses the preview or when stale-result guards decline to apply its text.
+
+Coordinate API/Mobile release. Old multi-platform clients must update instead
+of silently spending more than their fixed one-credit label; new Mobile can
+quote multiple credits against an older one-credit API. Plan limits/prices,
+add-on packs, provider configuration, flags and publishing remain unchanged.
+This candidate has no deployment claim. See the
+[credit-per-channel plan](docs/superpowers/plans/2026-10-25-caption-credit-per-channel.md).
+
 ## Compact caption quota boundary (2026-10-25, implementation candidate)
 
 The pushed composer reads `GET /captions/quota` on entry and app resume. The
@@ -13,8 +78,9 @@ refunds and generation's existing atomic reservation rules remain authoritative.
 
 Mobile presents the monthly balance, plan, usage and remaining bar in one small
 strip immediately above the existing AI action. A nonempty bank gets a short
-conditional credit line; exhaustion depends on total availability. Loading or
-failed reads do not fabricate a balance. Owner/request guards reject stale
+conditional credit line; generation is disabled when known total availability
+cannot cover the selected cost. Loading or failed reads do not fabricate a
+balance. Owner/request guards reject stale
 reads, while successful generation updates quota independently of text edits or
 advanced-preview acceptance. Errors and a pending refund recount trigger a
 read refresh; manual editing and posting remain separate from AI quota.
@@ -167,20 +233,23 @@ presenting the target selector as a uniform two-by-two grid. The compact header
 full saved writing-profile controls. Those values retain their current owner,
 draft and request boundaries rather than becoming a second profile system.
 The helper is `เลือกช่องทางที่ต้องการ`; the single generation action shows
-`สร้างแคปชั่น · 1 เครดิต` and is disabled for an empty target set. Separate
-select-all, clear-selection and cost rows are removed from this panel. Selected
+`สร้างแคปชั่น · N เครดิต` for the selected channel count and is disabled for
+an empty target set. Separate select-all, clear-selection and cost rows are
+removed from this panel. Selected
 targets retain the normal surface and use a green outline without a checkmark;
 the accessible selected state remains intact.
 
 All four manual editors, local target persistence, selected-only preview/apply/
 undo, stale-result checks and publishing destinations remain independent and
-unchanged. There is no API, data contract, schema, migration, quota or backend
-runtime change: a set of 1–4 generated channels still uses one credit. Source
+unchanged. The original fixed one-credit label/accounting is superseded by the
+2026-10-25 contract above. The original presentation release had no API, data
+contract, schema, migration, quota or backend runtime change. Source
 `4a1c0f9` is on main; installed Staging APK 12045 preserves account/storage.
 The outline-only follow-up has local light/dark, semantics and Staging suite
 coverage plus partial native selection checks. Earlier compact-panel full-suite
 and staged-guidance Cancel/reopen checks remain historical evidence. The
-deployed API is retained because this UI needs no API change. See its
+then-deployed API supported that presentation without an API change. The later
+pricing change requires coordinated delivery. See its
 [scope and acceptance](docs/superpowers/plans/2026-10-23-caption-ai-compact-panel.md).
 
 ## Selective caption-generation boundary (2026-10-23, Staging Live)
@@ -203,10 +272,10 @@ legacy drafts default to empty. Post/recovery API settings and reusable
 channel/account defaults exclude the metadata. Effective caption delivery,
 YouTube titles and existing TikTok consent invalidation keep their boundaries.
 
-The deployed endpoint already accepts a subset. Its one-operation/one-credit
-reservation per request of 1–4 channels, ownership/plan/cleanup checks and
-fallback/refund behavior remain unchanged. Fewer requested channels do not
-reduce the one-credit charge. This follow-up has no backend runtime, database,
+The selection release's deployed endpoint already accepted a subset. Its
+fixed one-credit reservation rule is superseded by the 2026-10-25 per-channel
+contract above; ownership/plan/cleanup boundaries remain in place. The
+selection follow-up had no backend runtime, database,
 migration, provider integration, credential or configuration change. Combined
 checks pass 2,787 Mobile tests, 2,504 API tests, static/schema checks and 28
 Staging-configured widget smoke tests. APK 12043 builds with the expected
@@ -247,11 +316,12 @@ requests Page Reels only through `contentType: 'reel'`; real-account E2E remains
 pending.
 
 Explicit advanced AI generation adds optional `platforms` to the real-clip
-caption endpoint. One provider operation/one quota reservation produces the
-selected `platformCaptions` map while retaining base result fields. The
+caption endpoint. One provider operation produces the selected
+`platformCaptions` map while retaining base result fields. Under the 2026-10-25
+contract, an atomic batch reserves one credit per selected channel. The
 configured primary model's existing transient retry behavior stays intact.
 Every requested variant must be valid; an incomplete set uses a labeled
-template fallback and releases the reservation when supported. Templates use
+template fallback and releases the whole batch when supported. Templates use
 editable placeholders rather than inferred clip facts. Owner/media cleanup,
 paid access and quota fences remain at their existing boundaries.
 
@@ -2388,7 +2458,7 @@ delivery without overriding newer state. See
 
 The 49 THB post/caption add-on is a distinct consumable, never a perpetual
 Starter/Pro entitlement. Its server-owned grant is 100 post units plus 50 caption
-generations, usable only with an effective paid tier. Purchased credits never
+credits, usable only with an effective paid tier. Purchased credits never
 expire and share the same policy on native Android and iPhone. Included UTC
 monthly quota is consumed first; purchased credits pay only the remainder.
 The purchase ledger supplies lifetime non-refunded grant totals. Each post

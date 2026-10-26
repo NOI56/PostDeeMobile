@@ -1274,17 +1274,21 @@ confirmation and cold callback remain unverified.
   no provider, dependency, flag or migration is added. Local/remote validation
   and the completed 2026-10-07 Staging release are recorded in
   `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
-- Provide five customization categories with twenty layout/style templates
-  each: minimal, cute/pastel, nature/warm, luxury/premium, creative/colorful.
-  Keep the seven legacy choices, private draft content/images, per-link
-  overrides and explicit publishing. Use category → preview → apply; remove
-  visitor and preview pause buttons while retaining owner effects toggles and
-  OS reduced motion. Shared catalog and nullable `templateId` are additive,
-  with no migration or paid service; deliver API before Mobile. Staging delivery
-  completed on 2026-10-07 at runtime commit `fc087c4`, after exact-commit CI
+- Mobile decoration picker (2026-10-26 candidate): offer only the twenty
+  minimal (`เรียบง่าย`) templates, hiding the other four category controls and
+  legacy-theme chooser. Keep all 100 catalog IDs and seven legacy theme IDs
+  supported for saved appearances, drafts, rendering and the existing API.
+  Opening the picker does not convert drafts; use preview → explicit apply.
+  Preserve private content/images, per-link overrides and explicit publishing.
+  This Mobile-only restriction adds no API, migration, flag or entitlement
+  change. The original category release removed visitor and preview pause
+  buttons while retaining owner effects toggles and
+  OS reduced motion. Its shared catalog and nullable `templateId` were additive,
+  with no migration or paid service; API preceded Mobile. Original Staging
+  delivery completed on 2026-10-07 at runtime commit `fc087c4`, after exact-commit CI
   passed 1,469 API and 1,422 Flutter tests. See
   `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
-- Current composition revision, accepted on 2026-10-07: keep all fifteen
+- Composition catalog revision, accepted on 2026-10-07: keep all fifteen
   A1–E3 sample directions and expand to twenty distinct short-page compositions
   in each of the five categories. Replace the earlier five-header/four-button
   model; retain all hundred template IDs, appearance version 1, seven legacy

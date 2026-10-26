@@ -200,36 +200,78 @@ void main() {
     }
   });
 
-  testWidgets('browsing one category shows only its 20 templates',
-      (tester) async {
-    LinkInBioAppearance? selected;
-    await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-            body: SingleChildScrollView(
-                child: BioThemePicker(
-                    appearance: const LinkInBioAppearance(),
-                    storeName: 'ร้านเดิม',
-                    links: _links,
-                    onChanged: (value) => selected = value)))));
-    await tester.pumpAndSettle();
-    for (final category in profileTemplateCategories.keys) {
-      final chip = find.byKey(ValueKey('link-in-bio-category-$category'));
-      await tester.ensureVisible(chip);
-      await tester.tap(chip);
+  for (final appearance in [
+    const LinkInBioAppearance(),
+    LinkInBioAppearance.forTheme('dark'),
+    for (final category in profileTemplateCategories.keys
+        .where((category) => category != 'minimal'))
+      LinkInBioAppearance.forTemplate(profileTemplates
+          .firstWhere((template) => template.category == category)
+          .id),
+  ]) {
+    testWidgets(
+        'picker offers only minimal templates for ${appearance.templateId ?? appearance.themeId}',
+        (tester) async {
+      LinkInBioAppearance? selected;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: SingleChildScrollView(
+                  child: BioThemePicker(
+                      appearance: appearance,
+                      storeName: 'ร้านเดิม',
+                      links: _links,
+                      onChanged: (value) => selected = value)))));
       await tester.pumpAndSettle();
+      expect(find.text('เรียบง่าย · 20 แบบ'), findsOneWidget);
+      expect(find.byType(ChoiceChip), findsNothing);
+      expect(find.byKey(const ValueKey('link-in-bio-legacy-themes')),
+          findsNothing);
+      for (final category in profileTemplateCategories.keys) {
+        expect(find.byKey(ValueKey('link-in-bio-category-$category')),
+            category == 'minimal' ? findsOneWidget : findsNothing);
+      }
       expect(find.byKey(const ValueKey('link-in-bio-template-grid')),
           findsOneWidget);
       for (final template in profileTemplates) {
         expect(find.byKey(ValueKey('link-in-bio-template-${template.id}')),
-            template.category == category ? findsOneWidget : findsNothing);
+            template.category == 'minimal' ? findsOneWidget : findsNothing);
       }
       final last =
-          profileTemplates.where((item) => item.category == category).last;
+          profileTemplates.where((item) => item.category == 'minimal').last;
       await tester.ensureVisible(
           find.byKey(ValueKey('link-in-bio-template-${last.id}')));
       expect(tester.takeException(), isNull);
       expect(selected, isNull);
+    });
+  }
+
+  testWidgets(
+      'loading another saved design keeps minimal choices without apply',
+      (tester) async {
+    var appearance = LinkInBioAppearance.forTemplate('minimal-white-editorial');
+    late StateSetter update;
+    var changes = 0;
+    await tester.pumpWidget(
+        MaterialApp(home: StatefulBuilder(builder: (context, setState) {
+      update = setState;
+      return Scaffold(
+          body: SingleChildScrollView(
+              child: BioThemePicker(
+                  appearance: appearance, onChanged: (_) => changes++)));
+    })));
+    await tester.pumpAndSettle();
+    final saved =
+        profileTemplates.firstWhere((item) => item.category == 'cute');
+    update(() => appearance = LinkInBioAppearance.forTemplate(saved.id));
+    await tester.pumpAndSettle();
+    expect(find.text('กำลังใช้ ${saved.name}'), findsOneWidget);
+    for (final template in profileTemplates) {
+      expect(find.byKey(ValueKey('link-in-bio-template-${template.id}')),
+          template.category == 'minimal' ? findsOneWidget : findsNothing);
     }
+    expect(appearance.templateId, saved.id);
+    expect(changes, 0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('template preview needs confirmation and cancelling keeps draft',

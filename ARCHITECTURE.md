@@ -1508,6 +1508,15 @@ the matching Android APK. A read-only running-service check normalized/rendered
 all 100 templates; account data and existing drafts were preserved. See
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
+The 2026-10-26 Mobile picker candidate filters selectable templates to the
+twenty `minimal` entries (`เรียบง่าย`) and hides the other category controls
+and legacy-theme chooser. This is a presentation filter in `BioThemePicker`;
+the shared catalog, generated definitions, all 100 template IDs, seven legacy
+theme IDs, native/public renderers and API validation remain intact. Existing
+drafts and saved appearances retain their selected IDs when the picker opens;
+only an explicit preview/apply changes the appearance. No automatic conversion,
+migration, configuration, dependency or entitlement change is introduced.
+
 The subsequent 2026-10-07 Pinterest-inspired revision is **Live on the Staging API**.
 The user keeps all fifteen A1–E3 short-page samples and expands them to one
 hundred choices. `shared/profile-templates.json` now supplies twenty distinct

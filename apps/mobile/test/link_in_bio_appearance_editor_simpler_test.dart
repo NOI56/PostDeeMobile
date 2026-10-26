@@ -78,16 +78,17 @@ Future<void> _openEditor(WidgetTester tester,
 
 Future<void> _tap(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey(key));
-  if (key.startsWith('link-in-bio-theme-') && finder.evaluate().isEmpty) {
-    final legacy = find.byKey(const ValueKey('link-in-bio-legacy-themes'));
-    await tester.ensureVisible(legacy);
-    await tester.tap(legacy);
-    await tester.pumpAndSettle();
-  }
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
   await tester.pumpAndSettle();
+}
+
+Future<void> _selectTemplate(WidgetTester tester, String templateId) async {
+  await _tap(tester, 'link-in-bio-template-$templateId');
+  expect(find.byKey(const ValueKey('link-in-bio-template-preview')),
+      findsOneWidget);
+  await _tap(tester, 'link-in-bio-template-use');
 }
 
 Future<void> _openGroup(WidgetTester tester, String group,
@@ -100,24 +101,25 @@ Future<void> _openGroup(WidgetTester tester, String group,
 
 void main() {
   testWidgets(
-      'selected new theme and effects survive apply with existing content',
+      'confirmed minimal template and effects survive apply with existing content',
       (tester) async {
     LinkInBioAppearance? result;
     await _openEditor(tester,
         appearance: _customAppearance,
         reducedMotion: true,
         onResult: (value) => result = value);
-    await _tap(tester, 'link-in-bio-theme-cards');
+    await _selectTemplate(tester, 'minimal-white-editorial');
     await _tap(tester, 'link-in-bio-decoration-effects');
     await _tap(tester, 'link-in-bio-effect-background');
     await _tap(tester, 'link-in-bio-effect-featured');
     // Find the established sticky apply control rather than saving to a server.
     await tester.tap(find.text('ใช้แบบนี้กับแบบร่าง'));
     await tester.pumpAndSettle();
-    expect(result?.themeId, 'cards');
-    expect(result?.effects.background, isFalse);
+    expect(result?.themeId, 'minimal');
+    expect(result?.templateId, 'minimal-white-editorial');
+    expect(result?.effects.background, isTrue);
     expect(result?.effects.featured, isTrue);
-    expect(result?.effects.stickers, 'sparkles');
+    expect(result?.effects.stickers, 'none');
     expect(result?.description, _customAppearance.description);
     expect(result?.logoKey, _imageKey);
     expect(result?.coverKey, _coverKey);
@@ -129,7 +131,9 @@ void main() {
       'starts with a bounded preview and themes while details are closed',
       (tester) async {
     await _openEditor(tester);
-    expect(find.byType(ChoiceChip), findsNWidgets(5));
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.text('เรียบง่าย · 20 แบบ'), findsOneWidget);
+    expect(find.byKey(const ValueKey('link-in-bio-legacy-themes')), findsNothing);
     expect(find.byKey(const ValueKey('link-in-bio-template-grid')),
         findsOneWidget);
     expect(find.text('ตกแต่งเพิ่มเติม'), findsOneWidget);
@@ -175,10 +179,14 @@ void main() {
   testWidgets('applying untouched hidden details preserves the complete design',
       (tester) async {
     LinkInBioAppearance? result;
+    final legacy = _customAppearance.copyWith(
+        themeId: 'cards', effects: LinkInBioAppearance.forTheme('cards').effects);
     await _openEditor(tester,
-        appearance: _customAppearance, onResult: (value) => result = value);
+        appearance: legacy,
+        reducedMotion: true,
+        onResult: (value) => result = value);
     await _tap(tester, 'link-in-bio-decoration-done');
-    expect(result!.toJson(), _customAppearance.toJson());
+    expect(result!.toJson(), legacy.toJson());
   });
 
   testWidgets('section edits survive collapsing and reopening their group',
@@ -222,11 +230,12 @@ void main() {
     LinkInBioAppearance? result;
     await _openEditor(tester,
         appearance: _customAppearance, onResult: (value) => result = value);
-    await _tap(tester, 'link-in-bio-theme-pastel');
+    await _selectTemplate(tester, 'minimal-mono-pair');
     await _tap(tester, 'link-in-bio-decoration-done');
-    expect(result!.themeId, 'pastel');
+    expect(result!.themeId, 'minimal');
+    expect(result!.templateId, 'minimal-mono-pair');
     expect(result!.buttonColor,
-        LinkInBioAppearance.forTheme('pastel').buttonColor);
+        LinkInBioAppearance.forTemplate('minimal-mono-pair').buttonColor);
     expect(result!.description, _customAppearance.description);
     expect(result!.logoKey, _customAppearance.logoKey);
     expect(result!.coverKey, _customAppearance.coverKey);

@@ -441,18 +441,13 @@ void main() {
         publicUrl: Uri.parse('https://api.example.com/p/mina-shop')));
     await tester.pumpAndSettle();
     await showBioStep(tester, 'theme');
-    expect(
-        tester
-            .widget<ChoiceChip>(
-                find.byKey(const ValueKey('link-in-bio-theme-dark')))
-            .selected,
-        isTrue);
+    expect(find.byKey(const ValueKey('link-in-bio-theme-dark')), findsNothing);
+    expect(find.byKey(const ValueKey('link-in-bio-legacy-themes')), findsNothing);
     await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-decoration-done');
     await _tap(tester, 'link-in-bio-save-draft');
     final saved = (await store.loadDraft())!;
-    expect(saved.appearance.themeId, 'dark');
-    expect(saved.appearance.description, 'ร้านจากเว็บไซต์');
+    expect(saved.appearance.toJson(), appearance.toJson());
     expect(find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsNothing);
   });
 
@@ -482,7 +477,7 @@ void main() {
     await tester
         .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
     await tester.pumpAndSettle();
-    await _tap(tester, 'link-in-bio-theme-pastel');
+    await selectBioTemplate(tester, 'minimal-mono-pair');
     await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-disclosure-styles');
     await _tap(tester, 'link-in-bio-disclosure-style-name');
@@ -493,10 +488,12 @@ void main() {
     await _tap(tester, 'link-in-bio-decoration-done');
     await _tap(tester, 'link-in-bio-save-draft');
     final saved = (await store.loadDraft())!;
-    expect(saved.appearance.themeId, 'pastel');
+    expect(saved.appearance.themeId, 'minimal');
+    expect(saved.appearance.templateId, 'minimal-mono-pair');
     expect(saved.appearance.nameStyle.font, 'prompt');
     expect(saved.appearance.nameStyle.color, '#123456');
-    expect(saved.appearance.buttonRadius, 'pill');
+    expect(saved.appearance.buttonRadius,
+        LinkInBioAppearance.forTemplate('minimal-mono-pair').buttonRadius);
     expect(tester.takeException(), isNull);
   });
 
@@ -524,14 +521,14 @@ void main() {
               publicUrl: Uri.parse('https://api.example.com/p/mina-shop'));
         })));
     await tester.pumpAndSettle();
-    await _tap(tester, 'link-in-bio-theme-dark');
+    await selectBioTemplate(tester, 'minimal-white-editorial');
     await _tap(tester, 'link-in-bio-publish');
-    expect(sent?.themeId, 'dark');
+    expect(sent?.templateId, 'minimal-white-editorial');
     expect(find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsNothing);
-    await _tap(tester, 'link-in-bio-theme-shop');
+    await selectBioTemplate(tester, 'minimal-mono-pair');
     expect(
         find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsOneWidget);
-    expect(sent?.themeId, 'dark');
+    expect(sent?.templateId, 'minimal-white-editorial');
   });
 
   testWidgets(
@@ -561,7 +558,7 @@ void main() {
     await tester.ensureVisible(description);
     await tester.enterText(description, 'ร้านน่ารัก ส่งไว');
     await _tap(tester, 'link-in-bio-decoration-done');
-    await _tap(tester, 'link-in-bio-theme-shop');
+    await selectBioTemplate(tester, 'minimal-white-editorial');
     await _tap(tester, 'link-in-bio-save-draft');
     final saved = (await store.loadDraft())!;
     expect(saved.appearance.logoKey, _imageKey);

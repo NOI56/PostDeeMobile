@@ -174,7 +174,7 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
-  testWidgets('category entrance retains only its 20 candidates without apply',
+  testWidgets('minimal entrance retains only its 20 candidates without apply',
       (tester) async {
     var changes = 0;
     await tester.pumpWidget(MaterialApp(
@@ -186,24 +186,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(BioUiMotionScope), findsOneWidget);
     expect(profileTemplates, hasLength(100));
-    for (final category in profileTemplateCategories.keys) {
-      final chip = find.byKey(ValueKey('link-in-bio-category-$category'));
-      await tester.ensureVisible(chip);
-      await tester.tap(chip);
-      await tester.pump();
-      expect(find.byKey(ValueKey('link-in-bio-category-motion-$category')),
-          findsOneWidget);
-      for (final template in profileTemplates) {
-        expect(find.byKey(ValueKey('link-in-bio-template-${template.id}')),
-            template.category == category ? findsOneWidget : findsNothing);
-      }
-      expect(profileTemplates.where((item) => item.category == category),
-          hasLength(20));
-      expect(changes, 0);
-      await tester.pumpAndSettle();
-      expect(tester.binding.hasScheduledFrame, isFalse);
-      expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('link-in-bio-category-motion-minimal')),
+        findsOneWidget);
+    for (final template in profileTemplates) {
+      expect(find.byKey(ValueKey('link-in-bio-template-${template.id}')),
+          template.category == 'minimal' ? findsOneWidget : findsNothing);
     }
+    expect(profileTemplates.where((item) => item.category == 'minimal'),
+        hasLength(20));
+    expect(changes, 0);
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('origin scope swaps listeners and ignores deferred disposal work',
@@ -249,7 +243,7 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
-  testWidgets('disabled picker retains native disabled chips and callbacks',
+  testWidgets('disabled minimal picker retains disabled cards and callbacks',
       (tester) async {
     var changes = 0;
     await tester.pumpWidget(MaterialApp(
@@ -260,10 +254,7 @@ void main() {
                     enabled: false,
                     onChanged: (_) => changes++)))));
     await tester.pumpAndSettle();
-    final chip = find.byKey(const ValueKey('link-in-bio-category-cute'));
-    expect(tester.widget<ChoiceChip>(chip).onSelected, isNull);
-    await tester.tap(chip);
-    await tester.pumpAndSettle();
+    expect(find.byType(ChoiceChip), findsNothing);
     final first = profileTemplates.first;
     final card = find.byKey(ValueKey('link-in-bio-template-${first.id}'));
     expect(tester.widget<InkWell>(card).onTap, isNull);

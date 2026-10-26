@@ -11,14 +11,6 @@ import 'link_in_bio_preview.dart';
 import 'link_in_bio_template_preview.dart';
 import 'link_in_bio_ui_motion.dart';
 
-const _categoryChipNames = {
-  'minimal': 'เรียบง่าย',
-  'cute': 'น่ารัก',
-  'nature': 'ธรรมชาติ',
-  'luxury': 'หรูหรา',
-  'creative': 'ครีเอทีฟ'
-};
-
 LinkInBioAppearance _keepContent(
         LinkInBioAppearance original, LinkInBioAppearance preset) =>
     preset.copyWith(
@@ -62,16 +54,7 @@ class BioThemePicker extends StatefulWidget {
 }
 
 class _BioThemePickerState extends State<BioThemePicker> {
-  late String _category =
-      getProfileTemplate(widget.appearance.templateId)?.category ?? 'minimal';
-  @override
-  void didUpdateWidget(covariant BioThemePicker oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.appearance.templateId != widget.appearance.templateId) {
-      _category = getProfileTemplate(widget.appearance.templateId)?.category ??
-          _category;
-    }
-  }
+  static const _category = 'minimal';
 
   Future<void> _preview(ProfileTemplate template) async {
     final ownership = BioOwnedModalScope.maybeOf(context);
@@ -156,38 +139,17 @@ class _BioThemePickerState extends State<BioThemePicker> {
         profileTemplates.where((item) => item.category == _category).toList();
     final current = getProfileTemplate(widget.appearance.templateId);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: [
-            for (final category in profileTemplateCategories.entries)
-              Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: BioUiPress(
-                      enabled: widget.enabled,
-                      child: ChoiceChip(
-                          key: ValueKey('link-in-bio-category-${category.key}'),
-                          label: Text(_categoryChipNames[category.key]!),
-                          selected: _category == category.key,
-                          showCheckmark: false,
-                          selectedColor: colors.primary,
-                          labelStyle: TextStyle(
-                              color: _category == category.key
-                                  ? colors.onPrimary
-                                  : colors.onSurface),
-                          onSelected: widget.enabled
-                              ? (_) => setState(() => _category = category.key)
-                              : null))),
-          ])),
-      const SizedBox(height: 14),
-      Text('${profileTemplateCategories[_category]} · 20 แบบ',
+      Text('${profileTemplateCategories[_category]} · ${templates.length} แบบ',
+          key: const ValueKey('link-in-bio-category-minimal'),
           style: const TextStyle(fontWeight: FontWeight.w700)),
       const SizedBox(height: 4),
       const Text('แตะแบบที่ชอบเพื่อดูตัวอย่างก่อนเลือก',
           style: TextStyle(fontSize: 12)),
-      if (current != null)
+      if (current != null || widget.appearance.themeId != 'minimal')
         Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text('กำลังใช้ ${current.name}',
+            child: Text(
+                'กำลังใช้ ${current?.name ?? linkInBioThemeNames[widget.appearance.themeId]}',
                 style: TextStyle(fontSize: 12, color: colors.primary))),
       const SizedBox(height: 12),
       LayoutBuilder(
@@ -251,35 +213,6 @@ class _BioThemePickerState extends State<BioThemePicker> {
                                             ]),
                                           ]))))))
                   ]))),
-      const SizedBox(height: 12),
-      ExpansionTile(
-          key: const ValueKey('link-in-bio-legacy-themes'),
-          initiallyExpanded: widget.appearance.templateId == null &&
-              widget.appearance.themeId != 'minimal',
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 12),
-          title: const Text('ธีมเดิม 7 แบบ', style: TextStyle(fontSize: 13)),
-          subtitle: widget.appearance.templateId == null
-              ? Text(
-                  'กำลังใช้ ${linkInBioThemeNames[widget.appearance.themeId]}',
-                  style: const TextStyle(fontSize: 12))
-              : null,
-          children: [
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final theme in linkInBioThemeNames.entries)
-                BioUiPress(
-                    enabled: widget.enabled,
-                    child: ChoiceChip(
-                        key: ValueKey('link-in-bio-theme-${theme.key}'),
-                        selected: widget.appearance.templateId == null &&
-                            widget.appearance.themeId == theme.key,
-                        label: Text(theme.value),
-                        onSelected: widget.enabled
-                            ? (_) => widget.onChanged(
-                                bioApplyTheme(widget.appearance, theme.key))
-                            : null)),
-            ])
-          ]),
     ]);
   }
 }

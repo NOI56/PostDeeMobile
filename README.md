@@ -1294,16 +1294,24 @@ read the new theme IDs. The feature was pushed and deployed to Staging at
 passed on that exact commit. Deployment and remaining verification limits are in
 `docs/superpowers/plans/2026-10-07-profile-themes-motion.md`.
 
-The profile customization revision adds 100 layout/style templates in five
-categories (minimal, cute/pastel, nature/warm, luxury/premium, creative/colorful),
-twenty per category. A category picker opens a real draft preview before
-applying; legacy themes remain available. The visitor/preview pause buttons are
-removed as requested; owner effects controls and OS reduced motion remain.
-The shared catalog and nullable version-1 `templateId` require API delivery
-before Mobile, without a schema migration. The earlier API silently drops the
+The original 2026-10-07 profile customization revision added 100 layout/style
+templates in five categories (minimal, cute/pastel, nature/warm, luxury/premium,
+creative/colorful),
+twenty per category. The Mobile decoration picker now offers only the twenty
+minimal (`เรียบง่าย`) templates (2026-10-26 candidate), with the other category
+controls and legacy-theme chooser hidden. Preview and explicit apply remain.
+All 100 catalog IDs and seven legacy theme IDs remain supported for existing
+drafts, saved appearances, native/public rendering and API compatibility.
+Opening the picker does not convert an existing appearance; it changes only
+when the owner explicitly applies a template. This picker-only change needs
+an updated Mobile build, with no API, migration, configuration or entitlement
+change. The visitor/preview pause buttons remain removed; owner effects
+controls and OS reduced motion remain.
+The original shared catalog and nullable version-1 `templateId` required API
+delivery before Mobile, without a schema migration. The earlier API silently drops the
 new template selection; older clients sending a complete appearance without
 `templateId` can clear it. Update clients before editing new-template profiles.
-This revision was pushed at `fc087c4119cd46503c569879e61cddf99e402fb2` and
+That original revision was pushed at `fc087c4119cd46503c569879e61cddf99e402fb2` and
 deployed to Staging on 2026-10-07 at 16:18:19 GMT+7. Exact-commit CI passed
 1,469 API tests and 1,422 Flutter tests; the running service also validated and
 rendered all 100 templates in a read-only check. The matching Android Staging

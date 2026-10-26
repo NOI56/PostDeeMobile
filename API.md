@@ -1176,6 +1176,13 @@ preserves it; update clients before editing new-template profiles and avoid an
 API rollback after they are used. See
 `docs/superpowers/plans/2026-10-07-profile-template-categories.md`.
 
+Mobile picker visibility (2026-10-26 candidate) is limited to the twenty
+minimal (`เรียบง่าย`) templates. The other category controls and legacy-theme
+chooser are hidden in Mobile; the API still accepts all 100 known template IDs
+and seven legacy theme IDs under the same validation and appearance-version
+rules. Existing saved appearances and drafts are not automatically converted.
+This presentation change adds no endpoint, schema, migration or configuration.
+
 Staging deploy `dep-db302kqd0e5s73elbv9g` became Live on 2026-10-07 at
 15:24:38 GMT+7 using `8d96ea66d8086c66bf800920871ac5d71c65b209`, with no pending
 database migrations. This resolves the prior theme-contract mismatch: the

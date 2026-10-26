@@ -37,12 +37,6 @@ LinkInBioProfileResult _profile() => LinkInBioProfileResult(
 
 Future<void> _tap(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey(key));
-  if (key.startsWith('link-in-bio-theme-') && finder.evaluate().isEmpty) {
-    final legacy = find.byKey(const ValueKey('link-in-bio-legacy-themes'));
-    await showBioControl(tester, legacy);
-    await tester.tap(legacy);
-    await tester.pumpAndSettle();
-  }
   await showBioControl(tester, finder);
   await tester.tap(finder);
   await tester.pumpAndSettle();
@@ -301,13 +295,14 @@ void main() {
     await _tap(tester, 'link-in-bio-done');
     expect(find.byKey(const ValueKey('link-in-bio-card-shop')), findsOneWidget);
     await showBioStep(tester, 'theme');
-    await _tap(tester, 'link-in-bio-theme-pastel');
+    await selectBioTemplate(tester, 'minimal-mono-pair');
     await _tap(tester, 'link-in-bio-done');
     expect(find.byKey(const ValueKey('link-in-bio-card-shop')), findsOneWidget);
     await _tap(tester, 'link-in-bio-save');
     final saved = (await _store.loadDraft())!;
     expect(saved.appearance.description, 'ขายของใช้ในบ้าน');
-    expect(saved.appearance.themeId, 'pastel');
+    expect(saved.appearance.themeId, 'minimal');
+    expect(saved.appearance.templateId, 'minimal-mono-pair');
     expect(saved.customLinks.single.id, 'shop');
     await showBioStep(tester, 'info');
     expect(

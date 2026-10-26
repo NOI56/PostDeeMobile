@@ -1,6 +1,47 @@
 # Profile template categories — 2026-10-07
 
-## Current composition revision — 2026-10-07
+## Minimal-only Mobile picker — 2026-10-26 (candidate)
+
+The owner requests only `เรียบง่าย` in Profile Link → Decoration. The candidate
+starts from verified `origin/main` `35890b1d22ed57289dfa1a7f3df767273de6d7fe`.
+
+- `BioThemePicker` offers the twenty existing `minimal` templates. Hide the
+  other four category controls and the legacy-theme chooser.
+- Retain the shared catalog's 100 template IDs and all seven legacy theme IDs,
+  generated definitions, normalization, saved appearances, native/public
+  renderers and API validation. Existing non-minimal/legacy drafts keep their
+  appearance when opened; no automatic conversion is performed.
+- Preserve real draft preview, cancellation without applying, explicit apply
+  and separate publication, along with owner content/images and custom styling.
+- This is a Mobile picker change only: no API contract, schema, migration,
+  dependency, configuration or entitlement change. An updated Mobile build is
+  required. This scope note is not verification or deployment evidence; the
+  delivery receipts below describe the earlier catalog/composition releases.
+
+### Local verification on the current baseline
+
+- Full Flutter suite: 3,073 passed, six skipped. `flutter analyze --no-pub`
+  reported no issues. Targeted picker/motion tests and editor/save/publication
+  regressions also passed; existing render tests retain all 100 template IDs.
+- Widget visual fixtures use the production `LinkInBioScreen` at 320px with
+  150% text and 393px with 100% text. Minimal-only selection, preview, explicit
+  apply and draft save passed using mock storage/API callbacks. The fixture's
+  existing footer font fallback limits screenshot evidence; no native font
+  issue was established.
+- The validated Staging helper built Android x86_64 build `12057`, package
+  `com.postdee.postdee_mobile.staging`, using the existing Firebase Staging
+  configuration and RevenueCat Test Store overlay. APK signature verification
+  passed; SHA-256 is
+  `26A893D60E487726A2C5376F135CA933B3367E71487DC26BFD530DB9609AE720`.
+- Read-only Staging checks returned HTTP 200 for `/health`, `/ready` and
+  `/account-deletion`. API code, migrations and flags match the verified
+  `35890b1d` baseline; this change adds no migration or API deployment.
+- The existing shop draft was saved locally before the planned update. The
+  user stopped desktop control before installation, so the new APK is not
+  installed and its target flow has not been verified on the live Emulator.
+  No published shop appearance was changed.
+
+## Earlier composition revision — 2026-10-07
 
 **Status: corrected source `ae65b9d` is pushed, exact-source CI-approved, Live
 on Staging and installed in place on emulator-5556.** The logo-containment

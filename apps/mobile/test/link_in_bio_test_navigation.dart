@@ -59,13 +59,8 @@ Future<void> tapBioControl(WidgetTester tester, String key) async {
     await showBioStep(tester, 'links');
   } else if (key == 'link-in-bio-publish' || key == 'link-in-bio-preview') {
     await showBioStep(tester, 'review');
-  } else if (key == 'link-in-bio-decorate' ||
-      key.startsWith('link-in-bio-theme-')) {
+  } else if (key == 'link-in-bio-decorate') {
     await showBioStep(tester, 'theme');
-    if (key.startsWith('link-in-bio-theme-') &&
-        find.byKey(ValueKey(key)).evaluate().isEmpty) {
-      await _tapVisibleBioKey(tester, 'link-in-bio-legacy-themes');
-    }
   } else if (key == 'link-in-bio-add' ||
       key.startsWith('link-in-bio-edit-') ||
       key.startsWith('link-in-bio-toggle-')) {
@@ -81,4 +76,12 @@ Future<void> tapBioControl(WidgetTester tester, String key) async {
     }
   }
   await _tapVisibleBioKey(tester, key);
+}
+
+Future<void> selectBioTemplate(WidgetTester tester, String templateId) async {
+  await showBioStep(tester, 'theme');
+  await _tapVisibleBioKey(tester, 'link-in-bio-template-$templateId');
+  expect(find.byKey(const ValueKey('link-in-bio-template-preview')),
+      findsOneWidget);
+  await _tapVisibleBioKey(tester, 'link-in-bio-template-use');
 }

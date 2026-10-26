@@ -1,5 +1,37 @@
 # PostDee Staging
 
+## ทดสอบลบบัญชีกับบริการจริง — 26 ตุลาคม 2026
+
+ผู้ใช้อนุมัติให้รวม PR #36 เข้า `main` หลัง CI ผ่าน แล้ว deploy Staging และอนุมัติการทดสอบ
+ด้วยบัญชีทดสอบใช้แล้วทิ้ง ผ่าน Staging ทั้ง 2 ทาง Production ยัง user-suspended ไม่ถูกแตะ
+
+- รวม PR #36 เป็น `35890b1` (CI Backend API และ Flutter Mobile ผ่าน) แล้ว deploy
+  `dep-dbfepmnavr4c73dsis80` เป็น Live 06:03:28 UTC; startup ใช้ migration
+  `20261026010000_admin_account_deletions` สำเร็จ รวม 25 migrations
+- กุญแจ service account ใหม่สร้างไม่ได้เพราะ organization policy ห้ามสร้างกุญแจ จึงให้เจ้าของ
+  เพิ่มบทบาท **Firebase Authentication Admin** ให้บัญชีบริการเดิม `postdee-admin-verifier`
+  ที่ Render Staging ใช้อยู่แล้ว ไม่สร้างหรืออัปโหลดกุญแจใหม่และไม่แก้ secret ใน Render
+- ตั้ง `FIREBASE_AUTH_DELETE_ENABLED=true` และ `UPLOAD_PROTOCOL_MODE=multipart` ชั่วคราว
+  (merge เฉพาะ 2 ค่า) deploy `dep-dbff3f8m7kps738rtp30` Live 06:24:21 UTC ที่ `296bee1`
+  ซึ่งต่างจาก `35890b1` เฉพาะ Mobile/เอกสาร; startup ผ่าน ยืนยันว่ากุญแจ Firebase ใช้ได้
+- **ทาง 1 ลบในแอป (`DELETE /account`)** 07:15 UTC: สคริปต์บนเครื่องเจ้าของสร้างบัญชี
+  `@example.com` ใหม่ → เทมเพลต 201 → readiness 200 → ลบ 200 ภายในราว 2 วินาที →
+  token เดิมได้ 401 → เข้าสู่ระบบด้วยรหัสเดิมได้ `INVALID_LOGIN_CREDENTIALS`
+  (Firebase เปิด email enumeration protection) และ Firebase Console ค้นหาไม่พบบัญชี
+- **ทาง 2 ลบจากหน้าแอดมิน** 07:35:25 UTC: เจ้าของลบบัญชี `@example.com` ที่ 2 จาก
+  `/admin` ได้ข้อความ "ลบบัญชีแล้ว" ประวัติการลบบัญชีแสดง "ลบเรียบร้อย" พร้อมเหตุผล
+  ไม่มีอีเมลในบันทึก และ Firebase Console ค้นหาไม่พบบัญชี
+- log ของ Render ไม่มี error/warning ระหว่างทดสอบ (บริการนี้ไม่มี request log ให้ตรวจ)
+- คืนค่า `FIREBASE_AUTH_DELETE_ENABLED=false` และ `UPLOAD_PROTOCOL_MODE=dual` แล้ว
+  deploy `dep-dbfg74o473hc73d2mjsg` Live 07:40:27 UTC ที่ `d113879` (API ไม่เปลี่ยน)
+  ขอให้เจ้าของถอดบทบาท Firebase Authentication Admin ออกจาก `postdee-admin-verifier`
+  แล้ว; ณ เวลาบันทึกนี้ยังไม่ได้รับภาพยืนยัน
+
+ยังไม่ครอบคลุม: บัญชีทดสอบไม่มีการเชื่อมโซเชียลหรือไฟล์อัปโหลด จึงยังไม่ได้ยืนยันการลบ
+integration/โปรไฟล์ที่ PostPeer จริง และการลบ object จริงใน R2 (เรียก owner-prefix cleanup
+กับ prefix ว่างเท่านั้น) ทาง 1 เรียก API โดยตรง ไม่ได้กดผ่าน UI ในแอปบนมือถือ รายละเอียดอยู่ใน
+[บันทึกแผน](superpowers/plans/2026-10-25-account-deletion-postpeer-profile.md#staging-real-service-acceptance-2026-10-26)
+
 ## Facebook Page Reels — 24 ตุลาคม 2026
 
 [Deploy `dep-dbdqk7sipgvc739q4r50`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbdqk7sipgvc739q4r50)

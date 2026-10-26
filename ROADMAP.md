@@ -4,6 +4,12 @@ Build roadmap for PostDee.
 
 ## Account deletion PostPeer profile cleanup (2026-10-25, source candidate)
 
+- 2026-10-26 Staging acceptance: PR #36 merged and deployed; with deletion
+  temporarily enabled, a disposable account was deleted through `DELETE /account`
+  and another through the admin console, both removed from Firebase, with no
+  error logs. Staging was restored to deletion off. PostPeer and real R2 object
+  cleanup were not exercised; see `docs/STAGING.md`.
+
 - The durable PostgreSQL owner drain and deletion authorization are already
   Live on Staging since 2026-10-14; docs that still called the coordinator
   process-local are corrected.

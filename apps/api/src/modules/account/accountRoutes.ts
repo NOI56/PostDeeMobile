@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 import type { RequestHandler, Response, Router } from 'express';
 
 import { readAuthUser, type AuthUser } from '../auth/authTypes.js';
@@ -21,6 +23,7 @@ import {
   ManagedUploadServiceError,
   type ManagedUploadService
 } from '../uploads/managedUploadService.js';
+import { renderAccountDeletionPage } from './accountDeletionPage.js';
 import type { AccountIdentityDeleter } from './firebaseIdentityDeleter.js';
 import type { OwnerMutationCoordinator } from './ownerMutationLock.js';
 import { OwnerOperationBusyError } from './ownerOperationQueue.js';
@@ -172,6 +175,14 @@ export const registerAccountRoutes = (
         : 'Could not verify or save account deletion authorization. Please try again.'
     });
   };
+
+  // Public, static deletion request page for store listings; no sign-in.
+  router.get('/account-deletion', (_request, response) => {
+    const nonce = randomBytes(18).toString('base64');
+    response.set('Cache-Control', 'public, max-age=300');
+    response.set('Content-Security-Policy', `default-src 'none'; script-src 'none'; style-src 'nonce-${nonce}'; img-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`);
+    response.type('html').send(renderAccountDeletionPage(nonce));
+  });
 
   router.get('/account/deletion-readiness', authMiddleware, async (_request, response) => {
     const authUser = readAuthUser(response.locals);

@@ -1273,7 +1273,7 @@ const _securityInfo = LegalDocument(
       'และแอปไม่เก็บรหัสผ่านของคุณ\n'
       '- โทเคนการเชื่อมต่อบัญชีโซเชียลถูกเก็บอย่างปลอดภัยบนเซิร์ฟเวอร์\n'
       '- คีย์ลับของระบบ AI อยู่ฝั่งเซิร์ฟเวอร์เท่านั้น ไม่อยู่ในแอป\n\n'
-      'หากพบกิจกรรมที่น่าสงสัย ติดต่อ support@postdee.app',
+      'หากพบกิจกรรมที่น่าสงสัย ติดต่อ postdee.support@gmail.com',
 );
 
 const _helpInfo = LegalDocument(
@@ -1287,7 +1287,7 @@ const _helpInfo = LegalDocument(
       '- โควตาโพสต์ฟรีคิดอย่างไร? แพ็กเกจ Basic ได้ 3 หน่วยต่อเดือนหลังยืนยันเบอร์\n'
       '  1 ช่องทางใช้ 1 หน่วย เช่น 1 คลิปลง 3 ช่องทาง ใช้ 3 หน่วย\n'
       '- ตั้งเวลาโพสต์ได้ไหม? Starter ล่วงหน้าได้ 14 วัน และ Pro 30 วัน\n\n'
-      'ติดต่อทีมงาน: support@postdee.app',
+      'ติดต่อทีมงาน: postdee.support@gmail.com',
 );
 
 class _DeleteAccountButton extends StatelessWidget {

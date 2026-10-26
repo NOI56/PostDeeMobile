@@ -1,7 +1,32 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/legal/legal_document_screen.dart';
 
 void main() {
+  test('legal documents point to the monitored support address', () {
+    expect(
+      PostDeeLegalDocuments.privacyPolicy.body,
+      contains('ติดต่อ: postdee.support@gmail.com'),
+    );
+    expect(
+      PostDeeLegalDocuments.termsOfService.body,
+      contains('ติดต่อ: postdee.support@gmail.com'),
+    );
+  });
+
+  test('no screen shows the unregistered postdee.app support address', () {
+    final offenders = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .where((file) => file.readAsStringSync().contains('support@postdee.app'))
+        .map((file) => file.path)
+        .toList();
+
+    expect(offenders, isEmpty);
+  });
+
   test('discloses local publish draft storage and backup behavior', () {
     expect(
       PostDeeLegalDocuments.privacyPolicy.body,

@@ -16,6 +16,10 @@ Build roadmap for PostDee.
 - The Production Blueprint now uses strict `UPLOAD_PROTOCOL_MODE=multipart`
   (only the owner has installed builds), closing late legacy signed-PUT
   uploads after deletion; Staging keeps `dual` until changed in its Dashboard.
+- 2026-10-26: public `GET /account-deletion` page for the Play listing (in-app
+  steps, email request answered within 30 days, data deleted/kept) and the
+  support contact moves to `postdee.support@gmail.com` in Mobile and legal
+  drafts. Email requests still need an operator procedure before launch.
 - No schema, migration, flag, response field or Mobile change; API-only deploy.
   `FIREBASE_AUTH_DELETE_ENABLED` stays `false` until a disposable Staging
   account passes real Firebase/R2/PostPeer cleanup, the Production service

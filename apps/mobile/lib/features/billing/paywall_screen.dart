@@ -640,7 +640,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       content: const SelectableText(
         'อย่าซื้อซ้ำระหว่างที่รายการเดิมยังรอยืนยัน '
         'คุณปิดหน้านี้ได้ แล้วกลับมาตรวจสอบการซื้อแพ็กเติมอีกครั้ง\n\n'
-        'หากชำระเงินแล้วแต่เครดิตยังไม่เข้า ติดต่อ support@postdee.app '
+        'หากชำระเงินแล้วแต่เครดิตยังไม่เข้า ติดต่อ postdee.support@gmail.com '
         'พร้อมเลขคำสั่งซื้อหรือหลักฐานจาก Google Play / App Store '
         'และอีเมลบัญชี PostDee ที่ใช้ซื้อ ไม่ต้องส่งรหัสผ่าน',
       ),

@@ -76,9 +76,10 @@ page to the duration of one provider request.
    disposable-account test so the test matches Production.
 3. Confirm `FIREBASE_SERVICE_ACCOUNT_JSON` in the Production Dashboard; with
    the flag `true` and no key the API refuses to start.
-4. Publish a public account-deletion request page with a monitored contact
-   address (Google Play requirement); `support@postdee.app` is still marked
-   unconfirmed in `docs/PRIVACY_POLICY.md`.
+4. ~~Publish a public account-deletion request page.~~ Added in source; see
+   [public deletion page](#public-deletion-page-and-support-address-2026-10-26).
+   Still needed: an operator procedure (or admin action) for email requests,
+   since the email path promises deletion within 30 days.
 5. Physical-device check of the in-app flow, including reauthentication.
 
 Deployment order for this change: API only. Any environment receives it with a
@@ -111,3 +112,42 @@ sessions do not have this gap: the saga aborts them and late part PUTs fail.
 
 Verification: `src/config` and `src/modules/uploads` tests pass (191), with
 the updated expectation observed failing first.
+
+## Public deletion page and support address (2026-10-26)
+
+The user could not confirm that `support@postdee.app` exists (no evidence of
+the domain was found), so they created `postdee.support@gmail.com`.
+
+- Base refreshed by merging main `d89ea80` (Mobile analytics/OTP/draft fixes,
+  no overlap with this branch).
+- `GET /account-deletion` (`accountDeletionPage.ts`, registered in
+  `accountRoutes.ts`) serves a static, unauthenticated page meeting Google
+  Play's web-resource requirement: app name, in-app steps matching current
+  labels (Account tab → ลบบัญชี → ลบบัญชีถาวร), an email request path that does
+  not need the app, and the data deleted/kept. Thai primary with an English
+  summary. No script; per-response style nonce in CSP; `form-action 'none'`;
+  five-minute public cache. Production URL:
+  `https://postdee-api.onrender.com/account-deletion`, reachable only while
+  the Production API runs.
+- The 30-day response time for email requests is an assumption chosen for a
+  solo operator; change the page and `docs/PRIVACY_POLICY.md` together if a
+  different commitment is wanted.
+- Mobile replaces `support@postdee.app` with `postdee.support@gmail.com` in the
+  security and help sheets, both in-app legal documents and the add-on
+  purchase help dialog. A Mobile test now fails if any `lib/` file shows the
+  old address. Privacy policy, terms and Play listing drafts use the new
+  address; their unrelated placeholders remain.
+
+Retained data listed on the page is taken from the current saga: the
+`ManagedUploadOwner` tombstone (UID, status, deletion proof time) has no TTL,
+add-on transaction IDs stay unlinked for replay protection, released Link in
+Bio slugs stay reserved for 30 days, and RevenueCat/store records, published
+social posts, on-device drafts and provider backups/logs are outside the saga.
+Provider backup retention periods are not stated because they were not
+verified.
+
+Verification: page tests (3) were observed failing first, then the account
+module passes 128 tests; a Chromium render at 390 px has no horizontal
+overflow in light or dark mode. Mobile contact tests (3) were observed failing
+first and pass after the change. Full-suite results are recorded in the
+commit summary for this change.

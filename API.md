@@ -2466,6 +2466,20 @@ methods or a proof read failure returns
 If a stored PostPeer profile exists but provider cleanup is not configured,
 the endpoint returns `503 ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE`.
 
+### `GET /account-deletion`
+
+Public, unauthenticated HTML page for the Google Play "Account deletion URL"
+(Production: `https://postdee-api.onrender.com/account-deletion`). It names
+PostDee, shows the in-app steps (Account tab → ลบบัญชี → ลบบัญชีถาวร), offers an
+email request to `postdee.support@gmail.com` answered within 30 days, and lists
+the data deleted and the data kept (deletion proof, unlinked add-on
+transaction IDs, the 30-day store-link reservation, store purchase records,
+already published social posts, on-device drafts, provider backups/logs).
+Thai is primary, with an English summary. The response carries no script,
+a per-response style nonce in `Content-Security-Policy` and
+`Cache-Control: public, max-age=300`. Keep its labels and data list in sync
+with the Mobile flow and the deletion saga below.
+
 ### `DELETE /account`
 
 Permanently deletes the authenticated user's account, owned upload objects,

@@ -2807,6 +2807,12 @@ the shared non-expiring policy does not imply store review approval.
 
 See `FIREBASE_SETUP.md` for the Firebase Auth and Google Sign-In setup checklist.
 
+The public `GET /account-deletion` page (Play "Account deletion URL",
+`https://postdee-api.onrender.com/account-deletion` in Production) explains the
+in-app steps and an email request to `postdee.support@gmail.com`, plus the data
+deleted and kept; see `API.md`. Support contact in the app and legal drafts is
+`postdee.support@gmail.com`.
+
 Production account deletion is temporarily disabled with
 `FIREBASE_AUTH_DELETE_ENABLED=false`; the shared drain is delivered to Staging,
 while Production rollout and real-provider acceptance remain pending. In a

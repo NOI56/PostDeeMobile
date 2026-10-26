@@ -24,8 +24,8 @@
 - log ของ Render ไม่มี error/warning ระหว่างทดสอบ (บริการนี้ไม่มี request log ให้ตรวจ)
 - คืนค่า `FIREBASE_AUTH_DELETE_ENABLED=false` และ `UPLOAD_PROTOCOL_MODE=dual` แล้ว
   deploy `dep-dbfg74o473hc73d2mjsg` Live 07:40:27 UTC ที่ `d113879` (API ไม่เปลี่ยน)
-  ขอให้เจ้าของถอดบทบาท Firebase Authentication Admin ออกจาก `postdee-admin-verifier`
-  แล้ว; ณ เวลาบันทึกนี้ยังไม่ได้รับภาพยืนยัน
+  เจ้าของถอดบทบาท Firebase Authentication Admin ออกจาก `postdee-admin-verifier` แล้ว
+  ภาพหน้า IAM ยืนยันว่าเหลือเฉพาะ Firebase Authentication Viewer
 
 ยังไม่ครอบคลุม: บัญชีทดสอบไม่มีการเชื่อมโซเชียลหรือไฟล์อัปโหลด จึงยังไม่ได้ยืนยันการลบ
 integration/โปรไฟล์ที่ PostPeer จริง และการลบ object จริงใน R2 (เรียก owner-prefix cleanup

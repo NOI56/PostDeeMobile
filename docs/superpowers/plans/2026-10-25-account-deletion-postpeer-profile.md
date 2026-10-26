@@ -231,8 +231,8 @@ disposable-account test. Production stayed user-suspended throughout.
   no request logs.
 - Restored `FIREBASE_AUTH_DELETE_ENABLED=false` and `UPLOAD_PROTOCOL_MODE=dual`:
   `dep-dbfg74o473hc73d2mjsg` Live 07:40:27 UTC at `d113879` (API unchanged).
-  Removal of the temporary IAM role was requested from the owner and was not
-  yet confirmed when this was written.
+  The owner then removed the temporary Firebase Authentication Admin role; the
+  IAM page shows `postdee-admin-verifier` with Firebase Authentication Viewer only.
 
 Not covered: the test accounts had no social connection or uploads, so real
 PostPeer integration/profile deletion and deletion of real R2 objects remain

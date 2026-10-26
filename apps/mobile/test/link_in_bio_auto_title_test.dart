@@ -25,7 +25,7 @@ Future<void> _mount(WidgetTester tester) async {
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
-      home: LinkInBioScreen(loadProfile: () async => null)));
+      home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
   await tester.pumpAndSettle();
 }
 

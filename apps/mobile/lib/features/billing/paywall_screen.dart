@@ -356,6 +356,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         isCurrent: currentPlanId == 'basic',
         features: const [
           _PlanFeature('โพสต์ฟรี 3 หน่วย/เดือนหลังยืนยันเบอร์'),
+          _PlanFeature('ลิงก์ร้านสูงสุด 2 ลิงก์'),
           _PlanFeature('ต้องยืนยันเบอร์ก่อนโพสต์', included: false),
           _PlanFeature('ไม่มี AI แคปชั่นและการตั้งเวลา', included: false),
         ],
@@ -367,6 +368,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         isCurrent: currentPlanId == 'starter',
         features: const [
           _PlanFeature('โพสต์หลายช่องทาง 120 หน่วย/เดือน'),
+          _PlanFeature('ลิงก์ร้านสูงสุด 7 ลิงก์'),
           _PlanFeature('ตั้งเวลาล่วงหน้า 14 วัน + ปฏิทิน + เทมเพลต'),
           _PlanFeature('AI แคปชั่นจากเสียงคลิป 50 เครดิต/เดือน'),
           _PlanFeature('ลายน้ำอัตโนมัติ'),
@@ -380,6 +382,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         isRecommended: true,
         features: const [
           _PlanFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
+          _PlanFeature('ลิงก์ร้านสูงสุด 20 ลิงก์'),
           _PlanFeature('ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ'),
           _PlanFeature('ตั้งเวลาล่วงหน้า 30 วัน'),
           _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 เครดิต/เดือน'),

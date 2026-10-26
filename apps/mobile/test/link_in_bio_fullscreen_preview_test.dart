@@ -53,7 +53,7 @@ Future<GlobalKey<NavigatorState>> _mount(WidgetTester tester, _DraftStore store,
       navigatorKey: navigation,
       theme: AppTheme.light,
       home: Scaffold(
-          body: LinkInBioScreen(
+          body: LinkInBioScreen(loadSubscription: loadBioProSubscription,
               embeddedInTab: true,
               draftStore: store,
               loadProfile: () async => null,

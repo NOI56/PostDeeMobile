@@ -796,6 +796,7 @@ export const createApp = (options: AppOptions = {}) => {
   registerPublishQueueRoutes(router, accountAwareAuthMiddleware, publishQueue);
   registerTemplateRoutes(router, accountAwareAuthMiddleware, templateStore, userStore);
   registerLinkInBioRoutes(router, accountAwareAuthMiddleware, linkInBioStore, userStore, {
+    subscriptionStore,
     withImageMutation: linkInBioImages.withOwnerLock,
     validateImages: linkInBioImages.validateImages,
     onPublished: async (userId) => linkInBioImages.prune(userId)

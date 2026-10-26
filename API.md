@@ -1051,8 +1051,9 @@ Publish body:
 
 `storeName` and each link title are trimmed, 1–80 characters. The slug is
 trimmed/lowercased ASCII, 3–40 characters, using letters/numbers and internal
-hyphens. Publish accepts 1–20 links, each with a unique nonempty id up to 80
-characters. Destinations are up to 2048 characters: absolute HTTP(S) without
+hyphens. The structural publish input accepts 1–20 links, each with a unique
+nonempty id up to 80 characters. Destinations are up to 2048 characters:
+absolute HTTP(S) without
 embedded credentials, a safe plain `mailto:` address, or a safe `tel:` number.
 `mailto:` accepts one ASCII email address, without query, fragment, percent
 encoding or multiple recipients; malformed address/domain syntax is rejected.
@@ -1070,6 +1071,35 @@ explicit schemes, not raw email/telephone strings. Only enabled custom links
 are sent by the app. HTTP(S) opens with
 noopener/noreferrer; email/phone links invoke the visitor's installed handler
 without opening a new browser tab.
+
+Shop-link plan-limit candidate (2026-10-26): every new
+`POST /link-in-bio/publish`, including an update of an existing page, is limited
+to Basic/free 2, Starter 7, or Pro 20 links. The request array is the enabled
+subset selected by Mobile; the API does not count disabled local draft links.
+The server resolves the authenticated owner's current effective plan through
+the existing paid/trial rules, including active valid trials. Expired paid
+access falls back to Basic unless another valid entitlement applies. Requests
+within the 20-link structural ceiling but above the plan limit return HTTP 403
+with the standard error `code: LINK_IN_BIO_LINK_LIMIT_EXCEEDED`, before changing
+the published snapshot. The error envelope includes top-level `plan`
+(`BASIC|STARTER|PRO`), numeric `maxProfileLinks`, and numeric `requestedLinks`
+for the enabled payload count. If the server cannot verify the owner's
+entitlement, publish returns HTTP 503 with
+`code: LINK_IN_BIO_ENTITLEMENTS_UNAVAILABLE` and leaves the previous snapshot
+unchanged. Production does not accept a client/header plan override.
+
+A downgrade does not trim, hide or rewrite an already published page. Its next
+explicit publish/update must use an enabled subset within the new limit.
+Existing local drafts retain their links, including disabled links, for
+view/edit/reorder/delete/disable. New additions count all stored links and are
+blocked while that total is at or above the current 2/7/20 limit. The hard
+compatibility storage/input ceiling remains 20; this does not migrate or delete
+stored content. Deploy this API enforcement before the corresponding Mobile
+build. Older Mobile receives the 403 safely; updated Mobile can map a missing
+`maxProfileLinks` field from an older API only after a successful fresh
+subscription read. This candidate adds no endpoint, schema migration,
+dependency or provider and is not test/deployment evidence. See the
+[implementation and compatibility plan](docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md).
 
 Success uses `{ "status": "ok", "profile": ... }`. Profile contains
 `storeName`, `slug`, `links`, `isPublished`, nullable `publishedAt`, `updatedAt`,
@@ -1498,7 +1528,7 @@ whose complete provider/device flow has passed its release gate.
 | Cloud scheduling | No | Yes | Yes |
 | Calendar for scheduled posts | No | Yes | Yes |
 | AI caption from real clip | No | Audio-only, 50 credits/month; shared requests cost 1, advanced requests cost 1 per selected channel; production provider/device verification remains | Audio + selected frames, 120 credits/month; same per-channel rule; production provider/device verification remains |
-| Public profile link page | One page, up to 20 links | One page, up to 20 links | One page, up to 20 links |
+| Public profile link page | One page, up to 2 links | One page, up to 7 links | One page, up to 20 links |
 | AI audio review as a separate feature | No | No | No |
 | Unified Analytics | No | No | Yes |
 | Hashtag radar and AI comment center | No | No | Yes |
@@ -1513,6 +1543,10 @@ Important rules:
 - Starter users can post immediately, schedule posts, use the calendar, and use
   real-clip AI captioning from audio after a selected clip.
 - All packages can save, publish, update, and unpublish one profile link page.
+  The 2026-10-26 candidate sets link limits to Basic 2 / Starter 7 / Pro 20;
+  draft additions count all stored links, publication only the enabled payload.
+  Existing over-limit published pages remain until the next explicit update;
+  existing drafts are retained rather than trimmed.
   AI video editing is retired from the active product; its internal legacy APIs
   do not grant an advertised package benefit.
 - Pro users currently unlock implemented analytics and visual-frame AI
@@ -3734,6 +3768,18 @@ preparation-aware app; read-only GET is a separate later rollout step.
 
 ### `GET /billing/subscription`
 
+Shop-link limits (2026-10-26 candidate) add numeric
+`subscription.maxProfileLinks`: 2 for Basic/free, 7 for Starter and 20 for Pro,
+derived from the same current effective plan as other capabilities. Valid
+active trials keep their existing effective rights; expired paid access falls
+back to Basic unless another entitlement applies. The field is additive:
+older clients can ignore it, and new Mobile can map a missing field from a
+successful fresh legacy snapshot using those same plan limits. A failed
+subscription read grants no new-add or publish permission. Mobile verifies
+again before confirming an addition and publishing; the server's publish check
+remains authoritative. Existing local content remains editable offline.
+Deploy API before Mobile; no schema migration or new provider is required.
+
 Uploader post-quota display (2026-10-25, follow-up candidate) reuses this
 existing authenticated response. Its strip appears on entry to the
 clip-selection step, including when no clip is selected. It reads
@@ -3774,6 +3820,7 @@ Basic response example:
   "subscription": {
     "userId": "local-dev-user",
     "plan": "BASIC",
+    "maxProfileLinks": 2,
     "status": "INACTIVE",
     "monthlyPostLimit": 3,
     "usedPostsThisMonth": 0,
@@ -3807,6 +3854,7 @@ Starter response sets:
 ```json
 {
   "plan": "STARTER",
+  "maxProfileLinks": 7,
   "status": "ACTIVE",
   "monthlyPostLimit": 120,
   "usedPostsThisMonth": 0,
@@ -3824,6 +3872,7 @@ Pro response sets:
 ```json
 {
   "plan": "PRO",
+  "maxProfileLinks": 20,
   "status": "ACTIVE",
   "monthlyPostLimit": 250,
   "usedPostsThisMonth": 0,

@@ -6,6 +6,7 @@ import type { PostStore } from '../posts/postStore.js';
 import { readUtcMonthBounds } from '../posts/postUsage.js';
 import {
   canSchedulePosts,
+  maxProfileLinksByPlan,
   monthlyPostUnitLimits
 } from '../subscriptions/subscriptionEntitlements.js';
 import type {
@@ -58,6 +59,7 @@ const buildSubscriptionStatus = ({
     userId,
     plan,
     status: plan === 'BASIC' ? 'INACTIVE' : 'ACTIVE',
+    maxProfileLinks: maxProfileLinksByPlan[plan],
     monthlyPostLimit,
     baseMonthlyPostLimit,
     addonPostUnits: addonCredits.postUnits,

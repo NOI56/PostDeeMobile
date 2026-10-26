@@ -141,7 +141,7 @@ void main() {
           enabledLinkIds: _draft.enabledLinkIds,
           customLinks: _links,
           appearance: const LinkInBioAppearance(logoKey: _imageKey)));
-      await tester.pumpWidget(_app(LinkInBioScreen(
+      await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
           loadProfile: () async => null,
           loadImage: (_) async => _png,
           protectDraftImages: (
@@ -180,7 +180,7 @@ void main() {
         protected);
     await linkInBioDraftReferenceIdForUser('seller-a');
     await saveLinkInBioProtectedImageKeysForUser('seller-a', protected);
-    LinkInBioScreen screen(String id) => LinkInBioScreen(
+    LinkInBioScreen screen(String id) => LinkInBioScreen(loadSubscription: loadBioProSubscription,
         key: ValueKey(id),
         draftStore: shared,
         loadProfile: () async => null,
@@ -238,7 +238,7 @@ void main() {
     await saveLinkInBioProtectedImageKeysForUser('seller-a', {_imageKey});
     final calls = <String>[];
     var offline = true;
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         loadImage: (_) async => _png,
         protectDraftImages: (
@@ -274,7 +274,7 @@ void main() {
         customLinks: _links,
         appearance: const LinkInBioAppearance(logoKey: _imageKey)));
     final calls = <Set<String>>[];
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         pickImage: () async => _png,
         uploadImage: ({required slot, required bytes}) async => replacement,
@@ -312,7 +312,7 @@ void main() {
         appearance: const LinkInBioAppearance(logoKey: _imageKey)));
     var fail = true;
     final calls = <String>[];
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         pickImage: () async => _png,
         uploadImage: ({required slot, required bytes}) async => replacement,
@@ -353,7 +353,7 @@ void main() {
             data: MediaQuery.of(context)
                 .copyWith(viewInsets: const EdgeInsets.only(bottom: 260)),
             child: child!),
-        home: LinkInBioScreen(loadProfile: () => Future.value(null))));
+        home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () => Future.value(null))));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
     final button = find.byKey(const ValueKey('link-in-bio-decoration-done'));
@@ -367,7 +367,7 @@ void main() {
       'Unicode description beyond server length stays editable without invalid appearance crash',
       (tester) async {
     await tester.pumpWidget(
-        _app(LinkInBioScreen(loadProfile: () => Future.value(null))));
+        _app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () => Future.value(null))));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-disclosure-images');
@@ -397,7 +397,7 @@ void main() {
         customLinks: _links,
         appearance: const LinkInBioAppearance(logoKey: _imageKey)));
     final pending = Completer<Uint8List>();
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () => Future.value(null),
         protectDraftImages: (
             {required draftId, required keys, required mode}) async {},
@@ -420,7 +420,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final pending = Completer<LinkInBioProfileResult?>();
     await tester
-        .pumpWidget(_app(LinkInBioScreen(loadProfile: () => pending.future)));
+        .pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () => pending.future)));
     await tester.pump();
     final button = find.byKey(const ValueKey('link-in-bio-step-theme'));
     expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
@@ -454,7 +454,7 @@ void main() {
   testWidgets('visual picker sets a section color without entering a hex code',
       (tester) async {
     await tester
-        .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
+        .pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-decorate');
     await _tap(tester, 'link-in-bio-disclosure-styles');
@@ -475,7 +475,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester
-        .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
+        .pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
     await tester.pumpAndSettle();
     await selectBioTemplate(tester, 'minimal-mono-pair');
     await _tap(tester, 'link-in-bio-decorate');
@@ -501,7 +501,7 @@ void main() {
       'publication includes appearance and keeps confirmed page separate from draft',
       (tester) async {
     LinkInBioAppearance? sent;
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         publishProfile: (
             {required storeName,
@@ -543,7 +543,7 @@ void main() {
       'image upload previews bytes and changing theme preserves media and description',
       (tester) async {
     var reads = 0;
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         pickImage: () async => _png,
         protectDraftImages: (
@@ -589,7 +589,7 @@ void main() {
         enabledLinkIds: _draft.enabledLinkIds,
         customLinks: _links,
         appearance: const LinkInBioAppearance(logoKey: _imageKey)));
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         pickImage: () async => _png,
         protectDraftImages: (
@@ -616,7 +616,7 @@ void main() {
       'category icon individual style feature and ordering persist, disabling clears featured',
       (tester) async {
     await tester
-        .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
+        .pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-edit-shop');
     await _tap(tester, 'link-in-bio-link-advanced');
@@ -644,7 +644,7 @@ void main() {
       'late upload after account changes does not mutate previous owner draft',
       (tester) async {
     final pending = Completer<String>();
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         pickImage: () async => Uint8List.fromList(_png),
         uploadImage: ({required slot, required bytes}) => pending.future)));

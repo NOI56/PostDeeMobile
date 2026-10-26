@@ -14,6 +14,8 @@ import 'package:postdee_mobile/features/link_in_bio/link_in_bio_preview.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'link_in_bio_test_navigation.dart';
+
 const _links = [
   LinkInBioCustomLink(
       id: 'youtube', title: 'ดูวิดีโอ', url: 'https://youtu.be/v'),
@@ -279,7 +281,7 @@ void main() {
             customLinks: [_links[0], _links[1]]));
     await tester.pumpWidget(MaterialApp(
         theme: AppTheme.light,
-        home: LinkInBioScreen(loadProfile: () async => null)));
+        home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
     await tester.pumpAndSettle();
     expect(_asset('youtube'), findsOneWidget);
     expect(_asset('shopee'), findsOneWidget);

@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'link_in_bio_test_navigation.dart';
 
 Widget _app() => MaterialApp(
-    theme: AppTheme.dark, home: LinkInBioScreen(loadProfile: () async => null));
+    theme: AppTheme.dark, home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null));
 Future<void> _show(WidgetTester tester, Finder finder, {double delta = 250}) =>
     showBioControl(tester, finder, delta: delta);
 
@@ -47,7 +47,7 @@ void main() {
   testWidgets('same-owner new login cannot accept a pending old profile', (tester) async {
     PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'seller-a', idToken: 'a'));
     final profile = Completer<LinkInBioProfileResult?>();
-    await tester.pumpWidget(MaterialApp(home: LinkInBioScreen(loadProfile: () => profile.future)));
+    await tester.pumpWidget(MaterialApp(home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () => profile.future)));
     await tester.pump();
     PostDeeAuthSessionStore.instance.signIn(const AuthSession(userId: 'seller-a', idToken: 'new-a'));
     profile.complete(null);
@@ -188,7 +188,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(MaterialApp(
         theme: AppTheme.dark,
-        home: LinkInBioScreen(
+        home: LinkInBioScreen(loadSubscription: loadBioProSubscription,
             loadProfile: () async => throw const SocketException('offline'))));
     await tester.pumpAndSettle();
     expect(find.text('ยังไม่ได้เผยแพร่'), findsNothing);

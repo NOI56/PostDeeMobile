@@ -189,6 +189,31 @@ void main() {
     expect(pro, findsOneWidget);
   });
 
+  testWidgets('shows the shop-link allowance on the matching plan card',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(home: PaywallScreen(
+      loadSubscription: () async => _subscription(plan: 'BASIC'),
+      service: StoreSubscriptionService(gateway: _PricedStoreBillingGateway(),
+        useRevenueCat: false),
+    )));
+    await tester.pumpAndSettle();
+    for (final entry in {'Basic': 2, 'Starter': 7, 'Pro': 20}.entries) {
+      final allowance = find.text('ลิงก์ร้านสูงสุด ${entry.value} ลิงก์');
+      await tester.scrollUntilVisible(allowance, 250,
+        scrollable: find.byType(Scrollable).first);
+      final card = find.ancestor(of: allowance, matching: find.byWidgetPredicate(
+        (widget) => widget.runtimeType.toString() == '_PlanCard')).first;
+      expect(find.descendant(of: card, matching: find.text(entry.key)), findsOneWidget);
+    }
+    expect(find.text('€5.49/เดือน'), findsOneWidget);
+    expect(find.text('€8.49/เดือน'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
       'default paywall service retains pending purchase across reopening',
       (tester) async {
@@ -468,8 +493,11 @@ void main() {
       ),
     );
     await tester.pump();
+    // Let price/add-on loading update the layout while the plan stays pending.
+    await tester.pump();
 
     await tester.ensureVisible(find.text('สมัคร Pro'));
+    await tester.pump();
     expect(
       tester
           .widget<FilledButton>(

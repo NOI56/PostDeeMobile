@@ -1257,8 +1257,20 @@ accept only image frame keys, cap frames at 5 MiB, and return
 `503 AI_MEDIA_BUSY` when two requests already hold media on the instance. See
 `docs/superpowers/plans/2026-10-24-ai-editing-retirement-security-batch3.md`.
 
-Each authenticated account can publish one profile page with up to 20 enabled
-custom links on every package. The page is hosted by the existing PostDee API at
+Each authenticated account keeps one profile page. The 2026-10-26 shop-link
+limit candidate allows Basic/free 2, Starter 199 THB/month 7, and Pro
+299 THB/month 20 enabled links per new publish/update. New draft additions count
+all stored links, including disabled links, against the same plan limit.
+Existing drafts are not trimmed; a previously published over-limit page stays
+public unchanged until the owner next publishes a permitted enabled subset.
+The compatibility storage/input ceiling remains 20. Active valid trials use
+the existing effective-plan resolver; expired paid access falls back to Basic
+unless another valid entitlement applies. Deploy API enforcement and additive
+`subscription.maxProfileLinks` before the matching Mobile build; older clients
+receive `403 LINK_IN_BIO_LINK_LIMIT_EXCEEDED` without changing the saved page.
+This is a candidate contract, not verification or delivery evidence. See the
+[plan and compatibility rules](docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md).
+The page is hosted by the existing PostDee API at
 `/p/<slug>`; the app resolves the URL against its configured API domain. No
 `postdee.link` domain or third-party statistics subscription is assumed.
 Since 2026-10-24 a slug left by a rename or account deletion stays reserved for
@@ -1381,8 +1393,11 @@ replace or redesign the public page. Advanced options retain their values.
 The footer exposes Save draft and review, with Publish/Update kept as an explicit
 action in review. Confirmed publication returns to the manager. Copy/open uses
 only the confirmed public URL; status refresh and unpublishing remain available.
-The mobile draft still holds at most 20 links, including disabled links, and
-publishes only enabled links. At that 2026-10-06 revision drafts saved explicitly;
+At that 2026-10-06 revision the mobile draft held at most 20 links, including
+disabled links, and published only enabled links. The 2026-10-26 plan-limit
+candidate retains that hard compatibility ceiling while limiting new additions
+and the next publish to Basic 2 / Starter 7 / Pro 20; existing drafts remain
+editable without deletion. At that earlier revision drafts saved explicitly;
 the later system audit adds owner-scoped serialized local autosave. Publication
 still requires the explicit review action.
 This revision requires no API/schema/configuration change. All 1,132 Flutter
@@ -2161,6 +2176,11 @@ numbers.
 
 Returns the current authenticated user's plan status and feature flags for the mobile Home screen.
 
+The 2026-10-26 shop-link candidate adds `subscription.maxProfileLinks` from
+the current effective plan: Basic 2 / Starter 7 / Pro 20, including valid active
+trial access. Existing subscription fields and social-post/AI accounting are
+unchanged; deploy this additive API and its publish gate before new Mobile.
+
 Basic response example:
 
 ```json
@@ -2169,6 +2189,7 @@ Basic response example:
   "subscription": {
     "userId": "local-dev-user",
     "plan": "BASIC",
+    "maxProfileLinks": 2,
     "status": "INACTIVE",
     "monthlyPostLimit": 3,
     "usedPostsThisMonth": 0,
@@ -2187,10 +2208,11 @@ Basic response example:
 
 After phone verification, Basic keeps `monthlyPostLimit` at `3`, sets `remainingPostsThisMonth` from current-month usage, and sets `canUseFreePostQuota` to `true`.
 Starter response sets `plan` to `STARTER`, `status` to `ACTIVE`,
-`monthlyPostLimit` to `120`, enables AI captions and scheduling, and keeps
-analytics locked.
+`monthlyPostLimit` to `120`, `maxProfileLinks` to `7`, enables AI captions and
+scheduling, and keeps analytics locked.
 Pro response sets `plan` to `PRO`, `status` to `ACTIVE`, `monthlyPostLimit` to
-`250`, enables scheduling, analytics, and the higher AI caption tier.
+`250`, `maxProfileLinks` to `20`, enables scheduling, analytics, and the higher
+AI caption tier.
 Compatibility AI review flags may still appear for older clients, but they
 remain `false` and should not be shown in package copy.
 

@@ -4,6 +4,8 @@ import type { RequestHandler, Response, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
 import type { UserStore } from '../users/userStore.js';
+import { maxProfileLinksByPlan, readPlanLabel } from '../subscriptions/subscriptionEntitlements.js';
+import type { SubscriptionPlan, SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import { LinkInBioError, type LinkInBioLink, type LinkInBioProfile, type LinkInBioStore } from './linkInBioStore.js';
 import { linkInBioFonts, linkInBioIcons, normalizeStoredLinkInBioAppearance, readLinkInBioAppearance, readLinkInBioColor, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
 import { renderLinkInBioPage } from './linkInBioRenderer.js';
@@ -11,6 +13,7 @@ import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
 import { readLinkInBioUrl } from './linkInBioDestinations.js';
 
 export type LinkInBioRouteOptions = {
+  subscriptionStore?: Pick<SubscriptionStore, 'getPlan'>;
   validateImages?: (userId: string, appearance: LinkInBioAppearance) => Promise<void | (() => Promise<void>)>;
   onPublished?: (userId: string, profile: LinkInBioProfile) => Promise<void>;
   withImageMutation?: (userId: string, operation: () => Promise<LinkInBioProfile>) => Promise<LinkInBioProfile>;
@@ -114,6 +117,20 @@ export const registerLinkInBioRoutes = (
     }
     response.set('Cache-Control', 'no-store');
     try {
+      let plan: SubscriptionPlan | undefined;
+      try { plan = await options.subscriptionStore?.getPlan(user); } catch { /* Fail closed below. */ }
+      const maxProfileLinks = plan ? maxProfileLinksByPlan[plan] : undefined;
+      if (!plan || typeof maxProfileLinks !== 'number') {
+        throw new LinkInBioError(503, 'LINK_IN_BIO_ENTITLEMENTS_UNAVAILABLE', 'ตรวจสอบสิทธิ์ลิงก์ร้านไม่ได้ กรุณาลองใหม่ภายหลัง');
+      }
+      if (input.links.length > maxProfileLinks) {
+        response.status(403).json({
+          status: 'error', code: 'LINK_IN_BIO_LINK_LIMIT_EXCEEDED',
+          message: `แพ็กเกจ ${readPlanLabel(plan)} เปิดใช้ลิงก์ร้านได้สูงสุด ${maxProfileLinks} ลิงก์ กรุณาเลือกเปิดใช้ไม่เกินสิทธิ์ก่อนเผยแพร่`,
+          plan, maxProfileLinks, requestedLinks: input.links.length
+        });
+        return;
+      }
       await userStore?.ensure(user);
       const imageGuard: { release?: () => Promise<void> } = {};
       const commit = async () => {

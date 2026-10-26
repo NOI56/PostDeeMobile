@@ -1466,8 +1466,34 @@ Profile customization is an additive, versioned appearance snapshot on
 LinkInBioProfile (`appearance JSONB`, nullable for legacy rows). The server
 normalizes presets and accepts only known fonts/icons/button shapes and exact
 six-digit hex colors; it never accepts CSS or HTML. Clients that omit the entire
-appearance object retain the current saved settings. All packages have identical
-customization rights, with one page and 20 links unchanged.
+appearance object retain the current saved settings. Packages keep equal
+customization rights and one page each. The 2026-10-26 shop-link candidate
+limits new additions and the next publish to Basic 2 / Starter 7 / Pro 20,
+while retaining the 20-link hard compatibility ceiling.
+
+The server derives the additive `subscription.maxProfileLinks` capability
+through the existing effective-plan resolver, including active valid trials
+and Basic fallback for expired paid access without another valid entitlement.
+Every profile publish/update checks the authenticated owner's current limit
+against the enabled-link request before changing the stored public snapshot;
+an over-limit payload returns `403 LINK_IN_BIO_LINK_LIMIT_EXCEEDED`. Production
+does not trust a client/header tier override. The 403 includes the effective
+`plan`, `maxProfileLinks` and `requestedLinks`; an unavailable entitlement
+returns `503 LINK_IN_BIO_ENTITLEMENTS_UNAVAILABLE` without publishing.
+Downgrades preserve the previous public snapshot until the owner explicitly
+publishes a permitted subset.
+
+Mobile counts all locally stored links, including disabled links, for additions
+and refreshes entitlement before opening Add, confirming an addition and
+publishing. Legacy over-limit drafts remain viewable/editable/reorderable;
+deletion, disabling and publishing a permitted subset remain possible, with no
+automatic pruning. Verification errors block new additions and publication,
+not local editing of existing content. A successful older subscription response
+without `maxProfileLinks` uses the client 2/7/20 mapping; a failed read is not
+permission. Deploy API first so older Mobile receives the safe limit rejection.
+No schema migration, dependency, provider or appearance-version change is
+introduced by this candidate; no delivery/verification is claimed. See
+`docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md`.
 
 The mobile draft keeps the same appearance contract, plus disabled links, in
 owner-scoped preferences. Choosing/resetting a theme changes style defaults;
@@ -1658,7 +1684,10 @@ its generic brand symbols.
 Link order remains the local `customLinks` array order, including disabled
 links; enabled state remains a set of stable link IDs. Drag ordering and the
 existing up/down menu change that same array. The mobile draft retains its
-20-link total limit. Publish filters enabled links in order, then merges the
+20-link hard compatibility ceiling; the 2026-10-26 candidate allows new
+additions only below the current plan's 2/7/20 stored-link limit without
+trimming legacy content. Publish filters enabled links in order and enforces
+the current plan limit, then merges the
 server-normalized values by ID without dropping disabled links or optional
 styles. Disabling/deleting a featured link clears its featured reference.
 View navigation, editing and opening/collapsing advanced settings do not save

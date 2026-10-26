@@ -16,6 +16,8 @@ import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'link_in_bio_test_navigation.dart';
+
 const _draft = LinkInBioDraft(
   storeName: 'ร้านของเรา',
   slug: 'our-shop',
@@ -118,7 +120,7 @@ void main() {
           onOpenLinkInBio: () {},
         );
 
-    LinkInBioScreen manager(LinkInBioProfileLoader loader) => LinkInBioScreen(
+    LinkInBioScreen manager(LinkInBioProfileLoader loader) => LinkInBioScreen(loadSubscription: loadBioProSubscription,
           key: UniqueKey(),
           draftStore: _PreviewDraftStore(),
           loadProfile: loader,

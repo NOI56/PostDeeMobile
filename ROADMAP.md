@@ -2,6 +2,30 @@
 
 Build roadmap for PostDee.
 
+## Shop-link limits by plan (2026-10-26, implementation candidate)
+
+- Basic/free allows 2 links, Starter 199 THB/month 7, and Pro 299 THB/month 20.
+  Resolve access through the existing effective-plan rules, including active
+  valid trials; expired paid access falls back to Basic unless another valid
+  entitlement applies.
+- New draft additions count every stored link, including disabled links.
+  Preserve over-limit legacy drafts for viewing, editing, ordering, deletion
+  and disabling; allow additions again only when the total is below the plan
+  limit. Keep the 20-link hard storage/input ceiling.
+- Do not change an already published page on downgrade. Its next explicit
+  publish/update must send only an enabled subset within the current limit.
+- Add `subscription.maxProfileLinks` to the existing billing snapshot and
+  enforce `403 LINK_IN_BIO_LINK_LIMIT_EXCEEDED` on the server before changing
+  the published snapshot. Mobile verifies fresh entitlement before opening Add,
+  confirming an addition and publishing. Verification failures block these new
+  operations while preserving local edits to existing content.
+- Deploy API before Mobile. Old Mobile safely receives the new limit error;
+  a missing field from an older API uses the client 2/7/20 mapping only after a
+  successful fresh subscription read. No production header override, schema
+  migration, dependency or provider is added. This candidate note makes no
+  test, install or deployment claim. See the
+  [scope and release checks](docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md).
+
 ## Account deletion PostPeer profile cleanup (2026-10-25, source candidate)
 
 - 2026-10-26 Staging acceptance: PR #36 merged and deployed; with deletion
@@ -1262,7 +1286,9 @@ confirmation and cold callback remain unverified.
   Verification is tracked in the dated addendum to
   `docs/superpowers/plans/2026-06-06-mobile-ui-refresh.md`.
 - Provide one public profile page per authenticated account on every package,
-  with 1–20 explicitly enabled custom links. Host `/p/<slug>` on the existing
+  with explicitly enabled links limited to Basic 2 / Starter 7 / Pro 20 for
+  each next publish (2026-10-26 candidate); keep 20 as the compatibility ceiling
+  and preserve previously published snapshots. Host `/p/<slug>` on the existing
   API domain; persist with Prisma and include profile cleanup in account deletion.
 - Offer equal customization on every package: seven editable theme presets,
   colors and fonts per section and optional per-link overrides, logo/cover,
@@ -1884,12 +1910,16 @@ removed so this package plan does not compete with a separate review feature.
 
 | Tier | Price | Main Value | Intended Limits |
 | --- | ---: | --- | --- |
-| Basic | Free | Try posting and publish a profile page | Phone verification required for 3 real-time test posts per month; one profile page with up to 20 links |
-| Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling up to 14 days ahead, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 20 links, and 50 real-clip AI caption credits/month |
+| Basic | Free | Try posting and publish a profile page | Phone verification required for 3 real-time test posts per month; one profile page with up to 2 links |
+| Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling up to 14 days ahead, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 7 links, and 50 real-clip AI caption credits/month |
 | Pro | 299 THB/month | Growth tools, analytics, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling up to 30 days ahead, calendar, templates, auto watermark, EP clip splitting, full analytics, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption credits/month |
 
 Package rules:
 
+- Shop-link 2/7/20 limits are the 2026-10-26 candidate contract. New additions
+  count stored links including disabled links; publication counts only the
+  enabled payload. Existing over-limit drafts and published pages follow the
+  preservation and explicit-next-publish rules above, not automatic deletion.
 - The active Paywall must show only end-to-end ready benefits. EP splitting,
   hashtag radar, viral alerts, and team/editor access remain planned and must
   not be presented as included until their real flows are verified.

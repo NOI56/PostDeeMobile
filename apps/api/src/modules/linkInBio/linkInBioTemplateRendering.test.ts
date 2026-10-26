@@ -471,7 +471,7 @@ describe('categorized profile template publication routes', () => {
     registerLinkInBioRoutes(router, (_request, response, next) => {
       response.locals.authUser = { id: 'owner', provider: 'mock' };
       next();
-    }, createInMemoryLinkInBioStore());
+    }, createInMemoryLinkInBioStore(), undefined, { subscriptionStore: { getPlan: async () => 'PRO' } });
     app.use(router);
     for (const template of profileTemplates) {
       const page = { storeName: 'ร้าน', slug: 'templates', links, appearance: { templateId: template.id } };

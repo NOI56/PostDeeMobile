@@ -101,7 +101,7 @@ void main() {
         (tester) async {
       final pending = Completer<LinkInBioProfileResult?>();
       await tester.pumpWidget(
-          _app(LinkInBioScreen(loadProfile: () => pending.future)));
+          _app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () => pending.future)));
       await tester.pump();
       _expectPublicationDot(tester, AppTheme.textMuted);
       expect(find.text('กำลังตรวจสถานะ...'), findsOneWidget);
@@ -117,7 +117,7 @@ void main() {
 
   testWidgets('offline publication status stays neutral instead of red',
       (tester) async {
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => throw StateError('offline'))));
     await tester.pumpAndSettle();
     _expectPublicationDot(tester, AppTheme.textMuted);
@@ -126,7 +126,7 @@ void main() {
 
   testWidgets('published flag without a public URL cannot show a green dot',
       (tester) async {
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => _profile(hasPublicUrl: false))));
     await tester.pumpAndSettle();
     _expectPublicationDot(tester, AppTheme.textMuted);
@@ -152,7 +152,7 @@ void main() {
               data: MediaQuery.of(context)
                   .copyWith(textScaler: TextScaler.linear(2)),
               child: child!),
-          home: LinkInBioScreen(loadProfile: () async => _profile())));
+          home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => _profile())));
       await tester.pumpAndSettle();
       _expectPublicationDot(tester, AppTheme.successInk);
       expect(find.bySemanticsLabel('เผยแพร่แล้ว'), findsOneWidget);
@@ -164,7 +164,7 @@ void main() {
   testWidgets('failed status refresh becomes neutral and confirmed retry is red',
       (tester) async {
     var reads = 0;
-    await tester.pumpWidget(_app(LinkInBioScreen(loadProfile: () async {
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async {
       reads++;
       if (reads == 2) throw StateError('offline');
       return _profile(published: reads == 1);
@@ -183,7 +183,7 @@ void main() {
   testWidgets('a confirmed publication dot is cleared when the account changes',
       (tester) async {
     await tester.pumpWidget(
-        _app(LinkInBioScreen(loadProfile: () async => _profile())));
+        _app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => _profile())));
     await tester.pumpAndSettle();
     _expectPublicationDot(tester, AppTheme.successInk);
     PostDeeAuthSessionStore.instance.signIn(
@@ -201,7 +201,7 @@ void main() {
       (tester) async {
     const store = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller-a');
     await store.saveDraft(_nonCanonicalDraft);
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         publishProfile: (
                 {required storeName,
@@ -220,7 +220,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
     await tester.pumpWidget(
-        _app(LinkInBioScreen(loadProfile: () async => _normalizedProfile())));
+        _app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => _normalizedProfile())));
     await tester.pumpAndSettle();
     expect(find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsNothing);
   });
@@ -229,7 +229,7 @@ void main() {
       'post-confirmation local save failure never turns publication into an unknown outcome',
       (tester) async {
     final store = _FailSecondSaveDraftStore(_nonCanonicalDraft);
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         draftStore: store,
         loadProfile: () async => null,
         publishProfile: (
@@ -256,7 +256,7 @@ void main() {
     final pending = Completer<LinkInBioProfileResult?>();
     var loads = 0;
     var deletes = 0;
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => ++loads == 1 ? _profile() : pending.future,
         unpublishProfile: () async {
           deletes++;
@@ -286,7 +286,7 @@ void main() {
   testWidgets('empty page has no invented links or fabricated public URL',
       (tester) async {
     await tester
-        .pumpWidget(_app(LinkInBioScreen(loadProfile: () async => null)));
+        .pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
     await tester.pumpAndSettle();
     expect(find.text('ลิงก์ร้าน'), findsOneWidget);
     expect(find.textContaining('postdee.link'), findsNothing);
@@ -300,7 +300,7 @@ void main() {
       (tester) async {
     var loads = 0;
     var backs = 0;
-    Widget screen(bool active) => _app(LinkInBioScreen(
+    Widget screen(bool active) => _app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         isActive: active,
         embeddedInTab: true,
         onBack: () => backs++,
@@ -334,7 +334,7 @@ void main() {
               id: 'off', title: 'ปิดไว้', url: 'https://example.com/off')
         ]));
     String? copied;
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         publishProfile: (
             {required storeName,
@@ -369,7 +369,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final pending = Completer<LinkInBioProfileResult?>();
     await tester
-        .pumpWidget(_app(LinkInBioScreen(loadProfile: () => pending.future)));
+        .pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () => pending.future)));
     await tester.pump();
     await _tap(tester, 'link-in-bio-add');
     await tester.enterText(find.byKey(const ValueKey('link-in-bio-link-title')),
@@ -390,7 +390,7 @@ void main() {
     const store = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller-a');
     await store.saveDraft(_draft);
     var loads = 0;
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => ++loads == 1 ? null : _profile(),
         publishProfile: (
                 {required storeName,
@@ -412,7 +412,7 @@ void main() {
       (tester) async {
     const store = SharedPreferencesLinkInBioDraftStore(ownerUserId: 'seller-a');
     await store.saveDraft(_draft);
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => null,
         publishProfile: (
                 {required storeName,
@@ -435,7 +435,7 @@ void main() {
   testWidgets('unpublish needs confirmation and keeps draft contents',
       (tester) async {
     var deletes = 0;
-    await tester.pumpWidget(_app(LinkInBioScreen(
+    await tester.pumpWidget(_app(LinkInBioScreen(loadSubscription: loadBioProSubscription,
         loadProfile: () async => _profile(),
         unpublishProfile: () async {
           deletes++;

@@ -72,7 +72,7 @@ class _Fixture {
         ),
         home: TickerMode(
           enabled: ticker,
-          child: LinkInBioScreen(
+          child: LinkInBioScreen(loadSubscription: loadBioProSubscription,
             draftStore: store,
             embeddedInTab: true,
             isActive: active,

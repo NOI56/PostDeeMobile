@@ -18,6 +18,12 @@ export const maxScheduleAheadDaysByPlan: Record<SubscriptionPlan, number> = {
   PRO: 30
 };
 
+export const maxProfileLinksByPlan: Record<SubscriptionPlan, number> = {
+  BASIC: 2,
+  STARTER: 7,
+  PRO: 20
+};
+
 export type RealClipCaptionEntitlementMode = 'AUDIO_ONLY' | 'AUDIO_WITH_FRAMES';
 
 export const canSchedulePosts = (plan: SubscriptionPlan) => plan !== 'BASIC';

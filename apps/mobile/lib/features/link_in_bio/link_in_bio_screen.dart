@@ -53,6 +53,7 @@ class LinkInBioScreen extends StatefulWidget {
     this.embeddedInTab = false,
     this.isActive = true,
     this.loadProfile,
+    this.loadSubscription,
     this.publishProfile,
     this.unpublishProfile,
     this.openLink,
@@ -69,6 +70,7 @@ class LinkInBioScreen extends StatefulWidget {
   final bool embeddedInTab;
   final bool isActive;
   final LinkInBioProfileLoader? loadProfile;
+  final Future<SubscriptionStatusResult> Function()? loadSubscription;
   final LinkInBioProfilePublisher? publishProfile;
   final LinkInBioProfileUnpublisher? unpublishProfile;
   final LinkInBioLinkOpener? openLink;
@@ -115,6 +117,11 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   bool _profileLoadFailed = false;
   bool _isLoading = false;
   bool _isBusy = false;
+  SubscriptionStatusResult? _subscription;
+  Future<SubscriptionStatusResult?>? _subscriptionRequest;
+  bool _subscriptionLoading = false;
+  bool _subscriptionFailed = false;
+  bool _addingLink = false;
   bool _publicationUncertain = false;
   int _editVersion = 0;
   Future<void> _draftSaveQueue = Future.value();
@@ -370,6 +377,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       _hasLocalDraft = false;
       _isLoading = false;
       _isBusy = false;
+      _subscription = null;
+      _subscriptionLoading = false;
+      _subscriptionFailed = false;
+      _addingLink = false;
       _noticeMessage = null;
       _errorMessage = 'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าลิงก์ร้านอีกครั้ง';
     });
@@ -489,6 +500,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   Future<void> _loadProfile() async {
     if (_isLoading || _isBusy) return;
+    unawaited(_refreshSubscription());
     setState(() {
       _isLoading = true;
       _profileLoadFailed = false;
@@ -641,7 +653,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     if (_activeLinks.isEmpty) {
       return 'เพิ่มและเปิดใช้งานอย่างน้อย 1 ลิงก์ก่อนเผยแพร่';
     }
-    if (_customLinks.length > 20) return 'เพิ่มได้สูงสุด 20 ลิงก์';
+    if (_activeLinks.length > 20) return 'เปิดใช้ได้สูงสุด 20 ลิงก์';
     if (_appearance.background.mode == 'image' &&
         _appearance.background.imageKey == null) {
       return 'เพิ่มภาพพื้นหลัง หรือเปลี่ยนพื้นหลังเป็นสีเดียวก่อนเผยแพร่';
@@ -655,6 +667,58 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       if (error != null) return error;
     }
     return null;
+  }
+
+  static const _subscriptionUnavailable =
+      'ยังตรวจสอบสิทธิ์ลิงก์ไม่ได้ กรุณาลองใหม่ คุณยังแก้ไขแบบร่างเดิมได้';
+
+  Future<SubscriptionStatusResult?> _refreshSubscription() {
+    if (!_ownerStillCurrent) return Future.value(null);
+    final pending = _subscriptionRequest;
+    if (pending != null) return pending;
+    setState(() => _subscriptionLoading = true);
+    final request = _readSubscription();
+    _subscriptionRequest = request;
+    return request;
+  }
+
+  Future<SubscriptionStatusResult?> _readSubscription() async {
+    try {
+      final value = await Future<SubscriptionStatusResult>.sync(
+          widget.loadSubscription ?? _apiClient.loadCurrentSubscription);
+      if (!_ownerStillCurrent) return null;
+      if (value.userId != _ownerUserId) {
+        throw StateError('Subscription owner changed');
+      }
+      setState(() {
+        _subscription = value;
+        _subscriptionFailed = false;
+      });
+      return value;
+    } catch (_) {
+      if (_ownerStillCurrent) {
+        setState(() {
+          _subscription = null;
+          _subscriptionFailed = true;
+        });
+      }
+      return null;
+    } finally {
+      _subscriptionRequest = null;
+      if (_ownerStillCurrent) setState(() => _subscriptionLoading = false);
+    }
+  }
+
+  String _additionLimitMessage(int limit) =>
+      'แพ็กเกจนี้เพิ่มได้สูงสุด $limit ลิงก์ รวมลิงก์ที่ปิดไว้ หากต้องการเพิ่ม ให้ลบลิงก์เดิมหรืออัปเกรดแพ็กเกจ';
+
+  Future<String?> _checkAdditionAllowed() async {
+    final subscription = await _refreshSubscription();
+    if (!_ownerStillCurrent || !_canEdit) return _subscriptionUnavailable;
+    if (subscription == null) return _subscriptionUnavailable;
+    return _customLinks.length >= subscription.maxProfileLinks
+        ? _additionLimitMessage(subscription.maxProfileLinks)
+        : null;
   }
 
   Future<void> _publish() async {
@@ -683,6 +747,15 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     });
     var requested = false;
     try {
+      final subscription = await _refreshSubscription();
+      if (!_ownerStillCurrent) return;
+      if (subscription == null) {
+        throw const ApiException(_subscriptionUnavailable);
+      }
+      if (links.length > subscription.maxProfileLinks) {
+        throw ApiException(
+            'แพ็กเกจนี้เปิดใช้ได้สูงสุด ${subscription.maxProfileLinks} ลิงก์ กรุณาปิดลิงก์ส่วนเกินก่อนเผยแพร่ ข้อมูลเดิมยังอยู่');
+      }
       if (!await _persistDraft(draft, _editVersion)) {
         throw const ApiException('บันทึกแบบร่างไม่สำเร็จ กรุณาลองใหม่');
       }
@@ -743,10 +816,12 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     } catch (error) {
       if (!_ownerStillCurrent) return;
       final definitive = error is ApiException &&
-          error.statusCode != null &&
-          error.statusCode! >= 400 &&
-          error.statusCode! < 500 &&
-          error.statusCode != 408;
+          ((error.statusCode != null &&
+              error.statusCode! >= 400 &&
+              error.statusCode! < 500 &&
+              error.statusCode != 408) ||
+              (error.statusCode == 503 &&
+                  error.code == 'LINK_IN_BIO_ENTITLEMENTS_UNAVAILABLE'));
       setState(() {
         _publicationUncertain = requested && !definitive;
         _errorMessage =
@@ -758,6 +833,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                         fallbackMessage:
                             'เผยแพร่หน้าโปรไฟล์ไม่สำเร็จ กรุณาลองใหม่');
       });
+      if (error is ApiException &&
+          error.code == 'LINK_IN_BIO_LINK_LIMIT_EXCEEDED') {
+        unawaited(_refreshSubscription());
+      }
     } finally {
       if (_ownerStillCurrent) setState(() => _isBusy = false);
       if (_ownerStillCurrent) _showStatus();
@@ -888,27 +967,36 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   Future<void> _showAddLinkSheet() async {
-    if (!_canEdit) return;
-    if (_customLinks.length >= 20) {
-      _message('เพิ่มได้สูงสุด 20 ลิงก์');
-      return;
+    if (!_canEdit || _addingLink) return;
+    setState(() => _addingLink = true);
+    try {
+      final error = await _checkAdditionAllowed();
+      if (!_ownerStillCurrent) return;
+      if (error != null) {
+        _message(error);
+        return;
+      }
+      final link = await _linkSheet(validateAddition: _checkAdditionAllowed);
+      if (!_ownerStillCurrent || !_canEdit || link == null) return;
+      setState(() {
+        _customLinks = [..._customLinks, link];
+        _enabledLinkIds.add(link.id);
+        _markEdited();
+      });
+    } finally {
+      if (_ownerStillCurrent) setState(() => _addingLink = false);
     }
-    final link = await _linkSheet();
-    if (!_ownerStillCurrent || link == null) return;
-    setState(() {
-      _customLinks = [..._customLinks, link];
-      _enabledLinkIds.add(link.id);
-      _markEdited();
-    });
   }
 
-  Future<LinkInBioCustomLink?> _linkSheet({LinkInBioCustomLink? initialLink}) =>
+  Future<LinkInBioCustomLink?> _linkSheet({LinkInBioCustomLink? initialLink,
+      Future<String?> Function()? validateAddition}) =>
       _showOwnedModal(() => showModalBottomSheet<LinkInBioCustomLink>(
           context: context,
           isScrollControlled: true,
           useSafeArea: true,
           backgroundColor: Colors.transparent,
-          builder: (context) => _ownedModal(context, _AddLinkSheet(initialLink: initialLink))));
+          builder: (context) => _ownedModal(context, _AddLinkSheet(
+              initialLink: initialLink, validateAddition: validateAddition))));
 
   Future<void> _showEditLinkSheet(LinkInBioCustomLink existingLink) async {
     if (!_canEdit) return;
@@ -922,8 +1010,24 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     });
   }
 
-  void _setLinkEnabled(String id, bool value) {
+  Future<void> _setLinkEnabled(String id, bool value) async {
     if (!_canEdit) return;
+    if (value) {
+      final subscription = await _refreshSubscription();
+      if (!_ownerStillCurrent || !_canEdit ||
+          !_customLinks.any((link) => link.id == id) ||
+          _enabledLinkIds.contains(id)) {
+        return;
+      }
+      if (subscription == null) {
+        _message(_subscriptionUnavailable);
+        return;
+      }
+      if (_activeLinks.length >= subscription.maxProfileLinks) {
+        _message('แพ็กเกจนี้เปิดใช้ได้สูงสุด ${subscription.maxProfileLinks} ลิงก์ กรุณาปิดลิงก์อื่นก่อน');
+        return;
+      }
+    }
     setState(() {
       value ? _enabledLinkIds.add(id) : _enabledLinkIds.remove(id);
       if (!value && _appearance.featuredLinkId == id) {
@@ -1155,10 +1259,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       ]),
       const SizedBox(height: 16),
       BioUiPress(
-          enabled: _canEdit,
+          enabled: _canEdit && !_addingLink,
           child: FilledButton.icon(
               key: const ValueKey('link-in-bio-add'),
-              onPressed: _canEdit ? _showAddLinkSheet : null,
+              onPressed: _canEdit && !_addingLink ? _showAddLinkSheet : null,
               style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(52),
                   backgroundColor: AppTheme.actionBackground,
@@ -1173,9 +1277,28 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary))),
-        Text('${_customLinks.length}/20',
+        Text(_subscription == null
+                ? '${_customLinks.length} ลิงก์'
+                : '${_customLinks.length}/${_subscription!.maxProfileLinks}',
+            key: const ValueKey('link-in-bio-link-count'),
             style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
       ]),
+      if (_subscriptionLoading)
+        const Padding(padding: EdgeInsets.only(top: 8),
+            child: Text('กำลังตรวจสอบสิทธิ์ลิงก์...')),
+      if (_subscriptionFailed) ...[
+        const SizedBox(height: 8),
+        const Text(_subscriptionUnavailable),
+        Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+            key: const ValueKey('link-in-bio-retry-subscription'),
+            onPressed: _canEdit && !_subscriptionLoading ? _refreshSubscription : null,
+            icon: const Icon(Icons.refresh), label: const Text('ลองตรวจสอบสิทธิ์อีกครั้ง'))),
+      ] else if (_subscription != null) ...[
+        const SizedBox(height: 8),
+        Text('เปิดใช้ ${_activeLinks.length}/${_subscription!.maxProfileLinks} ลิงก์ • รวมลิงก์ที่ปิดไว้เมื่อนับสิทธิ์เพิ่ม'),
+        if (_customLinks.length > _subscription!.maxProfileLinks)
+          Text('เก็บลิงก์เดิมทั้งหมดไว้แล้ว ครั้งถัดไปเปิดใช้ได้สูงสุด ${_subscription!.maxProfileLinks} ลิงก์ก่อนเผยแพร่ใหม่ หน้าเว็บเดิมยังคงอยู่'),
+      ],
       const SizedBox(height: 12),
       if (_customLinks.isEmpty)
         Padding(
@@ -1885,9 +2008,11 @@ class _BioLinkTile extends StatelessWidget {
 class _AddLinkSheet extends StatefulWidget {
   const _AddLinkSheet({
     this.initialLink,
+    this.validateAddition,
   });
 
   final LinkInBioCustomLink? initialLink;
+  final Future<String?> Function()? validateAddition;
 
   @override
   State<_AddLinkSheet> createState() => _AddLinkSheetState();
@@ -1906,6 +2031,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
   final _linkAdvanced = ExpansibleController();
   bool _advancedOpen = false;
   bool _hasCustomTitle = false;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -1939,7 +2065,8 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
         text: title, selection: TextSelection.collapsed(offset: title.length));
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_isSubmitting) return;
     _updateTitleFromUrl();
     if (!_form.currentState!.validate()) {
       _linkAdvanced.expand();
@@ -1952,7 +2079,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
       setState(() => _errorMessage = error);
       return;
     }
-    Navigator.of(context).pop(LinkInBioCustomLink(
+    final link = LinkInBioCustomLink(
       id: widget.initialLink?.id ??
           'custom_${DateTime.now().microsecondsSinceEpoch}',
       title: title,
@@ -1962,7 +2089,21 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
       font: _font,
       textColor: _textColor,
       buttonColor: _buttonColor,
-    ));
+    );
+    if (widget.validateAddition != null) {
+      setState(() {
+        _isSubmitting = true;
+        _errorMessage = null;
+      });
+      final error = await widget.validateAddition!();
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      if (error != null) {
+        setState(() => _errorMessage = error);
+        return;
+      }
+    }
+    if (mounted) Navigator.of(context).pop(link);
   }
 
   @override
@@ -2006,7 +2147,9 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                       icon: const Icon(Icons.close))),
                             ]),
                             Expanded(
-                                child: Form(
+                                child: AbsorbPointer(
+                                    absorbing: _isSubmitting,
+                                    child: Form(
                                     key: _form,
                                     child: SingleChildScrollView(
                                         child: Column(children: [
@@ -2127,7 +2270,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                                   () => _buttonColor = value)),
                                         ],
                                       ),
-                                    ])))),
+                                    ]))))),
                             if (_errorMessage != null)
                               Padding(
                                   padding: const EdgeInsets.only(top: 8),
@@ -2143,7 +2286,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                     child: FilledButton.icon(
                                         key: const ValueKey(
                                             'link-in-bio-link-save'),
-                                        onPressed: _submit,
+                                        onPressed: _isSubmitting ? null : _submit,
                                         icon: const Icon(Icons.check),
                                         label: const Text('บันทึกลิงก์')))),
                           ])),

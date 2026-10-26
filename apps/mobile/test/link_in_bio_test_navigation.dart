@@ -1,5 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
+import 'package:postdee_mobile/core/network/postdee_api_client.dart';
+
+// Existing workflow fixtures use Pro access so quota behavior is tested only
+// by dedicated plan-limit cases, rather than an implicit mock API response.
+Future<SubscriptionStatusResult> loadBioProSubscription() async =>
+    SubscriptionStatusResult(
+        userId: PostDeeAuthSessionStore.instance.session.stableUserId ?? 'bio-test-owner',
+        plan: 'PRO',
+        status: 'ACTIVE',
+        maxProfileLinks: 20,
+        canSchedule: true,
+        canUseAiCaptions: true,
+        canUseAnalytics: true);
 
 Future<void> showBioControl(WidgetTester tester, Finder finder,
     {double delta = 250}) async {

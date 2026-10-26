@@ -50,7 +50,7 @@ Future<void> _mount(WidgetTester tester, LinkInBioScreen screen) async {
 Future<void> _reload(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpAndSettle();
-  await _mount(tester, LinkInBioScreen(loadProfile: () async => null));
+  await _mount(tester, LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null));
 }
 
 class _ControlledDraftStore implements LinkInBioDraftStore {
@@ -91,7 +91,7 @@ void main() {
             data: MediaQuery.of(context).copyWith(
                 textScaler: const TextScaler.linear(1.5)),
             child: child!),
-        home: LinkInBioScreen(loadProfile: () async => null)));
+        home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
     await tester.pumpAndSettle();
     await showBioStep(tester, 'theme');
     final advanced = find.byKey(const ValueKey('link-in-bio-decorate'));
@@ -109,7 +109,7 @@ void main() {
       (tester) async {
     var publications = 0;
     await _store.saveDraft(_draft);
-    await _mount(tester, LinkInBioScreen(loadProfile: () async => null,
+    await _mount(tester, LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null,
         publishProfile: ({required storeName, required slug, required links, appearance}) async {
           publications++;
           return _profile();
@@ -143,7 +143,7 @@ void main() {
           LinkInBioCustomLink(id: 'last', title: 'เว็บ', url: 'https://example.com'),
         ], appearance: LinkInBioAppearance(featuredLinkId: 'chat'));
       var publications = 0;
-      await _mount(tester, LinkInBioScreen(draftStore: store,
+      await _mount(tester, LinkInBioScreen(loadSubscription: loadBioProSubscription, draftStore: store,
         loadProfile: () async => null,
         publishProfile: ({required storeName, required slug, required links, appearance}) async {
           publications++; return _profile();
@@ -176,7 +176,7 @@ void main() {
       (tester) async {
     final store = _ControlledDraftStore()..gate = Completer<void>();
     await _mount(tester,
-        LinkInBioScreen(draftStore: store, loadProfile: () async => null));
+        LinkInBioScreen(loadSubscription: loadBioProSubscription, draftStore: store, loadProfile: () async => null));
     await tester.tap(find.byKey(const ValueKey('link-in-bio-toggle-shop')));
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('link-in-bio-toggle-shop')));
@@ -207,7 +207,7 @@ void main() {
     var backs = 0;
     await _mount(
         tester,
-        LinkInBioScreen(
+        LinkInBioScreen(loadSubscription: loadBioProSubscription,
             draftStore: store,
             loadProfile: () async => null,
             onBack: () => backs++));
@@ -228,7 +228,7 @@ void main() {
     var publications = 0;
     await _mount(
         tester,
-        LinkInBioScreen(
+        LinkInBioScreen(loadSubscription: loadBioProSubscription,
             loadProfile: () async => null,
             publishProfile: (
                 {required storeName,
@@ -264,7 +264,7 @@ void main() {
     await _store.saveDraft(_draft);
     Widget screen(bool active) => MaterialApp(
         theme: AppTheme.light,
-        home: LinkInBioScreen(
+        home: LinkInBioScreen(loadSubscription: loadBioProSubscription,
             isActive: active,
             embeddedInTab: true,
             loadProfile: () async => null));
@@ -280,7 +280,7 @@ void main() {
 
   testWidgets('empty manager opens directly with Add Link and no setup wizard',
       (tester) async {
-    await _mount(tester, LinkInBioScreen(loadProfile: () async => null));
+    await _mount(tester, LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null));
     expect(find.text('ลิงก์ร้าน'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-add')).hitTestable(),
         findsOneWidget);
@@ -303,7 +303,7 @@ void main() {
     var calls = 0;
     await _mount(
         tester,
-        LinkInBioScreen(
+        LinkInBioScreen(loadSubscription: loadBioProSubscription,
             loadProfile: () async => null,
             publishProfile: (
                 {required storeName,
@@ -329,7 +329,7 @@ void main() {
   testWidgets('saved URL stays collapsed in shop settings without losing value',
       (tester) async {
     await _store.saveDraft(_draft);
-    await _mount(tester, LinkInBioScreen(loadProfile: () async => null));
+    await _mount(tester, LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null));
     await showBioStep(tester, 'info');
     final slug = find.byKey(const ValueKey('link-in-bio-slug'));
     expect(slug, findsNothing);
@@ -341,7 +341,7 @@ void main() {
       'shop and theme changes return to links and retain independent styles',
       (tester) async {
     await _store.saveDraft(_draft);
-    await _mount(tester, LinkInBioScreen(loadProfile: () async => null));
+    await _mount(tester, LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null));
     await showBioStep(tester, 'info');
     await tester.enterText(
         find.byKey(const ValueKey('link-in-bio-description')),
@@ -385,7 +385,7 @@ void main() {
     String? copied;
     await _mount(
         tester,
-        LinkInBioScreen(
+        LinkInBioScreen(loadSubscription: loadBioProSubscription,
             loadProfile: () async => _profile(),
             copyLink: (value) async => copied = value));
     expect(
@@ -422,7 +422,7 @@ void main() {
         enabledLinkIds: {'shop', 'chat'},
         customLinks: links,
         appearance: LinkInBioAppearance(featuredLinkId: 'shop')));
-    await _mount(tester, LinkInBioScreen(loadProfile: () async => null));
+    await _mount(tester, LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null));
     await _tap(tester, 'link-in-bio-toggle-shop');
     final first = find.byKey(const ValueKey('link-in-bio-card-shop'));
     final second = find.byKey(const ValueKey('link-in-bio-card-chat'));
@@ -466,7 +466,7 @@ void main() {
       'adding link starts with two fields and hidden invalid options stay invalid',
       (tester) async {
     await _store.saveDraft(_draft);
-    await _mount(tester, LinkInBioScreen(loadProfile: () async => null));
+    await _mount(tester, LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null));
     await _tap(tester, 'link-in-bio-add');
     expect(
         tester
@@ -497,7 +497,7 @@ void main() {
     var calls = 0;
     await _mount(
         tester,
-        LinkInBioScreen(
+        LinkInBioScreen(loadSubscription: loadBioProSubscription,
             loadProfile: () async => null,
             publishProfile: (
                 {required storeName,
@@ -543,7 +543,7 @@ void main() {
               extendBody: true,
               body: SafeArea(
                   bottom: false,
-                  child: LinkInBioScreen(
+                  child: LinkInBioScreen(loadSubscription: loadBioProSubscription,
                       embeddedInTab: true, loadProfile: () async => null)),
               bottomNavigationBar: const SizedBox(
                   key: ValueKey('test-bottom-nav'),
@@ -576,7 +576,7 @@ void main() {
             data: MediaQuery.of(context)
                 .copyWith(viewInsets: const EdgeInsets.only(bottom: 260)),
             child: child!),
-        home: LinkInBioScreen(loadProfile: () async => null)));
+        home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
     await tester.pumpAndSettle();
     await showBioStep(tester, 'info');
     final done = find.byKey(const ValueKey('link-in-bio-done'));
@@ -596,7 +596,7 @@ void main() {
             data: MediaQuery.of(context)
                 .copyWith(viewInsets: const EdgeInsets.only(bottom: 260)),
             child: child!),
-        home: LinkInBioScreen(loadProfile: () async => null)));
+        home: LinkInBioScreen(loadSubscription: loadBioProSubscription, loadProfile: () async => null)));
     await tester.pumpAndSettle();
     await _tap(tester, 'link-in-bio-add');
     final title = find.byKey(const ValueKey('link-in-bio-link-title'));

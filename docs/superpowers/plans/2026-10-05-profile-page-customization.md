@@ -1,5 +1,10 @@
 # Profile page customization
 
+> Historical scope: the shared 20-link policy below is superseded by the
+> [2026-10-26 shop-link limit candidate](2026-10-26-shop-link-plan-limits.md):
+> Basic 2 / Starter 7 / Pro 20. Existing content is preserved; the dated
+> verification and delivery receipts retain their original scope.
+
 ## Accepted scope
 
 Every package keeps one page and up to 20 enabled links. Owners choose one of

@@ -41,7 +41,7 @@ Widget _app({
 }) =>
     MaterialApp(
         theme: AppTheme.light,
-        home: LinkInBioScreen(
+        home: LinkInBioScreen(loadSubscription: loadBioProSubscription,
             loadProfile: () async => null,
             pickImage: pickImage ?? () async => Uint8List.fromList(_widePng),
             uploadImage: uploadImage,

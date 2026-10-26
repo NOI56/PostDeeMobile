@@ -121,6 +121,7 @@ describe('worldwide profile platform catalog', () => {
         id: platform.id, title: platform.name, url: platform.sampleUrl, icon: platform.id
       }));
       const published = await request(app).post('/link-in-bio/publish').set('x-postdee-user-id', 'global-owner')
+        .set('x-postdee-subscription-plan', 'PRO')
         .send({ storeName: 'ร้านทั่วโลก', slug: 'global-shop', links }).expect(200);
       expect(published.body.profile.links).toEqual(links.map((link) => ({ ...link, url: new URL(link.url).href })));
       const owner = await request(app).get('/link-in-bio').set('x-postdee-user-id', 'global-owner').expect(200);
@@ -130,6 +131,7 @@ describe('worldwide profile platform catalog', () => {
     }
     const links = Array.from({ length: 21 }, (_, index) => ({ id: `link-${index}`, title: 'เว็บร้าน', url: 'https://example.invalid/' }));
     await request(app).post('/link-in-bio/publish').set('x-postdee-user-id', 'global-owner')
+      .set('x-postdee-subscription-plan', 'PRO')
       .send({ storeName: 'ร้านทั่วโลก', slug: 'global-shop', links }).expect(400);
     const publicPage = await request(app).get('/p/global-shop').expect(200);
     expect(publicPage.headers['content-security-policy']).toContain("img-src 'self';");

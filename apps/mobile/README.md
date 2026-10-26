@@ -2,6 +2,33 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Shop-link limits by plan (2026-10-26, implementation candidate)
+
+One shop page remains available to every account: Basic/free permits 2 links,
+Starter 199 THB/month 7, and Pro 299 THB/month 20. New draft additions count
+all stored links, including disabled links. Load a fresh owner-bound
+subscription before opening Add, recheck when confirming an addition and before
+publishing. Use additive `subscription.maxProfileLinks`; when a successful
+older API omits it, use the client 2/7/20 mapping from the effective plan.
+Active valid trials retain their existing rights, while expired paid access
+falls back to Basic without another valid entitlement. A failed verification
+blocks new additions and publishing with retry; it does not erase or block
+local editing of existing draft links.
+
+Keep legacy drafts above the new limit for view/edit/reorder/delete/disable.
+New additions stay blocked until the total is below the current plan limit;
+the compatibility storage ceiling remains 20. Publishing sends only enabled
+links within the current plan's limit. An existing published over-limit page
+stays unchanged until the next explicit publish/update; there is no automatic
+deletion, trimming or unpublishing on downgrade.
+
+Deploy the API's authoritative publish gate before Mobile. Old Mobile receives
+`403 LINK_IN_BIO_LINK_LIMIT_EXCEEDED` without changing the published page.
+No new schema migration, dependency, provider or production plan-header
+override is introduced. This is a candidate specification, not evidence that
+tests, deployment or native acceptance have passed. See the
+[shop-link plan](../../docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md).
+
 ## Full-screen shop-link preview (2026-10-26, local candidate)
 
 From verified main `06d59dd2`, the `ดูตัวอย่างเต็มหน้า` action replaces

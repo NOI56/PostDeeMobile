@@ -2236,6 +2236,7 @@ class SubscriptionStatusResult {
     required this.plan,
     this.purchasedPlan,
     required this.status,
+    int? maxProfileLinks,
     this.monthlyPostLimit,
     this.usedPostsThisMonth,
     this.remainingPostsThisMonth,
@@ -2254,13 +2255,14 @@ class SubscriptionStatusResult {
     this.canUseFreePostQuota = false,
     this.canUseAiAudioReview = false,
     this.canUseAiVideoReview = false,
-  });
+  }) : _maxProfileLinks = maxProfileLinks;
 
   final String userId;
   final String plan;
   // Separate verified paid access from effective access augmented by a trial.
   final String? purchasedPlan;
   final String status;
+  final int? _maxProfileLinks;
   final int? monthlyPostLimit;
   final int? usedPostsThisMonth;
   final int? remainingPostsThisMonth;
@@ -2284,12 +2286,29 @@ class SubscriptionStatusResult {
   bool get isStarter => plan == 'STARTER';
   bool get isPro => plan == 'PRO';
 
+  /// The effective plan includes active trial access. Missing or invalid values
+  /// from older servers must never mean unlimited links or grant a higher tier.
+  int get maxProfileLinks {
+    final planLimit = switch (plan.toUpperCase()) {
+      'STARTER' => 7,
+      'PRO' => 20,
+      _ => 2,
+    };
+    final serverLimit = _maxProfileLinks;
+    return serverLimit != null && serverLimit >= 1 && serverLimit <= 20 &&
+            serverLimit < planLimit
+        ? serverLimit
+        : planLimit;
+  }
+
   factory SubscriptionStatusResult.fromJson(Map<String, Object?> json) =>
       SubscriptionStatusResult(
         userId: json['userId'] as String,
         plan: json['plan'] as String,
         purchasedPlan: json['purchasedPlan'] as String?,
         status: json['status'] as String,
+        maxProfileLinks: json['maxProfileLinks'] is int
+            ? json['maxProfileLinks'] as int : null,
         monthlyPostLimit: json['monthlyPostLimit'] as int?,
         usedPostsThisMonth: json['usedPostsThisMonth'] as int?,
         remainingPostsThisMonth: json['remainingPostsThisMonth'] as int?,

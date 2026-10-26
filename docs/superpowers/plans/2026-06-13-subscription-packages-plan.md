@@ -2,6 +2,18 @@
 
 > Status: planning source of truth for package positioning. Do not treat this as fully implemented behavior until the matching backend and mobile gates are updated.
 
+> Shop-link limits update (2026-10-26, implementation candidate): one page per
+> account remains. Basic/free allows 2 links, Starter 199 THB/month 7, and Pro
+> 299 THB/month 20. New draft additions count all stored links, including
+> disabled links; each publish/update counts only the enabled payload. Keep
+> existing over-limit drafts editable and published pages unchanged until the
+> next explicit publish of a permitted subset. Effective active trials retain
+> their existing rights; expired paid access falls back to Basic without another
+> valid entitlement. API enforcement and additive `subscription.maxProfileLinks`
+> precede Mobile; no schema migration, new dependency or provider is needed.
+> The [shop-link plan](2026-10-26-shop-link-plan-limits.md) defines fresh checks,
+> compatibility and pending verification. This note is not a delivery receipt.
+
 > Caption metering update (2026-10-25, implementation candidate): monthly
 > allowances remain Starter 50 / Pro 120 credits; advanced AI captions cost one
 > credit per selected channel (1–4), while shared and legacy keyword requests
@@ -11,10 +23,12 @@
 > [credit-per-channel plan](2026-10-25-caption-credit-per-channel.md). No price,
 > add-on quantity, schema or migration change; this note is not deployment proof.
 
-> Product update (2026-10-05): a hosted profile link replaces AI video editing.
-> Every package gets one page with up to 20 custom links. AI caption quotas and
-> existing prices stay the same; editing-minute quotas and top-ups are retired
-> from the active mobile offer. Public deployment/migration is a release gate.
+> Historical product update (2026-10-05): a hosted profile link replaced AI
+> video editing. The original shared 20-link package policy is superseded by
+> the 2026-10-26 2/7/20 candidate above. AI caption quotas and existing prices
+> stay the same; editing-minute quotas and top-ups remain retired from the
+> active mobile offer. Earlier public deployment/migration records below keep
+> their original scope.
 
 > Reliability update (2026-10-09, Staging API): quota limits and package rules
 > stay unchanged. Failed caption providers refund only their exact reservation;
@@ -116,7 +130,9 @@ Starter should feel useful enough for a small shop to pay without needing analyt
   - Do not sell a separate prompt-only caption generator as the main package feature.
 - Auto watermark.
 - EP clip splitting UI and future simple EP workflow.
-- One hosted profile page with up to 20 custom links (also available on Basic).
+- One hosted profile page with up to 7 links (Basic/free has 2; Pro has 20).
+  These are the 2026-10-26 candidate limits; stored-link additions and enabled
+  publication payloads follow the preservation rules above.
 - No Pro analytics dashboard.
 - No hashtag radar.
 - No AI comment center.

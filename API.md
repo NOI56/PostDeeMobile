@@ -379,9 +379,30 @@ All responses use private/no-store. Every POST requires exact configured `Origin
 | Route | Contract |
 | --- | --- |
 | `GET /admin/api/session` | Role, email, environment; owner lists are never exposed |
-| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit; optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
+| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit/deletions (`deletions` searches by exact Firebase UID); optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
 | `POST /admin/api/member` | `userId`; existing member details, purchased plan, separate trial, current UTC-month usage |
 | `POST /admin/api/trials` | Owner only, auth_time within 15 minutes; command below |
+| `POST /admin/api/account-deletions` | Owner only, auth_time within 15 minutes; deletes a member on their verified request (see below) |
+
+`POST /admin/api/account-deletions` takes `{requestId (UUID), userId,
+expectedEmail, reason}`. `expectedEmail` must match the member's current email
+(empty for phone-only members); `reason` is 3–500 characters with no control
+characters and no `@`, because the record is retained after deletion and must
+not hold the member's address. Owner/Viewer UIDs return `409
+ADMIN_DELETE_PROTECTED`. The first call stores a PENDING `AdminAccountDeletion`
+row (request id, actor UID, target UID, reason, intent hash; no User foreign
+key, no email) and then runs the exact `DELETE /account` saga for that UID
+without the member's recent sign-in requirement; every other gate, drain,
+provider/media/database cleanup and Firebase identity deletion is unchanged,
+including `FIREBASE_AUTH_DELETE_ENABLED`. Saga errors return the saga's status
+and `code` (for example `503 ACCOUNT_DELETION_UNAVAILABLE` while disabled) and
+are stored as `lastErrorCode`; retrying the same request id continues even if
+the member row is already gone. A completed request replays `200` without
+running cleanup again, and a reused id with another intent returns `409
+ADMIN_REQUEST_CONFLICT`. Success returns `{status: "ok", deletion}`. The route
+does not run inside the target's owner lifetime, so the saga's drain cannot
+wait on its own request. Apply migration `20261026010000_admin_account_deletions`
+before deploying this API.
 
 View responses contain `rows`, optional `total`, `nextCursor`, `note`, and `checkedAt`.
 The usage-accuracy update adds `asOf` (one observation time per read snapshot),
@@ -1731,10 +1752,12 @@ When `UPLOAD_PROTOCOL_MODE=dual|multipart` and the client requests
 }
 ```
 
-`UPLOAD_PROTOCOL_MODE` defaults to `legacy`. Production uses `dual` during the
-client rollout, so opted-in clients receive managed multipart sessions while
-old clients keep receiving the legacy response. In strict `multipart` mode, a
-request without the opt-in returns `426 UPLOAD_CLIENT_UPGRADE_REQUIRED`.
+`UPLOAD_PROTOCOL_MODE` defaults to `legacy`. In `dual` mode (Staging), opted-in
+clients receive managed multipart sessions while old clients keep receiving
+the legacy response. Since 2026-10-25 the Production Blueprint uses strict
+`multipart` (no legacy build was distributed for Production), so account
+deletion can abort every client upload; a request without the opt-in returns
+`426 UPLOAD_CLIENT_UPGRADE_REQUIRED`.
 
 ### `POST /uploads/:uploadId/parts/:partNumber`
 
@@ -2464,6 +2487,21 @@ methods or a proof read failure returns
 If a stored PostPeer profile exists but provider cleanup is not configured,
 the endpoint returns `503 ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE`.
 
+### `GET /account-deletion`
+
+Public, unauthenticated HTML page for the Google Play "Account deletion URL"
+(Production: `https://postdee-api.onrender.com/account-deletion`). It names
+PostDee, shows the in-app steps (Account tab → ลบบัญชี → ลบบัญชีถาวร), offers an
+email request to `postdee.support@gmail.com` answered within 30 days, and lists
+the data deleted and the data kept (deletion proof, including the operator
+record for email requests handled through `POST /admin/api/account-deletions`, unlinked add-on
+transaction IDs, the 30-day store-link reservation, store purchase records,
+already published social posts, on-device drafts, provider backups/logs).
+Thai is primary, with an English summary. The response carries no script,
+a per-response style nonce in `Content-Security-Policy` and
+`Cache-Control: public, max-age=300`. Keep its labels and data list in sync
+with the Mobile flow and the deletion saga below.
+
 ### `DELETE /account`
 
 Permanently deletes the authenticated user's account, owned upload objects,
@@ -2527,8 +2565,13 @@ Behavior:
 - Lists every paginated integration in the user's PostPeer profile and
   disconnects each one through the provider before deleting local records.
   This includes integration ids for platforms PostDee does not yet recognize.
+  After every disconnect succeeds, the API deletes the emptied PostPeer profile
+  (`DELETE /v1/profiles/{id}`, `404` counts as already deleted) so a connect
+  flow still open in a browser cannot attach a new account to it, then drops
+  the local profile mapping so a later retry does not query that profile again.
   Provider cleanup failure returns `503 ACCOUNT_SOCIAL_CLEANUP_FAILED` so the
-  request can retry without losing local account data.
+  request can retry without losing local account data; the profile is kept
+  while any integration could not be disconnected.
 - A fresh multipart completion gets a short drain window and returns
   `409 ACCOUNT_UPLOADS_DRAINING` so the caller can retry. A stale completion is
   reconciled against the R2 object's exact size before persisted and orphan
@@ -4211,7 +4254,7 @@ PostgreSQL.
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | `...` | R2 S3-compatible secret access key |
 | `CLOUDFLARE_R2_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` | Optional custom R2 endpoint |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Signed upload URL lifetime; legacy retries request one fresh URL after explicit expiry, while multipart retries refresh only the affected part URL |
-| `UPLOAD_PROTOCOL_MODE` | `legacy`, `dual`, `multipart` | Upload rollout mode; defaults to `legacy`, production uses `dual` during client migration, and strict `multipart` rejects old clients without the opt-in |
+| `UPLOAD_PROTOCOL_MODE` | `legacy`, `dual`, `multipart` | Upload rollout mode; defaults to `legacy`, Staging uses `dual`, and Production uses strict `multipart`, which rejects old clients without the opt-in |
 | `MULTIPART_UPLOAD_PART_SIZE_BYTES` | `16777216` | Server-selected managed multipart part size in bytes (16 MiB default) |
 | `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS` | `3600` | Managed multipart session lifetime in seconds |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | Maximum declared upload size accepted by `POST /uploads` |

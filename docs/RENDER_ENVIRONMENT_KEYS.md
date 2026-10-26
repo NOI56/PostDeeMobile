@@ -69,7 +69,7 @@ These are present in `render.yaml` with fixed values or a Render-managed source.
 | `EDIT_PLAN_PROVIDER` | Blueprint value | `gemini` | Uses `GEMINI_API_KEY`; PostDee rules are the final fallback. |
 | `SOCIAL_PUBLISHER` | Blueprint value | `postpeer` | Requires `POSTPEER_API_KEY`. |
 | `AUTH_PROVIDER` | Blueprint value | `firebase` | Requires `FIREBASE_PROJECT_ID`. |
-| `FIREBASE_AUTH_DELETE_ENABLED` | Blueprint value | `false` | Temporarily disables destructive Firebase account deletion while the owner-mutation barrier is process-local. Re-enable only after a distributed/persistent barrier and a dedicated production concurrency smoke test. |
+| `FIREBASE_AUTH_DELETE_ENABLED` | Blueprint value | `false` | Temporarily disables destructive Firebase account deletion. The durable PostgreSQL owner drain is implemented and Live on Staging; re-enable only after a disposable account passes real Firebase/R2/PostPeer cleanup on Staging and `FIREBASE_SERVICE_ACCOUNT_JSON` is confirmed (startup fails without it). |
 | `PUSH_SENDER` | Blueprint value | `mock` | Safe until Firebase service account push is ready. |
 | `BILLING_PROVIDER` | Blueprint value | `revenuecat` | Requires the webhook token; current Restore also needs the server REST key below. |
 | `REVENUECAT_STARTER_ENTITLEMENT_ID` | Blueprint value | `starter` | Maps RevenueCat entitlement to Starter. |
@@ -135,7 +135,7 @@ existing local template; no secondary Gemini model is attempted.
 | `ELEVENLABS_TRANSCRIPTION_KEYTERMS` | empty | Optional brand terms. Keep blank until measured because keyterm prompting adds provider cost. |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | PostPeer API host. |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Five-minute signed upload URL lifetime; mobile retries once only when the URL explicitly expires. |
-| `UPLOAD_PROTOCOL_MODE` | `legacy` | Use `dual` during the mobile rollout; use `multipart` only after old app versions are blocked. |
+| `UPLOAD_PROTOCOL_MODE` | `legacy` | Production Blueprint uses `multipart` so account deletion can abort every client upload; Staging keeps `dual`. Set `multipart` on Staging too before the disposable-account deletion test. |
 | `MULTIPART_UPLOAD_PART_SIZE_BYTES` | `16777216` | Uniform 16 MiB R2 parts; the final part may be smaller. |
 | `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS` | `3600` | One-hour server-managed upload session lifetime. |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | 500 MiB upload metadata limit. |

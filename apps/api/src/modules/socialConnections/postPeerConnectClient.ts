@@ -128,6 +128,8 @@ export type PostPeerIntegration = {
  *   Android clients opt in to a fixed app return URI; completion is still
  *   verified by authenticated integration reconciliation.
  * - `DELETE /v1/connect/integrations/{id}` removes an external connection.
+ * - `DELETE /v1/profiles/{id}` soft-deletes a profile so it cannot be used for
+ *   new connections. It does not remove integrations, so disconnect first.
  */
 export type PostPeerConnectClient = {
   supportsIntegrationCleanup?: boolean;
@@ -141,6 +143,7 @@ export type PostPeerConnectClient = {
   }) => Promise<{ connectUrl: string }>;
   listIntegrations: (input: { profileId: string; publishingReadiness?: boolean }) => Promise<PostPeerIntegration[]>;
   disconnectIntegration?: (input: { integrationId: string }) => Promise<void>;
+  deleteProfile?: (input: { profileId: string }) => Promise<void>;
 };
 
 const readRecord = (value: unknown): Record<string, unknown> =>
@@ -603,6 +606,13 @@ export const createPostPeerConnectClient = ({
           parseJson: false
         }
       );
+    },
+    deleteProfile: async ({ profileId }) => {
+      await request(`/v1/profiles/${encodeURIComponent(profileId)}`, {
+        method: 'DELETE',
+        allowNotFound: true,
+        parseJson: false
+      });
     }
   };
 };

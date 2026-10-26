@@ -131,7 +131,9 @@
       ล่วงหน้าได้นานกว่านั้น ให้แยก prefix ของไฟล์ AI ชั่วคราวออกจากไฟล์ที่รอโพสต์ก่อน
       แล้วจึงตั้งอายุเฉพาะ prefix ชั่วคราว
 - ✅ ตอนผู้ใช้ลบบัญชี API จะไล่ลบทุก object ใต้ owner prefix ของ Firebase UID
-      ก่อนลบฐานข้อมูล; lifecycle ยังจำเป็นเป็นตาข่ายสำหรับ signed upload ที่มาช้า
+      ก่อนลบฐานข้อมูล; Production Blueprint ใช้ `UPLOAD_PROTOCOL_MODE=multipart`
+      แล้ว (25 ต.ค. 2026) จึงไม่มี legacy signed upload ที่มาช้าหลังลบบัญชี
+      แต่ lifecycle ยังจำเป็นสำหรับไฟล์ AI ชั่วคราว
 - signed download URL ตั้งอายุขั้นต่ำ 1 ชม. แล้ว (ให้ PostPeer/Gemini ดึงทัน)
 
 ---
@@ -199,10 +201,13 @@
   1. ตั้ง `FIREBASE_SERVICE_ACCOUNT_JSON` ใน Render (service account key จาก Firebase Console → Project Settings → Service Accounts, เก็บเป็นความลับ)
   2. สลับ `PUSH_SENDER=firebase` (ทำหลังใส่ key แล้วเท่านั้น ไม่งั้น API จะ crash ตอนเริ่ม)
   3. ทดสอบส่ง push จริงบนเครื่อง
-- [ ] Production Blueprint ตั้ง `FIREBASE_AUTH_DELETE_ENABLED=true` แล้ว จึงต้อง
+- [ ] Production Blueprint ยังตั้ง `FIREBASE_AUTH_DELETE_ENABLED=false`
+      (durable PostgreSQL drain ทำเสร็จและอยู่บน Staging แล้ว) ก่อนเปลี่ยนเป็น
+      `true` ต้องผ่านการลบบัญชีทดสอบบน Staging ด้วย Firebase/R2/PostPeer จริง
       ยืนยันว่า `FIREBASE_SERVICE_ACCOUNT_JSON` มีอยู่ใน Production Dashboard
-      ก่อน deploy และทดสอบลบบัญชีจริงบน release candidate; repository ยืนยันค่า
-      secret ไม่ได้ โหมดนี้ใช้ Firebase Admin ตรวจ token ที่ถูก revoke/ลบแล้วด้วย
+      (ถ้าไม่มี API จะ crash ตอนเริ่ม) และทดสอบลบบัญชีจริงบน release candidate;
+      repository ยืนยันค่า secret ไม่ได้ โหมดนี้ใช้ Firebase Admin ตรวจ token ที่ถูก
+      revoke/ลบแล้วด้วย
 - [x] Staging Blueprint คง `FIREBASE_AUTH_DELETE_ENABLED=false` และไม่ประกาศ
       `FIREBASE_SERVICE_ACCOUNT_JSON` จนกว่าจะมี controlled deletion test ที่ใช้
       service account ชุด Staging โดยเฉพาะ

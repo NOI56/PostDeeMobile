@@ -131,7 +131,7 @@ void main() {
     await tester.tap(help);
     await tester.pumpAndSettle();
     expect(find.text('ช่วยตรวจสอบการซื้อ'), findsOneWidget);
-    expect(find.textContaining('support@postdee.app'), findsOneWidget);
+    expect(find.textContaining('postdee.support@gmail.com'), findsOneWidget);
     expect(find.textContaining('อย่าซื้อซ้ำ'), findsOneWidget);
     expect(addon.purchaseCalls, calls);
     expect(tester.widget<FilledButton>(find.byKey(const ValueKey('paywall-buy-addon'))).onPressed, isNull);

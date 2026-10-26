@@ -116,4 +116,23 @@ describe('administrator usage snapshots', () => {
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expected }));
     expect(count).toHaveBeenCalledWith({ where: expected });
   });
+
+  it('lists operator account deletions newest first, filtered by exact UID and without member emails', async () => {
+    const deletion = (index: number) => ({ requestId: `request-${index}`, actorId: 'owner', userId: 'deleted-uid',
+      reason: 'คำขอทางอีเมล', status: index ? 'PENDING' : 'COMPLETED', lastErrorCode: index ? 'ACCOUNT_MEDIA_CLEANUP_FAILED' : null,
+      createdAt: new Date(time.getTime() - index * 1000), completedAt: index ? null : time });
+    const findMany = vi.fn().mockResolvedValue(Array.from({ length: 51 }, (_, index) => deletion(index)));
+    const data = createPrismaAdminDataSource(snapshotClient({ adminAccountDeletion: { findMany } }) as unknown as PrismaClient,
+      config, () => time);
+
+    const result = await data.view('deletions', { query: 'deleted-uid' });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'deleted-uid' },
+      orderBy: [{ createdAt: 'desc' }, { requestId: 'desc' }], take: 51 }));
+    expect(result.rows).toHaveLength(50);
+    expect(result.rows[0]).toEqual({ requestId: 'request-0', actorId: 'owner', userId: 'deleted-uid', reason: 'คำขอทางอีเมล',
+      status: 'COMPLETED', lastErrorCode: null, createdAt: time.toISOString(), completedAt: time.toISOString() });
+    expect(result.nextCursor).toBeTruthy();
+    expect(JSON.stringify(result.rows)).not.toContain('@');
+  });
 });

@@ -101,7 +101,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | Pro AI ตัดต่อ | ElevenLabs ถอดเสียง, Gemini เลือกช่วง และ renderer จริงรองรับซับ/ตัดช่วงเงียบ/จัดการคำพูดซ้ำ/แสงสี | ทดสอบ provider + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
 | Analytics | API/UI ใช้ข้อมูล backend และไม่สร้างตัวเลขปลอม | ต้องมีผลโพสต์จริงจาก provider และตรวจช่วงวันที่/ยอดจากบัญชีจริง |
 | Push notification | FCM mobile/server code มี | เปิด Firebase sender, ทดสอบ permission, token refresh, logout/unregister และ invalid-token cleanup |
-| ลบบัญชีฝั่งบริการ | มี in-app flow, cleanup saga และ durable managed-upload marker แต่ Production ปิดชั่วคราวเพราะ owner coordinator ยัง process-local | ทำ durable full-user mutation barrier/drain, ตรวจ R2/PostPeer/Firebase cleanup, RevenueCat behavior, physical-device/slow-network race และ public deletion URL ก่อนเปิด; local draft/Application Support และ OS backup ไม่ถูกลบโดย flow ฝั่งบริการ ต้องมี copy/วิธีลบแยกที่ตรงกัน |
+| ลบบัญชีฝั่งบริการ | มี in-app flow, cleanup saga, durable managed-upload marker และ durable PostgreSQL owner drain (อยู่บน Staging แล้ว) แต่ Production ยังปิดจนกว่าจะทดสอบกับบริการจริง | ตรวจ R2/PostPeer/Firebase cleanup ด้วยบัญชีทดสอบบน Staging, RevenueCat behavior, physical-device/slow-network race และ public deletion URL ก่อนเปิด; local draft/Application Support และ OS backup ไม่ถูกลบโดย flow ฝั่งบริการ ต้องมี copy/วิธีลบแยกที่ตรงกัน |
 
 ### ห้ามนำไปใส่ Store listing หรือ screenshots ตอนนี้
 
@@ -172,7 +172,9 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
   และแก้ไขโดยผู้เยี่ยมชมไม่ได้
 - [ ] ใส่ชื่อ `PostDee` หรือชื่อ developer ที่ตรงกับ Store, ช่องทางติดต่อ,
   ประเภทข้อมูล, ผู้รับข้อมูล, ความปลอดภัย, retention และ deletion ให้ครบ
-- [ ] สร้าง public account-deletion URL ที่ผู้ใช้ส่งคำขอลบได้โดยไม่ต้องติดตั้งแอปใหม่
+- [x] สร้าง public account-deletion URL ที่ผู้ใช้ส่งคำขอลบได้โดยไม่ต้องติดตั้งแอปใหม่:
+  API เสิร์ฟ `GET /account-deletion` (26 ต.ค. 2026) ใช้งานได้เมื่อ Production API
+  ทำงาน; คำขอทางอีเมลดำเนินการด้วยปุ่มลบบัญชีในหน้าแอดมิน (`docs/ADMIN_CONSOLE.md`)
 - [ ] ทดสอบ in-app deletion ด้วย production services และระบุข้อมูลที่ต้องเก็บต่อเพราะกฎหมาย (ถ้ามี)
 - [ ] ยืนยันว่า production ทุก endpoint เข้ารหัสระหว่างส่งผ่าน HTTPS/TLS ก่อนตอบ
   “Data is encrypted in transit”
@@ -260,10 +262,12 @@ Google Play กำหนดอย่างน้อย 2 ภาพ; สำหร
 ## 8. Play Console App content checklist
 
 - [ ] Developer name: **TODO**
-- [ ] Support email: เสนอ `support@postdee.app`; ต้องทดสอบว่าส่ง/รับได้จริง
+- [x] Support email: `postdee.support@gmail.com` (เจ้าของสร้างแล้ว 26 ต.ค. 2026;
+      ใช้แทน `support@postdee.app` ที่ยืนยันไม่ได้ว่ามีโดเมนและกล่องจดหมายจริง)
 - [ ] Support website: **TODO**
 - [ ] Privacy policy URL: **TODO**
-- [ ] Account deletion URL: **TODO**
+- [ ] Account deletion URL: `https://postdee-api.onrender.com/account-deletion`
+      (มีในโค้ดแล้ว; ตรวจว่าเปิดได้บน Production ก่อนกรอก)
 - [ ] Category: เสนอ Business; เจ้าของยืนยัน
 - [ ] Target audience: เสนอ 18+ และไม่ออกแบบเพื่อเด็ก; เจ้าของ/กฎหมายยืนยัน
 - [ ] Ads: เสนอ “No”; ตรวจ final SDK และ manifest ก่อนตอบ

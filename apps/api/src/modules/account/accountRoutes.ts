@@ -1,4 +1,6 @@
-import type { RequestHandler, Response, Router } from 'express';
+import { randomBytes } from 'node:crypto';
+
+import type { RequestHandler, Router } from 'express';
 
 import { readAuthUser, type AuthUser } from '../auth/authTypes.js';
 import type { AnalyticsStore } from '../analytics/analyticsStore.js';
@@ -21,6 +23,7 @@ import {
   ManagedUploadServiceError,
   type ManagedUploadService
 } from '../uploads/managedUploadService.js';
+import { renderAccountDeletionPage } from './accountDeletionPage.js';
 import type { AccountIdentityDeleter } from './firebaseIdentityDeleter.js';
 import type { OwnerMutationCoordinator } from './ownerMutationLock.js';
 import { OwnerOperationBusyError } from './ownerOperationQueue.js';
@@ -68,6 +71,23 @@ export type AccountRouteDependencies = {
   nowSeconds?: () => number;
 };
 
+/** The response surface the deletion saga writes to: Express or a recorder. */
+type AccountDeletionResponder = {
+  status: (code: number) => AccountDeletionResponder;
+  json: (body: unknown) => unknown;
+};
+
+export type AccountDeletionOutcome = { status: number; body: Record<string, unknown> };
+
+export type AccountRoutes = {
+  /**
+   * Runs the same saga as `DELETE /account` for a Firebase UID after an
+   * administrator has verified the request; it skips the owner's recent
+   * sign-in check but keeps every other gate, drain and cleanup step.
+   */
+  deleteAccountAsOperator: (userId: string) => Promise<AccountDeletionOutcome>;
+};
+
 const recentAuthenticationWindowSeconds = 5 * 60;
 const allowedAuthenticationClockSkewSeconds = 60;
 
@@ -79,7 +99,7 @@ export const registerAccountRoutes = (
   router: Router,
   authMiddleware: RequestHandler,
   dependencies: AccountRouteDependencies
-) => {
+): AccountRoutes => {
   const {
     postStore,
     templateStore,
@@ -155,14 +175,14 @@ export const registerAccountRoutes = (
       authorizedAt <= nowSeconds() + allowedAuthenticationClockSkewSeconds;
   };
 
-  const requireReauthentication = (response: Response) => {
+  const requireReauthentication = (response: AccountDeletionResponder) => {
     response.status(403).json({
       status: 'error', code: 'ACCOUNT_REAUTHENTICATION_REQUIRED',
       message: 'Sign in again before permanently deleting your account.'
     });
   };
 
-  const authorizationUnavailable = (response: Response, error: unknown) => {
+  const authorizationUnavailable = (response: AccountDeletionResponder, error: unknown) => {
     const busy = error instanceof OwnerOperationBusyError;
     response.status(503).json({
       status: 'error',
@@ -172,6 +192,14 @@ export const registerAccountRoutes = (
         : 'Could not verify or save account deletion authorization. Please try again.'
     });
   };
+
+  // Public, static deletion request page for store listings; no sign-in.
+  router.get('/account-deletion', (_request, response) => {
+    const nonce = randomBytes(18).toString('base64');
+    response.set('Cache-Control', 'public, max-age=300');
+    response.set('Content-Security-Policy', `default-src 'none'; script-src 'none'; style-src 'nonce-${nonce}'; img-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`);
+    response.type('html').send(renderAccountDeletionPage(nonce));
+  });
 
   router.get('/account/deletion-readiness', authMiddleware, async (_request, response) => {
     const authUser = readAuthUser(response.locals);
@@ -226,23 +254,21 @@ export const registerAccountRoutes = (
     });
   });
 
-  router.delete('/account', authMiddleware, async (_request, response) => {
-    const authUser = readAuthUser(response.locals);
-
-    if (!authUser) {
-      response.status(401).json({
-        status: 'error',
-        message: 'Authenticated user is required'
-      });
-      return;
-    }
-
+  const runAccountDeletion = async (
+    authUser: AuthUser,
+    response: AccountDeletionResponder,
+    operatorAuthorized = false
+  ) => {
     const userId = authUser.id;
+    // A verified operator request stands in for the owner's recent sign-in.
+    const needsOwnerReauthentication = (authorized: boolean) =>
+      !operatorAuthorized && !authorized &&
+      (authUser.identityAlreadyDeleted === true || !hasRecentAuthentication(authUser));
 
     if (authUser.provider === 'firebase') {
       try {
         const authorized = await hasDeletionAuthorization(userId);
-        if (!authorized && (authUser.identityAlreadyDeleted || !hasRecentAuthentication(authUser))) {
+        if (needsOwnerReauthentication(authorized)) {
           requireReauthentication(response);
           return;
         }
@@ -264,8 +290,7 @@ export const registerAccountRoutes = (
     if (authUser.provider === 'firebase') {
       try {
         previouslyAuthorized = await hasDeletionAuthorization(userId);
-        if (!previouslyAuthorized &&
-          (authUser.identityAlreadyDeleted || !hasRecentAuthentication(authUser))) {
+        if (needsOwnerReauthentication(previouslyAuthorized)) {
           requireReauthentication(response);
           return;
         }
@@ -301,7 +326,7 @@ export const registerAccountRoutes = (
     if (authUser.provider === 'firebase') {
       try {
         if (!previouslyAuthorized) {
-          if (authUser.identityAlreadyDeleted || !hasRecentAuthentication(authUser)) {
+          if (needsOwnerReauthentication(previouslyAuthorized)) {
             requireReauthentication(response);
             return;
           }
@@ -431,6 +456,16 @@ export const registerAccountRoutes = (
         cleanupFailed = true;
       }
 
+      // Delete the emptied profile so a connect flow still open in a browser
+      // cannot attach a new social account after the owner is gone.
+      if (!cleanupFailed && postPeerConnectClient.deleteProfile) {
+        try {
+          await postPeerConnectClient.deleteProfile({ profileId: postPeerProfileId });
+        } catch {
+          cleanupFailed = true;
+        }
+      }
+
       if (cleanupFailed) {
         response.status(503).json({
           status: 'error',
@@ -439,6 +474,10 @@ export const registerAccountRoutes = (
         });
         return;
       }
+
+      // The provider side is finished. Drop the local mapping now so a retry
+      // after a later failure does not query the deleted profile again.
+      await socialConnectionStore?.deleteAllForUser?.(userId);
     }
 
     try {
@@ -533,5 +572,39 @@ export const registerAccountRoutes = (
         releaseOwnerMutationLock();
       }
     }
+  };
+
+  router.delete('/account', authMiddleware, async (_request, response) => {
+    const authUser = readAuthUser(response.locals);
+
+    if (!authUser) {
+      response.status(401).json({
+        status: 'error',
+        message: 'Authenticated user is required'
+      });
+      return;
+    }
+
+    await runAccountDeletion(authUser, response);
   });
+
+  return {
+    deleteAccountAsOperator: async (userId) => {
+      let status = 200;
+      let body: Record<string, unknown> = {};
+      const recorder: AccountDeletionResponder = {
+        status: (code) => {
+          status = code;
+          return recorder;
+        },
+        json: (value) => {
+          body = value as Record<string, unknown>;
+          return recorder;
+        }
+      };
+      // The admin console only runs with Firebase auth, so targets are Firebase UIDs.
+      await runAccountDeletion({ id: userId, provider: 'firebase' }, recorder, true);
+      return { status, body };
+    }
+  };
 };

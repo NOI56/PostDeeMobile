@@ -53,10 +53,11 @@ services:
       # one fresh URL; multipart uploads request a fresh URL per retried part.
       - key: CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS
         value: "300"
-      # Dual mode keeps legacy app releases working while current releases opt
-      # in to revocable managed multipart sessions.
+      # Multipart-only: account deletion can abort managed sessions, but not a
+      # legacy signed PUT URL that lands after cleanup. No legacy build has
+      # been distributed for Production; such builds get 426 and must update.
       - key: UPLOAD_PROTOCOL_MODE
-        value: dual
+        value: multipart
       - key: MULTIPART_UPLOAD_PART_SIZE_BYTES
         value: "16777216"
       - key: MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS
@@ -107,9 +108,11 @@ services:
         value: mock
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
-      # The current owner barrier is process-local. Keep destructive Firebase
-      # account deletion disabled until a distributed/persistent barrier and a
-      # dedicated production concurrency smoke test are complete.
+      # The durable PostgreSQL owner drain is implemented and Live on Staging.
+      # Keep destructive Firebase account deletion disabled until a disposable
+      # account passes real Firebase/R2/PostPeer cleanup on Staging and
+      # FIREBASE_SERVICE_ACCOUNT_JSON is confirmed here; true without that key
+      # crashes the API on startup.
       - key: FIREBASE_AUTH_DELETE_ENABLED
         value: "false"
       - key: BILLING_PROVIDER

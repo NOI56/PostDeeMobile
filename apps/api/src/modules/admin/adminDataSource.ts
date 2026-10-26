@@ -18,7 +18,7 @@ export const adminChannelResult = (p: { platform: string; status: string; delive
   return `${platformLabels[p.platform] ?? 'ช่องทางอื่น'}: ${result}`;
 };
 
-export const adminViews = ['overview', 'members', 'posts', 'trials', 'channels', 'reports', 'audit'] as const;
+export const adminViews = ['overview', 'members', 'posts', 'trials', 'channels', 'reports', 'audit', 'deletions'] as const;
 export type AdminView = typeof adminViews[number];
 export type AdminMember = { id: string; email: string; displayName?: string | null; paidPlan: string;
   trial?: TrialAccess | null; [key: string]: unknown };
@@ -130,6 +130,17 @@ export const createPrismaAdminDataSource = (prisma: PrismaClient, config: AdminC
         select: { requestId: true, actorId: true, action: true, plan: true, days: true, reason: true, before: true, after: true, createdAt: true, user: { select: { email: true } } } });
       return { ...page(rows, r => ({ requestId: r.requestId, actorId: r.actorId, email: r.user.email, action: r.action,
         plan: r.plan, days: r.days, reason: r.reason, before: r.before, after: r.after, createdAt: r.createdAt.toISOString() }), 'requestId'), ...continuation(rows, 'requestId') };
+    }
+    if (view === 'deletions') {
+      // Deleted members have no User row, so search means an exact Firebase UID.
+      const cursor = readTimeCursor(options.cursor);
+      const rows = await prisma.adminAccountDeletion.findMany({ where: { ...(options.query ? { userId: options.query } : {}),
+        ...(cursor ? { OR: [{ createdAt: { lt: cursor.time } }, { createdAt: cursor.time, requestId: { lt: cursor.id } }] } : {}) },
+        orderBy: [{ createdAt: 'desc' }, { requestId: 'desc' }], take });
+      return { ...page(rows, r => ({ requestId: r.requestId, actorId: r.actorId, userId: r.userId, reason: r.reason, status: r.status,
+        lastErrorCode: r.lastErrorCode, createdAt: r.createdAt.toISOString(), completedAt: r.completedAt?.toISOString() ?? null }), 'requestId'),
+        ...continuation(rows, 'requestId'),
+        note: 'บันทึกนี้เก็บรหัสบัญชี ผู้ดำเนินการ และเหตุผลเท่านั้น ไม่เก็บอีเมลหรือชื่อลูกค้าหลังลบ · ค้นหาด้วยรหัสบัญชี (UID) แบบตรงทั้งหมด' };
     }
     if (view === 'reports') return readAdminUsageReport(prisma, options, time, config.costRates);
     const rows = await prisma.adminTrialAccess.findMany({ where: { user: userFilter, ...(options.cursor ? { userId: { gt: options.cursor } } : {}) }, orderBy: { userId: 'asc' }, take,

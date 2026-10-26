@@ -2,6 +2,38 @@
 
 Build roadmap for PostDee.
 
+## Account deletion PostPeer profile cleanup (2026-10-25, source candidate)
+
+- The durable PostgreSQL owner drain and deletion authorization are already
+  Live on Staging since 2026-10-14; docs that still called the coordinator
+  process-local are corrected.
+- After every PostPeer integration disconnects, `DELETE /account` now deletes
+  the emptied PostPeer profile (`404` is idempotent) so a connect page left
+  open in a browser cannot attach an account after deletion, then drops the
+  local mapping so retries skip the deleted profile. A failed profile delete
+  keeps all data and returns the existing retryable
+  `503 ACCOUNT_SOCIAL_CLEANUP_FAILED`.
+- The Production Blueprint now uses strict `UPLOAD_PROTOCOL_MODE=multipart`
+  (only the owner has installed builds), closing late legacy signed-PUT
+  uploads after deletion; Staging keeps `dual` until changed in its Dashboard.
+- 2026-10-26: public `GET /account-deletion` page for the Play listing (in-app
+  steps, email request answered within 30 days, data deleted/kept) and the
+  support contact moves to `postdee.support@gmail.com` in Mobile and legal
+  drafts.
+- 2026-10-26: owner-only admin console **ลบบัญชีนี้** action for verified email
+  requests runs the same `DELETE /account` saga (no member re-sign-in), with
+  typed email confirmation, an email-free reason, protected admin UIDs, a
+  retryable request id and a retained `AdminAccountDeletion` record shown in a
+  new **ประวัติการลบบัญชี** page. Additive migration
+  `20261026010000_admin_account_deletions` must run before this API; the action
+  stays closed while `FIREBASE_AUTH_DELETE_ENABLED=false`.
+- No schema, migration, flag, response field or Mobile change; API-only deploy.
+  `FIREBASE_AUTH_DELETE_ENABLED` stays `false` until a disposable Staging
+  account passes real Firebase/R2/PostPeer cleanup, the Production service
+  account is confirmed and a public deletion page with a monitored contact
+  exists. See the
+  [profile cleanup plan](docs/superpowers/plans/2026-10-25-account-deletion-postpeer-profile.md).
+
 ## Post quota on the clip step (2026-10-25, follow-up candidate)
 
 - Show a compact strip immediately in the uploader's clip-selection step, even

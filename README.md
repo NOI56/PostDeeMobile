@@ -1797,10 +1797,11 @@ size before marking it `COMPLETED`.
 
 `UPLOAD_PROTOCOL_MODE` defaults to `legacy`, so existing clients still receive
 the original signed `PUT` fields (`uploadUrl`, `uploadMethod`, `uploadHeaders`,
-and `uploadExpiresAt`). Production uses `dual` during rollout: opted-in clients
-use managed multipart while older clients keep working. The legacy URL remains
-a replay risk until all supported clients are upgraded and production can move
-to strict `multipart` mode.
+and `uploadExpiresAt`). Staging uses `dual`: opted-in clients use managed
+multipart while older clients keep working. The legacy URL is a replay risk
+and cannot be revoked by account deletion, so the Production Blueprint uses
+strict `multipart` since 2026-10-25; no legacy build was distributed for
+Production.
 
 #### `POST /captions/generate`
 
@@ -2806,12 +2807,22 @@ the shared non-expiring policy does not imply store review approval.
 
 See `FIREBASE_SETUP.md` for the Firebase Auth and Google Sign-In setup checklist.
 
+The public `GET /account-deletion` page (Play "Account deletion URL",
+`https://postdee-api.onrender.com/account-deletion` in Production) explains the
+in-app steps and an email request to `postdee.support@gmail.com`, plus the data
+deleted and kept; see `API.md`. Support contact in the app and legal drafts is
+`postdee.support@gmail.com`. Verified email requests are handled with the
+owner-only **ลบบัญชีนี้** action in the admin console, which runs the same
+deletion saga and keeps an email-free `AdminAccountDeletion` record (migration
+`20261026010000_admin_account_deletions`); see `docs/ADMIN_CONSOLE.md`.
+
 Production account deletion is temporarily disabled with
 `FIREBASE_AUTH_DELETE_ENABLED=false`; the shared drain is delivered to Staging,
 while Production rollout and real-provider acceptance remain pending. In a
 controlled environment, enabling the path also requires
 `FIREBASE_SERVICE_ACCOUNT_JSON`. When enabled, `DELETE /account` disconnects
-the user's PostPeer integrations, removes
+the user's PostPeer integrations, deletes the emptied PostPeer profile so a
+connect flow left open in a browser cannot attach a new account, removes
 the R2 owner prefix (or an S3-compatible client that implements owner-prefix
 listing), deletes local data, and deletes the Firebase identity last. Active
 Firebase users starting deletion must present a finite `auth_time` within five
@@ -2930,9 +2941,8 @@ Queue/storage scaffold switches:
 - `CLOUDFLARE_R2_ENDPOINT` can override the default `https://<accountId>.r2.cloudflarestorage.com` endpoint when needed.
 - `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS=300` keeps R2 signed upload URLs usable for five minutes. Legacy upload retries request one fresh URL after explicit expiry; managed multipart retries request a fresh URL only for the affected part.
 - `UPLOAD_PROTOCOL_MODE=legacy|dual|multipart` selects the upload rollout. It
-  defaults to `legacy`; production uses `dual` while old clients are upgraded,
-  then can move to strict `multipart` to remove the legacy signed-URL replay
-  window.
+  defaults to `legacy`; Staging uses `dual`, and Production uses strict
+  `multipart` to remove the legacy signed-URL replay and late-upload window.
 - `MULTIPART_UPLOAD_PART_SIZE_BYTES=16777216` sets the server-selected managed
   part size (16 MiB by default).
 - `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS=3600` sets how long an unfinished

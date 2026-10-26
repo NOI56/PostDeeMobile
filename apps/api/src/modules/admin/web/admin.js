@@ -1,8 +1,12 @@
 const app = document.querySelector('#app');
-const names = { overview:'ภาพรวม', members:'สมาชิก', posts:'โพสต์', trials:'สิทธิ์ทดลอง', channels:'ช่องทางที่เชื่อม', reports:'รายงาน', audit:'ประวัติผู้ดูแล' };
-const paths = { overview:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10', members:'M20 21v-2a7 7 0 0 0-14 0v2M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0', posts:'M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M8 8h8M8 12h8M8 16h4', trials:'M9 3h6M10 3v7l-5 9q-1 2 2 2h10q3 0 2-2l-5-9V3M8 15h8', channels:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2', reports:'M5 21V12M12 21V3M19 21V8', audit:'M12 8v5l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0' };
-const labels = { BASIC:'ฟรี', STARTER:'Starter', PRO:'Pro', ACTIVE:'ใช้งานอยู่', NOT_STARTED:'ยังไม่เริ่ม', EXPIRED:'หมดอายุ', REVOKED:'ยกเลิกแล้ว', DRAFT:'ร่าง', QUEUED:'รอส่ง', PUBLISHING:'กำลังส่ง', PUBLISHED:'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED:'ส่งถึงบางช่องทาง', FAILED:'ส่งไม่สำเร็จ', GRANT:'ให้สิทธิ์', EXTEND:'ต่อเวลา', REVOKE:'ยกเลิกสิทธิ์', TIKTOK:'TikTok', YOUTUBE_SHORTS:'YouTube Shorts', INSTAGRAM_REELS:'Instagram Reels', FACEBOOK_REELS:'Facebook Reels' };
-const messages = { ADMIN_ACCESS_DENIED:'บัญชีนี้ยังไม่ได้รับสิทธิ์ผู้ดูแล PostDee', ADMIN_OWNER_REQUIRED:'เฉพาะเจ้าของระบบสามารถเปลี่ยนสิทธิ์ทดลองได้', ADMIN_REAUTH_REQUIRED:'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ เพื่อยืนยันตัวตนก่อนเปลี่ยนสิทธิ์', ADMIN_MEMBER_CHANGED:'อีเมลบัญชีเปลี่ยนแล้ว กรุณาค้นหาสมาชิกและตรวจสอบใหม่', ADMIN_TRIAL_CHANGED:'สิทธิ์มีการเปลี่ยนแปลง กรุณาปิดหน้าต่างแล้วโหลดข้อมูลล่าสุดก่อน', ADMIN_TRIAL_ALREADY_ACTIVE:'บัญชีนี้มีสิทธิ์ทดลองอยู่แล้ว ใช้การต่อเวลาแทน', ADMIN_TRIAL_NOT_ACTIVE:'ไม่พบสิทธิ์ทดลองที่ยังใช้งานอยู่', ADMIN_TRIAL_EXTENSION_LIMIT:'ต่อเวลาได้ไม่เกิน 90 วันนับจากวันนี้', ADMIN_TRIAL_INVALID:'กรุณาระบุแพ็กเกจ ระยะเวลา และเหตุผลอย่างน้อย 3 ตัวอักษร', ADMIN_REQUEST_CONFLICT:'หมายเลขคำขอนี้ใช้กับข้อมูลอื่นแล้ว กรุณาตรวจประวัติก่อน', ADMIN_TRIAL_UNAVAILABLE:'ยังยืนยันผลการเปลี่ยนสิทธิ์ไม่ได้ ใช้ปุ่มตรวจผลคำขอเดิม หรือตรวจประวัติผู้ดูแล', ADMIN_DATA_UNAVAILABLE:'ยังโหลดข้อมูลไม่ได้ กรุณาลองใหม่', ADMIN_FILTER_INVALID:'ตัวกรองหรือช่วงวันที่ไม่ถูกต้อง', ADMIN_MEMBER_NOT_FOUND:'ไม่พบบัญชีสมาชิกนี้แล้ว' };
+const names = { overview:'ภาพรวม', members:'สมาชิก', posts:'โพสต์', trials:'สิทธิ์ทดลอง', channels:'ช่องทางที่เชื่อม', reports:'รายงาน', audit:'ประวัติผู้ดูแล', deletions:'ประวัติการลบบัญชี' };
+const paths = { overview:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10', members:'M20 21v-2a7 7 0 0 0-14 0v2M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0', posts:'M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M8 8h8M8 12h8M8 16h4', trials:'M9 3h6M10 3v7l-5 9q-1 2 2 2h10q3 0 2-2l-5-9V3M8 15h8', channels:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2', reports:'M5 21V12M12 21V3M19 21V8', audit:'M12 8v5l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0', deletions:'M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6' };
+const labels = { BASIC:'ฟรี', STARTER:'Starter', PRO:'Pro', ACTIVE:'ใช้งานอยู่', NOT_STARTED:'ยังไม่เริ่ม', EXPIRED:'หมดอายุ', REVOKED:'ยกเลิกแล้ว', DRAFT:'ร่าง', QUEUED:'รอส่ง', PUBLISHING:'กำลังส่ง', PUBLISHED:'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED:'ส่งถึงบางช่องทาง', FAILED:'ส่งไม่สำเร็จ', GRANT:'ให้สิทธิ์', EXTEND:'ต่อเวลา', REVOKE:'ยกเลิกสิทธิ์', TIKTOK:'TikTok', YOUTUBE_SHORTS:'YouTube Shorts', INSTAGRAM_REELS:'Instagram Reels', FACEBOOK_REELS:'Facebook Reels', PENDING:'ยังไม่เสร็จ · ลองใหม่ได้', COMPLETED:'ลบเรียบร้อย' };
+const messages = { ADMIN_ACCESS_DENIED:'บัญชีนี้ยังไม่ได้รับสิทธิ์ผู้ดูแล PostDee', ADMIN_OWNER_REQUIRED:'เฉพาะเจ้าของระบบสามารถเปลี่ยนสิทธิ์ทดลองได้', ADMIN_REAUTH_REQUIRED:'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ เพื่อยืนยันตัวตนก่อนเปลี่ยนสิทธิ์', ADMIN_MEMBER_CHANGED:'อีเมลบัญชีเปลี่ยนแล้ว กรุณาค้นหาสมาชิกและตรวจสอบใหม่', ADMIN_TRIAL_CHANGED:'สิทธิ์มีการเปลี่ยนแปลง กรุณาปิดหน้าต่างแล้วโหลดข้อมูลล่าสุดก่อน', ADMIN_TRIAL_ALREADY_ACTIVE:'บัญชีนี้มีสิทธิ์ทดลองอยู่แล้ว ใช้การต่อเวลาแทน', ADMIN_TRIAL_NOT_ACTIVE:'ไม่พบสิทธิ์ทดลองที่ยังใช้งานอยู่', ADMIN_TRIAL_EXTENSION_LIMIT:'ต่อเวลาได้ไม่เกิน 90 วันนับจากวันนี้', ADMIN_TRIAL_INVALID:'กรุณาระบุแพ็กเกจ ระยะเวลา และเหตุผลอย่างน้อย 3 ตัวอักษร', ADMIN_REQUEST_CONFLICT:'หมายเลขคำขอนี้ใช้กับข้อมูลอื่นแล้ว กรุณาตรวจประวัติก่อน', ADMIN_TRIAL_UNAVAILABLE:'ยังยืนยันผลการเปลี่ยนสิทธิ์ไม่ได้ ใช้ปุ่มตรวจผลคำขอเดิม หรือตรวจประวัติผู้ดูแล', ADMIN_DATA_UNAVAILABLE:'ยังโหลดข้อมูลไม่ได้ กรุณาลองใหม่', ADMIN_FILTER_INVALID:'ตัวกรองหรือช่วงวันที่ไม่ถูกต้อง', ADMIN_MEMBER_NOT_FOUND:'ไม่พบบัญชีสมาชิกนี้แล้ว',
+  ADMIN_DELETION_INVALID:'กรุณาพิมพ์ยืนยันให้ตรง และระบุเหตุผล 3–500 ตัวอักษรโดยไม่มีอีเมล', ADMIN_DELETE_PROTECTED:'ลบบัญชีผู้ดูแลระบบจากหน้านี้ไม่ได้', ADMIN_ACCOUNT_DELETION_UNAVAILABLE:'ยังยืนยันผลการลบไม่ได้ ใช้ปุ่มลองอีกครั้งด้วยคำขอเดิม หรือตรวจประวัติการลบบัญชี',
+  ACCOUNT_DELETION_UNAVAILABLE:'ระบบลบบัญชียังปิดอยู่บนเซิร์ฟเวอร์นี้ ยังไม่มีข้อมูลใดถูกลบ', ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE:'บันทึกการยืนยันการลบไม่สำเร็จ ยังไม่มีข้อมูลใดถูกลบ ลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_WRITE_DRAIN_FAILED:'บัญชีนี้มีงานที่ยังทำไม่เสร็จ รอสักครู่แล้วลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_UPLOADS_DRAINING:'มีวิดีโอกำลังอัปโหลดเสร็จ รอสักครู่แล้วลองอีกครั้งด้วยคำขอเดิม',
+  ACCOUNT_MEDIA_CLEANUP_UNAVAILABLE:'ระบบลบวิดีโอยังไม่พร้อม ยังไม่มีข้อมูลใดถูกลบ', ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE:'ระบบถอดการเชื่อมต่อโซเชียลยังไม่พร้อม ยังไม่มีข้อมูลใดถูกลบ', ACCOUNT_SOCIAL_CLEANUP_FAILED:'ถอดการเชื่อมต่อโซเชียลยังไม่ครบ ข้อมูลบัญชียังอยู่ ลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_PUBLISH_CLEANUP_FAILED:'ยกเลิกโพสต์ที่รอส่งยังไม่ครบ ลองอีกครั้งด้วยคำขอเดิม',
+  ACCOUNT_MEDIA_CLEANUP_FAILED:'ลบวิดีโอยังไม่ครบ ลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_IDENTITY_DELETE_FAILED:'ลบข้อมูลแล้ว แต่ยังลบการเข้าสู่ระบบไม่สำเร็จ ลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_UPLOAD_STATE_CLEANUP_FAILED:'ลบเกือบเสร็จแล้ว ลองอีกครั้งด้วยคำขอเดิม' };
 const h = (tag, attributes = {}, ...children) => { const e = document.createElement(tag); for(const [k,v] of Object.entries(attributes)) {
   if(k.startsWith('on')) e.addEventListener(k.slice(2),v); else if(v !== false && v != null) e.setAttribute(k,String(v)); }
   for(const c of children.flat(Infinity)) if(c != null) e.append(c instanceof Node ? c : document.createTextNode(String(c))); return e; };
@@ -13,7 +17,7 @@ const when = value => value ? new Intl.DateTimeFormat('th-TH',{dateStyle:'medium
 const whenUtc = value => new Intl.DateTimeFormat('th-TH',{dateStyle:'medium',timeStyle:'short',timeZone:'UTC'}).format(new Date(value));
 const trialActive = t => t && !t.revokedAt && Date.parse(t.startsAt)<=Date.now() && Date.parse(t.expiresAt)>Date.now();
 const trialText = t => !t ? 'ไม่มี' : t.revokedAt ? 'ยกเลิกแล้ว' : Date.parse(t.startsAt)>Date.now() ? 'ยังไม่เริ่ม' : !trialActive(t) ? 'หมดอายุ' : `${translate(t.plan)} · เหลือ ${Math.ceil((Date.parse(t.expiresAt)-Date.now())/86400000)} วัน`;
-let boot, auth, firebase, currentUser, previewToken, session, epoch=0, loadEpoch=0, view='members', page={rows:[]}, query='', appliedQuery='', cursor, status='', platform='', from='', through='', reportScope='ALL_ACCOUNTS', error='', success='', busy=false, csvBusy=false, selected=null, drawerAction='DETAIL', selectedPlan='PRO', days=7, reason='', reviewing=false, pending=null, controllers=new Set(), readController=null, refreshTimer=null, refreshFailed=false, refreshReset=false, loadedFilters=null;
+let boot, auth, firebase, currentUser, previewToken, session, epoch=0, loadEpoch=0, view='members', page={rows:[]}, query='', appliedQuery='', cursor, status='', platform='', from='', through='', reportScope='ALL_ACCOUNTS', error='', success='', busy=false, csvBusy=false, selected=null, drawerAction='DETAIL', selectedPlan='PRO', days=7, reason='', deleteConfirm='', reviewing=false, pending=null, controllers=new Set(), readController=null, refreshTimer=null, refreshFailed=false, refreshReset=false, loadedFilters=null;
 const api = async (path, body, csv=false, controller=new AbortController()) => { const captured=epoch; controllers.add(controller);
   try { const token=previewToken || await currentUser?.getIdToken(); if(!token) throw new Error('กรุณาเข้าสู่ระบบ');
     if(captured!==epoch) throw new Error('บัญชีเปลี่ยนแล้ว');
@@ -21,11 +25,11 @@ const api = async (path, body, csv=false, controller=new AbortController()) => {
     if(captured!==epoch) throw new Error('บัญชีเปลี่ยนแล้ว');let data;
     try{data=csv&&r.ok?await r.text():await r.json();}catch{const failure=new Error(r.status===429?'โหลดข้อมูลบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่':r.status===401?'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่':r.status===403?'บัญชีนี้ไม่มีสิทธิ์เข้าถึงข้อมูล':'ยังโหลดข้อมูลไม่ได้ กรุณาลองใหม่');failure.status=r.status;throw failure;}
     if(captured!==epoch || controller.signal.aborted) throw new Error('บัญชีเปลี่ยนแล้วหรือยกเลิกการโหลด');
-    if(!r.ok) { const failure=new Error(messages[data.code] || `ดำเนินการไม่ได้ (${r.status})`); failure.status=r.status; throw failure; } return data;
+    if(!r.ok) { const failure=new Error(messages[data.code] || `ดำเนินการไม่ได้ (${r.status})`); failure.status=r.status; failure.code=data.code; throw failure; } return data;
   } catch(e) { if(e.name==='TypeError')throw new Error('เชื่อมต่อระบบไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่');throw e; }
   finally { controllers.delete(controller); }
 };
-const logout = async () => { epoch++; loadEpoch++; clearInterval(refreshTimer); refreshTimer=null; controllers.forEach(c=>c.abort()); controllers.clear(); readController=null; currentUser=null; previewToken=null; session=null; page={rows:[]}; loadedFilters=null; selected=null; pending=null; reason='';busy=false;csvBusy=false;refreshFailed=false;refreshReset=false;
+const logout = async () => { epoch++; loadEpoch++; clearInterval(refreshTimer); refreshTimer=null; controllers.forEach(c=>c.abort()); controllers.clear(); readController=null; currentUser=null; previewToken=null; session=null; page={rows:[]}; loadedFilters=null; selected=null; pending=null; reason='';deleteConfirm='';busy=false;csvBusy=false;refreshFailed=false;refreshReset=false;
   if(auth) await firebase.signOut(auth); renderLogin(); };
 async function login() { const generation=++epoch;error=''; renderLogin(true); try {
   if(boot.previewToken) previewToken=boot.previewToken;
@@ -67,11 +71,16 @@ const fieldSelect = (caption, items, value, onChange) => { const e=h('select',{d
 async function openMember(member) { if(busy||csvBusy)return;readController?.abort();readController=null;const ticket=++loadEpoch;const generation=epoch;busy=true;error='';render();try {
  if(pending)throw new Error('กรุณาตรวจผลคำขอเดิมให้เสร็จก่อนเปลี่ยนสิทธิ์รายการอื่น');
  const result=await api('member',{userId:member.id});if(ticket!==loadEpoch||generation!==epoch)return;
- selected=result.member;drawerAction='DETAIL';reason='';reviewing=false;pending=null;
+ selected=result.member;drawerAction='DETAIL';reason='';deleteConfirm='';reviewing=false;pending=null;
  }catch(e){if(ticket===loadEpoch&&generation===epoch)error=e.message;}finally{if(ticket===loadEpoch&&generation===epoch){busy=false;render();}} }
 function closeDrawer() { if(pending||busy)return; selected=null;reviewing=false;error='';render();document.querySelector('.text')?.focus(); }
 function startTrial(action) { if(pending||busy||session.role!=='OWNER')return;drawerAction=action;selectedPlan=trialActive(selected.trial)?selected.trial.plan:'PRO';days=7;reason='';reviewing=false;error='';render(); }
 function memberDetails() { if(pending||busy)return;drawerAction='DETAIL';reviewing=false;error='';render(); }
+// Members who signed in by phone may have no email; they confirm with the UID.
+const deletionConfirmation = member => member?.email || member?.id || '';
+const deletionReady = () => { const r=reason.trim();return !!selected&&!!deleteConfirm.trim()&&deleteConfirm.trim().toLowerCase()===deletionConfirmation(selected).toLowerCase()&&r.length>=3&&r.length<=500&&!r.includes('@'); };
+function startDeletion() { if(pending||busy||session.role!=='OWNER'||!selected)return;drawerAction='DELETE';deleteConfirm='';reason='';reviewing=false;error='';render(); }
+const retryPending = () => pending?.kind==='DELETE' ? submitDeletion() : submitTrial();
 function clearFilters() { if(csvBusy)return;query='';appliedQuery='';status='';platform='';from='';through='';cursor=undefined;return load(); }
 function emptyState() {
  if(busy)return h('div',{class:'empty',role:'status'},'กำลังโหลดข้อมูล…');
@@ -84,7 +93,8 @@ function emptyState() {
    trials:['ยังไม่มีสิทธิ์ทดลอง','เปิดหน้าสมาชิกเพื่อตรวจบัญชี แล้วเลือกให้สิทธิ์ทดลอง'],
    reports:reportScope==='LATEST_TRIAL'?['ยังไม่มีรายงานช่วงทดลองล่าสุด','เลือกทุกบัญชีเพื่อดูการใช้งานของสมาชิกที่ไม่ได้รับสิทธิ์ทดลอง']:['ยังไม่มีรายงานการใช้งาน','รายงานแสดงทุกบัญชีที่ตรงกับการค้นหาและช่วงวันที่ แม้ยังไม่ได้รับสิทธิ์ทดลอง'],
    audit:['ยังไม่มีประวัติการจัดการสิทธิ์','ประวัติจะแสดงเมื่อผู้ดูแลยืนยันให้สิทธิ์ ต่อเวลา หรือยกเลิกสิทธิ์ทดลอง'],
-   channels:['ยังไม่มีช่องทางที่เชื่อม','ช่องทางจะแสดงหลังสมาชิกเชื่อมบัญชีโซเชียลจากแอป']
+   channels:['ยังไม่มีช่องทางที่เชื่อม','ช่องทางจะแสดงหลังสมาชิกเชื่อมบัญชีโซเชียลจากแอป'],
+   deletions:['ยังไม่มีประวัติการลบบัญชี','ประวัติจะแสดงเมื่อเจ้าของระบบลบบัญชีตามคำขอของสมาชิก']
  };
  const [title,detail]=copy[view];
  return h('div',{class:'empty',role:'status'},h('h2',{},title),h('p',{},view==='trials'&&session.role!=='OWNER'?'เจ้าของระบบสามารถให้สิทธิ์ทดลองจากหน้าสมาชิกได้':detail),
@@ -99,12 +109,14 @@ function table() {
    ...((page.reportScope||reportScope)==='LATEST_TRIAL'?[['plan','ทดลองล่าสุด'],['startsAt','เริ่มทดลอง'],['expiresAt','สิ้นสุดทดลอง']]:[]),
    ['captionRequests','AI แคปชัน (ครั้ง)'],['editMinutes','AI ตัดต่อ (นาที)'],['quotaPostUnits','หน่วยช่องทางที่เลือก'],['postUnits','ผลส่งที่บันทึก'],
    ['livePostUnits','เผยแพร่สาธารณะ'],['draftPostUnits','ส่งเป็นร่าง'],['otherDeliveredPostUnits','ส่งถึงแบบอื่น/ไม่ทราบการมองเห็น'],['failedPostUnits','ส่งไม่สำเร็จ'],['pendingPostUnits','รอส่ง/กำลังส่ง'],['estimatedUsd','ต้นทุนประมาณ (USD)']],
- audit:[['createdAt','เมื่อ'],['actorId','รหัสผู้ดูแล'],['email','สมาชิก'],['action','การจัดการ'],['plan','แพ็กเกจ'],['reason','เหตุผล'],['before','ก่อนเปลี่ยน'],['after','หลังเปลี่ยน']]};
+ audit:[['createdAt','เมื่อ'],['actorId','รหัสผู้ดูแล'],['email','สมาชิก'],['action','การจัดการ'],['plan','แพ็กเกจ'],['reason','เหตุผล'],['before','ก่อนเปลี่ยน'],['after','หลังเปลี่ยน']],
+ deletions:[['createdAt','เริ่มเมื่อ'],['userId','รหัสบัญชี (UID)'],['status','สถานะ'],['lastErrorCode','ผลล่าสุด'],['completedAt','ลบเสร็จเมื่อ'],['actorId','รหัสผู้ดูแล'],['reason','เหตุผล']]};
  const cols=definitions[view]||[];
  if(!page.rows.length)return emptyState();
  const cell=(row,key)=> { if(key==='member')return button(h('span',{},h('span',{class:'member-name'},row.displayName||row.email),h('div',{class:'member-email'},row.email)),()=>openMember(row),'text');
    if(key==='trial')return trialText(row.trial); if(key==='estimatedUsd')return row[key]==null?'ยังไม่ได้ตั้งอัตรา':Number(row[key]).toFixed(4);
-   if(['createdAt','updatedAt','scheduledAt','connectedAt','startsAt','expiresAt'].includes(key))return when(row[key]);
+   if(['createdAt','updatedAt','scheduledAt','connectedAt','startsAt','expiresAt','completedAt'].includes(key))return when(row[key]);
+   if(key==='lastErrorCode')return row[key]?messages[row[key]]||row[key]:'—';
    if(key==='before'||key==='after'){const t=row[key];return t?`${translate(t.plan)} · ${when(t.expiresAt)}${t.revokedAt?' · ยกเลิก':''}`:'ไม่มี';}
    return translate(row[key]); };
  return h('div',{class:'table-wrap',tabindex:0,'aria-label':'ตารางข้อมูล เลื่อนแนวนอนได้'},h('table',{class:view},h('thead',{},h('tr',{},cols.map(([,caption])=>h('th',{scope:'col'},caption)))),
@@ -115,13 +127,14 @@ function render() { if(!session)return renderLogin();const focusedSearch=documen
  const side=h('aside',{class:'sidebar'},h('div',{class:'brand'},'PostDee'),button('เมนู',()=>side.classList.toggle('open'),'menu-toggle',{'aria-label':'เปิดเมนูผู้ดูแล'}),
    h('nav',{class:'nav','aria-label':'เมนูผู้ดูแล'},Object.entries(names).map(([id,name])=>button(h('span',{},icon(id),h('span',{},name)),()=>navigate(id),id===view?'selected':'',{'aria-current':id===view?'page':false,disabled:!!pending||csvBusy}))),
    h('div',{class:'role'},icon('members'),h('span',{},session.role==='OWNER'?'เจ้าของระบบ':'ผู้ดูแล · ดูข้อมูล')));
- const q=h('input',{type:'search',placeholder:'ค้นหาชื่อหรืออีเมล',value:query,maxlength:120,disabled:csvBusy,'data-focus':'search','aria-label':'ค้นหาชื่อหรืออีเมล',oninput:e=>{if(!csvBusy)query=e.target.value;}});
+ const searchLabel=view==='deletions'?'ค้นหารหัสบัญชี (UID)':'ค้นหาชื่อหรืออีเมล';
+ const q=h('input',{type:'search',placeholder:searchLabel,value:query,maxlength:120,disabled:csvBusy,'data-focus':'search','aria-label':searchLabel,oninput:e=>{if(!csvBusy)query=e.target.value;}});
  const form=h('form',{class:'search',onsubmit:e=>{e.preventDefault();if(csvBusy)return;appliedQuery=query;cursor=undefined;return load();}},h('label',{},q),h('button',{type:'submit',class:'primary',disabled:busy||csvBusy},'ค้นหา'));
  const content=h('section',{class:'content','aria-label':names[view]},success?h('p',{class:'success',role:'status'},success):null,error?h('div',{class:'error',role:'alert'},h('p',{},error),refreshFailed?button('ลองโหลดใหม่',()=>refreshData(),'',{disabled:refreshPaused()}):null):null);
  content.append(h('div',{class:'data-freshness'},h('p',{class:'refresh-status',role:'status','aria-live':'polite'}),button('รีเฟรชข้อมูล',()=>refreshData(),'refresh-button',{disabled:refreshPaused()})));
  if(refreshFailed&&loadedFilters)content.append(h('p',{class:'notice',role:'status'},'แสดงข้อมูลที่ยืนยันล่าสุด การโหลดข้อมูลหรือตัวกรองใหม่ยังไม่สำเร็จ'));
  if(refreshReset)content.append(h('p',{class:'notice',role:'status'},'อัปเดตข้อมูลแล้ว · แสดงหน้าแรกเพื่อไม่รวมรายการจากคนละรอบข้อมูล'));
- if(pending&&!selected)content.append(h('p',{class:'notice'},'มีคำขอเปลี่ยนสิทธิ์ที่ยังยืนยันผลไม่ได้ ตรวจคำขอเดิมก่อนทำรายการใหม่'),button('ตรวจผลคำขอเดิม',submitTrial,'primary',{disabled:busy}));
+ if(pending&&!selected)content.append(h('p',{class:'notice'},pending.kind==='DELETE'?'มีคำขอลบบัญชีที่ยังยืนยันผลไม่ได้ ตรวจคำขอเดิมก่อนทำรายการใหม่':'มีคำขอเปลี่ยนสิทธิ์ที่ยังยืนยันผลไม่ได้ ตรวจคำขอเดิมก่อนทำรายการใหม่'),button('ตรวจผลคำขอเดิม',retryPending,'primary',{disabled:busy}));
  if(view!=='overview')content.append(form);
  if(view==='posts')content.append(h('div',{class:'filters'},
    fieldSelect('สถานะ',[['','ทั้งหมด'],...['DRAFT','QUEUED','PUBLISHING','PUBLISHED','PARTIAL_PUBLISHED','FAILED'].map(id=>[id,translate(id)])],status,v=>{status=v;cursor=undefined;load();}),
@@ -156,7 +169,7 @@ function render() { if(!session)return renderLogin();const focusedSearch=documen
  updateFreshness();
 }
 function renderDrawer() { const active=trialActive(selected.trial); const viewer=session.role!=='OWNER';const details=viewer||drawerAction==='DETAIL';
- const title=details?'ข้อมูลสมาชิก':reviewing?'ตรวจสอบสิทธิ์':({GRANT:'ให้สิทธิ์ทดลอง',EXTEND:'ต่อเวลาทดลอง',REVOKE:'ยกเลิกสิทธิ์ทดลอง'})[drawerAction];
+ const title=details?'ข้อมูลสมาชิก':drawerAction==='DELETE'?(reviewing?'ยืนยันการลบบัญชี':'ลบบัญชีสมาชิก'):reviewing?'ตรวจสอบสิทธิ์':({GRANT:'ให้สิทธิ์ทดลอง',EXTEND:'ต่อเวลาทดลอง',REVOKE:'ยกเลิกสิทธิ์ทดลอง'})[drawerAction];
  const drawer=h('section',{class:'drawer',role:'dialog','aria-modal':'true','aria-label':title},h('header',{},h('h2',{},title),button('×',closeDrawer,'close',{'aria-label':'ปิดรายละเอียด',disabled:!!pending})));
  drawer.append(h('span',{class:'label'},'บัญชีที่เลือก'),h('div',{class:'identity'},selected.email),h('p',{class:'context'},`แพ็กเกจที่ซื้อ: ${translate(selected.paidPlan)} · ทดลอง: ${trialText(selected.trial)}`));
  if(selected.monthKey)drawer.append(h('p',{class:'notice'},`การใช้เดือน ${selected.monthKey} (UTC): หน่วยช่องทางที่เลือก ${selected.quotaPostUnits??selected.postUnits} · AI แคปชัน ${selected.captionRequests} ครั้ง · AI ตัดต่อ ${selected.editMinutes} นาที · หน่วยที่เลือกไม่ใช่ยอดเผยแพร่สำเร็จ`));
@@ -165,9 +178,22 @@ function renderDrawer() { const active=trialActive(selected.trial); const viewer
    if(selected.trial)drawer.append(h('p',{class:'notice'},`ช่วงทดลอง: ${when(selected.trial.startsAt)} ถึง ${when(selected.trial.expiresAt)}`));
    if(viewer)drawer.append(h('p',{class:'notice'},'บัญชีผู้ดูแลนี้มีสิทธิ์ดูข้อมูลเท่านั้น'));
    else {drawer.append(h('p',{class:'notice'},'การเปิดข้อมูลสมาชิกยังไม่เปลี่ยนสิทธิ์ เลือกการจัดการด้านล่างเมื่อต้องการทำรายการ'));
-     drawer.append(h('div',{class:'stack'},...(active?[button('ต่อเวลาทดลอง',()=>startTrial('EXTEND'),'primary'),button('ยกเลิกสิทธิ์ทดลอง',()=>startTrial('REVOKE'),'danger')]:[button('ให้สิทธิ์ทดลอง',()=>startTrial('GRANT'),'primary')])));}
+     drawer.append(h('div',{class:'stack'},...(active?[button('ต่อเวลาทดลอง',()=>startTrial('EXTEND'),'primary'),button('ยกเลิกสิทธิ์ทดลอง',()=>startTrial('REVOKE'),'danger')]:[button('ให้สิทธิ์ทดลอง',()=>startTrial('GRANT'),'primary')])));
+     drawer.append(h('div',{class:'stack'},h('p',{class:'notice'},'ใช้เมื่อสมาชิกขอลบบัญชี และยืนยันแล้วว่าคำขอมาจากเจ้าของบัญชี'),button('ลบบัญชีนี้',startDeletion,'danger')));}
    drawer.append(h('div',{class:'drawer-actions'},button('ปิด',closeDrawer)));
  }
+ else if(drawerAction==='DELETE'&&reviewing){drawer.append(h('div',{class:'review'},h('p',{},'ลบบัญชีถาวร'),h('p',{},selected.email||selected.id),h('p',{},`รหัสบัญชี: ${selected.id}`),h('p',{},`เหตุผล: ${reason.trim()}`)));
+   if(error)drawer.append(h('p',{class:'error',role:'alert'},error));
+   drawer.append(h('p',{class:'notice'},'ข้อมูลจะถูกลบทันทีและกู้คืนไม่ได้ · ไม่ยกเลิกแพ็กเกจในร้านค้า · บันทึกในประวัติการลบบัญชี'),h('div',{class:'drawer-actions'},button('กลับไปแก้ไข',()=>{reviewing=false;render();},'',{disabled:busy||!!pending}),button(busy?'กำลังลบ…':pending?'ลองอีกครั้งด้วยคำขอเดิม':'ลบบัญชีถาวร',submitDeletion,'danger',{disabled:busy})));}
+ else if(drawerAction==='DELETE'){const expected=deletionConfirmation(selected);
+   const review=button('ตรวจสอบก่อนลบ',()=>{if(!deletionReady())return;error='';reviewing=true;render();},'danger',{disabled:!deletionReady()});
+   const sync=()=>{review.disabled=!deletionReady();};
+   const confirm=h('input',{type:'text',value:deleteConfirm,autocomplete:'off',spellcheck:'false','data-focus':'delete-confirm','aria-label':`พิมพ์ ${expected} เพื่อยืนยัน`,oninput:e=>{deleteConfirm=e.target.value;sync();}});
+   const reasonInput=h('textarea',{maxlength:500,minlength:3,required:true,placeholder:'เช่น คำขอทางอีเมลวันที่ 26 ต.ค. (ห้ามใส่อีเมลหรือชื่อลูกค้า)','aria-label':'เหตุผล',oninput:e=>{reason=e.target.value;sync();}},reason);
+   drawer.append(h('p',{class:'error'},'ลบบัญชีถาวร ย้อนกลับไม่ได้'),h('p',{class:'notice'},'ลบโพสต์ เทมเพลต วิดีโอ หน้าเว็บร้านค้า การเชื่อมต่อโซเชียล และการเข้าสู่ระบบของสมาชิก · ไม่ยกเลิกแพ็กเกจใน Google Play / App Store'),
+     h('div',{class:'stack'},h('label',{},h('span',{class:'label'},`พิมพ์ ${expected} เพื่อยืนยัน`),confirm),h('label',{},h('span',{class:'label'},'เหตุผล (ห้ามมีอีเมล)'),reasonInput)));
+   if(error)drawer.append(h('p',{class:'error',role:'alert'},error));
+   drawer.append(h('div',{class:'drawer-actions'},button('กลับไปข้อมูลสมาชิก',memberDetails),review));}
  else if(reviewing){drawer.append(h('div',{class:'review'},h('p',{},`${translate(drawerAction)} · ${translate(selectedPlan)}`),drawerAction!=='REVOKE'?h('p',{},`${days} วัน${drawerAction==='EXTEND'?' ต่อจากวันสิ้นสุดเดิม':' นับจากเวลายืนยัน'}`):h('p',{},'ยกเลิกเฉพาะสิทธิ์ทดลอง แพ็กเกจที่ซื้อยังคงเดิม'),h('p',{},`เหตุผล: ${reason}`)));
    if(error)drawer.append(h('p',{class:'error',role:'alert'},error));
    drawer.append(h('p',{class:'notice'},'ไม่รีเซ็ตโควตา · ไม่เรียกเก็บเงินอัตโนมัติ'),h('div',{class:'drawer-actions'},button('กลับไปแก้ไข',()=>{reviewing=false;render();},'',{disabled:busy||!!pending}),button(busy?'กำลังตรวจผล…':pending?'ตรวจผลคำขอเดิม':'ยืนยัน',submitTrial,drawerAction==='REVOKE'?'danger':'primary',{disabled:busy})));}
@@ -178,13 +204,19 @@ function renderDrawer() { const active=trialActive(selected.trial); const viewer
    if(error)drawer.append(h('p',{class:'error',role:'alert'},error));
    drawer.append(h('p',{class:'notice'},'ไม่รีเซ็ตโควตา · ไม่เรียกเก็บเงินอัตโนมัติ'),h('div',{class:'drawer-actions'},button('กลับไปข้อมูลสมาชิก',memberDetails),button('ตรวจสอบสิทธิ์',()=>{if(reason.trim().length<3){reasonInput.setCustomValidity('ระบุเหตุผลอย่างน้อย 3 ตัวอักษร');reasonInput.reportValidity();return;} error='';reviewing=true;render();},'primary')));
  }
- if(pending&&!busy)drawer.append(button('ดูประวัติผู้ดูแล',()=>{selected=null;view='audit';query=pending.expectedEmail;appliedQuery=query;cursor=undefined;load();}));
+ if(pending&&!busy){const deletion=pending.kind==='DELETE';drawer.append(button(deletion?'ดูประวัติการลบบัญชี':'ดูประวัติผู้ดูแล',()=>{selected=null;view=deletion?'deletions':'audit';query=deletion?pending.userId:pending.expectedEmail;appliedQuery=query;cursor=undefined;load();}));}
  const backdrop=h('div',{class:'drawer-backdrop',onclick:closeDrawer}); app.append(backdrop,drawer);
- drawer.querySelector('button:not(:disabled),select:not(:disabled),textarea:not(:disabled)')?.focus();
+ drawer.querySelector('button:not(:disabled),select:not(:disabled),input:not(:disabled),textarea:not(:disabled)')?.focus();
  drawer.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();if(e.key==='Tab'){const focusable=[...drawer.querySelectorAll('button,input,select,textarea')].filter(n=>!n.disabled);const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
 }
-async function submitTrial(){ if(busy||csvBusy)return;const generation=epoch;pending ||= {requestId:crypto.randomUUID(),userId:selected.id,expectedEmail:selected.email,action:drawerAction,plan:selectedPlan,days,reason:reason.trim(),expectedVersion:selected.trial?.version??0};
+async function submitTrial(){ if(busy||csvBusy||pending?.kind==='DELETE')return;const generation=epoch;pending ||= {requestId:crypto.randomUUID(),userId:selected.id,expectedEmail:selected.email,action:drawerAction,plan:selectedPlan,days,reason:reason.trim(),expectedVersion:selected.trial?.version??0};
  busy=true;error='';render();try{await api('trials',pending);if(generation!==epoch)return;pending=null;selected=null;success='บันทึกสิทธิ์ทดลองแล้ว พร้อมประวัติการจัดการ';busy=false;await load();}catch(e){if(generation!==epoch)return;if(e.status>=400&&e.status<500)pending=null;error=e.message;busy=false;render();}}
+// Keeps the reviewed request id until the server confirms, so a retry continues the same audited deletion.
+async function submitDeletion(){ if(busy||csvBusy||session.role!=='OWNER'||(!pending&&!deletionReady()))return;const generation=epoch;
+ pending ||= {kind:'DELETE',requestId:crypto.randomUUID(),userId:selected.id,expectedEmail:selected.email??'',reason:reason.trim()};
+ const {kind,...request}=pending;busy=true;error='';render();
+ try{await api('account-deletions',request);if(generation!==epoch)return;pending=null;selected=null;reviewing=false;deleteConfirm='';reason='';success='ลบบัญชีแล้ว · ดูบันทึกได้ที่ประวัติการลบบัญชี';busy=false;await load();}
+ catch(e){if(generation!==epoch)return;if(e.status>=400&&e.status<500&&String(e.code||'').startsWith('ADMIN_'))pending=null;error=e.message;busy=false;render();}}
 async function downloadCsv(){if(busy||csvBusy||selected||pending||view!=='reports'||!page.rows.length)return;const generation=epoch;const request={...(loadedFilters||filters()),csv:true};csvBusy=true;error='';render();
  try{const csv=await api('view',request,true);if(generation!==epoch||!session)return;const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=h('a',{href:url,download:request.reportScope==='LATEST_TRIAL'?'postdee-trial-report.csv':'postdee-usage-report.csv'});a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  catch(e){if(generation===epoch)error=e.message;}finally{if(generation===epoch){csvBusy=false;render();}}}

@@ -413,6 +413,9 @@ describe('account routes', () => {
       }),
       disconnectIntegration: vi.fn(async ({ integrationId }) => {
         calls.push(`disconnect:${integrationId}`);
+      }),
+      deleteProfile: vi.fn(async ({ profileId }) => {
+        calls.push(`delete-profile:${profileId}`);
       })
     });
     const managedUploadService = createManagedUploadCleanupService({
@@ -439,8 +442,87 @@ describe('account routes', () => {
       'list',
       'disconnect:int-tiktok',
       'disconnect:int-future-platform',
+      'delete-profile:profile-delete',
       'media'
     ]);
+    const templates = await request(app)
+      .get('/templates')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    expect(templates.body.templates).toEqual([]);
+  });
+
+  it('keeps local data and the profile when PostPeer profile deletion fails', async () => {
+    const userId = 'postpeer-profile-delete-retry';
+    const socialConnectionStore = createInMemorySocialConnectionStore();
+    await socialConnectionStore.setProfileId({ userId, profileId: 'profile-kept' });
+    const deleteAllVideosForOwner = vi.fn(async () => undefined);
+    const deleteProfile = vi.fn(async () => {
+      throw new Error('PostPeer unavailable');
+    });
+    const app = createApp({
+      socialConnectionStore,
+      postPeerConnectClient: createPostPeerCleanupClient({ deleteProfile }),
+      videoStorage: createTestVideoStorage(deleteAllVideosForOwner)
+    });
+    await createTemplateAs(app, userId);
+
+    const response = await request(app)
+      .delete('/account')
+      .set('x-postdee-user-id', userId)
+      .expect(503);
+
+    expect(response.body.code).toBe('ACCOUNT_SOCIAL_CLEANUP_FAILED');
+    expect(deleteProfile).toHaveBeenCalledWith({ profileId: 'profile-kept' });
+    expect(deleteAllVideosForOwner).not.toHaveBeenCalled();
+    const templates = await request(app)
+      .get('/templates')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+    expect(templates.body.templates).toHaveLength(1);
+    await expect(socialConnectionStore.getProfileId(userId)).resolves.toBe('profile-kept');
+  });
+
+  it('does not revisit a deleted PostPeer profile when a later cleanup step is retried', async () => {
+    const userId = 'postpeer-profile-deleted-media-retry';
+    const socialConnectionStore = createInMemorySocialConnectionStore();
+    await socialConnectionStore.setProfileId({ userId, profileId: 'profile-gone' });
+    await socialConnectionStore.upsert({
+      userId,
+      platform: 'TIKTOK',
+      postPeerAccountId: 'int-tiktok'
+    });
+    const listIntegrations = vi.fn<NonNullable<PostPeerConnectClient['listIntegrations']>>(
+      async () => [{ id: 'int-tiktok', platform: 'TIKTOK' }]
+    );
+    const deleteProfile = vi.fn(async () => undefined);
+    let mediaAttempts = 0;
+    const app = createApp({
+      socialConnectionStore,
+      postPeerConnectClient: createPostPeerCleanupClient({ listIntegrations, deleteProfile }),
+      videoStorage: createTestVideoStorage(
+        vi.fn(async () => {
+          mediaAttempts += 1;
+          if (mediaAttempts === 1) {
+            throw new Error('R2 unavailable');
+          }
+        })
+      )
+    });
+    await createTemplateAs(app, userId);
+
+    const firstResponse = await request(app)
+      .delete('/account')
+      .set('x-postdee-user-id', userId)
+      .expect(503);
+    expect(firstResponse.body.code).toBe('ACCOUNT_MEDIA_CLEANUP_FAILED');
+    await expect(socialConnectionStore.getProfileId(userId)).resolves.toBeUndefined();
+
+    await request(app).delete('/account').set('x-postdee-user-id', userId).expect(200);
+
+    expect(listIntegrations).toHaveBeenCalledOnce();
+    expect(deleteProfile).toHaveBeenCalledOnce();
+    expect(mediaAttempts).toBe(2);
     const templates = await request(app)
       .get('/templates')
       .set('x-postdee-user-id', userId)
@@ -453,6 +535,7 @@ describe('account routes', () => {
     const socialConnectionStore = createInMemorySocialConnectionStore();
     await socialConnectionStore.setProfileId({ userId, profileId: 'profile-retry' });
     const deleteAllVideosForOwner = vi.fn(async () => undefined);
+    const deleteProfile = vi.fn(async () => undefined);
     const disconnectAttempts: string[] = [];
     let app: ReturnType<typeof createApp>;
     const postPeerConnectClient = createPostPeerCleanupClient({
@@ -472,7 +555,8 @@ describe('account routes', () => {
         if (integrationId === 'int-fails') {
           throw new Error('PostPeer unavailable');
         }
-      })
+      }),
+      deleteProfile
     });
     app = createApp({
       socialConnectionStore,
@@ -495,6 +579,8 @@ describe('account routes', () => {
 
     expect(response.body.code).toBe('ACCOUNT_SOCIAL_CLEANUP_FAILED');
     expect(disconnectAttempts).toEqual(['int-fails', 'int-still-attempted']);
+    // A remaining connection must stay reachable through its profile on retry.
+    expect(deleteProfile).not.toHaveBeenCalled();
     expect(deleteAllVideosForOwner).not.toHaveBeenCalled();
     const posts = await request(app)
       .get('/posts')

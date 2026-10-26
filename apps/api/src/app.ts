@@ -11,6 +11,8 @@ import type { PrismaClient } from '@prisma/client';
 import { registerAdminConsole } from './modules/admin/adminRoutes.js';
 import { createPrismaAdminDataSource, type AdminDataSource } from './modules/admin/adminDataSource.js';
 import { createPrismaTrialAccessStore } from './modules/admin/prismaTrialAccessStore.js';
+import type { AdminAccountDeletionStore } from './modules/admin/adminAccountDeletion.js';
+import { createPrismaAdminAccountDeletionStore } from './modules/admin/prismaAdminAccountDeletionStore.js';
 import type { TrialAccessStore } from './modules/admin/trialAccess.js';
 
 import { type ServerConfig, readServerConfig } from './config/env.js';
@@ -192,6 +194,7 @@ type AppPrismaClient = PrismaTemplateClient &
 type AppOptions = {
   adminDataSource?: AdminDataSource;
   trialAccessStore?: TrialAccessStore;
+  adminAccountDeletionStore?: AdminAccountDeletionStore;
   adminFirebaseVerifier?: FirebaseTokenVerifier;
   adminTestPreviewToken?: string;
   config?: ServerConfig;
@@ -885,7 +888,7 @@ export const createApp = (options: AppOptions = {}) => {
     store: socialConnectionStore, client: postPeerConnectClient,
     assertOwnerActive, runWithOwnerLifetime, now: options.now
   });
-  registerAccountRoutes(router, accountDeletionAuthMiddleware, {
+  const accountRoutes = registerAccountRoutes(router, accountDeletionAuthMiddleware, {
     monthlyAddonStore,
     postStore,
     templateStore,
@@ -925,6 +928,9 @@ export const createApp = (options: AppOptions = {}) => {
       trials: trialAccessStore,
       data: options.adminDataSource ?? createPrismaAdminDataSource(prismaClient as unknown as PrismaClient, config.adminConsole, options.now),
       now: options.now, runWithTarget: runWithOwnerLifetime,
+      accountDeletions: options.adminAccountDeletionStore ??
+        (prismaClient ? createPrismaAdminAccountDeletionStore(prismaClient as unknown as PrismaClient, options.now) : undefined),
+      deleteAccount: accountRoutes.deleteAccountAsOperator,
       testOnly: config.nodeEnv === 'test', testPreviewToken: options.adminTestPreviewToken
     });
   }

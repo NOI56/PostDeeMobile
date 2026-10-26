@@ -58,10 +58,11 @@ describe('render.yaml production config', () => {
     expectEnvValue(source, 'CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS', '"300"');
   });
 
-  it('rolls out managed multipart uploads without breaking installed clients', async () => {
+  it('requires managed multipart uploads so account deletion can abort every upload', async () => {
     const source = await readRenderConfig();
 
-    expectEnvValue(source, 'UPLOAD_PROTOCOL_MODE', 'dual');
+    // Legacy signed PUT URLs cannot be revoked and could land after deletion.
+    expectEnvValue(source, 'UPLOAD_PROTOCOL_MODE', 'multipart');
     expectEnvValue(source, 'MULTIPART_UPLOAD_PART_SIZE_BYTES', '"16777216"');
     expectEnvValue(source, 'MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS', '"3600"');
   });

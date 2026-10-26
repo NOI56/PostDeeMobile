@@ -2,6 +2,21 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Shop information layout (2026-10-26, locally verified)
+
+The selected mockup variant 1 moves logo/photo actions above separate shop-text
+and URL cards, keeps field labels above inputs, and shows character counters
+only on focus with their space reserved. URL settings use `แก้ไข` / `ย่อ` and
+still open automatically for invalid values. The information section moves its
+draft-save status to the footer with a reminder that live updates require
+explicit publication. Autosave, finish/save/return, logo crop, actual URLs,
+account/session guards and Basic 2 / Starter 7 / Pro 20 limits stay intact.
+No API, schema, dependency or feature-flag change is needed. Full Flutter tests
+(3,160 passed / 6 skipped), analysis, Staging build 12061 and native Emulator
+smoke passed. The user authorized the main push for this layout; Store/Production
+release remains separate. See the
+[scope and verification](../../docs/superpowers/plans/2026-10-26-shop-info-airy.md).
+
 ## Shop-link limits by plan (2026-10-26, API on Staging)
 
 One shop page remains available to every account: Basic/free permits 2 links,

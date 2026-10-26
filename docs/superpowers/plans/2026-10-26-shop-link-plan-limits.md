@@ -1,8 +1,9 @@
 # Shop-link limits by plan — 2026-10-26
 
-Status: locally verified implementation candidate; not pushed or API-deployed.
-The receipt below records local checks and an Emulator update, without claiming
-provider or released-API acceptance. Work starts from verified `origin/main`
+Status: source pushed to `main`; API deployed to Staging. Mobile build 12060
+is installed on the test Emulator, with no app-store or Production release.
+The receipts below distinguish local checks from post-deploy smoke checks.
+Work starts from verified `origin/main`
 `c56b4431bd0b8e0aba50777704ca5f198d1b4a48` on
 `codex/shop-link-plan-limits`. Preserve the recent account-deletion acceptance
 and restored read-only verifier-role records on that baseline.
@@ -164,10 +165,47 @@ independent of the number of stored/published shop links.
   `postdee-shop-link-plan-limits-api-20261026-*` and
   `postdee-shop-link-plan-limits-mobile-*-20261026.log`.
 
-Release remains pending: no push, merge or API deployment was performed for
-this change. The Emulator used the existing Staging API, so this is Mobile
+Pre-release status at local verification: no push, merge or API deployment had
+yet been performed. The Emulator used the existing Staging API, so this is Mobile
 compatibility/smoke evidence, not evidence that the new server gate is live.
 Deploy API first, then release Mobile, and verify the delivered versions.
 No database migration is required. Optional real-database/provider tests and
 real paid-account purchase/downgrade acceptance remain outside these local
 results; production was not changed.
+
+## Staging deployment receipt — 2026-10-26
+
+- The user authorized pushing `main` and deploying the API. Fresh remote check
+  still matched baseline `c56b4431`; a separate release review found no
+  unrelated changes, deleted files, schema/dependency/configuration changes or
+  feature-flag changes. The source commit is
+  `f4f39922a52dd8681f4582d4056da8edb062c902`, pushed to `origin/main` by a normal
+  fast-forward push. All full-test/build evidence above applies to this source.
+- Render workspace `tea-d45nsamuk2gs73cmhol0`, existing service
+  `postdee-api-staging` / `srv-d9bb72ojs32c739osa5g`, branch `main`, API
+  `https://postdee-api-staging.onrender.com`. Auto-deploy was and remains off;
+  no environment variables, infrastructure or Production service were changed.
+- Manual deploy `dep-dbfh91ijnfac73ccsa8g` resolved the exact source commit
+  above and became **live at 15:52:45 Asia/Bangkok** (08:52:45 UTC).
+  The previous live deploy was `dep-dbfg74o473hc73d2mjsg` at `d1138796`.
+- Startup reported **25 migrations found / no pending migrations**, API
+  listening on port 10000 and the existing PostPeer empty-backlog guard
+  enforced. This feature introduced no new migration.
+- Post-live checks: `/health` returned **200** with `status: ok`; the existing
+  `/p/postdee-demo-20261005` returned **200**, retained shop `noikub` and its two
+  published links. Repeated page responses differed only in the expected
+  per-request CSP style nonce. Normalized-content SHA-256 was stable at
+  `E1BF7EDDD330C7902646AC195FAC70EDC7EE0111D6F75F2CADA7D8FA1DB8D0D5`.
+  This is a repeated post-live check, not a pre/post byte-equality claim.
+- Unauthenticated `/billing/subscription` returned **401** as expected, and a
+  bounded error-level runtime-log query after go-live returned no entries.
+  No publish/update, purchase, account/trial change or content deletion was
+  performed by these post-deploy checks.
+- Live authenticated `subscription.maxProfileLinks` and paid-account downgrade
+  were not directly exercised: no ready approved auth-token smoke fixture was
+  available. The 2/7/20 gate is covered by local API/Mobile regressions and the
+  exact deployed commit; the earlier native Free 2/2 smoke can also use the
+  Mobile fallback, so it is not proof of the additive live API response.
+- The follow-up documentation commit records this receipt only and uses
+  `[skip render]`; it does not require another API deployment. Mobile store
+  distribution and Production acceptance remain separate release steps.

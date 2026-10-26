@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Shop-link limits by plan (2026-10-26, implementation candidate)
+## Shop-link limits by plan (2026-10-26, API on Staging)
 
 - Basic/free allows 2 links, Starter 199 THB/month 7, and Pro 299 THB/month 20.
   Resolve access through the existing effective-plan rules, including active
@@ -22,8 +22,9 @@ Build roadmap for PostDee.
 - Deploy API before Mobile. Old Mobile safely receives the new limit error;
   a missing field from an older API uses the client 2/7/20 mapping only after a
   successful fresh subscription read. No production header override, schema
-  migration, dependency or provider is added. This candidate note makes no
-  test, install or deployment claim. See the
+  migration, dependency or provider is added. API commit `f4f39922` is live on
+  Staging; Mobile build 12060 is installed on the test Emulator. Store and
+  Production release remain separate. See the
   [scope and release checks](docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md).
 
 ## Account deletion PostPeer profile cleanup (2026-10-25, source candidate)
@@ -1916,7 +1917,7 @@ removed so this package plan does not compete with a separate review feature.
 
 Package rules:
 
-- Shop-link 2/7/20 limits are the 2026-10-26 candidate contract. New additions
+- Shop-link 2/7/20 limits are the 2026-10-26 contract, with API on Staging. New additions
   count stored links including disabled links; publication counts only the
   enabled payload. Existing over-limit drafts and published pages follow the
   preservation and explicit-next-publish rules above, not automatic deletion.

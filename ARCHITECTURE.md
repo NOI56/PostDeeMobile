@@ -1467,7 +1467,7 @@ LinkInBioProfile (`appearance JSONB`, nullable for legacy rows). The server
 normalizes presets and accepts only known fonts/icons/button shapes and exact
 six-digit hex colors; it never accepts CSS or HTML. Clients that omit the entire
 appearance object retain the current saved settings. Packages keep equal
-customization rights and one page each. The 2026-10-26 shop-link candidate
+customization rights and one page each. The 2026-10-26 shop-link change
 limits new additions and the next publish to Basic 2 / Starter 7 / Pro 20,
 while retaining the 20-link hard compatibility ceiling.
 
@@ -1492,7 +1492,9 @@ not local editing of existing content. A successful older subscription response
 without `maxProfileLinks` uses the client 2/7/20 mapping; a failed read is not
 permission. Deploy API first so older Mobile receives the safe limit rejection.
 No schema migration, dependency, provider or appearance-version change is
-introduced by this candidate; no delivery/verification is claimed. See
+introduced by this change. API commit `f4f39922` is live on Staging and Mobile
+build 12060 is installed on the test Emulator; see the checks and remaining
+live-auth/store/Production acceptance limits in
 `docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md`.
 
 The mobile draft keeps the same appearance contract, plus disabled links, in
@@ -1684,7 +1686,7 @@ its generic brand symbols.
 Link order remains the local `customLinks` array order, including disabled
 links; enabled state remains a set of stable link IDs. Drag ordering and the
 existing up/down menu change that same array. The mobile draft retains its
-20-link hard compatibility ceiling; the 2026-10-26 candidate allows new
+20-link hard compatibility ceiling; the 2026-10-26 implementation allows new
 additions only below the current plan's 2/7/20 stored-link limit without
 trimming legacy content. Publish filters enabled links in order and enforces
 the current plan limit, then merges the

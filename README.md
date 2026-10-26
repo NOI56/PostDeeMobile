@@ -1268,7 +1268,9 @@ the existing effective-plan resolver; expired paid access falls back to Basic
 unless another valid entitlement applies. Deploy API enforcement and additive
 `subscription.maxProfileLinks` before the matching Mobile build; older clients
 receive `403 LINK_IN_BIO_LINK_LIMIT_EXCEEDED` without changing the saved page.
-This is a candidate contract, not verification or delivery evidence. See the
+The API is deployed to Staging at `f4f39922`; Mobile build 12060 is installed
+on the test Emulator. Store/Production release and live paid-account acceptance
+remain separate. See the
 [plan and compatibility rules](docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md).
 The page is hosted by the existing PostDee API at
 `/p/<slug>`; the app resolves the URL against its configured API domain. No
@@ -2176,7 +2178,7 @@ numbers.
 
 Returns the current authenticated user's plan status and feature flags for the mobile Home screen.
 
-The 2026-10-26 shop-link candidate adds `subscription.maxProfileLinks` from
+The 2026-10-26 shop-link change adds `subscription.maxProfileLinks` from
 the current effective plan: Basic 2 / Starter 7 / Pro 20, including valid active
 trial access. Existing subscription fields and social-post/AI accounting are
 unchanged; deploy this additive API and its publish gate before new Mobile.

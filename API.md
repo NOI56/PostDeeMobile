@@ -1072,7 +1072,7 @@ are sent by the app. HTTP(S) opens with
 noopener/noreferrer; email/phone links invoke the visitor's installed handler
 without opening a new browser tab.
 
-Shop-link plan-limit candidate (2026-10-26): every new
+Shop-link plan limits (2026-10-26, API on Staging at `f4f39922`): every new
 `POST /link-in-bio/publish`, including an update of an existing page, is limited
 to Basic/free 2, Starter 7, or Pro 20 links. The request array is the enabled
 subset selected by Mobile; the API does not count disabled local draft links.
@@ -1097,8 +1097,9 @@ compatibility storage/input ceiling remains 20; this does not migrate or delete
 stored content. Deploy this API enforcement before the corresponding Mobile
 build. Older Mobile receives the 403 safely; updated Mobile can map a missing
 `maxProfileLinks` field from an older API only after a successful fresh
-subscription read. This candidate adds no endpoint, schema migration,
-dependency or provider and is not test/deployment evidence. See the
+subscription read. This change adds no endpoint, schema migration,
+dependency or provider. Exact deployment, checks and live-auth acceptance limits
+are recorded in the
 [implementation and compatibility plan](docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md).
 
 Success uses `{ "status": "ok", "profile": ... }`. Profile contains

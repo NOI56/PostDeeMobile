@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Shop-link limits by plan (2026-10-26, implementation candidate)
+## Shop-link limits by plan (2026-10-26, API on Staging)
 
 One shop page remains available to every account: Basic/free permits 2 links,
 Starter 199 THB/month 7, and Pro 299 THB/month 20. New draft additions count
@@ -25,8 +25,9 @@ deletion, trimming or unpublishing on downgrade.
 Deploy the API's authoritative publish gate before Mobile. Old Mobile receives
 `403 LINK_IN_BIO_LINK_LIMIT_EXCEEDED` without changing the published page.
 No new schema migration, dependency, provider or production plan-header
-override is introduced. This is a candidate specification, not evidence that
-tests, deployment or native acceptance have passed. See the
+override is introduced. API commit `f4f39922` is live on Staging; Mobile build
+12060 is installed on the test Emulator. Store/Production release and live paid
+acceptance remain separate. See the
 [shop-link plan](../../docs/superpowers/plans/2026-10-26-shop-link-plan-limits.md).
 
 ## Full-screen shop-link preview (2026-10-26, local candidate)

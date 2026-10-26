@@ -14,7 +14,18 @@ Future<void> showBioControl(WidgetTester tester, Finder finder,
 Future<void> _tapVisibleBioKey(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey(key));
   await showBioControl(tester, finder);
-  await tester.tap(finder);
+  final scrollables = find.ancestor(of: finder, matching: find.byType(Scrollable));
+  if (key.startsWith('link-in-bio-template-minimal-') &&
+      scrollables.evaluate().isNotEmpty) {
+    // Tall template cards can extend below a sticky footer even after
+    // ensureVisible. Tap the part that is inside the actual scroll viewport.
+    final visible = tester.getRect(finder).intersect(
+        tester.getRect(scrollables.first));
+    expect(visible.isEmpty, isFalse);
+    await tester.tapAt(visible.center);
+  } else {
+    await tester.tap(finder);
+  }
   await tester.pumpAndSettle();
 }
 

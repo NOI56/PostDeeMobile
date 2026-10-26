@@ -200,6 +200,69 @@ void main() {
     }
   });
 
+  for (final width in [320.0, 393.0]) {
+    testWidgets('compact samples keep all minimal choices at $width px',
+        (tester) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(MaterialApp(
+          home: MediaQuery(
+              data: const MediaQueryData(
+                  disableAnimations: true, textScaler: TextScaler.linear(1.5)),
+              child: Scaffold(
+                  body: SingleChildScrollView(
+                      child: BioThemePicker(
+                          appearance: const LinkInBioAppearance(),
+                          onChanged: (_) {}))))));
+      await tester.pumpAndSettle();
+      expect(find.byType(BioTemplateSample), findsNWidgets(20));
+      final sample = tester.getSize(find.byType(BioTemplateSample).first);
+      expect(sample.height, lessThanOrEqualTo(sample.width * 1.6),
+          reason: 'The gallery should show compact, tappable page samples.');
+      expect(sample.height, greaterThan(sample.width));
+      expect(find.text('ภาพย่อเป็นตัวอย่าง แตะเพื่อดูร้านของคุณก่อนเลือก'),
+          findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final enabled in [true, false]) {
+    testWidgets('template selection is accessible with enabled=$enabled',
+        (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        final choices = profileTemplates
+            .where((template) => template.category == 'minimal')
+            .take(2)
+            .toList();
+        await tester.pumpWidget(MaterialApp(
+            home: Scaffold(
+                body: SingleChildScrollView(
+                    child: BioThemePicker(
+                        appearance:
+                            LinkInBioAppearance.forTemplate(choices.first.id),
+                        enabled: enabled,
+                        onChanged: (_) {})))));
+        await tester.pumpAndSettle();
+        for (final choice in choices) {
+          expect(
+              tester.getSemantics(find
+                  .byKey(ValueKey('link-in-bio-template-state-${choice.id}'))),
+              isSemantics(
+                  label: choice.name,
+                  hint: 'ดูตัวอย่างก่อนใช้',
+                  isButton: true,
+                  isSelected: choice == choices.first,
+                  hasTapAction: enabled));
+        }
+      } finally {
+        semantics.dispose();
+      }
+    });
+  }
+
   for (final appearance in [
     const LinkInBioAppearance(),
     LinkInBioAppearance.forTheme('dark'),
@@ -296,6 +359,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('link-in-bio-template-preview')),
         findsOneWidget);
+    expect(find.text('ใช้กับแบบร่าง'), findsOneWidget);
+    expect(find.text('ใช้แบบนี้'), findsNothing);
     expect(find.text('ร้านเดิม'), findsOneWidget);
     expect(find.text('ข้อความของร้าน'), findsOneWidget);
     expect(selected, isNull);

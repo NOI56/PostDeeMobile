@@ -78,6 +78,60 @@ void main() {
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
+  testWidgets('advanced decoration is visible before the template grid at 320px with large text',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _store.saveDraft(_draft);
+    await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+                textScaler: const TextScaler.linear(1.5)),
+            child: child!),
+        home: LinkInBioScreen(loadProfile: () async => null)));
+    await tester.pumpAndSettle();
+    await showBioStep(tester, 'theme');
+    final advanced = find.byKey(const ValueKey('link-in-bio-decorate'));
+    final grid = find.byKey(const ValueKey('link-in-bio-template-grid'));
+    expect(find.text('ปรับสี รูป และตัวอักษร'), findsOneWidget);
+    expect(advanced.hitTestable(), findsOneWidget);
+    expect(tester.getBottomLeft(advanced).dy, lessThan(tester.getTopLeft(grid).dy));
+    await tester.tap(advanced);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('link-in-bio-decoration-preview')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('decoration save and return keeps publishing separate and leaves shop Done unchanged',
+      (tester) async {
+    var publications = 0;
+    await _store.saveDraft(_draft);
+    await _mount(tester, LinkInBioScreen(loadProfile: () async => null,
+        publishProfile: ({required storeName, required slug, required links, appearance}) async {
+          publications++;
+          return _profile();
+        }));
+    final done = find.byKey(const ValueKey('link-in-bio-done'));
+    const hint = 'บันทึกเป็นแบบร่าง ต้องเผยแพร่เพื่ออัปเดตเว็บจริง';
+    await showBioStep(tester, 'info');
+    expect(find.descendant(of: done, matching: find.text('เสร็จสิ้น')), findsOneWidget);
+    expect(find.text(hint), findsNothing);
+    await _tap(tester, 'link-in-bio-done');
+    await showBioStep(tester, 'theme');
+    expect(find.descendant(of: done, matching: find.text('บันทึกแล้วกลับ')), findsOneWidget);
+    expect(find.text(hint).hitTestable(), findsOneWidget);
+    await selectBioTemplate(tester, 'minimal-white-editorial');
+    await _tap(tester, 'link-in-bio-done');
+    expect(find.byKey(const ValueKey('link-in-bio-card-shop')), findsOneWidget);
+    expect(find.text(hint), findsNothing);
+    expect((await _store.loadDraft())!.appearance.templateId, 'minimal-white-editorial');
+    expect(publications, 0);
+    expect(find.byKey(const ValueKey('link-in-bio-public-url')), findsNothing);
+  });
+
   for (final ownerChanged in [false, true]) {
     testWidgets('deleted draft link undo preserves order and owner ($ownerChanged)',
         (tester) async {

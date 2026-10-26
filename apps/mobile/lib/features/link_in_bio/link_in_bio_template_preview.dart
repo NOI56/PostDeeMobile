@@ -157,14 +157,49 @@ class BioTemplatePreview extends StatelessWidget {
                         border: Border.all(
                             color: bioColor(appearance.nameStyle.color)))
                     : null,
-                child: Text(_name,
-                    key: const ValueKey('link-in-bio-template-store-name'),
-                    textAlign: centered ? TextAlign.center : TextAlign.start,
-                    style: bioTextStyle(appearance.nameStyle,
-                            size: headingSize,
-                            weight: heavy ? FontWeight.w800 : FontWeight.w600)
-                        .copyWith(
-                            height: 1.2, letterSpacing: framed ? 4 : null))),
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final style = bioTextStyle(appearance.nameStyle,
+                          size: headingSize,
+                          weight: heavy ? FontWeight.w800 : FontWeight.w600)
+                      .copyWith(height: 1.2, letterSpacing: framed ? 4 : null);
+                  final scaler = MediaQuery.textScalerOf(context);
+                  var size = headingSize;
+                  if (constraints.hasBoundedWidth &&
+                      scaler.scale(headingSize) > headingSize) {
+                    final painter = TextPainter(
+                        textDirection: Directionality.of(context),
+                        textScaler: scaler);
+                    double widthAt(double value) {
+                      painter.text = TextSpan(
+                          text: _name, style: style.copyWith(fontSize: value));
+                      painter.layout();
+                      return painter.width;
+                    }
+
+                    if (widthAt(headingSize) > constraints.maxWidth) {
+                      // Keep a larger accessible heading, while giving short
+                      // names a chance to fit. Long names still wrap in full.
+                      final scale = scaler.scale(headingSize) / headingSize;
+                      var lower =
+                          headingSize * math.max(.75, 1 / math.sqrt(scale));
+                      var upper = headingSize;
+                      for (var attempt = 0; attempt < 8; attempt++) {
+                        final candidate = (lower + upper) / 2;
+                        if (widthAt(candidate) <= constraints.maxWidth) {
+                          lower = candidate;
+                        } else {
+                          upper = candidate;
+                        }
+                      }
+                      size = lower;
+                    }
+                    painter.dispose();
+                  }
+                  return Text(_name,
+                      key: const ValueKey('link-in-bio-template-store-name'),
+                      textAlign: centered ? TextAlign.center : TextAlign.start,
+                      style: style.copyWith(fontSize: size));
+                })),
             const SizedBox(height: 8),
             if (nameDivider) ...[
               Divider(
@@ -568,7 +603,7 @@ class BioTemplatePreview extends StatelessWidget {
             : Row(children: [
                 if (numbered) ...[
                   Container(
-                      width: 26,
+                      constraints: const BoxConstraints(minWidth: 26),
                       margin: const EdgeInsets.only(right: 10),
                       padding: const EdgeInsets.only(right: 8),
                       decoration: const {'editorial', 'ticket'}
@@ -580,6 +615,7 @@ class BioTemplatePreview extends StatelessWidget {
                           : null,
                       child: Text('${index + 1}'.padLeft(2, '0'),
                           key: ValueKey('link-in-bio-link-number-${link.id}'),
+                          softWrap: false,
                           style: bioTextStyle(style, size: 12))),
                 ],
                 logo,

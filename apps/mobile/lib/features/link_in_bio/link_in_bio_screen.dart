@@ -1391,6 +1391,14 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   Widget _themeStep() =>
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _heading('เลือกธีมที่ชอบ'),
+        BioUiPress(
+            enabled: _canEdit && !_isLoading,
+            child: OutlinedButton.icon(
+                key: const ValueKey('link-in-bio-decorate'),
+                onPressed: _canEdit && !_isLoading ? _decorate : null,
+                icon: const Icon(Icons.tune),
+                label: const Text('ปรับสี รูป และตัวอักษร'))),
+        const SizedBox(height: 16),
         BioPreviewViewport(
             height: (MediaQuery.sizeOf(context).height * .17)
                 .clamp(120.0, 150.0)
@@ -1412,14 +1420,6 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   _appearance = value;
                     _markEdited();
                   }))),
-        const SizedBox(height: 16),
-        BioUiPress(
-            enabled: _canEdit && !_isLoading,
-            child: OutlinedButton.icon(
-                key: const ValueKey('link-in-bio-decorate'),
-                onPressed: _canEdit && !_isLoading ? _decorate : null,
-                icon: const Icon(Icons.tune),
-                label: const Text('ตกแต่งเพิ่มเติม'))),
       ]);
 
   Widget _previewStep() =>
@@ -1495,13 +1495,27 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 ? AppTheme.navOverlap
                 : 16),
         child: _step == 0 || _step == 2
-            ? BioUiPress(
-                enabled: ready,
-                child: FilledButton(
-                    key: const ValueKey('link-in-bio-done'),
-                    onPressed: ready ? _finishSection : null,
-                    style: buttonStyle,
-                    child: const Text('เสร็จสิ้น')))
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_step == 2) ...[
+                    Text('บันทึกเป็นแบบร่าง ต้องเผยแพร่เพื่ออัปเดตเว็บจริง',
+                        key: const ValueKey('link-in-bio-decoration-publish-hint'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondary)),
+                    const SizedBox(height: 8),
+                  ],
+                  BioUiPress(
+                      enabled: ready,
+                      child: FilledButton(
+                          key: const ValueKey('link-in-bio-done'),
+                          onPressed: ready ? _finishSection : null,
+                          style: buttonStyle,
+                          child: Text(
+                              _step == 2 ? 'บันทึกแล้วกลับ' : 'เสร็จสิ้น'))),
+                ])
             : Row(children: [
                 Expanded(
                     child: BioUiPress(

@@ -115,7 +115,7 @@ class _BioThemePickerState extends State<BioThemePicker> {
                                           'link-in-bio-template-use'),
                                       onPressed: () =>
                                           Navigator.pop(context, candidate),
-                                      child: const Text('ใช้แบบนี้')))))),
+                                      child: const Text('ใช้กับแบบร่าง')))))),
                 ])));
         });
     if (!mounted || result == null || !widget.enabled) return;
@@ -143,7 +143,7 @@ class _BioThemePickerState extends State<BioThemePicker> {
           key: const ValueKey('link-in-bio-category-minimal'),
           style: const TextStyle(fontWeight: FontWeight.w700)),
       const SizedBox(height: 4),
-      const Text('แตะแบบที่ชอบเพื่อดูตัวอย่างก่อนเลือก',
+      const Text('ภาพย่อเป็นตัวอย่าง แตะเพื่อดูร้านของคุณก่อนเลือก',
           style: TextStyle(fontSize: 12)),
       if (current != null || widget.appearance.themeId != 'minimal')
         Padding(
@@ -182,36 +182,50 @@ class _BioThemePickerState extends State<BioThemePicker> {
                                               ? 2
                                               : 1)),
                                   clipBehavior: Clip.antiAlias,
-                                  child: InkWell(
+                                  child: Semantics(
                                       key: ValueKey(
-                                          'link-in-bio-template-${template.id}'),
+                                          'link-in-bio-template-state-${template.id}'),
+                                      button: true,
+                                      enabled: widget.enabled,
+                                      selected: widget.appearance.templateId ==
+                                          template.id,
+                                      label: template.name,
+                                      hint: 'ดูตัวอย่างก่อนใช้',
+                                      excludeSemantics: true,
                                       onTap: widget.enabled
                                           ? () => _preview(template)
                                           : null,
-                                      child: Padding(
-                                          padding: const EdgeInsets.all(8),
-                                          child: Column(children: [
-                                            BioTemplateSample(
-                                                template: template),
-                                            const SizedBox(height: 8),
-                                            Row(children: [
-                                              Expanded(
-                                                  child: Text(template.name,
-                                                      style: const TextStyle(
-                                                          fontSize: 12,
-                                                          fontWeight:
-                                                              FontWeight.w600),
-                                                      maxLines: 2,
-                                                      overflow: TextOverflow
-                                                          .ellipsis)),
-                                              if (widget
-                                                      .appearance.templateId ==
-                                                  template.id)
-                                                Icon(Icons.check_circle,
-                                                    color: colors.primary,
-                                                    size: 17),
-                                            ]),
-                                          ]))))))
+                                      child: InkWell(
+                                          key: ValueKey(
+                                              'link-in-bio-template-${template.id}'),
+                                          onTap: widget.enabled
+                                              ? () => _preview(template)
+                                              : null,
+                                          child: Padding(
+                                              padding: const EdgeInsets.all(8),
+                                              child: Column(children: [
+                                                BioTemplateSample(
+                                                    template: template),
+                                                const SizedBox(height: 8),
+                                                Row(children: [
+                                                  Expanded(
+                                                      child: Text(template.name,
+                                                          style: const TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600),
+                                                          maxLines: 2,
+                                                          overflow: TextOverflow
+                                                              .ellipsis)),
+                                                  if (widget.appearance
+                                                          .templateId ==
+                                                      template.id)
+                                                    Icon(Icons.check_circle,
+                                                        color: colors.primary,
+                                                        size: 17),
+                                                ]),
+                                              ])))))))
                   ]))),
     ]);
   }
@@ -256,7 +270,7 @@ class BioTemplateSample extends StatelessWidget {
             child: RepaintBoundary(
                 child: LayoutBuilder(
                     builder: (_, constraints) => SizedBox(
-                        height: constraints.maxWidth * 2,
+                        height: constraints.maxWidth * 1.45,
                         width: double.infinity,
                         child: ClipRect(
                             child: OverflowBox(

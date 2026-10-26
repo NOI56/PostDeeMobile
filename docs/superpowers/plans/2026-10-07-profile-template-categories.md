@@ -1,5 +1,68 @@
 # Profile template categories — 2026-10-07
 
+## Minimal gallery usability follow-up — 2026-10-26 (local candidate)
+
+The owner approved the decoration follow-up from verified clean main
+`296bee17199bb92fe8460336dc7c748c679e9ef5`.
+
+Implemented scope:
+
+- Move the existing advanced controls above the gallery with the label
+  `ปรับสี รูป และตัวอักษร`, so changing colors, images or fonts does not require
+  scrolling past all twenty choices.
+- Keep the same twenty minimal templates in a more compact gallery. Clarify
+  sample content and the selected design, including assistive selection cues;
+  keep the real owner-content preview and explicit confirmation.
+- Label template confirmation `ใช้กับแบบร่าง` and the decoration footer
+  `บันทึกแล้วกลับ`. Preserve draft save/cancel and the separate publication
+  action; neither label implies an updated public shop page.
+- Improve the 320px preview at larger text sizes: keep two-digit link numbers
+  together and make headings fit without disabling system text scaling.
+
+The 100 catalog IDs, seven legacy theme IDs, existing drafts/appearances,
+owned images, native/public rendering contracts and API validation remain
+supported. No automatic appearance conversion, API change, migration,
+configuration, dependency, entitlement or new category is part of this scope.
+The earlier minimal-only checks and APK12057 receipt below do not certify this
+follow-up. Its verification is recorded separately here.
+
+### Follow-up verification
+
+Changed sources are `link_in_bio_screen.dart`, `link_in_bio_theme_picker.dart`
+and `link_in_bio_template_preview.dart`. Regression changes cover the manager,
+customization screen, picker, navigation helper and new
+`link_in_bio_template_responsive_test.dart`; Mobile README and this plan carry
+the matching scope and verification record.
+
+- Tests first reproduced the compact-gallery and decoration-control issues and
+  seventeen responsive failures before implementation. Final targeted tests
+  passed, including the 21 real-Thai-font responsive cases, accessible selected
+  and disabled cards, preview cancellation, draft save and separate publication.
+- Full Flutter suite: 3,100 passed, six skipped. `flutter analyze --no-pub`
+  reported no issues; `git diff --check` passed. API code, schema, shared catalog,
+  flags, dependencies and lockfiles have no changes relative to `296bee17`.
+- Production-widget visual fixtures passed at 320px/150% text and 393px/100%
+  text. They cover the first-screen advanced control, compact gallery, full
+  preview, explicit apply, draft save and return to the manager with existing
+  name, URL and links retained. Fixture callbacks performed no external writes.
+  Thumbnails are 27.5% shorter; cropped samples are not full-page previews.
+- The validated Staging helper built Android x86_64 build `12058`, package
+  `com.postdee.postdee_mobile.staging`, using the existing Firebase Staging and
+  RevenueCat Test Store configuration. APK signature verification passed;
+  SHA-256 is
+  `8485A57AE9DE9E9F1769D358B4F56E7D42D735795E239816520A966BFF7838AF`.
+- In-place Emulator update from 12057 to 12058 retained UID `10197` and the same
+  internal storage. The existing session, saved clip, shop name, two links and
+  saved draft loaded again. Native checks verified the top advanced control,
+  Thai labels, advanced open/cancel and template preview/cancel. No shop design
+  was applied or published during native verification.
+- Remaining limits: native system nonlinear font scaling, actual TalkBack use,
+  and a visual pass of every thumbnail are not verified. Public web CSS remains
+  unchanged; normal-size typography parity is retained, not a new guarantee of
+  identical large-font rendering across native and web. Widget fixture footer
+  fallback glyphs are a test-font limitation; native Thai footer labels rendered
+  correctly. This task adds no migration or API deployment.
+
 ## Minimal-only Mobile picker — 2026-10-26 (candidate)
 
 The owner requests only `เรียบง่าย` in Profile Link → Decoration. The candidate

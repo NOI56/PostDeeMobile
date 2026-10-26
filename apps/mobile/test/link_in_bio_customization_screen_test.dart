@@ -522,12 +522,20 @@ void main() {
         })));
     await tester.pumpAndSettle();
     await selectBioTemplate(tester, 'minimal-white-editorial');
+    expect(sent, isNull);
+    await _tap(tester, 'link-in-bio-done');
+    expect(find.byKey(const ValueKey('link-in-bio-add')), findsOneWidget);
+    expect((await store.loadDraft())!.appearance.templateId,
+        'minimal-white-editorial');
+    expect(sent, isNull);
     await _tap(tester, 'link-in-bio-publish');
     expect(sent?.templateId, 'minimal-white-editorial');
     expect(find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsNothing);
     await selectBioTemplate(tester, 'minimal-mono-pair');
     expect(
         find.textContaining('มีการแก้ไขที่ยังไม่ได้เผยแพร่'), findsOneWidget);
+    await _tap(tester, 'link-in-bio-done');
+    expect((await store.loadDraft())!.appearance.templateId, 'minimal-mono-pair');
     expect(sent?.templateId, 'minimal-white-editorial');
   });
 

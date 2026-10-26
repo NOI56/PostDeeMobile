@@ -2,6 +2,32 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Shop-link decoration usability (2026-10-26, local candidate)
+
+The follow-up starts from verified main `296bee17`. It provides a shorter gallery
+of the same twenty minimal templates, clearer sample/selected-state cues, and
+moves the existing advanced controls above the gallery under
+`ปรับสี รูป และตัวอักษร`. No additional category or customization feature is
+introduced.
+
+The preview action becomes `ใช้กับแบบร่าง`; the decoration footer becomes
+`บันทึกแล้วกลับ`. Both retain local draft behavior, with publication remaining
+a separate review/action. Improve narrow-screen headings and keep two-digit
+link numbers on one line at larger text sizes without disabling the user's
+system text scaling.
+
+Preserve all 100 catalog IDs, seven legacy theme IDs, saved appearances,
+owned media and native/public rendering contracts. Opening or cancelling the
+picker does not replace an existing appearance. There is no API, schema,
+migration, configuration, dependency or entitlement change. Local verification
+passed 3,100 Flutter tests (six skipped), analysis and the Staging APK build.
+Build 12058 is installed on the existing Pixel_8 Emulator with the package UID
+and storage preserved. Visual fixtures cover 320px/150% text and 393px/100% text;
+native checks cover the updated entry, labels, preview and cancellation.
+System nonlinear font scaling and all-template visual parity are not certified.
+These checks are separate from the earlier minimal-only APK12057 release. See the
+[profile-template record](../../docs/superpowers/plans/2026-10-07-profile-template-categories.md).
+
 ## Usability fixes (2026-10-26, local candidate)
 
 Analytics clears previous totals before loading a date range and shows load

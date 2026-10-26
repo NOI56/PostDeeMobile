@@ -6,6 +6,7 @@ import { activeTrial, createMemoryTrialAccessStore } from '../src/modules/admin/
 import type { AdminDataSource, AdminMember, AdminView } from '../src/modules/admin/adminDataSource.js';
 import type { AdminReportSummary } from '../src/modules/admin/adminUsageReport.js';
 import { adminChannelResult } from '../src/modules/admin/adminDataSource.js';
+import { createMemoryAdminAccountDeletionStore } from '../src/modules/admin/adminAccountDeletion.js';
 
 const app = express(); app.use(express.json({ limit: '16kb' }));
 const viewer = process.argv.includes('--viewer'); const emptyTrials = process.argv.includes('--empty-trials');
@@ -16,6 +17,7 @@ if (portArguments.length > 1 || (requestedPort !== undefined && (!/^\d+$/.test(r
 }
 const port = requestedPort === undefined ? (emptyTrials ? 4176 : 4174) + (viewer ? 1 : 0) : Number(requestedPort);
 const trials = createMemoryTrialAccessStore();
+const accountDeletions = createMemoryAdminAccountDeletionStore();
 const time = new Date().toISOString();
 const members: AdminMember[] = [
   { id:'fixture-mali',email:'mali@example.com',displayName:'Mali S.',paidPlan:'BASIC',createdAt:time,updatedAt:time,postCount:12,channelCount:2 },
@@ -35,6 +37,7 @@ const data: AdminDataSource = { member, view: async (view: AdminView, options) =
     : view==='members' ? filtered
     : view==='trials' ? filtered.filter(r=>r.trial).map(r=>({...r,trialStatus:activeTrial(r.trial??null)?'ACTIVE':r.trial?.revokedAt?'REVOKED':'EXPIRED'}))
     : view==='audit' ? (await trials.history()).filter(r=>ids.has(r.userId)).map(r=>({...r,email:members.find(m=>m.id===r.userId)?.email}))
+    : view==='deletions' ? (await accountDeletions.history()).filter(r=>!options.query||r.userId===options.query)
     : view==='reports' ? filtered.filter(r=>options.reportScope==='ALL_ACCOUNTS'||r.trial).map(r=>{
       const i=members.findIndex(found=>found.id===r.id);const latest=options.reportScope!=='ALL_ACCOUNTS';
       const usageFrom=latest?new Date(Math.max(Date.parse(r.trial!.startsAt),options.from?.getTime()??-Infinity)).toISOString():window.from;
@@ -58,6 +61,8 @@ const data: AdminDataSource = { member, view: async (view: AdminView, options) =
 const previewToken = viewer ? 'fixture-viewer' : 'fixture-owner';
 registerAdminConsole(app,{config:{origin:`http://127.0.0.1:${port}`,environment:'LOCAL',ownerUids:['fixture-owner'],viewerUids:['fixture-viewer'],
   firebaseWeb:{apiKey:'fixture',authDomain:'fixture.firebaseapp.com',projectId:'fixture',appId:'fixture'}},data,trials,testOnly:true,testPreviewToken:previewToken,
+  // Fixture deletion only removes the in-memory sample member.
+  accountDeletions,deleteAccount:async userId=>{const index=members.findIndex(r=>r.id===userId);if(index>=0)members.splice(index,1);return {status:200,body:{status:'ok'}};},
   authenticate:(req,res,next)=>{const id=req.get('authorization')?.replace('Bearer ','');
     if(!['fixture-owner','fixture-viewer'].includes(id??'')){res.sendStatus(401);return;}
     res.locals.authUser={id,provider:'firebase',email:`${id}@example.com`,authenticatedAtSeconds:Date.now()/1000};next();}});

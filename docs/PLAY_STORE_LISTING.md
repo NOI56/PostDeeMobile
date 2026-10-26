@@ -174,7 +174,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
   ประเภทข้อมูล, ผู้รับข้อมูล, ความปลอดภัย, retention และ deletion ให้ครบ
 - [x] สร้าง public account-deletion URL ที่ผู้ใช้ส่งคำขอลบได้โดยไม่ต้องติดตั้งแอปใหม่:
   API เสิร์ฟ `GET /account-deletion` (26 ต.ค. 2026) ใช้งานได้เมื่อ Production API
-  ทำงาน และต้องมีขั้นตอนดำเนินการคำขอทางอีเมลก่อนส่ง Store
+  ทำงาน; คำขอทางอีเมลดำเนินการด้วยปุ่มลบบัญชีในหน้าแอดมิน (`docs/ADMIN_CONSOLE.md`)
 - [ ] ทดสอบ in-app deletion ด้วย production services และระบุข้อมูลที่ต้องเก็บต่อเพราะกฎหมาย (ถ้ามี)
 - [ ] ยืนยันว่า production ทุก endpoint เข้ารหัสระหว่างส่งผ่าน HTTPS/TLS ก่อนตอบ
   “Data is encrypted in transit”

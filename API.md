@@ -379,9 +379,30 @@ All responses use private/no-store. Every POST requires exact configured `Origin
 | Route | Contract |
 | --- | --- |
 | `GET /admin/api/session` | Role, email, environment; owner lists are never exposed |
-| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit; optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
+| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit/deletions (`deletions` searches by exact Firebase UID); optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
 | `POST /admin/api/member` | `userId`; existing member details, purchased plan, separate trial, current UTC-month usage |
 | `POST /admin/api/trials` | Owner only, auth_time within 15 minutes; command below |
+| `POST /admin/api/account-deletions` | Owner only, auth_time within 15 minutes; deletes a member on their verified request (see below) |
+
+`POST /admin/api/account-deletions` takes `{requestId (UUID), userId,
+expectedEmail, reason}`. `expectedEmail` must match the member's current email
+(empty for phone-only members); `reason` is 3–500 characters with no control
+characters and no `@`, because the record is retained after deletion and must
+not hold the member's address. Owner/Viewer UIDs return `409
+ADMIN_DELETE_PROTECTED`. The first call stores a PENDING `AdminAccountDeletion`
+row (request id, actor UID, target UID, reason, intent hash; no User foreign
+key, no email) and then runs the exact `DELETE /account` saga for that UID
+without the member's recent sign-in requirement; every other gate, drain,
+provider/media/database cleanup and Firebase identity deletion is unchanged,
+including `FIREBASE_AUTH_DELETE_ENABLED`. Saga errors return the saga's status
+and `code` (for example `503 ACCOUNT_DELETION_UNAVAILABLE` while disabled) and
+are stored as `lastErrorCode`; retrying the same request id continues even if
+the member row is already gone. A completed request replays `200` without
+running cleanup again, and a reused id with another intent returns `409
+ADMIN_REQUEST_CONFLICT`. Success returns `{status: "ok", deletion}`. The route
+does not run inside the target's owner lifetime, so the saga's drain cannot
+wait on its own request. Apply migration `20261026010000_admin_account_deletions`
+before deploying this API.
 
 View responses contain `rows`, optional `total`, `nextCursor`, `note`, and `checkedAt`.
 The usage-accuracy update adds `asOf` (one observation time per read snapshot),
@@ -2472,7 +2493,8 @@ Public, unauthenticated HTML page for the Google Play "Account deletion URL"
 (Production: `https://postdee-api.onrender.com/account-deletion`). It names
 PostDee, shows the in-app steps (Account tab → ลบบัญชี → ลบบัญชีถาวร), offers an
 email request to `postdee.support@gmail.com` answered within 30 days, and lists
-the data deleted and the data kept (deletion proof, unlinked add-on
+the data deleted and the data kept (deletion proof, including the operator
+record for email requests handled through `POST /admin/api/account-deletions`, unlinked add-on
 transaction IDs, the 30-day store-link reservation, store purchase records,
 already published social posts, on-device drafts, provider backups/logs).
 Thai is primary, with an English summary. The response carries no script,

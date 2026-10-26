@@ -88,7 +88,8 @@ a { color: var(--accent); font-weight: 600; overflow-wrap: anywhere; }
 <section>
 <h2>ข้อมูลที่อาจเก็บไว้</h2>
 <ul>
-<li><strong>หลักฐานการลบ:</strong> รหัสบัญชีภายในและเวลาที่ยืนยันการลบ
+<li><strong>หลักฐานการลบ:</strong> รหัสบัญชีภายใน เวลาที่ยืนยันการลบ
+และกรณีขอลบทางอีเมล บันทึกว่าทีมงานคนใดดำเนินการและเหตุผล
 เก็บไว้ต่อไปเพื่อยืนยันว่าลบครบและกันการทำรายการซ้ำ ไม่มีอีเมล ชื่อ หรือเนื้อหาของคุณ</li>
 <li><strong>เลขรายการซื้อเครดิตเพิ่ม:</strong> เก็บไว้โดยไม่ผูกกับบัญชี
 เพื่อกันไม่ให้นำใบเสร็จเดิมมาใช้ซ้ำ</li>
@@ -122,7 +123,8 @@ uploaded videos and covers, Link in Bio page and images, social account connecti
 (including your profile at our publishing provider PostPeer), plan, quota and credit
 balances, and push notification tokens.</p>
 <h3>Kept</h3>
-<p>An internal account ID and deletion timestamp as proof of deletion; add-on purchase
+<p>An internal account ID and deletion timestamp as proof of deletion (for email requests,
+also which team member processed it and why); add-on purchase
 transaction IDs, unlinked from you, to prevent receipt reuse; your old store link name,
 reserved for 30 days; purchase records held by Google Play, the App Store and
 RevenueCat under their policies (deleting the account does not cancel a subscription);

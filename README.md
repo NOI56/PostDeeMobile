@@ -2811,7 +2811,10 @@ The public `GET /account-deletion` page (Play "Account deletion URL",
 `https://postdee-api.onrender.com/account-deletion` in Production) explains the
 in-app steps and an email request to `postdee.support@gmail.com`, plus the data
 deleted and kept; see `API.md`. Support contact in the app and legal drafts is
-`postdee.support@gmail.com`.
+`postdee.support@gmail.com`. Verified email requests are handled with the
+owner-only **ลบบัญชีนี้** action in the admin console, which runs the same
+deletion saga and keeps an email-free `AdminAccountDeletion` record (migration
+`20261026010000_admin_account_deletions`); see `docs/ADMIN_CONSOLE.md`.
 
 Production account deletion is temporarily disabled with
 `FIREBASE_AUTH_DELETE_ENABLED=false`; the shared drain is delivered to Staging,

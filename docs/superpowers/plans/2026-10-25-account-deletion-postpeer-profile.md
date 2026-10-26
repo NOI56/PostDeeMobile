@@ -78,8 +78,8 @@ page to the duration of one provider request.
    the flag `true` and no key the API refuses to start.
 4. ~~Publish a public account-deletion request page.~~ Added in source; see
    [public deletion page](#public-deletion-page-and-support-address-2026-10-26).
-   Still needed: an operator procedure (or admin action) for email requests,
-   since the email path promises deletion within 30 days.
+   The admin action for email requests followed; see
+   [admin console deletion](#admin-console-deletion-for-email-requests-2026-10-26).
 5. Physical-device check of the in-app flow, including reauthentication.
 
 Deployment order for this change: API only. Any environment receives it with a
@@ -151,3 +151,54 @@ module passes 128 tests; a Chromium render at 390 px has no horizontal
 overflow in light or dark mode. Mobile contact tests (3) were observed failing
 first and pass after the change. Full-suite results are recorded in the
 commit summary for this change.
+
+## Admin console deletion for email requests (2026-10-26)
+
+The public page promises email requests are handled within 30 days, and the
+admin console had no way to delete an account. The owner asked for a delete
+button there.
+
+- `registerAccountRoutes` now wraps the unchanged `DELETE /account` body in an
+  internal `runAccountDeletion(authUser, responder, operatorAuthorized)` and
+  returns `deleteAccountAsOperator(uid)`. Operator mode only skips the owner's
+  recent sign-in requirement; proof recording, owner lock, durable drain,
+  provider/media/database cleanup, Firebase identity deletion and the
+  `FIREBASE_AUTH_DELETE_ENABLED` gate are the same code path.
+- `POST /admin/api/account-deletions`: owner only, admin sign-in within 15
+  minutes, same-origin JSON header, UUID request id, `expectedEmail` binding
+  (UID confirmation in the UI when a member has no email), reason 3–500
+  characters without `@`, Owner/Viewer UIDs protected. The route does not run
+  inside the target's owner lifetime, otherwise the saga's drain would wait on
+  its own ticket.
+- `AdminAccountDeletion` (additive migration
+  `20261026010000_admin_account_deletions`, no User foreign key, status and
+  completion CHECK constraints) keeps request id, actor UID, target UID,
+  reason, intent hash, status, last error code and times. A retry with the
+  same request id continues after the member row is gone; a completed request
+  replays without cleanup; a different intent returns `ADMIN_REQUEST_CONFLICT`.
+- Admin UI: **ลบบัญชีนี้** in the owner member drawer, typed confirmation,
+  review step, **ลบบัญชีถาวร**, retained request id with **ลองอีกครั้งด้วยคำขอเดิม**,
+  Thai messages for every saga error code, and a new **ประวัติการลบบัญชี** page
+  (search by exact UID). The local preview fixture supports the flow.
+- The public page and privacy draft now disclose the operator record.
+
+Verification:
+
+- New tests were observed failing first: 8 route/integration tests (including
+  the real saga through `createApp`: data removed, identity deleted, member's
+  own stale session still refused; and closed while the flag is off), 1 data
+  source view test, 4 browser-script UI tests and 4 PostgreSQL tests.
+- Full API suite: 177 files, 2,845 passed, 50 skipped; typecheck, build,
+  `prisma validate` and Prisma helper typechecks pass.
+- A throwaway local PostgreSQL 16.x cluster on `127.0.0.1:55439` applied all
+  migrations with no schema drift (`prisma migrate diff --exit-code`); the 4 new
+  and 18 existing admin database tests pass, and the DB-enabled full suite
+  passes 2,867 with 32 skipped (other DB suites use separate variables). The
+  cluster was stopped and deleted. Production runs PostgreSQL 18; this check
+  used 16.
+- Chromium against `npm run admin:preview` (fixture data only): confirmation
+  disabled until the email matches and the reason has no address, deletion
+  removes the sample member, history shows the completed record, no page
+  errors, no horizontal overflow at 390 px.
+- Not verified: Staging/Production deployment, the migration on hosted
+  databases, real Firebase/R2/PostPeer cleanup through the admin action.

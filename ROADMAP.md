@@ -19,7 +19,14 @@ Build roadmap for PostDee.
 - 2026-10-26: public `GET /account-deletion` page for the Play listing (in-app
   steps, email request answered within 30 days, data deleted/kept) and the
   support contact moves to `postdee.support@gmail.com` in Mobile and legal
-  drafts. Email requests still need an operator procedure before launch.
+  drafts.
+- 2026-10-26: owner-only admin console **ลบบัญชีนี้** action for verified email
+  requests runs the same `DELETE /account` saga (no member re-sign-in), with
+  typed email confirmation, an email-free reason, protected admin UIDs, a
+  retryable request id and a retained `AdminAccountDeletion` record shown in a
+  new **ประวัติการลบบัญชี** page. Additive migration
+  `20261026010000_admin_account_deletions` must run before this API; the action
+  stays closed while `FIREBASE_AUTH_DELETE_ENABLED=false`.
 - No schema, migration, flag, response field or Mobile change; API-only deploy.
   `FIREBASE_AUTH_DELETE_ENABLED` stays `false` until a disposable Staging
   account passes real Firebase/R2/PostPeer cleanup, the Production service

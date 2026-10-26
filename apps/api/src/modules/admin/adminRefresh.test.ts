@@ -97,18 +97,20 @@ const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve()
 const member = { id: 'fixture-member', email: 'member@example.com', paidPlan: 'BASIC', displayName: 'Fixture member', trial: null };
 const page = (extra: Record<string, unknown> = {}) => ({ rows: [member], total: 1, asOf: new Date().toISOString(), checkedAt: new Date().toISOString(), ...extra });
 
-async function browser(fixtureMember: Record<string, unknown> = member) {
+async function browser(fixtureMember: Record<string, unknown> = member, role = 'OWNER') {
   const document = new TestDocument();
   const requests: { path: string; body: Record<string, unknown>; signal: AbortSignal }[] = [];
   let viewReply = async (_body: Record<string, unknown>): Promise<Reply> => reply(page());
   let trialReply = async (): Promise<Reply> => reply({ status: 'ok' });
+  let deletionReply = async (): Promise<Reply> => reply({ status: 'ok', deletion: { status: 'COMPLETED' } });
   const fetch = vi.fn(async (url: string, options: { body?: string; signal: AbortSignal }) => {
     if (url === '/admin/config') return reply({ previewToken: 'fixture-owner', environment: 'LOCAL' });
     const path = url.replace('/admin/api/', ''); const body = JSON.parse(options?.body ?? '{}');
     requests.push({ path, body, signal: options.signal });
-    if (path === 'session') return reply({ role: 'OWNER', environment: 'LOCAL' });
+    if (path === 'session') return reply({ role, environment: 'LOCAL' });
     if (path === 'member') return reply({ member: fixtureMember });
     if (path === 'trials') return trialReply();
+    if (path === 'account-deletions') return deletionReply();
     if (path === 'view') return viewReply(body);
     throw new Error(`Unexpected fixture request ${path}`);
   });
@@ -116,11 +118,12 @@ async function browser(fixtureMember: Record<string, unknown> = member) {
   const context: Record<string, unknown> = { document, Node: TestNode, fetch, AbortController, Date, Intl, Blob,
     URL: { createObjectURL: vi.fn(() => 'blob:fixture'), revokeObjectURL: vi.fn() }, crypto: { randomUUID: () => 'fixture-request' },
     setTimeout, clearTimeout, setInterval, clearInterval, console };
-  await runInNewContext(`(async () => { ${source}\n globalThis.controls = { login, load, navigate, openMember, startTrial, submitTrial, downloadCsv, logout }; })()`, context);
+  await runInNewContext(`(async () => { ${source}\n globalThis.controls = { login, load, navigate, openMember, startTrial, submitTrial, startDeletion, submitDeletion, downloadCsv, logout }; })()`, context);
   const controls = context.controls as Record<string, (...args: unknown[]) => Promise<void>>;
   await controls.login(); await flush();
   return { document, controls, requests, views: () => requests.filter(request => request.path === 'view'),
     setViewReply: (handler: typeof viewReply) => { viewReply = handler; }, setTrialReply: (handler: typeof trialReply) => { trialReply = handler; },
+    setDeletionReply: (handler: typeof deletionReply) => { deletionReply = handler; },
     button: (text: string) => { const button = document.app.querySelectorAll('button').find(item => item.textContent === text); if (!button) throw new Error(`Missing button: ${text}`); return button; } };
 }
 
@@ -282,5 +285,69 @@ describe('administrator refresh and report presentation', () => {
     const ui = await browser({ ...member, trial: { plan: 'PRO', startsAt: '2026-10-19T00:00:00Z', expiresAt: '2026-10-26T00:00:00Z', revokedAt: null } });
     await ui.controls.openMember(member); expect(ui.document.app.querySelector('.drawer')!.textContent).toContain('ยังไม่เริ่ม');
     expect(ui.document.app.querySelector('.drawer')!.querySelectorAll('button').some(button => button.textContent === 'ต่อเวลาทดลอง')).toBe(false);
+  });
+});
+
+describe('administrator account deletion presentation', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-26T08:00:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
+  const fill = async (ui: Awaited<ReturnType<typeof browser>>, confirmation: string, reason: string) => {
+    const confirm = ui.document.app.querySelector('[data-focus=delete-confirm]')!;
+    confirm.value = confirmation; await confirm.emit('input');
+    const text = ui.document.app.querySelector('textarea')!; text.value = reason; await text.emit('input');
+  };
+
+  it('requires the typed member email and a reason without an address before the final step', async () => {
+    const ui = await browser(); await ui.controls.openMember(member);
+    await ui.button('ลบบัญชีนี้').click();
+    expect(ui.button('ตรวจสอบก่อนลบ').disabled).toBe(true);
+    await fill(ui, 'other@example.com', 'คำขอทางอีเมล'); expect(ui.button('ตรวจสอบก่อนลบ').disabled).toBe(true);
+    await fill(ui, 'MEMBER@example.com', 'ลูกค้า member@example.com'); expect(ui.button('ตรวจสอบก่อนลบ').disabled).toBe(true);
+    await fill(ui, 'MEMBER@example.com', 'คำขอทางอีเมล 26 ต.ค.'); expect(ui.button('ตรวจสอบก่อนลบ').disabled).toBe(false);
+    expect(ui.requests.some(request => request.path === 'account-deletions')).toBe(false);
+
+    await ui.button('ตรวจสอบก่อนลบ').click();
+    expect(ui.document.app.querySelector('.review')!.textContent).toContain('member@example.com');
+    await ui.button('ลบบัญชีถาวร').click(); await flush();
+
+    expect(ui.requests.filter(request => request.path === 'account-deletions').map(request => request.body)).toEqual([
+      { requestId: 'fixture-request', userId: 'fixture-member', expectedEmail: 'member@example.com', reason: 'คำขอทางอีเมล 26 ต.ค.' }
+    ]);
+    expect(ui.document.app.querySelector('.drawer')).toBeNull();
+    expect(ui.document.app.textContent).toContain('ลบบัญชีแล้ว');
+  });
+
+  it('keeps the reviewed request for a retry after an unknown result and does not refresh meanwhile', async () => {
+    const ui = await browser(); await ui.controls.openMember(member); await ui.controls.startDeletion();
+    await fill(ui, 'member@example.com', 'คำขอทางอีเมล'); await ui.button('ตรวจสอบก่อนลบ').click();
+    ui.setDeletionReply(async () => reply({ code: 'ACCOUNT_MEDIA_CLEANUP_FAILED' }, 503));
+    await ui.button('ลบบัญชีถาวร').click(); await flush(); await vi.advanceTimersByTimeAsync(180000);
+
+    expect(ui.document.app.textContent).toContain('ลบวิดีโอยังไม่ครบ');
+    expect(ui.views()).toHaveLength(1);
+    ui.setDeletionReply(async () => reply({ status: 'ok', deletion: { status: 'COMPLETED' } }));
+    await ui.button('ลองอีกครั้งด้วยคำขอเดิม').click(); await flush();
+    const sent = ui.requests.filter(request => request.path === 'account-deletions');
+    expect(sent).toHaveLength(2); expect(sent[1].body.requestId).toBe(sent[0].body.requestId);
+    expect(ui.document.app.textContent).toContain('ลบบัญชีแล้ว');
+  });
+
+  it('confirms by UID when the member has no email and hides the action from viewers', async () => {
+    const ui = await browser({ ...member, email: '' }); await ui.controls.openMember(member); await ui.controls.startDeletion();
+    await fill(ui, 'fixture-member', 'คำขอทางโทรศัพท์'); expect(ui.button('ตรวจสอบก่อนลบ').disabled).toBe(false);
+
+    const viewer = await browser(member, 'VIEWER'); await viewer.controls.openMember(member);
+    expect(viewer.document.app.querySelectorAll('button').some(button => button.textContent === 'ลบบัญชีนี้')).toBe(false);
+  });
+
+  it('lists deletion history with Thai status and no customer email column', async () => {
+    const ui = await browser();
+    ui.setViewReply(async () => reply(page({ rows: [{ requestId: 'r1', actorId: 'owner', userId: 'deleted-uid', reason: 'คำขอทางอีเมล',
+      status: 'COMPLETED', lastErrorCode: null, createdAt: '2026-10-26T01:00:00Z', completedAt: '2026-10-26T01:00:05Z' }] })));
+    await ui.controls.navigate('deletions'); await flush();
+    expect(ui.document.app.textContent).toContain('ประวัติการลบบัญชี');
+    expect(ui.document.app.textContent).toContain('deleted-uid');
+    expect(ui.document.app.textContent).toContain('ลบเรียบร้อย');
+    expect(ui.document.app.querySelector('table')!.textContent).not.toContain('สมาชิก');
   });
 });

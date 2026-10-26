@@ -2118,7 +2118,10 @@ before cleanup. Memory-only coordination remains process-local. Production
 stays off pending its own migration/all-process rollout and real
 Redis/provider/Firebase,
 legacy upload/OAuth and device/slow-network acceptance.
-Queued jobs are then removed and PostPeer
+The admin console's owner-only deletion action reuses this saga through
+`deleteAccountAsOperator`, replacing only the member's recent sign-in with the
+owner's verified request and recording an `AdminAccountDeletion` row that has
+no User relation. Queued jobs are then removed and PostPeer
 integration pages are listed so every external integration id can be
 disconnected. Only after every disconnect succeeds is the emptied PostPeer
 profile deleted, closing late browser OAuth completion, and its local mapping

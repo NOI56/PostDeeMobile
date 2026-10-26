@@ -3,14 +3,18 @@ import { Router, type Express, type RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import { readAuthUser } from '../auth/authTypes.js';
 import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
+import type { AccountDeletionOutcome } from '../account/accountRoutes.js';
 import type { AdminConsoleConfig } from './adminConfig.js';
 import { adminViews, type AdminDataSource, type AdminView } from './adminDataSource.js';
 import { AdminError, type TrialAccessStore, type TrialCommand } from './trialAccess.js';
+import { accountDeletionIntentHash, readAccountDeletionReason, type AdminAccountDeletionStore } from './adminAccountDeletion.js';
 import { toCsv } from './adminReports.js';
 
 type Options = { config?: AdminConsoleConfig; authenticate: RequestHandler; trials?: TrialAccessStore;
   data?: AdminDataSource; now?: () => Date; runWithTarget?: RunWithActiveOwner;
+  accountDeletions?: AdminAccountDeletionStore; deleteAccount?: (userId: string) => Promise<AccountDeletionOutcome>;
   testPreviewToken?: string; testOnly?: boolean };
+const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const registerAdminConsole = (app: Express, options: Options) => {
   const { config, trials, data, authenticate } = options;
   if (!config) return;
@@ -133,6 +137,46 @@ export const registerAdminConsole = (app: Express, options: Options) => {
       res.json({ status: 'ok', trial: result.trial });
     } catch (error) {
       const safe = error instanceof AdminError ? error : new AdminError('ADMIN_TRIAL_UNAVAILABLE', 503);
+      res.status(safe.status).json({ code: safe.code });
+    }
+  });
+  // Deletes a member on their verified request (e.g. by email from the public
+  // deletion page) through the same saga as in-app deletion. It must not run
+  // inside the target's owner lifetime, or the saga's drain would wait on it.
+  api.post('/account-deletions', async (req, res) => {
+    const actor = readAuthUser(res.locals)!;
+    if (res.locals.adminRole !== 'OWNER') { res.status(403).json({ code: 'ADMIN_OWNER_REQUIRED' }); return; }
+    const age = now().getTime() / 1000 - (actor.authenticatedAtSeconds ?? 0);
+    if (!Number.isFinite(age) || age < -60 || age > 900) { res.status(401).json({ code: 'ADMIN_REAUTH_REQUIRED' }); return; }
+    const { accountDeletions, deleteAccount } = options;
+    if (!accountDeletions || !deleteAccount) { res.status(503).json({ code: 'ADMIN_ACCOUNT_DELETION_UNAVAILABLE' }); return; }
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b || typeof b.requestId !== 'string' || !requestIdPattern.test(b.requestId) ||
+          typeof b.userId !== 'string' || !b.userId || b.userId.length > 128 ||
+          typeof b.expectedEmail !== 'string' || b.expectedEmail.length > 254) throw new AdminError('ADMIN_DELETION_INVALID', 400);
+      const reason = readAccountDeletionReason(b.reason);
+      if (config.ownerUids.includes(b.userId) || config.viewerUids.includes(b.userId)) throw new AdminError('ADMIN_DELETE_PROTECTED');
+      const intentHash = accountDeletionIntentHash({ actorId: actor.id, userId: b.userId, reason });
+      // A retry of a reviewed request continues even after the member row is gone.
+      let record = await accountDeletions.find(b.requestId);
+      if (!record) {
+        const member = await data.member(b.userId);
+        if (!member) throw new AdminError('ADMIN_MEMBER_NOT_FOUND', 404);
+        if (member.email.toLowerCase() !== b.expectedEmail.trim().toLowerCase()) throw new AdminError('ADMIN_MEMBER_CHANGED');
+        record = await accountDeletions.start({ requestId: b.requestId, actorId: actor.id, userId: member.id, reason, intentHash });
+      }
+      if (record.intentHash !== intentHash) throw new AdminError('ADMIN_REQUEST_CONFLICT');
+      if (record.status === 'COMPLETED') { res.json({ status: 'ok', deletion: record }); return; }
+      const outcome = await deleteAccount(record.userId);
+      if (outcome.status !== 200) {
+        const code = typeof outcome.body.code === 'string' ? outcome.body.code : 'ADMIN_ACCOUNT_DELETION_UNAVAILABLE';
+        await accountDeletions.fail(record.requestId, code);
+        res.status(outcome.status >= 400 ? outcome.status : 503).json({ code }); return;
+      }
+      res.json({ status: 'ok', deletion: await accountDeletions.complete(record.requestId) });
+    } catch (error) {
+      const safe = error instanceof AdminError ? error : new AdminError('ADMIN_ACCOUNT_DELETION_UNAVAILABLE', 503);
       res.status(safe.status).json({ code: safe.code });
     }
   });

@@ -143,6 +143,24 @@ model AdminTrialAudit {
   @@index([userId, createdAt])
 }
 
+// Operator account deletions from the admin console. Deliberately no User
+// relation: the record must outlive the account it deletes. It keeps the
+// Firebase UID, actor and reason only, never the member's email or name.
+model AdminAccountDeletion {
+  requestId     String    @id
+  actorId       String
+  userId        String
+  reason        String
+  intentHash    String
+  status        String
+  lastErrorCode String?
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  @@index([createdAt, requestId])
+  @@index([userId, createdAt])
+}
+
 model LinkInBioProfile {
   id          String   @id @default(cuid())
   userId      String   @unique

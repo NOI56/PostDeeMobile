@@ -202,3 +202,46 @@ Verification:
   errors, no horizontal overflow at 390 px.
 - Not verified: Staging/Production deployment, the migration on hosted
   databases, real Firebase/R2/PostPeer cleanup through the admin action.
+
+## Staging real-service acceptance (2026-10-26)
+
+The owner approved merging PR #36 after green CI, deploying Staging and a
+disposable-account test. Production stayed user-suspended throughout.
+
+- Merge `35890b1`; Staging `dep-dbfepmnavr4c73dsis80` Live at 06:03:28 UTC,
+  applying `20261026010000_admin_account_deletions` (25 migrations).
+- A new service-account key could not be created (organization policy). The
+  owner instead granted Firebase Authentication Admin to the existing Staging
+  verifier service account `postdee-admin-verifier`, whose key Render already
+  holds. No key was created or uploaded and no Render secret changed.
+- Temporarily set `FIREBASE_AUTH_DELETE_ENABLED=true` and
+  `UPLOAD_PROTOCOL_MODE=multipart` (merge of those two values only):
+  `dep-dbff3f8m7kps738rtp30` Live 06:24:21 UTC at `296bee1`, whose API tree
+  equals `35890b1`. Startup succeeded, so the Firebase credential parsed.
+- In-app path, 07:15 UTC, run by a script on the owner's machine (this cloud
+  session could not reach `onrender.com`): new `@example.com` account,
+  template `201`, readiness `200`, `DELETE /account` `200` in about two
+  seconds, old token `401`, password sign-in `INVALID_LOGIN_CREDENTIALS`
+  (email enumeration protection hides `EMAIL_NOT_FOUND`), and the Firebase
+  console finds no user.
+- Admin path, 07:35:25 UTC, by the owner in the browser: second disposable
+  account deleted from `/admin`; success message, deletion history row
+  COMPLETED with the reason and no email; Firebase console finds no user.
+- No Render error/warning log entries during the tests; this service exposes
+  no request logs.
+- Restored `FIREBASE_AUTH_DELETE_ENABLED=false` and `UPLOAD_PROTOCOL_MODE=dual`:
+  `dep-dbfg74o473hc73d2mjsg` Live 07:40:27 UTC at `d113879` (API unchanged).
+  The owner then removed the temporary Firebase Authentication Admin role; the
+  IAM page shows `postdee-admin-verifier` with Firebase Authentication Viewer only.
+
+Not covered: the test accounts had no social connection or uploads, so real
+PostPeer integration/profile deletion and deletion of real R2 objects remain
+unverified (owner-prefix cleanup ran on an empty prefix). The in-app path
+called the API directly rather than through the Mobile UI.
+
+Remaining before Production enablement: resume Production; give a Production
+credential delete permission the same way (Firebase Authentication Admin on the
+service account whose key Production uses) and confirm
+`FIREBASE_SERVICE_ACCOUNT_JSON`; repeat a disposable-account check including a
+connected disposable social account and an uploaded clip; physical-device UI
+check.

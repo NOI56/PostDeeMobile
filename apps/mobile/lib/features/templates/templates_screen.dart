@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
@@ -11,6 +14,8 @@ typedef TemplateCreator = Future<TextTemplateResult> Function({
   required String title,
   required String body,
 });
+
+enum _TemplateExitAction { discard, save }
 
 class TemplatesScreen extends StatefulWidget {
   const TemplatesScreen({
@@ -27,23 +32,120 @@ class TemplatesScreen extends StatefulWidget {
 }
 
 class _TemplatesScreenState extends State<TemplatesScreen> {
-  final _apiClient = PostDeeApiClient();
+  final _sessions = PostDeeAuthSessionStore.instance;
+  late final AuthSessionBinding _screenSession;
+  late final PostDeeApiClient _apiClient;
   final _titleController = TextEditingController();
   final _bodyController = TextEditingController();
   final List<TextTemplateResult> _templates = [];
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _hasLoaded = false;
+  bool _allowPop = false;
+  bool _isConfirmingExit = false;
+  DialogRoute<_TemplateExitAction>? _exitDialogRoute;
   String? _errorMessage;
+
+  bool get _canUseScreen => mounted && _screenSession.isCurrent;
+  bool get _hasUnsavedChanges =>
+      _titleController.text.isNotEmpty || _bodyController.text.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _screenSession = _sessions.captureSession();
+    _apiClient = PostDeeApiClient(sessionBinding: _screenSession);
+    _sessions.addListener(_handleSessionChanged);
+    unawaited(_loadTemplates());
+  }
 
   @override
   void dispose() {
+    _sessions.removeListener(_handleSessionChanged);
     _titleController.dispose();
     _bodyController.dispose();
     super.dispose();
   }
 
+  void _handleSessionChanged() {
+    if (!mounted || _screenSession.isCurrent) return;
+    final dialog = _exitDialogRoute;
+    _exitDialogRoute = null;
+    if (dialog != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (dialog.isActive) dialog.navigator?.removeRoute(dialog);
+      });
+    }
+    setState(() {
+      _templates.clear();
+      _titleController.clear();
+      _bodyController.clear();
+      _isLoading = false;
+      _isSaving = false;
+      _hasLoaded = false;
+      _errorMessage = 'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าเทมเพลตใหม่';
+    });
+  }
+
+  Future<void> _confirmExit() async {
+    if (!_canUseScreen || _isConfirmingExit || _isSaving) return;
+    _isConfirmingExit = true;
+    final route = DialogRoute<_TemplateExitAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ยังไม่ได้บันทึกเทมเพลต'),
+        content: const Text('ต้องการบันทึกข้อความก่อนออกจากหน้านี้ไหม?'),
+        scrollable: true,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('แก้ต่อ'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_TemplateExitAction.discard),
+            child: const Text('ออกโดยไม่บันทึก'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_TemplateExitAction.save),
+            child: const Text('บันทึกแล้วออก'),
+          ),
+        ],
+      ),
+    );
+    _exitDialogRoute = route;
+    try {
+      final action =
+          await Navigator.of(context, rootNavigator: true).push(route);
+      if (!_canUseScreen) return;
+      if (action == _TemplateExitAction.discard) {
+        _leave();
+      } else if (action == _TemplateExitAction.save) {
+        final saved = await _saveTemplate();
+        if (_canUseScreen && saved && !_hasUnsavedChanges) _leave();
+      }
+    } finally {
+      if (identical(_exitDialogRoute, route)) _exitDialogRoute = null;
+      _isConfirmingExit = false;
+    }
+  }
+
+  void _leave() {
+    if (!_canUseScreen) return;
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_canUseScreen) return;
+      if (ModalRoute.of(context)?.isCurrent == true) {
+        Navigator.of(context).pop();
+      } else {
+        setState(() => _allowPop = false);
+      }
+    });
+  }
+
   Future<void> _loadTemplates() async {
-    if (_isLoading || _isSaving) return;
+    if (!_canUseScreen || _isLoading || _isSaving) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -53,7 +155,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       final loader = widget.loadTemplates ?? _apiClient.listTemplates;
       final templates = await loader();
 
-      if (!mounted) {
+      if (!_canUseScreen) {
         return;
       }
 
@@ -61,9 +163,10 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
         _templates
           ..clear()
           ..addAll(templates);
+        _hasLoaded = true;
       });
     } on ApiException catch (error) {
-      if (!mounted) {
+      if (!_canUseScreen) {
         return;
       }
 
@@ -72,7 +175,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             fallbackMessage: 'โหลดเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       });
     } catch (error) {
-      if (!mounted) {
+      if (!_canUseScreen) {
         return;
       }
 
@@ -81,7 +184,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             fallbackMessage: 'โหลดเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       });
     } finally {
-      if (mounted) {
+      if (_canUseScreen) {
         setState(() {
           _isLoading = false;
         });
@@ -89,8 +192,13 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     }
   }
 
-  Future<void> _saveTemplate() async {
-    if (_isLoading || _isSaving) return;
+  Future<bool> _saveTemplate() async {
+    if (!_canUseScreen || _isSaving) return false;
+    if (_isLoading) {
+      setState(
+          () => _errorMessage = 'กำลังโหลดรายการ กรุณารอสักครู่ก่อนบันทึก');
+      return false;
+    }
     final originalTitle = _titleController.text;
     final originalBody = _bodyController.text;
     final title = _titleController.text.trim();
@@ -100,7 +208,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       setState(() {
         _errorMessage = 'กรอกชื่อและเนื้อหาเทมเพลตก่อนบันทึก';
       });
-      return;
+      return false;
     }
 
     setState(() {
@@ -112,21 +220,23 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       final creator = widget.createTemplate ?? _apiClient.createTemplate;
       final template = await creator(title: title, body: body);
 
-      if (!mounted) {
-        return;
+      if (!_canUseScreen) {
+        return false;
       }
 
       setState(() {
         _templates.insert(0, template);
+        _hasLoaded = true;
         if (_titleController.text == originalTitle &&
             _bodyController.text == originalBody) {
           _titleController.clear();
           _bodyController.clear();
         }
       });
+      return true;
     } on ApiException catch (error) {
-      if (!mounted) {
-        return;
+      if (!_canUseScreen) {
+        return false;
       }
 
       setState(() {
@@ -134,8 +244,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             fallbackMessage: 'บันทึกเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       });
     } catch (error) {
-      if (!mounted) {
-        return;
+      if (!_canUseScreen) {
+        return false;
       }
 
       setState(() {
@@ -143,16 +253,29 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             fallbackMessage: 'บันทึกเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       });
     } finally {
-      if (mounted) {
+      if (_canUseScreen) {
         setState(() {
           _isSaving = false;
         });
       }
     }
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _allowPop ||
+          !_screenSession.isCurrent ||
+          (!_hasUnsavedChanges && !_isSaving),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_confirmExit());
+      },
+      child: _buildTemplates(),
+    );
+  }
+
+  Widget _buildTemplates() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
       children: [
@@ -207,6 +330,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               const SizedBox(height: 14),
               TextField(
                 controller: _titleController,
+                enabled: _canUseScreen,
+                onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
                   labelText: 'ชื่อเทมเพลต',
                   hintText: 'เช่น โปรโมชันส่งฟรี',
@@ -215,6 +340,8 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               const SizedBox(height: AppTheme.spaceMd),
               TextField(
                 controller: _bodyController,
+                enabled: _canUseScreen,
+                onChanged: (_) => setState(() {}),
                 minLines: 3,
                 maxLines: 5,
                 decoration: const InputDecoration(
@@ -230,7 +357,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                     child: SizedBox(
                       height: 46,
                       child: FilledButton.icon(
-                        onPressed: _isSaving || _isLoading ? null : _saveTemplate,
+                        onPressed: !_canUseScreen || _isSaving || _isLoading
+                            ? null
+                            : _saveTemplate,
                         icon: const Icon(Icons.save_outlined, size: 19),
                         label: Text(
                             _isSaving ? 'กำลังบันทึก...' : 'บันทึกเทมเพลต'),
@@ -255,10 +384,12 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   const SizedBox(width: AppTheme.spaceMd),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isLoading || _isSaving ? null : _loadTemplates,
+                      onPressed: !_canUseScreen || _isLoading || _isSaving
+                          ? null
+                          : _loadTemplates,
                       icon: const Icon(Icons.sync, size: 18),
                       label: Text(
-                          _isLoading ? 'กำลังโหลดเทมเพลต...' : 'โหลดเทมเพลต'),
+                          _isLoading ? 'กำลังโหลดเทมเพลต...' : 'รีเฟรชเทมเพลต'),
                     ),
                   ),
                 ],
@@ -283,7 +414,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               ),
         ),
         const SizedBox(height: AppTheme.spaceMd),
-        if (_templates.isEmpty)
+        if (_templates.isEmpty && _hasLoaded && !_isLoading)
           const _EmptyTemplateCard()
         else
           ..._templates.map(
@@ -327,7 +458,7 @@ class _EmptyTemplateCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'ยังไม่มีเทมเพลตที่โหลด',
+            'ยังไม่มีเทมเพลตที่บันทึกไว้',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,

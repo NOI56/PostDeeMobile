@@ -212,6 +212,8 @@ void main() {
           findsWidgets);
       expect(tester.binding.hasScheduledFrame, isFalse);
       expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('tiktok-draft-next-step')),
+          outcome == 'DRAFT' ? findsOneWidget : findsNothing);
     });
   }
 
@@ -483,6 +485,9 @@ void main() {
     );
 
     expect(find.text('ส่งเป็นร่างแล้ว'), findsWidgets);
+    expect(find.byKey(const ValueKey('tiktok-draft-next-step')), findsOneWidget);
+    expect(find.text('เผยแพร่ต่อใน TikTok'), findsOneWidget);
+    expect(find.textContaining('Inbox'), findsOneWidget);
     expect(find.text('เผยแพร่สำเร็จ'), findsNothing);
     expect(
       find.byKey(const ValueKey('post-detail-open-analytics')),

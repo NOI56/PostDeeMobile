@@ -14,6 +14,7 @@ import '../shared/publishing_availability.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/postdee_publishing_motion.dart';
 import '../shared/postdee_notice.dart';
+import '../shared/tiktok_draft_next_step.dart';
 import '../uploader/post_video_preview_screen.dart';
 
 typedef PostDetailReader = Future<PostSummaryResult?> Function(String postId);
@@ -950,6 +951,11 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                 const SizedBox(height: 10),
                 for (final platform in _platforms) ...[
                   _buildPlatformCard(platform),
+                ],
+                if (hasConfirmedTikTokDraft(_post.platformResults)) ...[
+                  const SizedBox(height: 8),
+                  const TikTokDraftNextStepCard(
+                      key: ValueKey('tiktok-draft-next-step')),
                 ],
                 if (_platforms.isEmpty)
                   Text(

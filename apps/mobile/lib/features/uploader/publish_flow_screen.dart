@@ -8,6 +8,7 @@ import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../posts/posts_screen.dart';
 import '../shared/post_delivery_outcome.dart';
+import '../shared/tiktok_draft_next_step.dart';
 
 enum PublishFlowAction { finish, analytics }
 
@@ -884,6 +885,11 @@ class _PublishDoneView extends StatelessWidget {
                 ],
               ),
             ),
+            if (hasConfirmedTikTokDraft(post.platformResults)) ...[
+              const SizedBox(height: 18),
+              const TikTokDraftNextStepCard(
+                  key: ValueKey('tiktok-draft-next-step')),
+            ],
             const SizedBox(height: 30),
             SizedBox(
               width: double.infinity,

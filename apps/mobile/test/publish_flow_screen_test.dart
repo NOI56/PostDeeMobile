@@ -625,6 +625,9 @@ void main() {
 
     expect(find.text('ส่งเป็นร่างแล้ว'), findsWidgets);
     expect(find.textContaining('ส่งออกจริงและใช้โควตาโพสต์'), findsOneWidget);
+    expect(find.byKey(const ValueKey('tiktok-draft-next-step')), findsOneWidget);
+    expect(find.text('เผยแพร่ต่อใน TikTok'), findsOneWidget);
+    expect(find.textContaining('Inbox'), findsOneWidget);
     expect(find.text('เผยแพร่สำเร็จ'), findsNothing);
   });
 
@@ -666,6 +669,7 @@ void main() {
     expect(find.text('ส่งสำเร็จบางช่องทาง'), findsOneWidget);
     expect(find.textContaining('ส่งสำเร็จเพียงบางช่องทาง'), findsOneWidget);
     expect(find.textContaining('TikTok · ส่งเป็นร่างแล้ว'), findsOneWidget);
+    expect(find.byKey(const ValueKey('tiktok-draft-next-step')), findsOneWidget);
   });
 
   testWidgets('does not call an unknown provider outcome successful',

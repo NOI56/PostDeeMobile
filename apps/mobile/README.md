@@ -2,6 +2,34 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Usability fixes (2026-10-26, local candidate)
+
+Analytics clears previous totals before loading a date range and shows load
+errors with a retry action above the dashboard, distinct from confirmed empty
+data. Phone verification accepts Thai mobile numbers such as `0812345678` and
+international `+` numbers, separates changing a number from resending an OTP,
+and enforces a 30-second resend wait. Resend tokens remain bound to the same
+number and authentication session.
+
+Saved templates load on entry. Leaving with unsaved text offers continue,
+discard, or save-and-exit; a failed save keeps the text, and account changes
+invalidate pending work. Confirmed TikTok inbox draft receipts show next-step
+instructions on completion and post details. The TikTok button opens its fixed
+HTTPS homepage externally and may open a browser; it never sends the clip again
+or marks a draft publicly published.
+
+These changes preserve quota, publishing privacy and accepted-request recovery.
+No API, dependency, schema, migration or provider configuration change is
+required. An updated Mobile build is required; real SMS delivery and TikTok
+app handoff still require physical-device verification.
+
+Local verification passed: Flutter analyze, the complete Mobile suite (3,065
+passed, 6 skipped), and production-widget visual checks for analytics, the
+unsaved-template dialog and TikTok instructions on narrow screens with larger
+text. Staging debug APK 12056 built with the x86_64 Flutter engine and its
+package/version and APK signature were verified. It has not been installed over
+the existing app; this is not real-provider or physical-device E2E evidence.
+
 ## Per-channel clip-duration alerts (2026-10-25, local candidate)
 
 Show early duration warnings after video pick, prefill or draft restore, with an

@@ -16,6 +16,41 @@ typedef BoundPhoneAuthOperation = Future<void> Function({
   required Future<void> Function() operation,
 });
 
+/// Accepts Thai mobile numbers or an international number with a country code.
+/// This validates the input format; the SMS provider verifies the actual number.
+String? normalizePhoneVerificationNumber(String input) {
+  final compact = input.trim().replaceAll(RegExp(r'[\s-]'), '');
+  if (RegExp(r'^0[689][0-9]{8}$').hasMatch(compact)) {
+    return '+66${compact.substring(1)}';
+  }
+  if (!RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(compact)) return null;
+  if (compact.startsWith('+66') &&
+      !RegExp(r'^\+66[689][0-9]{8}$').hasMatch(compact)) {
+    return null;
+  }
+  return compact;
+}
+
+String _phoneProviderErrorMessage(firebase_auth.FirebaseAuthException error) =>
+    switch (error.code) {
+      'invalid-phone-number' =>
+        'ตรวจสอบเบอร์โทรมือถือและรหัสประเทศ เช่น 0812345678 หรือ +66812345678',
+      'invalid-verification-code' ||
+      'invalid-verification-id' =>
+        'รหัส OTP ไม่ถูกต้อง กรุณากรอกรหัสล่าสุดจาก SMS อีกครั้ง',
+      'session-expired' ||
+      'code-expired' =>
+        'รหัส OTP หมดอายุแล้ว กรุณากดส่งรหัสอีกครั้ง',
+      'too-many-requests' => 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่',
+      'quota-exceeded' => 'ระบบส่ง SMS ไม่พร้อมชั่วคราว กรุณาลองใหม่ภายหลัง',
+      'network-request-failed' =>
+        'เชื่อมต่อไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่',
+      'credential-already-in-use' ||
+      'phone-number-already-exists' =>
+        'เบอร์นี้ใช้กับบัญชีอื่นแล้ว กรุณาใช้เบอร์อื่นหรือเข้าสู่บัญชีเดิม',
+      _ => 'ยืนยันเบอร์โทรไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+    };
+
 abstract class FirebasePhoneAuthUser {
   String get uid;
   String? get email;
@@ -36,7 +71,9 @@ abstract class FirebasePhoneAuthAdapter {
     required firebase_auth.PhoneVerificationCompleted verificationCompleted,
     required firebase_auth.PhoneVerificationFailed verificationFailed,
     required firebase_auth.PhoneCodeSent codeSent,
-    required firebase_auth.PhoneCodeAutoRetrievalTimeout codeAutoRetrievalTimeout,
+    required firebase_auth.PhoneCodeAutoRetrievalTimeout
+        codeAutoRetrievalTimeout,
+    int? forceResendingToken,
   });
 }
 
@@ -87,7 +124,9 @@ class _FirebasePhoneAuthAdapter implements FirebasePhoneAuthAdapter {
     required firebase_auth.PhoneVerificationCompleted verificationCompleted,
     required firebase_auth.PhoneVerificationFailed verificationFailed,
     required firebase_auth.PhoneCodeSent codeSent,
-    required firebase_auth.PhoneCodeAutoRetrievalTimeout codeAutoRetrievalTimeout,
+    required firebase_auth.PhoneCodeAutoRetrievalTimeout
+        codeAutoRetrievalTimeout,
+    int? forceResendingToken,
   }) =>
       _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
@@ -96,6 +135,7 @@ class _FirebasePhoneAuthAdapter implements FirebasePhoneAuthAdapter {
         verificationFailed: verificationFailed,
         codeSent: codeSent,
         codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
+        forceResendingToken: forceResendingToken,
       );
 }
 
@@ -136,6 +176,16 @@ class FirebasePhoneVerificationGateway {
   _PhoneVerificationRequest? _request;
 
   Future<PhoneVerificationStartResult> sendCode(String phoneNumber) {
+    final previous = _request;
+    final resendToken = previous != null &&
+            !previous.cancelled &&
+            !previous.consumed &&
+            previous.phoneNumber == phoneNumber &&
+            previous.sessionBinding.isCurrent &&
+            previous.userId == _sessionStore.session.userId &&
+            previous.userId == _phoneAuth.currentUser?.uid
+        ? previous.resendToken
+        : null;
     cancelVerification();
     try {
       if (_runNativeAuthOperation == null) {
@@ -152,10 +202,11 @@ class FirebasePhoneVerificationGateway {
       final request = _PhoneVerificationRequest(
         user: user,
         sessionBinding: _sessionStore.captureSession(),
+        phoneNumber: phoneNumber,
       );
       _request = request;
       _ensureCurrent(request);
-      unawaited(_startVerification(request, phoneNumber));
+      unawaited(_startVerification(request, forceResendingToken: resendToken));
       return request.completer.future;
     } catch (error, stackTrace) {
       _request?.cancelled = true;
@@ -165,14 +216,15 @@ class FirebasePhoneVerificationGateway {
   }
 
   Future<void> _startVerification(
-    _PhoneVerificationRequest request,
-    String phoneNumber,
-  ) async {
+    _PhoneVerificationRequest request, {
+    int? forceResendingToken,
+  }) async {
     try {
       _ensureCurrent(request);
       await _phoneAuth.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
+        phoneNumber: request.phoneNumber,
         timeout: timeout,
+        forceResendingToken: forceResendingToken,
         verificationCompleted: (credential) async {
           // Claim the callback before awaiting native work. codeSent/timeout and
           // completed/failed/cancelled requests cannot start another credential.
@@ -199,16 +251,21 @@ class FirebasePhoneVerificationGateway {
           _failStart(
             request,
             AuthUnavailableException(
-              error.message ?? 'Phone verification failed: ${error.code}',
+              _phoneProviderErrorMessage(error),
             ),
             StackTrace.current,
           );
         },
         codeSent: (verificationId, resendToken) =>
-            _completeWithSms(request, verificationId),
+            _completeWithSms(request, verificationId, resendToken: resendToken),
         codeAutoRetrievalTimeout: (verificationId) =>
             _completeWithSms(request, verificationId),
       );
+    } on firebase_auth.FirebaseAuthException catch (error, stackTrace) {
+      _failStart(
+          request,
+          AuthUnavailableException(_phoneProviderErrorMessage(error)),
+          stackTrace);
     } catch (error, stackTrace) {
       _failStart(request, error, stackTrace);
     }
@@ -254,13 +311,15 @@ class FirebasePhoneVerificationGateway {
 
   void _completeWithSms(
     _PhoneVerificationRequest request,
-    String verificationId,
-  ) {
+    String verificationId, {
+    int? resendToken,
+  }) {
     if (request.autoClosed || request.completer.isCompleted) return;
     try {
       _ensureCurrent(request);
       request.autoClosed = true;
       request.verificationId = verificationId;
+      request.resendToken = resendToken;
       request.completer.complete(
         PhoneVerificationStartResult.codeSent(verificationId: verificationId),
       );
@@ -312,7 +371,7 @@ class FirebasePhoneVerificationGateway {
           _ensureCurrent(request);
           if (error.code != 'provider-already-linked') {
             throw AuthUnavailableException(
-              error.message ?? 'Could not link phone number: ${error.code}',
+              _phoneProviderErrorMessage(error),
             );
           }
         }
@@ -346,13 +405,16 @@ class _PhoneVerificationRequest {
   _PhoneVerificationRequest({
     required this.user,
     required this.sessionBinding,
+    required this.phoneNumber,
   }) : userId = user.uid;
 
   final FirebasePhoneAuthUser user;
   final String userId;
   final AuthSessionBinding sessionBinding;
+  final String phoneNumber;
   final completer = Completer<PhoneVerificationStartResult>();
   String? verificationId;
+  int? resendToken;
   bool cancelled = false;
   bool autoClosed = false;
   bool linking = false;

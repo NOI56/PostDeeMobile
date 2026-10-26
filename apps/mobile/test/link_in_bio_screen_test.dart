@@ -113,8 +113,8 @@ void main() {
     expect((await store.loadDraft())!.customLinks.single.url,
         'https://shopee.co.th/shop');
     await _tap(tester, 'link-in-bio-preview');
-    expect(find.text('ตัวอย่างก่อนเผยแพร่'), findsOneWidget);
-    await tester.tap(find.text('ปิดตัวอย่าง'));
+    expect(find.byKey(const ValueKey('link-in-bio-full-preview')), findsOneWidget);
+    await tester.tap(find.byTooltip('ปิดตัวอย่าง'));
     await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();

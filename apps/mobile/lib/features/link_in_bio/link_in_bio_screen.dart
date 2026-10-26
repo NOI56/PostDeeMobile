@@ -479,12 +479,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     });
   }
 
-  Widget _draftPreview() => LinkInBioPreview(
+  Widget _draftPreview({double cornerRadius = 20}) => LinkInBioPreview(
       storeName: _storeNameController.text,
       slug: _slugController.text,
       links: _activeLinks,
       appearance: _appearance,
-      images: _images);
+      images: _images,
+      cornerRadius: cornerRadius);
 
   Future<void> _loadProfile() async {
     if (_isLoading || _isBusy) return;
@@ -848,17 +849,42 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   void _preview() {
     unawaited(_showOwnedModal(() => showDialog<void>(
         context: context,
-        builder: (context) => _ownedModal(context, AlertDialog(
-              title: const Text('ตัวอย่างก่อนเผยแพร่'),
-              content: SizedBox(
-                  width: 360,
-                  child: SingleChildScrollView(child: _draftPreview())),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('ปิดตัวอย่าง'))
-              ],
-            )))));
+        useSafeArea: false,
+        builder: (context) => _ownedModal(
+            context,
+            Dialog.fullscreen(
+                key: const ValueKey('link-in-bio-full-preview'),
+                backgroundColor: bioColor(_appearance.background.color),
+                child: Semantics(
+                    namesRoute: true,
+                    label: 'ตัวอย่างก่อนเผยแพร่',
+                    child: LayoutBuilder(
+                        builder: (context, viewport) => Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  SingleChildScrollView(
+                                      key: const ValueKey(
+                                          'link-in-bio-full-preview-scroll'),
+                                      primary: false,
+                                      child: ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                              minHeight: viewport.maxHeight),
+                                          child: _draftPreview(cornerRadius: 0))),
+                                  Positioned(
+                                      top: 0,
+                                      right: 0,
+                                      child: SafeArea(
+                                          left: false,
+                                          bottom: false,
+                                          minimum: const EdgeInsets.all(12),
+                                          child: IconButton.filled(
+                                              key: const ValueKey(
+                                                  'link-in-bio-full-preview-close'),
+                                              tooltip: 'ปิดตัวอย่าง',
+                                              onPressed: () =>
+                                                  Navigator.pop(context),
+                                              icon: const Icon(Icons.close)))),
+                                ]))))))));
   }
 
   Future<void> _showAddLinkSheet() async {

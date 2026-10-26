@@ -14,11 +14,13 @@ class BioDecoratedPreview extends StatelessWidget {
       required this.storeName,
       required this.links,
       required this.appearance,
-      required this.images});
+      required this.images,
+      this.cornerRadius = 20});
   final String storeName;
   final List<LinkInBioCustomLink> links;
   final LinkInBioAppearance appearance;
   final Map<String, Uint8List> images;
+  final double cornerRadius;
 
   Widget _image(String key, double height) => images[key] == null
       ? SizedBox(
@@ -131,7 +133,7 @@ class BioDecoratedPreview extends StatelessWidget {
         }
 
         return ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(cornerRadius),
             child: DecoratedBox(
                 decoration: BoxDecoration(
                     color: bioColor(background.color),

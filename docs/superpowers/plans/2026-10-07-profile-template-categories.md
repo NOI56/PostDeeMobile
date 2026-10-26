@@ -1,5 +1,61 @@
 # Profile template categories — 2026-10-07
 
+## Full-screen shop-page preview — 2026-10-26 (local candidate)
+
+Implemented follow-up from verified clean main
+`06d59dd2da791ae904a4d4bc594cc0e327a6c954`:
+
+- Change the main `ดูตัวอย่างเต็มหน้า` action in `LinkInBioScreen._preview()`
+  from a fixed-width `AlertDialog` to an owner-bound full-viewport preview
+  without outer dialog insets. Keep the whole draft page vertically scrollable
+  and provide a close control in a safe-area overlay.
+- Retain OS status/navigation behavior. Do not introduce global `SystemChrome`
+  or immersive-mode changes to obtain this layout.
+- The template-choice candidate preview remains its existing 90%-height sheet
+  with explicit `ใช้กับแบบร่าง`; this request does not change that flow.
+- Opening, scrolling and closing the main preview remain read-only with respect
+  to the draft and public page: no template apply, autosave or publication.
+  Preserve owner-session cleanup and existing appearance models, the 100
+  catalog IDs, seven legacy theme IDs and native/public rendering contracts.
+
+No API, schema, model, configuration, migration, dependency or entitlement
+change is part of this scope. This follow-up has its own verification rather
+than inheriting the previous decoration receipts below.
+
+### Full-screen preview verification
+
+Changed sources: `link_in_bio_screen.dart`, `link_in_bio_preview.dart`,
+`link_in_bio_template_preview.dart` and `link_in_bio_decorated_preview.dart`.
+The renderer's optional presentation radius remains 20 by default and is zero
+only for the main full-page preview; internal design frames remain unchanged.
+Regression files are `link_in_bio_fullscreen_preview_test.dart`,
+`link_in_bio_preview_frame_test.dart` and `link_in_bio_screen_test.dart`.
+
+- Full Flutter suite: 3,110 passed, six skipped. Analysis reported no issues;
+  `git diff --check` passed. Tests cover full viewport bounds at 320/800px,
+  background minimum height across legacy/template/decorated renderers,
+  safe close controls, long-page scrolling, system Back, unchanged drafts and
+  account-change cleanup that preserves an unrelated dialog.
+- Five production-widget visual cases passed: 320px/150% text and 393px/100%
+  text with short and 20-link pages, plus dark mode. Preview backgrounds fill
+  the viewport, close remains anchored and returning to review performs no
+  draft save or publication. Seven PNGs and the fixture are in the external
+  `postdee-fullscreen-preview-visual-20261026` temporary directory.
+- The validated Staging helper built Android x86_64 build `12059`, package
+  `com.postdee.postdee_mobile.staging`, with the existing Firebase Staging and
+  RevenueCat Test Store configuration. APK signature verification passed;
+  SHA-256 is
+  `5B3FD025D960E885C19054DC7493A9F813C7DBF8569006022A9578667A1A40F5`.
+- The in-place update from 12058 to 12059 retained UID `10197` and internal
+  storage. Native checks opened the main full-page preview and closed it back
+  to review with the same shop name, two links, saved draft and publication
+  status. App navigation and the old popup inset no longer constrain the
+  preview; the Staging environment strip and OS bars remain. No template was
+  applied and no shop was published during these checks.
+- Physical-device, iOS and system nonlinear font-scaling coverage remain
+  unverified. No API code, migration, catalog, dependency, flag or database
+  configuration changed, and no API deployment is required by this patch.
+
 ## Minimal gallery usability follow-up — 2026-10-26 (local candidate)
 
 The owner approved the decoration follow-up from verified clean main

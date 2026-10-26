@@ -122,12 +122,14 @@ class LinkInBioPreview extends StatelessWidget {
       required this.slug,
       required this.links,
       required this.appearance,
-      this.images = const {}});
+      this.images = const {},
+      this.cornerRadius = 20});
   final String storeName;
   final String slug;
   final List<LinkInBioCustomLink> links;
   final LinkInBioAppearance appearance;
   final Map<String, Uint8List> images;
+  final double cornerRadius;
 
   Widget _image(String? key, {double? height}) {
     final bytes = images[key];
@@ -153,14 +155,16 @@ class LinkInBioPreview extends StatelessWidget {
           storeName: storeName,
           links: links,
           appearance: appearance,
-          images: images);
+          images: images,
+          cornerRadius: cornerRadius);
     }
     if (const {'pink', 'garden', 'cards'}.contains(appearance.themeId)) {
       return BioDecoratedPreview(
           storeName: storeName,
           links: links,
           appearance: appearance,
-          images: images);
+          images: images,
+          cornerRadius: cornerRadius);
     }
     return BioMotionSurface(
         effects: appearance.effects,
@@ -222,7 +226,7 @@ class LinkInBioPreview extends StatelessWidget {
     }
 
     return ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(cornerRadius),
         child: DecoratedBox(
             decoration: BoxDecoration(
                 color: bioColor(background.color),

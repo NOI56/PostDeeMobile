@@ -20,13 +20,15 @@ class BioTemplatePreview extends StatelessWidget {
       required this.links,
       required this.appearance,
       required this.images,
-      this.staticPreview = false});
+      this.staticPreview = false,
+      this.cornerRadius = 20});
   final ProfileTemplate template;
   final String storeName;
   final List<LinkInBioCustomLink> links;
   final LinkInBioAppearance appearance;
   final Map<String, Uint8List> images;
   final bool staticPreview;
+  final double cornerRadius;
   String get _composition => template.layout.composition;
   bool get _presetBackground =>
       appearance.background.imageKey == null &&
@@ -829,7 +831,7 @@ class BioTemplatePreview extends StatelessWidget {
         ? math.sin(phase * math.pi * 2) * .15
         : 0.0;
     return ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(cornerRadius),
         child: DecoratedBox(
             decoration: BoxDecoration(
                 color: bioColor(background.color),

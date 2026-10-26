@@ -2,6 +2,26 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Full-screen shop-link preview (2026-10-26, local candidate)
+
+From verified main `06d59dd2`, the `ดูตัวอย่างเต็มหน้า` action replaces
+the fixed-width alert with an owner-bound preview that fills the app viewport,
+has no outer dialog inset and scrolls through the current draft page. A close
+control stays within the safe area above the preview. This changes the main
+shop-page preview, not the 90%-height template-choice confirmation sheet.
+
+Keep system status/navigation behavior unchanged; no global `SystemChrome`
+immersion is introduced. Opening, scrolling or closing the preview does not
+apply a template, save a draft or publish a page. Existing owner-change cleanup,
+appearance models, all 100 catalog IDs, seven legacy theme IDs and publication
+contracts remain intact, with no API, schema, migration or configuration change.
+Local verification passed 3,110 Flutter tests (six skipped), analysis and the
+Staging APK build. Build 12059 is installed in place on Pixel_8 with the same
+package UID/storage. Native open/close checks passed; the Staging marker and
+OS bars remain. Widget fixtures cover short/long pages, 320px/150% text,
+393px/100% text and dark mode. Physical devices remain unverified. See the
+[profile-template record](../../docs/superpowers/plans/2026-10-07-profile-template-categories.md).
+
 ## Shop-link decoration usability (2026-10-26, local candidate)
 
 The follow-up starts from verified main `296bee17`. It provides a shorter gallery

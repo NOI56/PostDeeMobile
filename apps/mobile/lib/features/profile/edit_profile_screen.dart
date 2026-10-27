@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/theme/app_theme.dart';
 import 'profile_draft_store.dart';
 
@@ -24,7 +25,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       TextEditingController(text: widget.initialDraft.displayName);
   late final TextEditingController _storeNameController =
       TextEditingController(text: widget.initialDraft.storeName);
-  String? _errorMessage;
+  bool _isDisplayNameMissing = false;
+
+  String _text(String thai, String english) =>
+      (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+                      ?.locale
+                      .languageCode ??
+                  'th') ==
+              'th'
+          ? thai
+          : english;
 
   @override
   void dispose() {
@@ -38,7 +48,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final storeName = _storeNameController.text.trim();
 
     if (displayName.isEmpty) {
-      setState(() => _errorMessage = 'กรอกชื่อที่ต้องการให้แสดง');
+      setState(() => _isDisplayNameMissing = true);
       return;
     }
 
@@ -54,8 +64,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   void _showAvatarNotice() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('ระบบอัปโหลดรูปโปรไฟล์กำลังเตรียมเชื่อมต่อกับบัญชีจริง'),
+      SnackBar(
+        content: Text(_text(
+            'ระบบอัปโหลดรูปโปรไฟล์กำลังเตรียมเชื่อมต่อกับบัญชีจริง',
+            'Profile photo uploads are not available yet.')),
       ),
     );
   }
@@ -65,13 +77,61 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final initial = _displayNameController.text.trim().isEmpty
         ? 'P'
         : _displayNameController.text.trim().characters.first.toUpperCase();
+    final emailLabel = switch (widget.email) {
+      '' ||
+      'ยังไม่ได้เชื่อมอีเมล' ||
+      'Email not connected' =>
+        _text('ยังไม่ได้เชื่อมอีเมล', 'Email not connected'),
+      _ => widget.email,
+    };
+    final titleScale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    final stackEmailStatus = MediaQuery.textScalerOf(context).scale(14) > 18 ||
+        MediaQuery.sizeOf(context).width < 360;
+    final emailStatus = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: widget.emailVerified ? AppTheme.mint : AppTheme.glass,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            widget.emailVerified
+                ? Icons.verified_rounded
+                : Icons.info_outline_rounded,
+            size: 13,
+            color: widget.emailVerified
+                ? AppTheme.accentCyanInk
+                : AppTheme.textMuted,
+          ),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              widget.emailVerified
+                  ? _text('ยืนยันแล้ว', 'Verified')
+                  : _text('อีเมลยังไม่ยืนยัน', 'Email not verified'),
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: widget.emailVerified
+                    ? AppTheme.accentCyanInk
+                    : AppTheme.textMuted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text(
-          'แก้ไขโปรไฟล์',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        toolbarHeight: kToolbarHeight * (titleScale < 1 ? 1 : titleScale),
+        title: Text(
+          _text('แก้ไขโปรไฟล์', 'Edit profile'),
+          maxLines: 2,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       body: DecoratedBox(
@@ -127,17 +187,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               width: 3,
                             ),
                           ),
-                          child: InkWell(
-                            key: const ValueKey('edit-profile-avatar'),
-                            customBorder: const CircleBorder(),
-                            onTap: _showAvatarNotice,
-                            child: const SizedBox(
-                              width: 32,
-                              height: 32,
-                              child: Icon(
-                                Icons.photo_camera_rounded,
-                                size: 17,
-                                color: Colors.white,
+                          child: Semantics(
+                            button: true,
+                            label: _text(
+                                'เปลี่ยนรูปโปรไฟล์', 'Change profile photo'),
+                            child: InkWell(
+                              key: const ValueKey('edit-profile-avatar'),
+                              customBorder: const CircleBorder(),
+                              onTap: _showAvatarNotice,
+                              child: const SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: Icon(
+                                  Icons.photo_camera_rounded,
+                                  size: 17,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
@@ -155,7 +220,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    child: const Text('เปลี่ยนรูปโปรไฟล์'),
+                    child: Text(
+                        _text('เปลี่ยนรูปโปรไฟล์', 'Change profile photo')),
                   ),
                 ],
               ),
@@ -177,29 +243,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _FieldLabel('ชื่อที่แสดง'),
+                    _FieldLabel(_text('ชื่อที่แสดง', 'Display name')),
                     const SizedBox(height: 6),
                     _ProfileTextField(
                       key: const ValueKey('edit-profile-display-name'),
                       controller: _displayNameController,
-                      hintText: 'เช่น มีนา',
-                      onChanged: (_) => setState(() => _errorMessage = null),
+                      hintText: _text('เช่น มีนา', 'e.g. Mina'),
+                      onChanged: (_) =>
+                          setState(() => _isDisplayNameMissing = false),
                     ),
                     const SizedBox(height: 14),
-                    const _FieldLabel('ชื่อร้าน'),
+                    _FieldLabel(_text('ชื่อร้าน', 'Store name')),
                     const SizedBox(height: 6),
                     _ProfileTextField(
                       key: const ValueKey('edit-profile-store-name'),
                       controller: _storeNameController,
-                      hintText: 'เช่น ร้านมีนาขายดี',
+                      hintText: _text('เช่น ร้านมีนาขายดี', 'e.g. Mina Shop'),
                       prefixIcon: Icons.storefront_outlined,
                     ),
                     const SizedBox(height: 14),
-                    const _FieldLabel('อีเมล'),
+                    _FieldLabel(_text('อีเมล', 'Email')),
                     const SizedBox(height: 6),
                     Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 13),
+                      constraints: const BoxConstraints(minHeight: 48),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 13, vertical: 10),
                       decoration: BoxDecoration(
                         color: AppTheme.glassDeep,
                         borderRadius: BorderRadius.circular(12),
@@ -211,60 +279,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               size: 20, color: AppTheme.textMuted),
                           const SizedBox(width: 9),
                           Expanded(
-                            child: Text(
-                              widget.email,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 9, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: widget.emailVerified
-                                  ? AppTheme.mint
-                                  : AppTheme.glass,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  widget.emailVerified
-                                      ? Icons.verified_rounded
-                                      : Icons.info_outline_rounded,
-                                  size: 13,
-                                  color: widget.emailVerified
-                                      ? AppTheme.accentCyanInk
-                                      : AppTheme.textMuted,
-                                ),
-                                const SizedBox(width: 3),
                                 Text(
-                                  widget.emailVerified
-                                      ? 'ยืนยันแล้ว'
-                                      : 'อีเมลยังไม่ยืนยัน',
+                                  emailLabel,
                                   style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: widget.emailVerified
-                                        ? AppTheme.accentCyanInk
-                                        : AppTheme.textMuted,
+                                    fontSize: 14,
+                                    color: AppTheme.textSecondary,
                                   ),
                                 ),
+                                if (stackEmailStatus) ...[
+                                  const SizedBox(height: 6),
+                                  emailStatus,
+                                ],
                               ],
                             ),
                           ),
+                          if (!stackEmailStatus) ...[
+                            const SizedBox(width: 8),
+                            emailStatus,
+                          ],
                         ],
                       ),
                     ),
-                    if (_errorMessage != null) ...[
+                    if (_isDisplayNameMissing) ...[
                       const SizedBox(height: 10),
                       Text(
-                        _errorMessage!,
+                        _text('กรอกชื่อที่ต้องการให้แสดง',
+                            'Enter a display name'),
                         style: TextStyle(
                           fontSize: 12,
                           color: Theme.of(context).colorScheme.error,
@@ -281,7 +324,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'บันทึกเฉพาะในอุปกรณ์นี้',
+                      _text('บันทึกเฉพาะในอุปกรณ์นี้',
+                          'Saved on this device only'),
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
@@ -290,7 +334,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      'ชื่อที่แก้จะใช้เฉพาะในเครื่องนี้ และยังไม่ซิงก์กับบัญชีหรืออุปกรณ์อื่น',
+                      _text(
+                          'ชื่อที่แก้จะใช้เฉพาะในเครื่องนี้ และยังไม่ซิงก์กับบัญชีหรืออุปกรณ์อื่น',
+                          'Name changes are saved only on this device and are not synced with your account or other devices.'),
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.5,
@@ -319,7 +365,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 key: const ValueKey('edit-profile-save'),
                 onPressed: _save,
                 icon: const Icon(Icons.check_rounded, size: 20),
-                label: const Text('บันทึก'),
+                label: Text(_text('บันทึก', 'Save')),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.white,

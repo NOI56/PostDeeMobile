@@ -26,6 +26,7 @@ void main() {
       SocialPlatform.tiktok: '@seller',
     },
     PlatformPublishSettings platformSettings = const PlatformPublishSettings(),
+    bool watermarkEnabled = false,
     VoidCallback? onPreview,
   }) async {
     await tester.pumpWidget(
@@ -39,7 +40,7 @@ void main() {
               platformSettings: platformSettings,
               connectionDisplayNames: connectionDisplayNames,
               scheduledAt: null,
-              watermarkEnabled: false,
+              watermarkEnabled: watermarkEnabled,
               previewImagePath: previewImagePath,
               previewImageBytes: previewImageBytes,
               videoAspectLabel: videoAspectLabel,
@@ -505,11 +506,11 @@ void main() {
     expect(find.byType(ListView), findsNothing);
     expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
     expect(find.text('กำหนดเวลา'), findsOneWidget);
-    expect(find.text('ลายน้ำร้าน'), findsOneWidget);
+    expect(find.text('ลายน้ำร้าน'), findsNothing);
     expect(find.textContaining('ส่งเป็นร่างเข้า TikTok'), findsOneWidget);
   });
 
-  testWidgets('hiding schedule keeps provider timing and watermark truthful',
+  testWidgets('hiding schedule keeps provider timing without watermark details',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -530,10 +531,25 @@ void main() {
     );
 
     expect(find.text('กำหนดเวลา'), findsNothing);
-    expect(find.text('ลายน้ำร้าน'), findsOneWidget);
-    expect(find.text('ปิด · TikTok ไม่รับลายน้ำ PostDee'), findsOneWidget);
+    expect(find.text('ลายน้ำร้าน'), findsNothing);
+    expect(find.text('ปิด · TikTok ไม่รับลายน้ำ PostDee'), findsNothing);
+    expect(find.byIcon(Icons.branding_watermark_outlined), findsNothing);
     expect(find.textContaining('ส่งเข้าร่างเวลา'), findsOneWidget);
     expect(find.textContaining('ส่งออกจริงและใช้โควตาโพสต์'), findsOneWidget);
+  });
+
+  testWidgets('review hides watermark details even when watermark is enabled',
+      (tester) async {
+    await pumpSummary(
+      tester,
+      platforms: const [SocialPlatform.instagramReels],
+      connectionDisplayNames: const {SocialPlatform.instagramReels: '@seller'},
+      watermarkEnabled: true,
+    );
+
+    expect(find.text('ลายน้ำร้าน'), findsNothing);
+    expect(find.byIcon(Icons.branding_watermark_outlined), findsNothing);
+    expect(find.text('กำหนดเวลา'), findsOneWidget);
   });
 
   testWidgets('summary previews the clip while retaining platform editing',
@@ -945,7 +961,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('กำหนดเวลา'), findsOneWidget);
-    expect(find.text('ลายน้ำร้าน'), findsOneWidget);
+    expect(find.text('ลายน้ำร้าน'), findsNothing);
     expect(
         find.byKey(const ValueKey('publish-review-confirm')), findsOneWidget);
   });

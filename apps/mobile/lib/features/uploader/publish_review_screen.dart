@@ -70,7 +70,7 @@ bool publishReviewCanConfirm({
     );
 
 /// Pre-publish review (design screen #7): the user checks the clip, caption,
-/// channels, and schedule/watermark summary, then confirms. Pops `true` on
+/// channels, and schedule summary, then confirms. Pops `true` on
 /// confirm so the uploader runs the real post flow.
 class PublishReviewScreen extends StatelessWidget {
   const PublishReviewScreen({
@@ -449,47 +449,30 @@ class PublishReviewSummary extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 9),
-        Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.04),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              if (showSchedule) ...[
-                _SummaryRow(
-                  icon: _isScheduled ? Icons.event : Icons.bolt,
-                  label: 'กำหนดเวลา',
-                  value: _scheduleLabel,
-                  valueColor: AppTheme.textPrimary,
+        if (showSchedule) ...[
+          const SizedBox(height: 9),
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: AppTheme.glass,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.border),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF122018).withValues(alpha: 0.04),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
                 ),
-                Divider(height: 1, color: AppTheme.borderSoft),
               ],
-              _SummaryRow(
-                icon: Icons.branding_watermark_outlined,
-                label: 'ลายน้ำร้าน',
-                value: watermarkEnabled
-                    ? 'เปิด'
-                    : platforms.contains(SocialPlatform.tiktok)
-                        ? 'ปิด · TikTok ไม่รับลายน้ำ PostDee'
-                        : 'ปิด',
-                valueColor: watermarkEnabled
-                    ? AppTheme.accentCyanInk
-                    : AppTheme.textMuted,
-              ),
-            ],
+            ),
+            child: _SummaryRow(
+              icon: _isScheduled ? Icons.event : Icons.bolt,
+              label: 'กำหนดเวลา',
+              value: _scheduleLabel,
+              valueColor: AppTheme.textPrimary,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

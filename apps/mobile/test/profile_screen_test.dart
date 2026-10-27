@@ -1043,6 +1043,42 @@ void main() {
     expect(find.byIcon(Icons.check_circle), findsWidgets);
   });
 
+  testWidgets('English profile connection entry refreshes its count on return',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      refreshedConnections: const [
+        SocialConnectionResult(
+            platform: 'TIKTOK', connected: true, displayName: '@seller_one'),
+      ],
+    );
+    await tester.pumpWidget(
+        _hostProfile(locale: const Locale('en'), apiClient: apiClient));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('profile-connections-row'));
+    expect(row, findsOneWidget);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen), findsOneWidget);
+    expect(find.text('Connect channels'), findsOneWidget);
+    expect(find.text('Connected 0/4 channels'), findsOneWidget);
+    expect(find.text('Social channels'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+    await tester.pumpAndSettle();
+    expect(find.text('Connected 1/4 channels'), findsOneWidget);
+    expect(find.text('@seller_one'), findsOneWidget);
+    expect(find.text('Disconnect'), findsOneWidget);
+    expect(apiClient.refreshCalls, 1);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen), findsNothing);
+    // The Profile page is outside this translation step and keeps its own copy.
+    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
+    expect(apiClient.connectCalls, isEmpty);
+    expect(apiClient.disconnectCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows the live connected count once in the connection menu', (
     tester,
   ) async {

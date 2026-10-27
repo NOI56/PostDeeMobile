@@ -801,29 +801,49 @@ void main() {
     expect(_referenceNav(), findsOneWidget);
   });
 
-  testWidgets('Home connections action pauses Home and refreshes on return',
+  testWidgets('English Home Manage opens connections and refreshes on return',
       (tester) async {
     final languageController = _signInShell();
+    var connectionReads = 0;
     await tester.pumpWidget(_shellApp(PostDeeShell(
       languageController: languageController,
       uploaderDraftStore: _ShellDraftStore(),
       loadRecentPosts: () async => const [],
       loadScheduledPosts: () async => const [],
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: () async {
+        connectionReads++;
+        return const [];
+      },
     )));
     await tester.pumpAndSettle();
-    tester.widget<HomeScreen>(find.byType(HomeScreen)).onOpenConnections!();
+    expect(connectionReads, 1);
+    final home = tester.widget<HomeScreen>(find.byType(HomeScreen));
+    final manage = find.byKey(const ValueKey('home-manage-connections'));
+    await tester.ensureVisible(manage);
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: manage, matching: find.text('Manage')),
+        findsOneWidget);
+    await tester.tap(manage);
     await tester.pumpAndSettle();
     expect(find.byType(ConnectionsScreen), findsOneWidget);
+    expect(find.text('Connect channels'), findsOneWidget);
     expect(
       tester
           .widget<HomeScreen>(find.byType(HomeScreen, skipOffstage: false))
           .isActive,
       isFalse,
     );
+    home.onOpenConnections!();
+    await home.onCreatePost!();
+    await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen, skipOffstage: false), findsOneWidget);
+    expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
+    expect(connectionReads, 1);
     await tester.pageBack();
     await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen), findsNothing);
     expect(tester.widget<HomeScreen>(find.byType(HomeScreen)).isActive, isTrue);
+    expect(connectionReads, 2);
     expect(tester.takeException(), isNull);
   });
 

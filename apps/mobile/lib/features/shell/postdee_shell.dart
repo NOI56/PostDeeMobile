@@ -560,6 +560,14 @@ class _PostDeeShellState extends State<PostDeeShell> {
       return;
     }
 
+    String deletionText(String thai, String english) =>
+        (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+                    ?.locale.languageCode ??
+                'th') ==
+            'th'
+        ? thai
+        : english;
+
     setState(() => _isDeletingAccount = true);
     // Permanently deletes the account via DELETE /account, then signs out so the
     // user lands back on the login gate. Only sign out after the delete succeeds.
@@ -656,38 +664,69 @@ class _PostDeeShellState extends State<PostDeeShell> {
       showPostDeeUndoToast(
         context,
         message: localDraftCleanupFailed
-            ? 'ลบบัญชีแล้ว แต่ลบข้อมูลในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป'
-            : 'ลบบัญชีและออกจากระบบแล้ว',
+            ? deletionText(
+                'ลบบัญชีแล้ว แต่ลบข้อมูลในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป',
+                'Account deleted, but some data remains on this device. Please clear app data.',
+              )
+            : deletionText('ลบบัญชีและออกจากระบบแล้ว',
+                'Account deleted and signed out'),
       );
     } on AuthSessionChangedException {
       // A late deletion result must not sign out or navigate a later account.
     } on AccountAccessRevocationException catch (error) {
       if (!deletionSession.isCurrent || !mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+      final message = switch (error.message) {
+        'Apple ไม่ส่งรหัสยืนยัน กรุณาลองลบบัญชีอีกครั้ง' => deletionText(
+            error.message,
+            'Apple did not return a verification code. Please try deleting your account again.',
+          ),
+        'ถอนสิทธิ์ Sign in with Apple ไม่สำเร็จ บัญชียังไม่ถูกลบ กรุณาลองใหม่' =>
+          deletionText(
+            error.message,
+            'Could not revoke Sign in with Apple access. Your account has not been deleted. Please try again.',
+          ),
+        _ => error.message,
+      };
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } on ApiException catch (error) {
       if (!deletionSession.isCurrent || !mounted) return;
       final message = switch (error.code) {
-        'ACCOUNT_DELETION_UNAVAILABLE' =>
-          'ระบบลบบัญชียังไม่พร้อม กรุณาลองใหม่ภายหลัง',
-        'ACCOUNT_MEDIA_CLEANUP_UNAVAILABLE' =>
-          'ระบบลบวิดีโอยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
-        'ACCOUNT_MEDIA_CLEANUP_FAILED' =>
-          'ลบวิดีโอยังไม่สำเร็จ บัญชีของคุณยังอยู่ กรุณาลองใหม่',
-        'ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE' =>
-          'ระบบถอนการเชื่อมต่อโซเชียลยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
-        'ACCOUNT_SOCIAL_CLEANUP_FAILED' =>
-          'ถอนการเชื่อมต่อโซเชียลยังไม่ครบ บัญชียังไม่ถูกลบ กรุณาลองใหม่',
-        'ACCOUNT_IDENTITY_DELETE_FAILED' =>
-          'ลบข้อมูลแล้ว แต่ยังปิดการเข้าสู่ระบบไม่สำเร็จ กรุณากดลบบัญชีอีกครั้ง',
-        'ACCOUNT_REAUTHENTICATION_REQUIRED' =>
-          'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ จากนั้นลบบัญชีภายใน 5 นาที',
+        'ACCOUNT_DELETION_UNAVAILABLE' => deletionText(
+            'ระบบลบบัญชียังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+            'Account deletion is unavailable. Please try again later.',
+          ),
+        'ACCOUNT_MEDIA_CLEANUP_UNAVAILABLE' => deletionText(
+            'ระบบลบวิดีโอยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+            'Video deletion is unavailable. Please try again later.',
+          ),
+        'ACCOUNT_MEDIA_CLEANUP_FAILED' => deletionText(
+            'ลบวิดีโอยังไม่สำเร็จ บัญชีของคุณยังอยู่ กรุณาลองใหม่',
+            'Could not delete your videos. Your account still exists. Please try again.',
+          ),
+        'ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE' => deletionText(
+            'ระบบถอนการเชื่อมต่อโซเชียลยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+            'Channel disconnection is unavailable. Please try again later.',
+          ),
+        'ACCOUNT_SOCIAL_CLEANUP_FAILED' => deletionText(
+            'ถอนการเชื่อมต่อโซเชียลยังไม่ครบ บัญชียังไม่ถูกลบ กรุณาลองใหม่',
+            'Could not disconnect all channels. Your account has not been deleted. Please try again.',
+          ),
+        'ACCOUNT_IDENTITY_DELETE_FAILED' => deletionText(
+            'ลบข้อมูลแล้ว แต่ยังปิดการเข้าสู่ระบบไม่สำเร็จ กรุณากดลบบัญชีอีกครั้ง',
+            'Your data was deleted, but sign-in access could not be closed. Please try deleting your account again.',
+          ),
+        'ACCOUNT_REAUTHENTICATION_REQUIRED' => deletionText(
+            'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ จากนั้นลบบัญชีภายใน 5 นาที',
+            'Sign out and sign in again, then delete your account within 5 minutes.',
+          ),
         _ => error.message,
       };
       messenger.showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       if (!deletionSession.isCurrent || !mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง')),
+        SnackBar(content: Text(deletionText('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง',
+            'Could not delete your account. Please try again.'))),
       );
     } finally {
       if (mounted) {

@@ -104,6 +104,20 @@ PostDeeLanguageController _signInShell() {
   return languageController;
 }
 
+Future<void> _confirmEnglishAccountDeletion(WidgetTester tester) async {
+  await tester.tap(_referenceNavButton('Account'));
+  await tester.pumpAndSettle();
+  final delete = find.widgetWithText(OutlinedButton, 'Delete account');
+  await tester.scrollUntilVisible(delete, 400,
+      scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
+  await tester.tap(delete);
+  await tester.pumpAndSettle();
+  tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Delete account permanently')).onPressed!();
+  await tester.pumpAndSettle();
+}
+
 class _ShellDraftStore implements PublishDraftStore {
   final Map<String, PublishDraft> drafts = {};
 
@@ -953,7 +967,7 @@ void main() {
         expect(find.text('Pro package'), findsNothing);
       } else if (origin == 'Account') {
         expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
-        expect(find.text('เหลือโพสต์ 0 / 3 หน่วยเดือนนี้'), findsOneWidget);
+        expect(find.text('0 / 3 post units left this month'), findsOneWidget);
         expect(find.text('Pro package', skipOffstage: false), findsOneWidget);
       } else {
         expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
@@ -1008,7 +1022,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
-    expect(find.text('เหลือโพสต์ 0 / 3 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.text('0 / 3 post units left this month'), findsOneWidget);
 
     final loadsBeforePaywall = loadedPlans.length;
     await tester.tap(viewPlans);
@@ -1030,7 +1044,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-plan-pro')), findsOneWidget);
-    expect(find.text('เหลือโพสต์ 247 / 250 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.text('247 / 250 post units left this month'), findsOneWidget);
     expect(find.byKey(const ValueKey('profile-plan-free')), findsNothing);
 
     await tester.tap(_referenceNavButton('Home'));
@@ -1051,7 +1065,7 @@ void main() {
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
-    expect(find.text('เหลือโพสต์ 2 / 3 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.text('2 / 3 post units left this month'), findsOneWidget);
     expect(find.byKey(const ValueKey('profile-plan-pro')), findsNothing);
     await tester.tap(_referenceNavButton('Home'));
     await tester.pumpAndSettle();
@@ -1178,7 +1192,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final button = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(button, 400,
         scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(button);
@@ -1186,7 +1200,8 @@ void main() {
     await tester.tap(button);
     await tester.pumpAndSettle();
     tester
-        .widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'))
+        .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Delete account permanently'))
         .onPressed!();
     await tester.pump();
     PostDeeAuthSessionStore.instance
@@ -1195,7 +1210,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(PostDeeAuthSessionStore.instance.session.userId, 'b');
     expect(cleanupCalls, 0);
-    expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets(
@@ -1216,7 +1231,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final button = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(button, 400,
         scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(button);
@@ -1224,7 +1239,8 @@ void main() {
     await tester.tap(button);
     await tester.pumpAndSettle();
     tester
-        .widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'))
+        .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Delete account permanently'))
         .onPressed!();
     await tester.pump();
     await cleanupStarted.future;
@@ -2388,7 +2404,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Profile is now a tab, so its content shows with the nav still visible.
-    expect(find.text('บัญชีและโปรไฟล์'), findsOneWidget);
+    expect(find.text('Account and profile'), findsOneWidget);
     expect(find.text('PostDee Seller'), findsOneWidget);
     expect(_referenceNavButton('Account'), findsOneWidget);
   });
@@ -2499,7 +2515,7 @@ void main() {
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
 
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(
       deleteButton,
       400,
@@ -2511,7 +2527,7 @@ void main() {
 
     tester
         .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          find.widgetWithText(FilledButton, 'Delete account permanently'),
         )
         .onPressed!();
     await tester.pumpAndSettle();
@@ -2550,8 +2566,9 @@ void main() {
     );
     expect(toast.behavior, SnackBarBehavior.floating);
     expect(toast.action, isNull);
-    expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsOneWidget);
+    expect(find.text('Account deleted and signed out'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+    expect(find.text('Undo'), findsNothing);
     expect(find.text('เลิกทำ'), findsNothing);
   });
 
@@ -2601,7 +2618,7 @@ void main() {
 
       await tester.tap(_referenceNavButton('Account'));
       await tester.pumpAndSettle();
-      final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+      final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
       await tester.scrollUntilVisible(
         deleteButton,
         400,
@@ -2612,7 +2629,7 @@ void main() {
       await tester.pumpAndSettle();
       tester
           .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+            find.widgetWithText(FilledButton, 'Delete account permanently'),
           )
           .onPressed!();
       await tester.pumpAndSettle();
@@ -2620,7 +2637,7 @@ void main() {
       expect(find.text('Sign in to PostDee'), findsOneWidget);
       expect(
         find.text(
-          'ลบบัญชีแล้ว แต่ลบข้อมูลในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป',
+          'Account deleted, but some data remains on this device. Please clear app data.',
         ),
         findsOneWidget,
       );
@@ -2680,7 +2697,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(
       deleteButton,
       400,
@@ -2691,7 +2708,7 @@ void main() {
     await tester.pumpAndSettle();
     tester
         .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          find.widgetWithText(FilledButton, 'Delete account permanently'),
         )
         .onPressed!();
     await tester.pumpAndSettle();
@@ -2704,7 +2721,7 @@ void main() {
     );
     expect(preferences.getString(otherStyleKey), otherStyle);
     expect(
-      find.text('ลบวิดีโอยังไม่สำเร็จ บัญชีของคุณยังอยู่ กรุณาลองใหม่'),
+      find.text('Could not delete your videos. Your account still exists. Please try again.'),
       findsOneWidget,
     );
   });
@@ -2754,7 +2771,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(
       deleteButton,
       400,
@@ -2765,7 +2782,7 @@ void main() {
     await tester.pumpAndSettle();
     tester
         .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          find.widgetWithText(FilledButton, 'Delete account permanently'),
         )
         .onPressed!();
     await tester.pumpAndSettle();
@@ -2829,7 +2846,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(_referenceNavButton('Account'));
       await tester.pumpAndSettle();
-      final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+      final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
       await tester.scrollUntilVisible(
         deleteButton,
         400,
@@ -2840,7 +2857,7 @@ void main() {
       await tester.pumpAndSettle();
       tester
           .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+            find.widgetWithText(FilledButton, 'Delete account permanently'),
           )
           .onPressed!();
       await tester.pumpAndSettle();
@@ -2848,7 +2865,7 @@ void main() {
       expect(deletionCalls, ['ready']);
       expect(sessionStore.session.isSignedIn, isTrue);
       if (code == 'ACCOUNT_DELETION_UNAVAILABLE') {
-        expect(find.text('ระบบลบบัญชียังไม่พร้อม กรุณาลองใหม่ภายหลัง'),
+        expect(find.text('Account deletion is unavailable. Please try again later.'),
             findsOneWidget);
       }
     });
@@ -2898,7 +2915,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(
       deleteButton,
       400,
@@ -2909,18 +2926,130 @@ void main() {
     await tester.pumpAndSettle();
     tester
         .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          find.widgetWithText(FilledButton, 'Delete account permanently'),
         )
         .onPressed!();
     await tester.pumpAndSettle();
 
     expect(
       find.text(
-        'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ จากนั้นลบบัญชีภายใน 5 นาที',
+        'Sign out and sign in again, then delete your account within 5 minutes.',
       ),
       findsOneWidget,
     );
     expect(sessionStore.session.isSignedIn, isTrue);
+  });
+
+  for (final failure in [
+    (code: 'ACCOUNT_MEDIA_CLEANUP_UNAVAILABLE',
+        text: 'Video deletion is unavailable. Please try again later.'),
+    (code: 'ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE',
+        text: 'Channel disconnection is unavailable. Please try again later.'),
+    (code: 'ACCOUNT_SOCIAL_CLEANUP_FAILED',
+        text: 'Could not disconnect all channels. Your account has not been deleted. Please try again.'),
+    (code: 'ACCOUNT_IDENTITY_DELETE_FAILED',
+        text: 'Your data was deleted, but sign-in access could not be closed. Please try deleting your account again.'),
+    (code: 'UNKNOWN_PROVIDER_CODE', text: 'Unrecognized provider detail'),
+  ]) {
+    testWidgets('English deletion failure preserves the account: ${failure.code}',
+        (tester) async {
+      final language = _signInShell();
+      var cleanupCalls = 0;
+      var deletes = 0;
+      await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        checkAccountDeletionReady: () async => true,
+        deleteAccount: () async {
+          deletes++;
+          throw ApiException('Unrecognized provider detail', code: failure.code);
+        },
+        deleteLocalPublishDrafts: () async => cleanupCalls++,
+      )));
+      await tester.pumpAndSettle();
+      await _confirmEnglishAccountDeletion(tester);
+      expect(find.text(failure.text), findsOneWidget);
+      expect(PostDeeAuthSessionStore.instance.session.stableUserId,
+          'firebase-user-shell');
+      expect(deletes, 1);
+      expect(cleanupCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final failure in [
+    (raw: 'Apple ไม่ส่งรหัสยืนยัน กรุณาลองลบบัญชีอีกครั้ง',
+        text: 'Apple did not return a verification code. Please try deleting your account again.'),
+    (raw: 'ถอนสิทธิ์ Sign in with Apple ไม่สำเร็จ บัญชียังไม่ถูกลบ กรุณาลองใหม่',
+        text: 'Could not revoke Sign in with Apple access. Your account has not been deleted. Please try again.'),
+    (raw: 'Unrecognized revocation detail', text: 'Unrecognized revocation detail'),
+  ]) {
+    testWidgets('English deletion revocation failure preserves raw unknown detail: ${failure.raw}',
+        (tester) async {
+      final language = _signInShell();
+      var deletes = 0;
+      final calls = <String>[];
+      await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        checkAccountDeletionReady: () async => false,
+        accountAccessRevoker: _FailingAccountAccessRevoker(failure.raw, calls),
+        deleteAccount: () async => deletes++,
+        deleteLocalPublishDrafts: () async {},
+      )));
+      await tester.pumpAndSettle();
+      await _confirmEnglishAccountDeletion(tester);
+      expect(find.text(failure.text), findsOneWidget);
+      expect(deletes, 0);
+      expect(calls, ['revoke']);
+      expect(PostDeeAuthSessionStore.instance.session.stableUserId,
+          'firebase-user-shell');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('pending deletion failure uses the current locale', (tester) async {
+    final language = _signInShell()..setLocale(const Locale('th'));
+    final result = Completer<void>();
+    var deletes = 0;
+    final shell = PostDeeShell(
+      languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
+      checkAccountDeletionReady: () async => true,
+      deleteAccount: () {
+        deletes++;
+        return result.future;
+      },
+      deleteLocalPublishDrafts: () async {},
+    );
+    await tester.pumpWidget(AnimatedBuilder(
+      animation: language,
+      builder: (context, _) => MaterialApp(
+        locale: language.locale,
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: shell,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    tester.widget<ProfileScreen>(
+        find.byType(ProfileScreen, skipOffstage: false)).onDeleteAccount();
+    await tester.pumpAndSettle();
+    expect(deletes, 1);
+    language.setLocale(const Locale('en'));
+    await tester.pumpAndSettle();
+    result.completeError(StateError('opaque-delete-error'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not delete your account. Please try again.'),
+        findsOneWidget);
+    expect(find.textContaining('opaque-delete-error'), findsNothing);
+    expect(PostDeeAuthSessionStore.instance.session.isSignedIn, isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('keeps reference bottom nav buttons touch-friendly',
@@ -3527,6 +3656,18 @@ class _RecordingAccountAccessRevoker implements AccountAccessRevoker {
   @override
   Future<void> revokeBeforeAccountDeletion() async {
     calls.add('revoke');
+  }
+}
+
+class _FailingAccountAccessRevoker implements AccountAccessRevoker {
+  _FailingAccountAccessRevoker(this.message, this.calls);
+  final String message;
+  final List<String> calls;
+
+  @override
+  Future<void> revokeBeforeAccountDeletion() async {
+    calls.add('revoke');
+    throw AccountAccessRevocationException(message);
   }
 }
 

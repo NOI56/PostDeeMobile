@@ -588,7 +588,7 @@ void main() {
     }
     await tester.tap(themeRow);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('มืด'));
+    await tester.tap(find.text('Dark'));
     await tester.pumpAndSettle();
 
     expect(themeController.themeMode, ThemeMode.dark);
@@ -601,7 +601,7 @@ void main() {
 
     await tester.tap(themeRow);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('สว่าง'));
+    await tester.tap(find.text('Light'));
     await tester.pumpAndSettle();
 
     expect(themeController.themeMode, ThemeMode.light);

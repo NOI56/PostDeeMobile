@@ -474,7 +474,12 @@ void main() {
         await tester.pumpWidget(_hostProfile(locale: locale));
         await tester.pumpAndSettle();
 
-        expect(find.text('ยืนยันเบอร์โทร'), findsOneWidget);
+        expect(
+          find.text(locale.languageCode == 'en'
+              ? 'Verify phone number'
+              : 'ยืนยันเบอร์โทร'),
+          findsOneWidget,
+        );
         final connections =
             find.byKey(const ValueKey('profile-connections-row'));
         await tester.scrollUntilVisible(
@@ -484,8 +489,18 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('เชื่อมต่อช่องทาง'), findsOneWidget);
-        expect(find.text('ช่องทางและเครื่องมือ'), findsOneWidget);
+        expect(
+          find.text(locale.languageCode == 'en'
+              ? 'Connect channels'
+              : 'เชื่อมต่อช่องทาง'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(locale.languageCode == 'en'
+              ? 'Channels and tools'
+              : 'ช่องทางและเครื่องมือ'),
+          findsOneWidget,
+        );
         expect(find.text('เทมเพลตแคปชั่น', skipOffstage: false), findsNothing);
         expect(find.text('ลิงก์หน้าโปรไฟล์', skipOffstage: false), findsNothing);
 
@@ -792,6 +807,11 @@ void main() {
       );
       await tester.pump();
 
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('profile-connections-row')),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('กำลังโหลดช่องทาง...'), findsWidgets);
       expect(tester.takeException(), isNull);
 
@@ -1072,8 +1092,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.byType(ConnectionsScreen), findsNothing);
-    // The Profile page is outside this translation step and keeps its own copy.
-    expect(find.text('1/4 เชื่อมต่อ'), findsOneWidget);
+    expect(find.text('1/4 connected'), findsOneWidget);
     expect(apiClient.connectCalls, isEmpty);
     expect(apiClient.disconnectCalls, isEmpty);
     expect(tester.takeException(), isNull);

@@ -5,8 +5,13 @@ export type PushMessage = {
   data?: Record<string, string>;
 };
 
+export type PushSendResult = {
+  // Tokens the provider says will never deliver again (app uninstalled, etc.).
+  invalidTokens: string[];
+};
+
 export type PushSender = {
-  send: (message: PushMessage) => Promise<void>;
+  send: (message: PushMessage) => Promise<PushSendResult | void>;
 };
 
 /**

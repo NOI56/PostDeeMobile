@@ -7,6 +7,91 @@ import { createPublishScheduler } from './publishScheduler.js';
 import { PublishOutcomeUnknownError, type PlatformPublishInput } from './publishWorker.js';
 
 describe('createPublishScheduler', () => {
+  it('publishes due posts concurrently up to the configured limit', async () => {
+    const postStore = createPostStore();
+    const releases = new Map<string, () => void>();
+    const started: string[] = [];
+    const publisher = {
+      publish: vi.fn(async ({ postId, platform }: PlatformPublishInput) => {
+        started.push(postId);
+        await new Promise<void>((resolve) => releases.set(postId, resolve));
+        return {
+          platform, status: 'PUBLISHED' as const, deliveryOutcome: 'LIVE' as const,
+          publishedAt: '2026-10-27T00:00:00.000Z'
+        };
+      })
+    };
+    for (const caption of ['one', 'two', 'three']) {
+      await postStore.create({
+        userId: `seller-concurrent-${caption}`, caption,
+        videoS3Key: `uploads/seller-concurrent/${caption}.mp4`, platforms: ['TIKTOK']
+      });
+    }
+    const flush = async () => {
+      for (let index = 0; index < 50; index += 1) await Promise.resolve();
+    };
+
+    const run = createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher,
+      maxConcurrentPublishes: 2
+    }).runOnce();
+    await flush();
+
+    expect(started).toHaveLength(2);
+    releases.get(started[0])?.();
+    await flush();
+    expect(started).toHaveLength(3);
+    for (const postId of started) releases.get(postId)?.();
+    await run;
+
+    const statuses = (await postStore.listDue({ now: '2099-01-01T00:00:00.000Z' }));
+    expect(statuses).toEqual([]);
+  });
+
+  it('reports finished posts as settled but not posts skipped by a lost claim', async () => {
+    const postStore = createPostStore();
+    const published = await postStore.create({
+      userId: 'seller-settled', caption: 'published', videoS3Key: 'uploads/seller-settled/a.mp4',
+      platforms: ['TIKTOK']
+    });
+    const skipped = await postStore.create({
+      userId: 'seller-settled', caption: 'rescheduled meanwhile',
+      videoS3Key: 'uploads/seller-settled/b.mp4', platforms: ['TIKTOK']
+    });
+    const onPostSettled = vi.fn(async () => undefined);
+
+    await createPublishScheduler({
+      postStore: {
+        ...postStore,
+        claimForPublish: async (input) =>
+          input.postId === skipped.id ? false : postStore.claimForPublish(input)
+      },
+      platformPublishStore: createInMemoryPlatformPublishStore(),
+      onPostSettled
+    }).runOnce();
+
+    expect(onPostSettled.mock.calls).toEqual([[published.id]]);
+  });
+
+  it('reports a post settled once pre-publish retries end in FAILED', async () => {
+    const postStore = createPostStore();
+    const post = await postStore.create({
+      userId: 'seller-settled-failed', caption: 'fails', videoS3Key: 'uploads/x/a.mp4',
+      platforms: ['TIKTOK']
+    });
+    const onPostSettled = vi.fn(async () => undefined);
+
+    await createPublishScheduler({
+      postStore,
+      platformPublishStore: createInMemoryPlatformPublishStore(),
+      assertOwnerActive: async () => { throw new Error('preflight unavailable'); },
+      maxPrePublishAttempts: 1,
+      onPostSettled
+    }).runOnce();
+
+    expect(onPostSettled.mock.calls).toEqual([[post.id]]);
+  });
+
   it('keeps owner admission through the fallback failure notification', async () => {
     const postStore = createPostStore();
     const post = await postStore.create({
@@ -119,7 +204,11 @@ describe('createPublishScheduler', () => {
       await publishing;
       return { platform, status: 'PUBLISHED' as const, deliveryOutcome: 'LIVE' as const, publishedAt: '2026-10-05T00:00:00.000Z' };
     }) };
-    const scheduler = createPublishScheduler({ postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher });
+    // One publish in flight; the concurrent case is covered separately below.
+    const scheduler = createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher,
+      maxConcurrentPublishes: 1
+    });
     const run = scheduler.runOnce();
     await started;
     let drained = false;
@@ -132,6 +221,40 @@ describe('createPublishScheduler', () => {
     expect(second.status).toBe('QUEUED');
     await scheduler.runOnce();
     expect(publisher.publish).toHaveBeenCalledOnce();
+  });
+
+  it('drains concurrent publishes without claiming the rest of the batch', async () => {
+    const postStore = createPostStore();
+    const posts = [];
+    for (const caption of ['first', 'second', 'third']) {
+      posts.push(await postStore.create({
+        userId: `seller-drain-${caption}`, caption, videoS3Key: `${caption}.mp4`, platforms: ['TIKTOK']
+      }));
+    }
+    let finishPublish!: () => void;
+    const publishing = new Promise<void>((resolve) => { finishPublish = resolve; });
+    let startedCount = 0;
+    let bothStarted!: () => void;
+    const started = new Promise<void>((resolve) => { bothStarted = resolve; });
+    const publisher = { publish: vi.fn(async ({ platform }: PlatformPublishInput) => {
+      startedCount += 1;
+      if (startedCount === 2) bothStarted();
+      await publishing;
+      return { platform, status: 'PUBLISHED' as const, deliveryOutcome: 'LIVE' as const, publishedAt: '2026-10-05T00:00:00.000Z' };
+    }) };
+    const scheduler = createPublishScheduler({
+      postStore, platformPublishStore: createInMemoryPlatformPublishStore(), publisher,
+      maxConcurrentPublishes: 2
+    });
+
+    const run = scheduler.runOnce();
+    await started;
+    const drain = scheduler.drain!();
+    finishPublish();
+    await Promise.all([run, drain]);
+
+    expect(posts.map((post) => post.status)).toEqual(['PUBLISHED', 'PUBLISHED', 'QUEUED']);
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
   });
 
   it('marks polling failures unavailable and recovers on a successful poll', async () => {

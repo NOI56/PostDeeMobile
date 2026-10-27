@@ -90,4 +90,31 @@ export const registerTemplateRoutes = (
       template
     });
   });
+
+  router.delete('/templates/:id', authMiddleware, async (request, response) => {
+    const authUser = readAuthUser(response.locals);
+
+    if (!authUser) {
+      response.status(401).json({
+        status: 'error',
+        message: 'Authenticated user is required'
+      });
+      return;
+    }
+
+    const removed = await store.remove({
+      userId: authUser.id,
+      templateId: String(request.params.id)
+    });
+
+    if (!removed) {
+      response.status(404).json({
+        status: 'error',
+        message: 'Template not found'
+      });
+      return;
+    }
+
+    response.json({ status: 'ok' });
+  });
 };

@@ -429,6 +429,49 @@ describe('createPostPeerPublisher', () => {
     ]);
   });
 
+  // Hangs until the request's abort signal fires, like a stalled connection.
+  const hangUntilAborted = (_url: string, init: RequestInit) =>
+    new Promise<never>((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+
+  it('treats a hung PostPeer create request as an unknown outcome after the timeout', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      requestTimeoutMs: 20,
+      fetchImpl: hangUntilAborted
+    });
+
+    await expect(
+      publisher.publish({ userId: 'seller-1', postId: 'post-1', platform: 'TIKTOK' })
+    ).rejects.toBeInstanceOf(PostPeerPublishOutcomeUnknownError);
+  });
+
+  it('stops waiting on a hung PostPeer status check after the timeout', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      pollIntervalMs: 0,
+      maxPollAttempts: 2,
+      requestTimeoutMs: 20,
+      fetchImpl: async (url, init) =>
+        url.endsWith('/v1/posts')
+          ? {
+              ok: true,
+              status: 202,
+              json: async () => ({ success: true, status: 'publishing', postId: 'pp-1' })
+            }
+          : hangUntilAborted(url, init)
+    });
+
+    await expect(
+      publisher.publish({ userId: 'seller-1', postId: 'post-1', platform: 'TIKTOK' })
+    ).rejects.toThrow(/outcome is still unknown after 2 status checks/i);
+  });
+
   it('fails closed when an accepted PostPeer post never reaches a final status', async () => {
     const publisher = createPostPeerPublisher({
       apiKey: 'pp-key',

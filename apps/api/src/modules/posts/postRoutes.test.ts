@@ -2253,7 +2253,8 @@ describe('post routes', () => {
       template: {
         findMany: vi.fn(),
         count: vi.fn(),
-        create: vi.fn()
+        create: vi.fn(),
+        deleteMany: vi.fn()
       }
     };
     const app = createApp({

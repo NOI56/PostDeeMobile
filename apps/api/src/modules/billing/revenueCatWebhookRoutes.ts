@@ -7,6 +7,7 @@ import {
 } from '../account/ownerMutationLock.js';
 import type { PaidSubscriptionPlan, SubscriptionStatus } from '../subscriptions/subscriptionStore.js';
 import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import { isSameSecret } from '../security/secretCompare.js';
 import type { UserStore } from '../users/userStore.js';
 import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 import { MonthlyAddonPurchaseConflictError, allowMonthlyAddonStore, type MonthlyAddonStore } from './monthlyAddonStore.js';
@@ -196,7 +197,7 @@ export const registerRevenueCatWebhookRoutes = ({
       return;
     }
 
-    if (readAuthorizationToken(request) !== config.revenueCatWebhookAuthToken) {
+    if (!isSameSecret(readAuthorizationToken(request), config.revenueCatWebhookAuthToken)) {
       sendUnauthorized(response);
       return;
     }

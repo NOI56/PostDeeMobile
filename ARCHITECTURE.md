@@ -2141,8 +2141,11 @@ retroactively prove that a previously deployed process ran the guard.
 
 Production account deletion is temporarily disabled with
 `FIREBASE_AUTH_DELETE_ENABLED=false`. A controlled environment that enables the
-path additionally requires `FIREBASE_SERVICE_ACCOUNT_JSON`; the API then uses
-Firebase Admin token verification with revocation checks.
+path additionally requires `FIREBASE_SERVICE_ACCOUNT_JSON`. Since 2026-10-27,
+whenever `AUTH_PROVIDER=firebase` and a service account is configured (deletion
+on or off), the API verifies tokens through Firebase Admin with revocation
+checks, so disabled, deleted or revoked users are rejected. Without one, the
+certificate-only verifier cannot see revocations.
 
 Account deletion is an idempotent cleanup saga, but is not yet production-safe.
 Its durable owner marker applies in legacy upload mode too. Explicit final User

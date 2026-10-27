@@ -31,6 +31,31 @@ void _writeJsonResponse(
 }
 
 void main() {
+  test('deleteTemplate sends DELETE for the encoded template id', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final baseUrl = 'http://${server.address.address}:${server.port}';
+    final requests = <String>[];
+    final serverTask = () async {
+      await for (final request in server) {
+        requests.add('${request.method} ${request.uri.path}');
+        await request.drain<void>();
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write('{"status":"ok"}');
+        await request.response.close();
+      }
+    }();
+
+    try {
+      await PostDeeApiClient(baseUrl: baseUrl).deleteTemplate('template/1');
+      expect(requests, ['DELETE /templates/template%2F1']);
+    } finally {
+      await server.close(force: true);
+      await serverTask;
+    }
+  });
+
   test('handled API failures report bounded labels without request content', () async {
     for (final status in [200, 401, 403, 429, 500, 503]) {
       final reports = <({String operation, int status})>[];

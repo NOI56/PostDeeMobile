@@ -24,6 +24,9 @@ export type TemplateStore = {
   list: (filter: { userId: string }) => TextTemplate[] | Promise<TextTemplate[]>;
   count: (filter: { userId: string }) => number | Promise<number>;
   create: (input: CreateTemplateInput) => TextTemplate | Promise<TextTemplate>;
+  // Deletes one template owned by userId. Returns false when it is missing or
+  // belongs to someone else.
+  remove: (input: { userId: string; templateId: string }) => boolean | Promise<boolean>;
   // Hard-deletes every template owned by userId. Used by account deletion.
   // Optional because the Prisma store relies on the User cascade instead.
   deleteAllForUser?: (userId: string) => Promise<void>;
@@ -52,6 +55,18 @@ export const createTemplateStore = (): TemplateStore => {
       templates.push(template);
       const { userId: _userId, ...responseTemplate } = template;
       return responseTemplate;
+    },
+    remove: ({ userId, templateId }) => {
+      const index = templates.findIndex(
+        (template) => template.id === templateId && template.userId === userId
+      );
+
+      if (index === -1) {
+        return false;
+      }
+
+      templates.splice(index, 1);
+      return true;
     },
     deleteAllForUser: async (userId) => {
       for (let index = templates.length - 1; index >= 0; index -= 1) {

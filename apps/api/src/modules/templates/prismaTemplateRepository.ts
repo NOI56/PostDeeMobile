@@ -26,6 +26,7 @@ type TemplateDelegate = {
       body: string;
     };
   }) => Promise<PrismaTemplate>;
+  deleteMany: (args: { where: { id: string; userId: string } }) => Promise<{ count: number }>;
 };
 
 export type PrismaTemplateClient = {
@@ -64,5 +65,12 @@ export const createPrismaTemplateRepository = ({
     });
 
     return mapTemplate(template);
+  },
+  remove: async ({ userId, templateId }) => {
+    const result = await prisma.template.deleteMany({
+      where: { id: templateId, userId }
+    });
+
+    return result.count > 0;
   }
 });

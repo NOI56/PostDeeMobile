@@ -7,6 +7,8 @@ import { readAuthUser } from '../auth/authTypes.js';
 import {
   MediaDownloadError,
   aiCaptionFrameMaxBytes,
+  aiMediaDownloadMaxBytes,
+  realClipCaptionClipMaxBytes,
   type AiMediaFetchOptions
 } from '../storage/mediaDownload.js';
 import { isStorageKeyOwnedByUser } from '../storage/storageKeyPolicy.js';
@@ -505,7 +507,24 @@ export const registerCaptionRoutes = (
       activeMediaRequests += 1;
       try {
         try {
-          const audio = await fetchClipMedia(validation.request.videoS3Key);
+          const audio = await fetchClipMedia(validation.request.videoS3Key, {
+            kind: validation.request.mediaKind ?? 'video',
+            maxBytes: realClipCaptionClipMaxBytes
+          }).catch((error: unknown) => {
+            // A legacy full video this large was always rejected by Gemini and
+            // fell back to the template; keep that outcome without the download.
+            // Beyond the general AI media limit it stays a 413 as before.
+            if (
+              validation.request.mediaKind !== 'audio' &&
+              error instanceof MediaDownloadError &&
+              error.code === 'AI_MEDIA_TOO_LARGE' &&
+              (error.declaredSizeBytes ?? 0) <= aiMediaDownloadMaxBytes
+            ) {
+              throw new Error('Clip exceeds the Gemini inline caption budget');
+            }
+
+            throw error;
+          });
           let frames: RealClipMediaPart[] | undefined;
 
           if (
@@ -573,7 +592,7 @@ export const registerCaptionRoutes = (
 
         transcript = await transcriptionProvider.transcribe({
           mediaS3Key: validation.request.videoS3Key,
-          mediaKind: 'legacy-video'
+          mediaKind: validation.request.mediaKind === 'audio' ? 'audio' : 'legacy-video'
         });
       } catch (error) {
         await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);

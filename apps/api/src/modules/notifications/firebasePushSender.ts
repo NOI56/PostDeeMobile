@@ -1,6 +1,6 @@
 import type { Messaging } from 'firebase-admin/messaging';
 
-import type { PushMessage, PushSender } from './pushSender.js';
+import type { PushMessage, PushSender, PushSendResult } from './pushSender.js';
 
 // The project ships with the mock sender by default. To enable real push
 // delivery, set PUSH_SENDER=firebase and provide FIREBASE_SERVICE_ACCOUNT_JSON
@@ -8,6 +8,12 @@ import type { PushMessage, PushSender } from './pushSender.js';
 // lazy so local mock-mode startup does not initialize Firebase Admin.
 
 const firebaseAdminAppName = 'postdee-backend';
+// Only errors meaning the token can never deliver again; transient failures
+// (quota, internal errors) keep the token for the next publish.
+const invalidTokenErrorCodes = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token'
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -63,9 +69,9 @@ export const createFirebasePushSender = ({
   let messagingPromise: Promise<Messaging> | undefined;
 
   return {
-    send: async ({ tokens, title, body, data }: PushMessage) => {
+    send: async ({ tokens, title, body, data }: PushMessage): Promise<PushSendResult> => {
       if (tokens.length === 0) {
-        return;
+        return { invalidTokens: [] };
       }
 
       messagingPromise ??= loadMessaging(serviceAccountJson).catch((error) => {
@@ -73,11 +79,19 @@ export const createFirebasePushSender = ({
         throw error;
       });
       const messaging = await messagingPromise;
-      await messaging.sendEachForMulticast({
+      const result = await messaging.sendEachForMulticast({
         tokens,
         notification: { title, body },
         data
       });
+
+      return {
+        invalidTokens: tokens.filter((_token, index) => {
+          const response = result.responses[index];
+          return response !== undefined && !response.success &&
+            invalidTokenErrorCodes.has(response.error?.code ?? '');
+        })
+      };
     }
   };
 };

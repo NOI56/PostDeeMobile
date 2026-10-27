@@ -2192,7 +2192,13 @@ Worker behavior:
 - PostPeer `202 pending/publishing` is not treated as success. The adapter polls
   `GET /v1/posts/{postId}` for roughly two minutes and records `PUBLISHED` only
   when the selected platform has a real `platformPostUrl` or `platformPostId`.
-  It never fabricates an external id.
+  It never fabricates an external id. Each PostPeer request times out after 60
+  seconds (2026-10-27): a timed-out create is an unknown outcome (never
+  resubmitted), and a timed-out status check counts as one unanswered poll.
+- The in-process scheduler publishes up to 4 posts of a due batch at once, so
+  one slow provider publish does not hold back the rest. Polls still never
+  overlap, `drain` waits for in-flight publishes and claims nothing new, and a
+  post that reaches a final status has its in-memory queue job removed.
 - A provider call is retried only for an explicitly safe error proving that no
   external post was accepted. A network/timeout or uncertain PostPeer outcome is
   not submitted again; clients must check the platform before a manual retry.
@@ -2359,6 +2365,8 @@ Since 2026-10-24 (security Batch 5) `token` must be at most 4096 characters of
 `A-Z a-z 0-9 : _ . -`, otherwise `400` with `code: "DEVICE_TOKEN_INVALID"`.
 Each owner keeps the 10 most recently registered tokens; registering an
 eleventh removes the oldest, and the publish notifier reads at most those 10.
+Tokens FCM reports as unregistered or invalid after a send are unregistered
+for that owner (2026-10-27); transient FCM errors keep the token.
 
 Publish-result pushes include `data: { postId, type: "publish_result", userId }`,
 using the same owner as device-token selection. Mobile clears its in-app list
@@ -2723,7 +2731,9 @@ Requires Starter or Pro.
 - Starter retains `AUDIO_ONLY` mode and includes 50 caption credits/month.
 - Pro retains `AUDIO_WITH_FRAMES` mode and includes 120 caption credits/month.
   These historical enum values are unchanged. Both Gemini modes receive the
-  whole MP4; `AUDIO_ONLY` does not describe an isolated audio transport. Pro
+  whole MP4 when it fits the clip budget below; `AUDIO_ONLY` does not describe
+  an isolated audio transport. Only a clip too large to send whole is sent as
+  extracted audio. Pro
   additionally supplies up to three selected frames under the existing rules.
 - Shared-caption generate/change requests cost one credit. Requests with
   `platforms` cost one credit for each of their 1–4 selected channels.
@@ -2771,9 +2781,25 @@ Requires Starter or Pro.
   first three are used, and each must end in `.jpg`, `.jpeg`, `.png` or `.webp`;
   otherwise the request returns `400` with `code: "AI_CAPTION_FRAME_INVALID"`
   before any download. Each frame download must have an `image/*` content type
-  (`415 AI_CAPTION_FRAME_INVALID`) and at most 5 MiB; the clip keeps its
-  200 MiB limit. Limits are enforced while streaming, so a missing or wrong
-  `Content-Length` cannot make the API buffer more (`413 AI_MEDIA_TOO_LARGE`).
+  (`415 AI_CAPTION_FRAME_INVALID`) and at most 5 MiB. Limits are enforced
+  while streaming, so a missing or wrong `Content-Length` cannot make the API
+  buffer more (`413 AI_MEDIA_TOO_LARGE`).
+- Clip budget (2026-10-27): Gemini takes media inline (base64) and rejects
+  requests over 20 MB, so a clip over 15,000,000 bytes can never be captioned
+  whole. The clip download is capped there. A legacy `videoS3Key` clip above it
+  (up to the 200 MiB AI media limit) skips the download and returns the same
+  local template caption Gemini's rejection produced before; above 200 MiB it
+  stays `413 AI_MEDIA_TOO_LARGE`.
+- `audioS3Key` (2026-10-27) is accepted instead of `videoS3Key` (exactly one;
+  both or neither is `400`). It must end in `.m4a`, be stored as `audio/mp4`
+  (`415 AI_CAPTION_MEDIA_TYPE_INVALID` otherwise) and fit the clip budget
+  (`413 AI_MEDIA_TOO_LARGE`). The mobile app still uploads the whole MP4 when it
+  fits the budget, so Gemini also sees the video; only a larger clip has its
+  audio extracted on device and uploaded with `"purpose": "ai-edit-audio"`, so
+  it gets a real AI caption instead of the template. Transcription fallback
+  treats it as audio. Deploy order: release this API before the mobile build
+  that sends `audioS3Key`; older APIs reject it with `400`. Older mobile builds
+  keep working against this API unchanged.
   At most two clip-caption requests per API instance hold media at once; extra
   requests get `503` with `code: "AI_MEDIA_BUSY"` and `Retry-After: 1`, after
   the quota pre-check but before any download or quota reservation.
@@ -3585,6 +3611,13 @@ can keep up to 200 templates; the next create returns `409` with
 `code: "TEMPLATE_LIMIT_REACHED"`. The count check is not transactional, so a
 burst of concurrent creates can end slightly above 200.
 
+### `DELETE /templates/:id`
+
+Deletes one of the authenticated user's templates (2026-10-27), freeing its
+slot. Returns `{ "status": "ok" }`, or `404` when the template does not exist or
+belongs to another user. The mobile Templates screen asks for confirmation
+before calling it.
+
 Request:
 
 ```json
@@ -3900,6 +3933,10 @@ This endpoint requires:
 ```http
 Authorization: Bearer <REVENUECAT_WEBHOOK_AUTH_TOKEN>
 ```
+
+The token (and the Google Play notification token) is compared in constant
+time over SHA-256 digests (2026-10-27), so response timing reveals neither its
+length nor a matching prefix.
 
 RevenueCat `app_user_id` must match the PostDee user id. In production this
 should be the Firebase uid used by the mobile app. The backend maps RevenueCat

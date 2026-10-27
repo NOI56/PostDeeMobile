@@ -55,6 +55,51 @@ describe('template routes', () => {
     expect(listResponse.body.templates).toEqual([createResponse.body.template]);
   });
 
+  it('deletes an owned template so its slot can be reused', async () => {
+    const app = createApp();
+    const created = await request(app)
+      .post('/templates')
+      .set('x-postdee-user-id', 'seller-template-delete')
+      .send({ title: 'Old', body: 'Remove me' })
+      .expect(201);
+    const templateId = created.body.template.id as string;
+
+    await request(app)
+      .delete(`/templates/${templateId}`)
+      .set('x-postdee-user-id', 'seller-template-delete')
+      .expect(200, { status: 'ok' });
+
+    const list = await request(app)
+      .get('/templates')
+      .set('x-postdee-user-id', 'seller-template-delete')
+      .expect(200);
+    expect(list.body.templates).toEqual([]);
+    await request(app)
+      .delete(`/templates/${templateId}`)
+      .set('x-postdee-user-id', 'seller-template-delete')
+      .expect(404);
+  });
+
+  it("does not delete another user's template", async () => {
+    const app = createApp();
+    const created = await request(app)
+      .post('/templates')
+      .set('x-postdee-user-id', 'seller-template-owner')
+      .send({ title: 'Mine', body: 'Keep me' })
+      .expect(201);
+
+    await request(app)
+      .delete(`/templates/${created.body.template.id}`)
+      .set('x-postdee-user-id', 'seller-template-intruder')
+      .expect(404);
+
+    const list = await request(app)
+      .get('/templates')
+      .set('x-postdee-user-id', 'seller-template-owner')
+      .expect(200);
+    expect(list.body.templates).toHaveLength(1);
+  });
+
   it('scopes templates by authenticated user', async () => {
     const app = createApp();
 
@@ -109,7 +154,8 @@ describe('template routes', () => {
     const asyncStore: TemplateStore = {
       list: async () => [template],
       count: async () => 1,
-      create: async () => template
+      create: async () => template,
+      remove: async () => false
     };
     const app = express();
     app.use(express.json());

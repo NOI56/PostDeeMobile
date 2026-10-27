@@ -12,6 +12,7 @@ import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/monitoring/postdee_analytics.dart';
 import '../../core/theme/app_theme.dart';
+import '../ai_editing/ai_edit_audio_extractor.dart';
 import '../ai_editing/review_video_timeline.dart';
 import '../captions/caption_writing_style_store.dart';
 import '../platforms/connections_screen.dart';
@@ -72,6 +73,13 @@ typedef UploaderPostCreator = Future<QueuedPostResult> Function(
 typedef UploaderPostRecovery = Future<QueuedPostResult?> Function(
     CreatePostRequest request);
 typedef UploaderPublishingReadinessChecker = Future<void> Function();
+typedef UploaderAudioExtractor = Future<AiEditAudioArtifact> Function(
+    File source);
+
+/// Matches the API's real-clip caption clip limit: Gemini takes media inline
+/// (base64) up to 20 MB, so a larger clip can never be captioned whole. Above
+/// it the app sends only the clip's audio (64 kbps mono, about 30 minutes).
+const aiCaptionClipMaxBytes = 15000000;
 typedef UploaderScheduledPostCreated = void Function(QueuedPostResult post);
 typedef UploaderConnectionsLoader = Future<List<SocialConnectionResult>>
     Function();
@@ -199,6 +207,7 @@ class UploaderScreen extends StatefulWidget {
     this.initialScheduleDate,
     this.now = DateTime.now,
     this.extractFrames,
+    this.extractCaptionAudio,
     this.growthToolSettingsStore =
         const SharedPreferencesGrowthToolSettingsStore(),
     this.initialVideoPath,
@@ -256,6 +265,10 @@ class UploaderScreen extends StatefulWidget {
   // Extracts still frames from the clip for Pro AI captioning (Gemini "sees"
   // them). Injectable so tests don't touch the native FFmpeg plugin.
   final UploaderClipFrameExtractor? extractFrames;
+
+  // Extracts the clip's audio so AI captions upload a small M4A instead of the
+  // whole video. Injectable so tests don't touch the native FFmpeg plugin.
+  final UploaderAudioExtractor? extractCaptionAudio;
   final PostDeeGrowthToolSettingsStore growthToolSettingsStore;
 
   // Pre-fills the screen with an already-on-device clip (e.g. the editor's
@@ -2380,7 +2393,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     );
   }
 
-  Future<String?> _uploadSelectedClipForAiCaption(
+  Future<({String s3Key, bool isAudio})?> _uploadSelectedClipForAiCaption(
       bool Function() stillCurrent) async {
     final localFilePath = _localFilePathController.text.trim();
     final localVideoFile = localFilePath.isEmpty ? null : File(localFilePath);
@@ -2417,6 +2430,64 @@ class _UploaderScreenState extends State<UploaderScreen>
       return null;
     }
 
+    void showRetryMessage() {
+      if (mounted) {
+        setState(() {
+          _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+        });
+      }
+    }
+
+    // A clip Gemini can take whole is sent whole, so it also sees the video.
+    // A bigger one could only ever get the template caption, so send its
+    // audio instead and still get a real AI caption.
+    AiEditAudioArtifact? audio;
+    if (sizeBytes > aiCaptionClipMaxBytes) {
+      try {
+        final extractAudio =
+            widget.extractCaptionAudio ?? AiEditAudioExtractor().extract;
+        audio = await extractAudio(localVideoFile);
+      } on AiEditAudioExtractionException {
+        // No audio track or FFmpeg unavailable: upload the video as before;
+        // the API then returns its template caption.
+      }
+    }
+
+    if (audio != null) {
+      final audioArtifact = audio;
+      try {
+        final audioSizeBytes = audioArtifact.file.lengthSync();
+        if (audioSizeBytes > aiCaptionClipMaxBytes) {
+          if (mounted && stillCurrent()) {
+            setState(() {
+              _aiCaptionErrorMessage =
+                  'คลิปยาวเกินไปสำหรับ AI แคปชั่น ลองตัดให้สั้นลงแล้วลองใหม่';
+            });
+          }
+          return null;
+        }
+
+        final upload = await _uploadCaptionFile(
+          request: CreateUploadRequest(
+            fileName: _readFileNameFromPath(audioArtifact.file.path),
+            contentType: 'audio/mp4',
+            sizeBytes: audioSizeBytes,
+            purpose: 'ai-edit-audio',
+          ),
+          file: audioArtifact.file,
+          stillCurrent: stillCurrent,
+          onRetry: showRetryMessage,
+        );
+        return (s3Key: upload.videoS3Key, isAudio: true);
+      } finally {
+        try {
+          await audioArtifact.cleanup();
+        } catch (_) {
+          // Temp audio cleanup must not replace the caption result or error.
+        }
+      }
+    }
+
     final upload = await _uploadCaptionFile(
       request: CreateUploadRequest(
         fileName: fileName,
@@ -2428,16 +2499,10 @@ class _UploaderScreenState extends State<UploaderScreen>
       ),
       file: localVideoFile,
       stillCurrent: stillCurrent,
-      onRetry: () {
-        if (mounted) {
-          setState(() {
-            _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
-          });
-        }
-      },
+      onRetry: showRetryMessage,
     );
 
-    return upload.videoS3Key;
+    return (s3Key: upload.videoS3Key, isAudio: false);
   }
 
   /// Extracts still frames from the selected clip and uploads them, returning
@@ -2779,10 +2844,10 @@ class _UploaderScreenState extends State<UploaderScreen>
         return;
       }
 
-      final videoS3Key = await _uploadSelectedClipForAiCaption(stillCurrent);
+      final clipMedia = await _uploadSelectedClipForAiCaption(stillCurrent);
       if (!stillCurrent()) return;
 
-      if (videoS3Key == null) {
+      if (clipMedia == null) {
         return;
       }
 
@@ -2798,7 +2863,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           widget.generateRealClipCaption ?? _apiClient.generateCaptionFromClip;
       final caption = await generator(
         GenerateRealClipCaptionRequest(
-          videoS3Key: videoS3Key,
+          audioS3Key: clipMedia.isAudio ? clipMedia.s3Key : null,
+          videoS3Key: clipMedia.isAudio ? null : clipMedia.s3Key,
           guidance: guidance.isEmpty ? null : guidance,
           selectedFrameKeys: selectedFrameKeys,
           deleteAfterUse: true,

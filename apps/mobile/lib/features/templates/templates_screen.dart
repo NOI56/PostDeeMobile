@@ -15,6 +15,8 @@ typedef TemplateCreator = Future<TextTemplateResult> Function({
   required String body,
 });
 
+typedef TemplateDeleter = Future<void> Function(String templateId);
+
 enum _TemplateExitAction { discard, save }
 
 class TemplatesScreen extends StatefulWidget {
@@ -22,10 +24,12 @@ class TemplatesScreen extends StatefulWidget {
     super.key,
     this.loadTemplates,
     this.createTemplate,
+    this.deleteTemplate,
   });
 
   final TemplateLoader? loadTemplates;
   final TemplateCreator? createTemplate;
+  final TemplateDeleter? deleteTemplate;
 
   @override
   State<TemplatesScreen> createState() => _TemplatesScreenState();
@@ -262,6 +266,48 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     return false;
   }
 
+  Future<void> _confirmAndDeleteTemplate(TextTemplateResult template) async {
+    if (!_canUseScreen) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ลบเทมเพลตนี้?'),
+        content: Text(template.title),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(dialogContext).colorScheme.error,
+            ),
+            child: const Text('ลบ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !_canUseScreen) return;
+
+    try {
+      final deleter = widget.deleteTemplate ?? _apiClient.deleteTemplate;
+      await deleter(template.id);
+      if (!_canUseScreen) return;
+      setState(() {
+        _templates.removeWhere((saved) => saved.id == template.id);
+        _errorMessage = null;
+      });
+    } catch (error) {
+      if (!_canUseScreen) return;
+      setState(() {
+        _errorMessage = apiErrorMessage(error,
+            fallbackMessage: 'ลบเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -420,7 +466,10 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
           ..._templates.map(
             (template) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: _SavedTemplateCard(template: template),
+              child: _SavedTemplateCard(
+                template: template,
+                onDelete: () => _confirmAndDeleteTemplate(template),
+              ),
             ),
           ),
       ],
@@ -482,9 +531,10 @@ class _EmptyTemplateCard extends StatelessWidget {
 }
 
 class _SavedTemplateCard extends StatelessWidget {
-  const _SavedTemplateCard({required this.template});
+  const _SavedTemplateCard({required this.template, required this.onDelete});
 
   final TextTemplateResult template;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -521,6 +571,17 @@ class _SavedTemplateCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary,
                   ),
+                ),
+              ),
+              IconButton(
+                key: ValueKey('template-delete-${template.id}'),
+                onPressed: onDelete,
+                tooltip: 'ลบเทมเพลต',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.delete_outline,
+                  size: 20,
+                  color: AppTheme.textMuted,
                 ),
               ),
             ],

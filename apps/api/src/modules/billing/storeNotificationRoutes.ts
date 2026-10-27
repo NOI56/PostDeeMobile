@@ -1,5 +1,6 @@
 import type { Request, Response, Router } from 'express';
 
+import { isSameSecret } from '../security/secretCompare.js';
 import { StorePurchaseVerificationError } from './storePurchaseService.js';
 
 export type StoreNotificationEvent = {
@@ -222,7 +223,7 @@ export const registerStoreNotificationRoutes = (
       return;
     }
 
-    if (readAuthorizationToken(request) !== options.googlePlayNotificationAuthToken) {
+    if (!isSameSecret(readAuthorizationToken(request), options.googlePlayNotificationAuthToken)) {
       response.status(401).json({
         status: 'error',
         code: 'GOOGLE_PLAY_NOTIFICATION_UNAUTHORIZED',

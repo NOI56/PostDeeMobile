@@ -1658,16 +1658,22 @@ class CaptionResult {
 
 class GenerateRealClipCaptionRequest {
   const GenerateRealClipCaptionRequest({
-    required this.videoS3Key,
+    this.audioS3Key,
+    this.videoS3Key,
     this.guidance,
     this.selectedFrameKeys = const [],
     this.deleteAfterUse = false,
     this.writingStyle,
     this.platforms = const [],
     this.expectedCredits,
-  });
+  }) : assert(
+          (audioS3Key == null) != (videoS3Key == null),
+          'Provide exactly one of audioS3Key or videoS3Key',
+        );
 
-  final String videoS3Key;
+  /// Extracted M4A audio; preferred over uploading the full video.
+  final String? audioS3Key;
+  final String? videoS3Key;
   final String? guidance;
   final List<String> selectedFrameKeys;
   final bool deleteAfterUse;
@@ -1676,7 +1682,8 @@ class GenerateRealClipCaptionRequest {
   final int? expectedCredits;
 
   Map<String, Object?> toJson() => {
-        'videoS3Key': videoS3Key,
+        if (audioS3Key != null) 'audioS3Key': audioS3Key,
+        if (videoS3Key != null) 'videoS3Key': videoS3Key,
         if (guidance != null && guidance!.trim().isNotEmpty)
           'guidance': guidance,
         if (selectedFrameKeys.isNotEmpty)
@@ -3865,6 +3872,10 @@ class PostDeeApiClient {
     }
 
     return TextTemplateResult.fromJson(template);
+  }
+
+  Future<void> deleteTemplate(String templateId) async {
+    await _deleteJson('/templates/${Uri.encodeComponent(templateId)}');
   }
 
   Future<AnalyticsSummaryResult> loadAnalyticsSummary({

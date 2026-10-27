@@ -175,6 +175,9 @@ import { registerPublishingReadinessRoutes } from './modules/socialConnections/p
 import type { SocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
 import { createSocialConnectionStore } from './modules/socialConnections/socialConnectionStoreFactory.js';
 import { registerPlannedRoutes } from './routes/plannedRoutes.js';
+import { createMemoryServiceIncidentStore, type ServiceIncidentStore } from './modules/serviceStatus/serviceIncident.js';
+import { createPrismaServiceIncidentStore, type PrismaServiceIncidentClient } from './modules/serviceStatus/prismaServiceIncidentStore.js';
+import { registerServiceStatusRoutes } from './modules/serviceStatus/serviceStatusRoutes.js';
 import { createRateLimitMiddleware } from './modules/security/rateLimit.js';
 import { createReadinessHandler } from './readiness.js';
 
@@ -232,6 +235,7 @@ type AppOptions = {
   uploadSessionStore?: UploadSessionStore;
   managedUploadService?: ManagedUploadService;
   ownerMutationLock?: OwnerMutationCoordinator;
+  serviceIncidentStore?: ServiceIncidentStore;
   now?: () => Date;
 };
 
@@ -891,6 +895,12 @@ export const createApp = (options: AppOptions = {}) => {
     deviceTokenStore,
     userStore
   );
+  const serviceIncidentStore =
+    options.serviceIncidentStore ??
+    (prismaClient
+      ? createPrismaServiceIncidentStore(prismaClient as unknown as PrismaServiceIncidentClient, options.now)
+      : createMemoryServiceIncidentStore({ now: options.now }));
+  registerServiceStatusRoutes(router, { store: serviceIncidentStore, now: options.now });
   registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore,
     connectClient: postPeerConnectClient,
@@ -943,7 +953,7 @@ export const createApp = (options: AppOptions = {}) => {
       authenticate: createAuthMiddlewareFromConfig({ config, firebaseVerifier: adminVerifier }),
       trials: trialAccessStore,
       data: options.adminDataSource ?? createPrismaAdminDataSource(prismaClient as unknown as PrismaClient, config.adminConsole, options.now),
-      now: options.now, runWithTarget: runWithOwnerLifetime,
+      now: options.now, runWithTarget: runWithOwnerLifetime, incidents: serviceIncidentStore,
       accountDeletions: options.adminAccountDeletionStore ??
         (prismaClient ? createPrismaAdminAccountDeletionStore(prismaClient as unknown as PrismaClient, options.now) : undefined),
       deleteAccount: accountRoutes.deleteAccountAsOperator,

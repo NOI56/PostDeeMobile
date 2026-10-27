@@ -2,6 +2,72 @@
 
 PostDee backend API reference.
 
+## Service status notices (2026-10-28, local candidate)
+
+Administrators publish customer-facing notices while the app has a problem;
+the Mobile Home shows open ones as a banner. This is phase 1 of the support
+chat plan; the chat room and AI support bot are later phases.
+
+### `GET /support/status`
+
+Public on purpose (no sign-in), so the notice still reaches people while login
+itself is failing; it is covered by the global rate limit and sent with
+`Cache-Control: public, max-age=30`.
+
+```json
+{
+  "status": "ok",
+  "incidents": [
+    {
+      "id": "0f7c2a51-3b8d-4e7a-9c1f-5d2e6b8a9c01",
+      "title": "TikTok ส่งคลิปช้ากว่าปกติ",
+      "message": "โพสต์ที่ตั้งเวลาไว้จะส่งต่ออัตโนมัติ ไม่ต้องส่งซ้ำ",
+      "platforms": ["TIKTOK"],
+      "stage": "IDENTIFIED",
+      "startedAt": "2026-10-28T07:00:00.000Z",
+      "updatedAt": "2026-10-28T07:30:00.000Z"
+    }
+  ],
+  "checkedAt": "2026-10-28T08:00:00.000Z"
+}
+```
+
+Only open notices are listed (newest first, at most 5 can be open). `stage` is
+`INVESTIGATING`, `IDENTIFIED` or `MONITORING`; an empty `platforms` list means
+the whole app. Administrator ids are never included. A store failure returns
+`503 SERVICE_STATUS_UNAVAILABLE` with `no-store`; Mobile then keeps its last
+known notices and shows no error.
+
+### Administrator commands
+
+`POST /admin/api/view` with `view: "incidents"` lists every notice (open and
+closed, newest first, opaque `cursor`, no CSV) for owners and viewers.
+`POST /admin/api/incidents` is owner-only and needs no recent re-login, so an
+owner can post during an outage:
+
+| Field | Rule |
+| --- | --- |
+| `action` | `CREATE` or `UPDATE` |
+| `id` | UUID; for `CREATE` the browser makes it once and reuses it on retry |
+| `expectedVersion` | `UPDATE` only; the version the owner reviewed (optimistic lock) |
+| `title` | 3–80 characters, one line |
+| `message` | 3–500 characters, newlines allowed |
+| `platforms` | Subset of TikTok/YouTube Shorts/Instagram Reels/Facebook Reels |
+| `stage` | `CREATE`: an open stage; `UPDATE` may also send `RESOLVED`, which closes it for good |
+
+A retried `CREATE` or `UPDATE` that already landed returns the stored notice.
+Errors: `400 ADMIN_INCIDENT_INVALID`, `409 ADMIN_REQUEST_CONFLICT` (id reused
+with other content), `409 ADMIN_INCIDENT_LIMIT` (5 open), `409
+ADMIN_INCIDENT_CHANGED` (someone else updated it), `409
+ADMIN_INCIDENT_RESOLVED`, `404 ADMIN_INCIDENT_NOT_FOUND`, `503
+ADMIN_INCIDENT_UNAVAILABLE`.
+
+Deployment order: apply migration `20261028010000_service_incidents` (one new
+table, additive) with the API deploy; no environment flag is needed. The admin
+tab ships with the API. The Home banner needs a new Mobile build; older apps
+simply never call the route. See the
+[service status plan](docs/superpowers/plans/2026-10-28-service-status-notices.md).
+
 ## Caption cost confirmation (2026-10-25, implementation candidate)
 
 `POST /captions/generate-from-clip` derives its cost from validated `platforms`:
@@ -379,10 +445,11 @@ All responses use private/no-store. Every POST requires exact configured `Origin
 | Route | Contract |
 | --- | --- |
 | `GET /admin/api/session` | Role, email, environment; owner lists are never exposed |
-| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit/deletions (`deletions` searches by exact Firebase UID); optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
+| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit/deletions, and since 2026-10-28 incidents (`deletions` searches by exact Firebase UID); optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
 | `POST /admin/api/member` | `userId`; existing member details, purchased plan, separate trial, current UTC-month usage |
 | `POST /admin/api/trials` | Owner only, auth_time within 15 minutes; command below |
 | `POST /admin/api/account-deletions` | Owner only, auth_time within 15 minutes; deletes a member on their verified request (see below) |
+| `POST /admin/api/incidents` | Owner only; creates/updates customer-facing service notices (2026-10-28, see Service status notices) |
 
 `POST /admin/api/account-deletions` takes `{requestId (UUID), userId,
 expectedEmail, reason}`. `expectedEmail` must match the member's current email

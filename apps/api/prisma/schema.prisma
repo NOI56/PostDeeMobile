@@ -161,6 +161,26 @@ model AdminAccountDeletion {
   @@index([userId, createdAt])
 }
 
+// Customer-facing service notices published from the admin console. They are
+// broadcast to every app user, so they hold no member data; createdBy and
+// updatedBy are administrator Firebase UIDs and never leave the admin API.
+model ServiceIncident {
+  id         String     @id
+  title      String
+  message    String
+  platforms  Platform[]
+  stage      String
+  version    Int
+  createdBy  String
+  updatedBy  String
+  startedAt  DateTime
+  updatedAt  DateTime
+  resolvedAt DateTime?
+
+  @@index([startedAt, id])
+  @@index([resolvedAt, startedAt])
+}
+
 model LinkInBioProfile {
   id          String   @id @default(cuid())
   userId      String   @unique

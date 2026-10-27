@@ -13,6 +13,17 @@ Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 > describe them (including the AI editing notes under Mobile and Backend) are
 > history. The canonical list is in `AGENTS.md` under "Retired Features".
 
+## Service status notices (2026-10-28, local candidate)
+
+When the app has a problem, an owner opens the admin console's "สถานะระบบ"
+tab, writes a short notice (title, message, affected channels, stage) and
+reviews a preview before publishing. Open notices appear as an amber banner at
+the top of Mobile Home and disappear once closed. Viewers can read the tab but
+not post. Notices go to every customer, so never put member names, emails or
+other personal data in them. Deploying needs migration
+`20261028010000_service_incidents`; the Home banner needs a new Mobile build.
+This is phase 1 of the support chat plan in `ROADMAP.md`.
+
 ## Compact post quota on the clip step (2026-10-25, follow-up candidate)
 
 The uploader's clip-selection step shows a small post-quota strip immediately

@@ -19,6 +19,12 @@ describe('PostDee API scaffold', () => {
     });
   });
 
+  it('serves open service notices without sign-in', async () => {
+    const response = await request(app).get('/support/status').expect(200);
+
+    expect(response.body).toMatchObject({ status: 'ok', incidents: [] });
+  });
+
   it('does not expose the removed legacy clip review endpoint', async () => {
     await request(app)
       .post('/clip-reviews')

@@ -20,6 +20,28 @@ The canonical table, with what code remains and why, is in `AGENTS.md` under
   details and publish results.
 - Home monthly views/likes cards, removed from Home for now.
 
+## Support chat with an AI helper (2026-10-28, phase 1 local candidate)
+
+Goal: when the app has a problem, customers can ask in the app and get a
+grounded answer, with an administrator able to step in.
+
+1. **Service status notices (built, local candidate).** Owners publish, update
+   and close notices in the admin console's "สถานะระบบ" tab; open notices show
+   as a banner at the top of Mobile Home. See the
+   [phase 1 plan](docs/superpowers/plans/2026-10-28-service-status-notices.md).
+2. **Support chat room (planned).** Mobile "chat with the team" from Account
+   help; an admin inbox where owners and viewers can reply; polling plus a
+   push notification when an administrator replies; threads cascade-delete
+   with the account.
+3. **AI support bot (planned).** Answers first from open notices, the help FAQ
+   and the member's own recent publish results only; hands off to an
+   administrator when unsure; never acts on the account; labeled as a bot;
+   per-member daily reply cap; can be switched off per thread and globally.
+   Needs a privacy-policy update before launch because messages go to the
+   model provider.
+4. **Automatic signals (later).** Publish-failure spikes suggest a draft notice
+   for an owner to confirm; administrators get alerted to new chats.
+
 ## Shop-link limits by plan (2026-10-26, API on Staging)
 
 - Basic/free allows 2 links, Starter 199 THB/month 7, and Pro 299 THB/month 20.

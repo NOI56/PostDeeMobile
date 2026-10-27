@@ -2145,7 +2145,9 @@ path additionally requires `FIREBASE_SERVICE_ACCOUNT_JSON`. Since 2026-10-27,
 whenever `AUTH_PROVIDER=firebase` and a service account is configured (deletion
 on or off), the API verifies tokens through Firebase Admin with revocation
 checks, so disabled, deleted or revoked users are rejected. Without one, the
-certificate-only verifier cannot see revocations.
+certificate-only verifier cannot see revocations. Startup rejects a configured
+service account whose project does not match `FIREBASE_PROJECT_ID` before
+selecting Firebase Admin authentication, including when the admin console is off.
 
 Account deletion is an idempotent cleanup saga, but is not yet production-safe.
 Its durable owner marker applies in legacy upload mode too. Explicit final User
@@ -2749,7 +2751,7 @@ Production status and remaining work:
 
 ## Real-Clip AI Caption Flow
 
-AI caption clip uploads use `POST /uploads` with the explicit
+AI caption video uploads use `POST /uploads` with the explicit
 `purpose: "ai-caption-video"`. This accepts `.mp4` / `video/mp4` at any aspect
 ratio within the existing upload size limit. Mobile retains known dimensions,
 including `1080x2400` (9:20); dimensions can be omitted together, otherwise both
@@ -2757,13 +2759,18 @@ must be positive finite integers. Generic uploads and mobile posting keep their
 existing 9:16 validation. The generation endpoint keeps its Starter/Pro gate,
 owner checks, monthly quota and media-processing limits.
 
-The additive API purpose is Live on Staging at `9f0b729`. Other environments must
+The additive video purpose is Live on Staging at `9f0b729`. Other environments must
 deploy it before the mobile build; no migration is required for this purpose.
 Older APIs ignore that purpose and still reject known non-9:16
 dimensions. Generation sends clips and optional Pro frames to configured
 storage/providers and may consume mobile data. No real remote user upload,
 provider generation or paid state change was performed for this fix; production
-generation remains unverified.
+generation remains unverified. The 2026-10-27 transport follow-up keeps whole
+MP4 uploads when the clip is at most 15,000,000 bytes. Larger clips use temporary
+on-device M4A extraction and the existing `purpose: "ai-edit-audio"` upload path;
+the caption request sends exactly one of `videoS3Key` or `audioS3Key`. The M4A
+must fit the same clip budget. Release the API that accepts `audioS3Key` before
+the corresponding Mobile build; older Mobile requests remain compatible.
 
 ```mermaid
 sequenceDiagram
@@ -2774,17 +2781,17 @@ sequenceDiagram
   participant S as Storage
   participant AI as Caption Provider
 
-  M->>A: POST /uploads for AI-only clip and optional frames
+  M->>A: POST /uploads for AI-only MP4 or extracted M4A, plus optional frames
   A-->>M: user-scoped media keys
   M->>A: POST /captions/generate-from-clip with media keys and deleteAfterUse
   A->>Sub: Check user plan
   A->>A: Verify media keys belong to auth user
   A->>Usage: Reserve monthly caption quota
   alt User is Starter
-    A->>AI: Generate from whole MP4 (legacy AUDIO_ONLY)
+    A->>AI: Generate from MP4 or M4A (legacy AUDIO_ONLY)
     A-->>M: caption + hashtags + SEO + hooks
   else User is Pro
-    A->>AI: Generate from whole MP4 + up to 3 selected frames
+    A->>AI: Generate from MP4 or M4A + up to 3 selected frames
     A-->>M: caption + hashtags + SEO + hooks
   else User is Basic
     A-->>M: 402 PRO_REQUIRED
@@ -2801,8 +2808,14 @@ Current local mode has two caption routes:
   ownership checks, opt-in cleanup for AI-only clip/frame uploads, and monthly
   quota reservation through memory or Prisma-backed usage storage.
 
-Both Gemini modes transport the whole MP4; no isolated-audio transport is
-introduced. Pro adds up to three selected frames. The caption-quality follow-up
+Both Gemini modes transport the whole MP4 when it fits the clip budget, or
+extracted M4A for a larger source; Pro adds up to three selected frames. The
+15,000,000-byte cap applies to the clip, not the complete provider request:
+frames, base64 expansion and request overhead can still cause provider fallback.
+A legacy video above the clip budget, up to the existing 200 MiB media ceiling,
+returns the local template without buffering the whole clip. Cleanup remains
+best effort after the caption request; a completed upload abandoned before that
+request can still be orphaned. The caption-quality follow-up
 changes prompt instructions and result normalization, keeping models, retries,
 mode enums, paid rules, quota and four-platform posting unchanged. The prompt
 grounds the opening hook and caption in speech and visible evidence, including

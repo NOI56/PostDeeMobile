@@ -3611,13 +3611,6 @@ can keep up to 200 templates; the next create returns `409` with
 `code: "TEMPLATE_LIMIT_REACHED"`. The count check is not transactional, so a
 burst of concurrent creates can end slightly above 200.
 
-### `DELETE /templates/:id`
-
-Deletes one of the authenticated user's templates (2026-10-27), freeing its
-slot. Returns `{ "status": "ok" }`, or `404` when the template does not exist or
-belongs to another user. The mobile Templates screen asks for confirmation
-before calling it.
-
 Request:
 
 ```json
@@ -3640,6 +3633,13 @@ Response:
   }
 }
 ```
+
+### `DELETE /templates/:id`
+
+Deletes one of the authenticated user's templates (2026-10-27), freeing its
+slot. Returns `{ "status": "ok" }`, or `404` when the template does not exist or
+belongs to another user. The mobile Templates screen asks for confirmation
+before calling it. This endpoint takes no request body.
 
 ## Analytics
 
@@ -4338,8 +4338,8 @@ PostgreSQL.
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection string for BullMQ |
 | `AUTH_PROVIDER` | `mock`, `firebase` | Auth adapter |
 | `FIREBASE_PROJECT_ID` | `postdee-prod` | Firebase project id |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | `{...}` | Firebase Admin service account JSON for account deletion and revoked-token checks; keep secret |
-| `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables Firebase identity/account cleanup and revoked/deleted-token checks; requires the service account. Keep disabled until the shared-drain migration/all-process rollout and real Redis/provider/Firebase, legacy upload/OAuth and device cleanup acceptance pass |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | `{...}` | Firebase Admin service account JSON; when Firebase auth is selected, enables revoked-token checks even with deletion off and must match `FIREBASE_PROJECT_ID`. Also used for account deletion; keep secret |
+| `FIREBASE_AUTH_DELETE_ENABLED` | `false`, `true` | Enables Firebase identity/account cleanup; requires the service account. Keep disabled until the shared-drain migration/all-process rollout and real Redis/provider/Firebase, legacy upload/OAuth and device cleanup acceptance pass |
 | `PUSH_SENDER` | `mock`, `firebase` | Push sender adapter; keep `mock` until the Firebase sender is verified with the installed Admin SDK |
 | `VIDEO_STORAGE` | `mock`, `r2`, `s3` | Temporary video storage adapter |
 | `CLOUDFLARE_R2_BUCKET` | `postdee-video-temp` | R2 bucket name |

@@ -499,9 +499,9 @@ export const createApp = (options: AppOptions = {}) => {
   if (config.adminConsole && (!config.trialAccessEnabled || config.authProvider !== 'firebase')) {
     throw new Error('Administrator access requires Firebase and enabled trial access');
   }
-  if (config.adminConsole && config.firebaseServiceAccountJson &&
+  if ((config.adminConsole || config.authProvider === 'firebase') && config.firebaseServiceAccountJson &&
       JSON.parse(config.firebaseServiceAccountJson).project_id !== config.firebaseProjectId) {
-    throw new Error('Administrator service account must match the API Firebase project');
+    throw new Error('Firebase service account must match the API Firebase project');
   }
   // Whenever an Admin key is available, verify tokens through Firebase Admin so
   // revoked or disabled accounts are rejected, not only when deletion is on.

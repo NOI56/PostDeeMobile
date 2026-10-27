@@ -15,6 +15,20 @@ const { createApp } = await import('./app.js');
 const { readServerConfig } = await import('./config/env.js');
 
 describe('Firebase token revocation', () => {
+  it.each(['postdee-production', undefined])(
+    'rejects a service account from another or missing project with the admin console off (%s)',
+    (projectId) => {
+      expect(() => createApp({
+        config: readServerConfig({
+          AUTH_PROVIDER: 'firebase',
+          FIREBASE_PROJECT_ID: 'postdee-staging',
+          FIREBASE_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: projectId }),
+          FIREBASE_AUTH_DELETE_ENABLED: 'false'
+        })
+      })).toThrow('Firebase service account must match the API Firebase project');
+    }
+  );
+
   it('checks revoked tokens whenever a service account is configured', async () => {
     const app = createApp({
       config: readServerConfig({

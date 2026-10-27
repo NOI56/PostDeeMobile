@@ -83,6 +83,7 @@ export const readAiMediaResponseBytes = async (
   const contentLength = readContentLength(response.headers);
 
   if (contentLength !== undefined && contentLength > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
     throw createTooLargeError(contentLength);
   }
 

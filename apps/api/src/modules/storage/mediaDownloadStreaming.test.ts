@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { MediaDownloadError, readAiMediaResponseBytes } from './mediaDownload.js';
 
@@ -20,6 +20,34 @@ const createChunkedResponse = (chunkCount: number, chunkBytes: number, headers: 
 // A missing or understated Content-Length must not let a response be buffered
 // in full before the size check runs.
 describe('readAiMediaResponseBytes streaming limit', () => {
+  it('cancels an oversized declared body without reading it', async () => {
+    const cancel = vi.fn();
+    const pull = vi.fn();
+    const response = new Response(new ReadableStream<Uint8Array>({ cancel, pull }), {
+      headers: { 'content-length': '5000' }
+    });
+    const getReader = vi.spyOn(response.body!, 'getReader');
+
+    await expect(readAiMediaResponseBytes(response, 4096)).rejects.toMatchObject({
+      statusCode: 413,
+      code: 'AI_MEDIA_TOO_LARGE',
+      declaredSizeBytes: 5000
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(getReader).not.toHaveBeenCalled();
+  });
+
+  it('keeps the size error when cancelling an oversized body fails', async () => {
+    const response = new Response(new ReadableStream<Uint8Array>({
+      cancel: () => Promise.reject(new Error('connection already closed'))
+    }), { headers: { 'content-length': '5000' } });
+
+    await expect(readAiMediaResponseBytes(response, 4096)).rejects.toMatchObject({
+      statusCode: 413,
+      code: 'AI_MEDIA_TOO_LARGE'
+    });
+  });
+
   it('stops reading a body without Content-Length as soon as it passes the limit', async () => {
     const { response, pulledChunks } = createChunkedResponse(1000, 1024);
 

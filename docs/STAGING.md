@@ -774,9 +774,13 @@ backend/compatibility เดิม ไม่ใช่ความสามาร
   colour + shortening หรือความสามารถที่ต้องใช้เสียงยังเรียก prepareหนึ่งครั้ง
   ส่วน unknown enabled capability ต้องหยุดก่อนเกิด side effect
 
-`render.staging.yaml` ปัจจุบันไม่ประกาศ `FIREBASE_SERVICE_ACCOUNT_JSON`, ใช้
-`PUSH_SENDER=mock` และ `FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกันการลบ
-ผู้ใช้หรือยิง Push ผิดระบบ
+`render.staging.yaml` ประกาศ `FIREBASE_SERVICE_ACCOUNT_JSON` เป็นค่าลับ
+(`sync: false`) สำหรับ service account ของ Firebase project ที่ใช้กับ Staging
+เท่านั้น (ห้ามใช้ของ production เพราะ token ของ Staging จะตรวจไม่ผ่านและทุกคน
+login ไม่ได้) เมื่อใส่แล้ว API จะเช็คทุกคำขอว่าบัญชีถูกปิดหรือ token ถูกเพิกถอน
+หรือไม่ ถ้ายังไม่ใส่ API ยังทำงานได้แต่จะเช็คแค่ลายเซ็น token
+ยังคงใช้ `PUSH_SENDER=mock` และ `FIREBASE_AUTH_DELETE_ENABLED=false` เพื่อป้องกัน
+การลบผู้ใช้หรือยิง Push ผิดระบบ
 รวมถึงใช้ `SOCIAL_PUBLISHER=disabled`. ในโค้ดชุดนี้
 `GET /publishing/readiness`, `POST /posts`, `PATCH /posts/:id` และ
 `POST /posts/:id/publish-now` จะตอบ `503 SOCIAL_PUBLISHING_UNAVAILABLE`;

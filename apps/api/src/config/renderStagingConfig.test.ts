@@ -81,6 +81,10 @@ describe('render.staging.yaml isolated staging config', () => {
       'GEMINI_API_KEY',
       'ELEVENLABS_API_KEY',
       'FIREBASE_PROJECT_ID',
+      // Staging's own service account, so revoked or disabled users are
+      // rejected. Deletion and push stay off via FIREBASE_AUTH_DELETE_ENABLED
+      // and PUSH_SENDER.
+      'FIREBASE_SERVICE_ACCOUNT_JSON',
       'REVENUECAT_WEBHOOK_AUTH_TOKEN',
       'REVENUECAT_REST_API_V1_KEY',
     ]) {
@@ -99,7 +103,6 @@ describe('render.staging.yaml isolated staging config', () => {
     expect(source).not.toContain('POSTPEER_INSTAGRAM_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_FACEBOOK_ACCOUNT_ID');
     expect(source).not.toContain('POSTPEER_API_KEY');
-    expect(source).not.toContain('FIREBASE_SERVICE_ACCOUNT_JSON');
     expect(source).not.toContain('GOOGLE_PLAY_NOTIFICATION_AUTH_TOKEN');
     expect(source).not.toContain('fromGroup:');
     expect(source).not.toContain('envVarGroups:');

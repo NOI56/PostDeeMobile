@@ -88,6 +88,7 @@ const tikTokVideoIdPattern = /^[0-9]{10,30}$/;
 // Poll for up to roughly two minutes before declaring the outcome unknown.
 const defaultMaxPollAttempts = 60;
 const defaultPollIntervalMs = 2_000;
+const defaultRequestTimeoutMs = 60_000;
 const youtubeTitleMaxLength = 100;
 
 const sleepWithTimer: Sleep = (milliseconds) =>
@@ -558,6 +559,7 @@ export const createPostPeerPublisher = ({
   now = () => new Date().toISOString(),
   maxPollAttempts = defaultMaxPollAttempts,
   pollIntervalMs = defaultPollIntervalMs,
+  requestTimeoutMs = defaultRequestTimeoutMs,
   sleep = sleepWithTimer,
   fetchImpl = fetch as unknown as FetchImpl
 }: {
@@ -572,6 +574,8 @@ export const createPostPeerPublisher = ({
   now?: () => string;
   maxPollAttempts?: number;
   pollIntervalMs?: number;
+  // A stalled connection would otherwise hold the scheduler forever.
+  requestTimeoutMs?: number;
   sleep?: Sleep;
   fetchImpl?: FetchImpl;
 }): PlatformPublisher => ({
@@ -664,6 +668,7 @@ export const createPostPeerPublisher = ({
     try {
       response = await fetchImpl(`${baseUrl}/v1/posts`, {
         method: 'POST',
+        signal: AbortSignal.timeout(requestTimeoutMs),
         headers: {
           'x-access-key': apiKey,
           'Content-Type': 'application/json'
@@ -777,7 +782,8 @@ export const createPostPeerPublisher = ({
             method: 'GET',
             headers: {
               'x-access-key': apiKey
-            }
+            },
+            signal: AbortSignal.timeout(requestTimeoutMs)
           }
         );
 

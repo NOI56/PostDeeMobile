@@ -24,6 +24,7 @@ describe('createTemplateStoreFromConfig', () => {
     const prisma = {
       template: {
         count: vi.fn(),
+        deleteMany: vi.fn(),
         findMany: vi.fn().mockResolvedValue([
           {
             id: 'template-1',

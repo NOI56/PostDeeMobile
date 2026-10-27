@@ -2,14 +2,21 @@ export const aiMediaDownloadMaxBytes = 200 * 1024 * 1024;
 export const aiEditAudioDownloadMaxBytes = 25 * 1024 * 1024;
 // Caption frames are small JPEG stills extracted by the app.
 export const aiCaptionFrameMaxBytes = 5 * 1024 * 1024;
+// Real-clip captions send the clip inline (base64, +33%) to Gemini, which
+// rejects requests over 20 MB, so a larger clip can never succeed. Capping the
+// download there bounds the memory one caption request can hold.
+export const realClipCaptionClipMaxBytes = 15_000_000;
 
-export type AiMediaFetchOptions = { kind: 'frame'; maxBytes: number };
+// 'audio' is the app's extracted M4A, 'video' a legacy full clip upload.
+export type AiMediaFetchOptions = { kind: 'frame' | 'audio' | 'video'; maxBytes: number };
 
 export class MediaDownloadError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly code: string
+    readonly code: string,
+    // The size the storage declared, when known before reading the body.
+    readonly declaredSizeBytes?: number
   ) {
     super(message);
   }
@@ -26,11 +33,12 @@ const readContentLength = (headers: Headers) => {
   return Number.isFinite(value) && value >= 0 ? value : undefined;
 };
 
-const createTooLargeError = () =>
+const createTooLargeError = (declaredSizeBytes?: number) =>
   new MediaDownloadError(
     'Selected media is too large for AI processing',
     413,
-    'AI_MEDIA_TOO_LARGE'
+    'AI_MEDIA_TOO_LARGE',
+    declaredSizeBytes
   );
 
 // Reads the body chunk by chunk so a missing or understated Content-Length
@@ -75,7 +83,8 @@ export const readAiMediaResponseBytes = async (
   const contentLength = readContentLength(response.headers);
 
   if (contentLength !== undefined && contentLength > maxBytes) {
-    throw createTooLargeError();
+    await response.body?.cancel().catch(() => undefined);
+    throw createTooLargeError(contentLength);
   }
 
   if (response.body) {

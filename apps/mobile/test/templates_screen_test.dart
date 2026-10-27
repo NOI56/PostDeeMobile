@@ -7,6 +7,77 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/templates/templates_screen.dart';
 
 void main() {
+  final savedTemplate = TextTemplateResult(
+    id: 'template-1',
+    title: 'ข้อมูลติดต่อ',
+    body: 'Line: @postdee',
+    createdAt: DateTime.parse('2026-10-27T00:00:00.000Z'),
+  );
+
+  Future<void> pumpLoadedTemplates(
+    WidgetTester tester, {
+    required TemplateDeleter deleteTemplate,
+  }) async {
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: TemplatesScreen(
+      loadTemplates: () async => [savedTemplate],
+      deleteTemplate: deleteTemplate,
+    ))));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> tapDelete(WidgetTester tester) async {
+    final button = find.byKey(const ValueKey('template-delete-template-1'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('deletes a saved template after confirmation', (tester) async {
+    final deleted = <String>[];
+    await pumpLoadedTemplates(tester, deleteTemplate: (id) async {
+      deleted.add(id);
+    });
+
+    await tapDelete(tester);
+    expect(find.text('ลบเทมเพลตนี้?'), findsOneWidget);
+    await tester.tap(find.text('ลบ'));
+    await tester.pumpAndSettle();
+
+    expect(deleted, ['template-1']);
+    expect(find.text('Line: @postdee'), findsNothing);
+  });
+
+  testWidgets('keeps the template when deletion is cancelled', (tester) async {
+    final deleted = <String>[];
+    await pumpLoadedTemplates(tester, deleteTemplate: (id) async {
+      deleted.add(id);
+    });
+
+    await tapDelete(tester);
+    await tester.tap(find.text('ยกเลิก'));
+    await tester.pumpAndSettle();
+
+    expect(deleted, isEmpty);
+    expect(find.text('Line: @postdee'), findsOneWidget);
+  });
+
+  testWidgets('keeps the template and explains a failed deletion',
+      (tester) async {
+    await pumpLoadedTemplates(
+      tester,
+      deleteTemplate: (_) async => throw const ApiException('offline'),
+    );
+
+    await tapDelete(tester);
+    await tester.tap(find.text('ลบ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Line: @postdee'), findsOneWidget);
+    expect(find.text('ลบเทมเพลตไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), findsOneWidget);
+  });
+
   testWidgets('keeps newly typed text when an older save completes',
       (tester) async {
     final saved = Completer<TextTemplateResult>();

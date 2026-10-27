@@ -409,6 +409,18 @@ export const createFetchMediaFromVideoStorage =
       );
     }
 
+    if (
+      mediaOptions?.kind === 'audio' &&
+      contentType?.split(';', 1)[0]?.trim().toLowerCase() !== 'audio/mp4'
+    ) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new MediaDownloadError(
+        'AI caption audio must use the audio/mp4 content type',
+        415,
+        'AI_CAPTION_MEDIA_TYPE_INVALID'
+      );
+    }
+
     return {
       data: await readAiMediaResponseBytes(response, mediaOptions?.maxBytes),
       mimeType: contentType ?? 'video/mp4'
@@ -487,11 +499,14 @@ export const createApp = (options: AppOptions = {}) => {
   if (config.adminConsole && (!config.trialAccessEnabled || config.authProvider !== 'firebase')) {
     throw new Error('Administrator access requires Firebase and enabled trial access');
   }
-  if (config.adminConsole && config.firebaseServiceAccountJson &&
+  if ((config.adminConsole || config.authProvider === 'firebase') && config.firebaseServiceAccountJson &&
       JSON.parse(config.firebaseServiceAccountJson).project_id !== config.firebaseProjectId) {
-    throw new Error('Administrator service account must match the API Firebase project');
+    throw new Error('Firebase service account must match the API Firebase project');
   }
+  // Whenever an Admin key is available, verify tokens through Firebase Admin so
+  // revoked or disabled accounts are rejected, not only when deletion is on.
   const shouldCreateFirebaseAdminAuth = Boolean(config.adminConsole) ||
+    (config.authProvider === 'firebase' && !options.firebaseVerifier) ||
     (config.firebaseAuthDeleteEnabled && (!options.firebaseVerifier || !options.accountIdentityDeleter));
   const firebaseAdminAuth =
     options.firebaseAdminAuth ??
@@ -966,7 +981,8 @@ export const createApp = (options: AppOptions = {}) => {
       readOwnerPlan: createScheduledPublishPlanReader({ config, subscriptionStore }),
       requireEmptyBacklogOnStart:
         config.socialPublisher === 'postpeer' &&
-        config.socialPublishRequireEmptyBacklog
+        config.socialPublishRequireEmptyBacklog,
+      onPostSettled: (postId) => publishQueue.remove(postId)
     });
   }
 

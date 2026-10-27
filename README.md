@@ -1855,24 +1855,35 @@ If the authenticated user is Basic, the API returns `402` with code `PRO_REQUIRE
 #### `POST /captions/generate-from-clip`
 
 Generates the new mock-safe real-clip AI caption package after a clip is
-selected. This route accepts `videoS3Key`, optional `guidance`, optional
-`writingStyle`, optional `selectedFrameKeys`, and optional `deleteAfterUse`.
-The mobile upload flow sends `deleteAfterUse: true` for AI-only clip/frame
+selected. This route accepts exactly one of `videoS3Key` or `audioS3Key`,
+optional `guidance`, optional `writingStyle`, optional `selectedFrameKeys`, and
+optional `deleteAfterUse`.
+The mobile upload flow sends `deleteAfterUse: true` for AI-only clip/audio/frame
 uploads so the backend attempts
 R2/S3 cleanup after the caption request. The route also checks that media keys
 belong to the authenticated user and reserves monthly quota before calling the
 AI provider.
 
-AI caption generation uploads the selected clip and optional Pro frames to
-configured storage/providers and may consume mobile data. Existing Starter/Pro
-access, owner checks, media limits and generation quota remain unchanged. This
-fix has not performed real remote user uploads, provider generation or paid
+AI caption generation uploads the selected clip or its extracted audio and
+optional Pro frames to configured storage/providers and may consume mobile data.
+Existing Starter/Pro access, owner checks and generation quota remain unchanged.
+This fix has not performed real remote user uploads, provider generation or paid
 state changes; production generation remains unverified.
 
 - Starter retains the historical `AUDIO_ONLY` mode and 50 caption credits/month.
 - Pro retains `AUDIO_WITH_FRAMES`, adds up to three selected frames, and has
-  120 caption credits/month. Both Gemini modes receive the whole MP4; the mode name
-  does not mean an isolated audio upload or a new package rule.
+  120 caption credits/month. Both modes receive the whole MP4 when it fits the
+  15,000,000-byte clip budget. For a larger clip, Mobile extracts temporary M4A
+  audio, uploads it with `purpose: "ai-edit-audio"`, and sends `audioS3Key`;
+  the extracted audio must fit the same budget. Pro can still add selected frames.
+  This is a transport fallback, with no package or mode-enum change.
+- The clip budget is not a total-request guarantee: frames, base64 expansion
+  and other request fields can still exceed the provider's inline budget and
+  cause fallback. Legacy `videoS3Key` clips above the clip budget, up to the
+  existing 200 MiB media ceiling, return the local template without downloading
+  the whole clip. Deploy this API before distributing Mobile that sends
+  `audioS3Key`; older Mobile requests remain compatible. The release plan is in
+  `docs/superpowers/plans/2026-10-27-security-staging-delivery.md`.
 - Shared-caption generate/change requests cost one credit; advanced requests
   cost one credit per selected channel. The API atomically reserves the full
   cost, using monthly quota before nonexpiring add-on credits.
@@ -2991,8 +3002,9 @@ Queue/storage scaffold switches:
   available as a legacy path.
 - `AUTH_PROVIDER=mock` uses development headers; `AUTH_PROVIDER=firebase`
   requires `FIREBASE_PROJECT_ID`. It verifies Google Secure Token certificates
-  by default, or Firebase Admin revocation/user existence when
-  `FIREBASE_AUTH_DELETE_ENABLED=true`.
+  when no service account is configured. With `FIREBASE_SERVICE_ACCOUNT_JSON`,
+  it uses Firebase Admin revocation/user-existence checks even when account
+  deletion is disabled; the service account must match `FIREBASE_PROJECT_ID`.
 - The mobile app has an auth session store, Google Sign-In UI, and
   Firebase/Google auth gateway. In the production Firebase path, each API header
   refresh reads the live UID and ID token as one credential snapshot and checks

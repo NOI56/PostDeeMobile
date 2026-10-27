@@ -63,7 +63,9 @@ export const createPublishScheduler = ({
   prePublishRetryBackoffMs = 1_000,
   sleep = wait,
   sweepExpiredUploads,
-  uploadSweepIntervalMs = 10 * 60_000
+  uploadSweepIntervalMs = 10 * 60_000,
+  maxConcurrentPublishes = 4,
+  onPostSettled
 }: {
   postStore: PostStore;
   platformPublishStore: PlatformPublishStore;
@@ -83,6 +85,12 @@ export const createPublishScheduler = ({
   // interval and never affects publishing readiness.
   sweepExpiredUploads?: () => Promise<{ retired: number; failed: number }>;
   uploadSweepIntervalMs?: number;
+  // Posts published at once within a poll. Each claim is atomic, so this only
+  // bounds load on the provider and the single API instance.
+  maxConcurrentPublishes?: number;
+  // Called once a post reaches a final status (published or failed), so the
+  // in-memory publish queue can drop its job instead of growing forever.
+  onPostSettled?: (postId: string) => Promise<void>;
 }): PublishScheduler => {
   let timer: ReturnType<typeof setInterval> | undefined;
   let sweepTimer: ReturnType<typeof setInterval> | undefined;
@@ -96,6 +104,15 @@ export const createPublishScheduler = ({
   let generation = 0;
   const attemptLimit = Math.max(1, Math.floor(maxPrePublishAttempts));
   const retryBackoffMs = Math.max(0, prePublishRetryBackoffMs);
+  const concurrencyLimit = Math.max(1, Math.floor(maxConcurrentPublishes));
+
+  const reportSettled = async (postId: string) => {
+    try {
+      await onPostSettled?.(postId);
+    } catch {
+      // Queue bookkeeping must not affect the stored publish outcome.
+    }
+  };
 
   const publishDuePostWork = async (post: Awaited<ReturnType<PostStore['listDue']>>[number]) => {
     let externalPublishStarted = false;
@@ -140,6 +157,9 @@ export const createPublishScheduler = ({
         });
         if (result.requiresReconciliation) {
           requiresReconciliation = true;
+        } else if (result.status !== 'SKIPPED') {
+          // A skipped post lost its claim (e.g. it was rescheduled) and is still queued.
+          await reportSettled(post.id);
         }
         return;
       } catch (error) {
@@ -156,6 +176,7 @@ export const createPublishScheduler = ({
         if (attempt === attemptLimit) {
           reportMonitoringError(error, { operation: 'scheduler.process' });
           await postStore.updateStatus({ postId: post.id, status: 'FAILED' });
+          await reportSettled(post.id);
 
           try {
             await notifier.notifyPublishResult({
@@ -193,18 +214,28 @@ export const createPublishScheduler = ({
             now: pollNow,
             ...(dueCursor ? { afterId: dueCursor } : {})
           });
-          for (const post of duePosts) {
-            if (stopped) break;
-            dueCursor = post.id;
-            try {
-              await publishDuePost(post);
-            } catch (error) {
-              // Preserve an uncertain provider outcome. A later healthy poll can
-              // retry only rows that remain safely QUEUED before provider intake.
-              persistenceFailed = true;
-              reportMonitoringError(error, { operation: 'scheduler.process' });
+          // A bounded pool, so one slow provider publish (polling can take
+          // minutes) does not hold back the other posts due in this batch.
+          // Posts start in order, so the cursor still marks the last one tried.
+          let nextIndex = 0;
+          const publishNext = async (): Promise<void> => {
+            while (!stopped && nextIndex < duePosts.length) {
+              const post = duePosts[nextIndex];
+              nextIndex += 1;
+              dueCursor = post.id;
+              try {
+                await publishDuePost(post);
+              } catch (error) {
+                // Preserve an uncertain provider outcome. A later healthy poll can
+                // retry only rows that remain safely QUEUED before provider intake.
+                persistenceFailed = true;
+                reportMonitoringError(error, { operation: 'scheduler.process' });
+              }
             }
-          }
+          };
+          await Promise.all(
+            Array.from({ length: Math.min(concurrencyLimit, duePosts.length) }, publishNext)
+          );
           if (duePosts.length < maxDuePostsPerPoll) {
             // End of the due list: the next batch starts from the beginning.
             dueCursor = undefined;

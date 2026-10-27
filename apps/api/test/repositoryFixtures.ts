@@ -78,6 +78,7 @@ export const withAppPrismaFixture = <T extends {
       findMany: vi.fn<AppPrismaClient['template']['findMany']>(fail),
       create: vi.fn<AppPrismaClient['template']['create']>(fail),
       count: vi.fn<AppPrismaClient['template']['count']>(fail),
+      deleteMany: vi.fn<AppPrismaClient['template']['deleteMany']>(fail),
       ...prisma.template
     },
     subscription: {

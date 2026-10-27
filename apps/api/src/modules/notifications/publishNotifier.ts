@@ -64,11 +64,16 @@ export const createPublishNotifier = ({
     }
 
     const { title, body } = messageForOutcome(outcome);
-    await pushSender.send({
+    const result = await pushSender.send({
       tokens,
       title,
       body,
       data: { postId, userId, type: 'publish_result' }
     });
+
+    // Dead tokens (uninstalled apps) are removed for this owner only.
+    for (const token of result?.invalidTokens ?? []) {
+      await deviceTokenStore.unregister({ userId, token });
+    }
   }
 });

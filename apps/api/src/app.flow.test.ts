@@ -339,4 +339,32 @@ describe('PostDee mock publishing flow', () => {
       (post: { id: string }) => post.id === postResponse.body.post.id
     )?.status).toBe('PUBLISHED');
   });
+
+  it('drops a published post from the in-memory publish queue', async () => {
+    const app = createApp();
+
+    await request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', 'seller-queue-cleanup')
+      .send({
+        caption: 'publish and forget',
+        videoS3Key: 'uploads/seller-queue-cleanup/upload-1/clip.mp4',
+        platforms: ['INSTAGRAM_REELS'],
+        subscriptionPlan: 'PRO'
+      })
+      .expect(201);
+    const queuedJobs = await request(app)
+      .get('/queue/jobs')
+      .set('x-postdee-user-id', 'seller-queue-cleanup')
+      .expect(200);
+    expect(queuedJobs.body.jobs).toHaveLength(1);
+
+    await app.locals.publishScheduler.runOnce();
+
+    const queueResponse = await request(app)
+      .get('/queue/jobs')
+      .set('x-postdee-user-id', 'seller-queue-cleanup')
+      .expect(200);
+    expect(queueResponse.body.jobs).toEqual([]);
+  });
 });

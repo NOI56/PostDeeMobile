@@ -78,6 +78,23 @@ describe('publish notifier', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('unregisters tokens the push provider reports as no longer valid', async () => {
+    const deviceTokenStore = createInMemoryDeviceTokenStore();
+    await deviceTokenStore.register({ userId: 'u1', token: 'stale' });
+    await deviceTokenStore.register({ userId: 'u1', token: 'live' });
+    await deviceTokenStore.register({ userId: 'u2', token: 'other' });
+    const notifier = createPublishNotifier({
+      deviceTokenStore,
+      pushSender: { send: async () => ({ invalidTokens: ['stale'] }) }
+    });
+
+    await notifier.notifyPublishResult({ userId: 'u1', postId: 'p1', outcome: 'PUBLISHED' });
+
+    expect((await deviceTokenStore.listForUser('u1')).map((device) => device.token))
+      .toEqual(['live']);
+    expect(await deviceTokenStore.listForUser('u2')).toHaveLength(1);
+  });
+
   it('does not send when there is no user id', async () => {
     const deviceTokenStore = createInMemoryDeviceTokenStore();
     await deviceTokenStore.register({ userId: 'u1', token: 't1' });

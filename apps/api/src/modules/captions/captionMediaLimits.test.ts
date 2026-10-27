@@ -2,7 +2,7 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
-import { aiCaptionFrameMaxBytes } from '../storage/mediaDownload.js';
+import { aiCaptionFrameMaxBytes, realClipCaptionClipMaxBytes } from '../storage/mediaDownload.js';
 import type { GeneratedRealClipCaption, RealClipCaptionGenerateInput } from './realClipCaptionProvider.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
@@ -76,7 +76,9 @@ describe('real-clip caption media limits', () => {
     }).expect(200);
 
     expect(fetchClipMedia).toHaveBeenCalledTimes(2);
-    expect(fetchClipMedia).toHaveBeenNthCalledWith(1, videoS3Key);
+    expect(fetchClipMedia).toHaveBeenNthCalledWith(1, videoS3Key, {
+      kind: 'video', maxBytes: realClipCaptionClipMaxBytes
+    });
     expect(fetchClipMedia).toHaveBeenNthCalledWith(2, frameKey, { kind: 'frame', maxBytes: aiCaptionFrameMaxBytes });
     expect(receivedFrameCount).toBe(1);
   });

@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
@@ -432,7 +432,7 @@ describe('caption routes', () => {
       .expect(200);
 
     expect(generate).toHaveBeenCalledTimes(1);
-    expect(fetchClipMedia).toHaveBeenCalledWith(videoS3Key);
+    expect(fetchClipMedia).toHaveBeenCalledWith(videoS3Key, expect.objectContaining({ kind: 'video', maxBytes: 15_000_000 }));
     expect(response.body).toMatchObject({
       status: 'ok',
       model: 'gemini-2.5-flash-lite',
@@ -893,7 +893,218 @@ describe('caption routes', () => {
 
     expect(response.body).toEqual({
       status: 'error',
-      message: 'videoS3Key is required'
+      message: 'audioS3Key or videoS3Key is required'
+    });
+  });
+
+  describe('real-clip caption media limits', () => {
+    type FakeMedia = { contentType: string; sizeBytes: number };
+
+    const createR2CaptionApp = ({
+      media,
+      generate,
+      deleteObject = vi.fn(async () => undefined)
+    }: {
+      media: Record<string, FakeMedia>;
+      generate: (input: RealClipCaptionGenerateInput) => Promise<GeneratedRealClipCaption>;
+      deleteObject?: () => Promise<void>;
+    }) => {
+      const arrayBuffer = vi.fn(async (key: string) => new ArrayBuffer(media[key].sizeBytes));
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+        const key = decodeURIComponent(url.slice('https://r2.local/'.length));
+        const item = media[key];
+
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({
+            'content-length': String(item.sizeBytes),
+            'content-type': item.contentType
+          }),
+          body: null,
+          arrayBuffer: () => arrayBuffer(key)
+        };
+      }));
+
+      const app = createApp({
+        config: readServerConfig({
+          VIDEO_STORAGE: 'r2',
+          CLOUDFLARE_R2_BUCKET: 'postdee-r2-temp'
+        }),
+        r2Client: {
+          createPresignedUploadUrl: async () => 'https://r2.local/upload-url',
+          createPresignedDownloadUrl: async ({ key }) => `https://r2.local/${encodeURIComponent(key)}`,
+          deleteObject
+        },
+        realClipCaptionProvider: { generate }
+      });
+
+      return { app, arrayBuffer, deleteObject };
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('falls back to the template caption without reading a video Gemini could not accept', async () => {
+      const userId = 'seller-over-budget';
+      const videoS3Key = ownedUploadKey(userId, 'big.mp4');
+      const generate = vi.fn(async (input: RealClipCaptionGenerateInput) => fakeRealClipCaption(input));
+      const { app: appWithR2, arrayBuffer } = createR2CaptionApp({
+        media: { [videoS3Key]: { contentType: 'video/mp4', sizeBytes: 15_000_001 } },
+        generate
+      });
+
+      const response = await request(appWithR2)
+        .post('/captions/generate-from-clip')
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-subscription-plan', 'STARTER')
+        .send({ videoS3Key })
+        .expect(200);
+
+      // Same outcome as before the cap (Gemini rejected it), minus the download.
+      expect(response.body.isFallback).toBe(true);
+      expect(arrayBuffer).not.toHaveBeenCalled();
+      expect(generate).not.toHaveBeenCalled();
+    });
+
+    it('returns 413 for extracted audio over the inline caption budget', async () => {
+      const userId = 'seller-audio-over-budget';
+      const audioS3Key = ownedUploadKey(userId, 'long.m4a');
+      const generate = vi.fn(async (input: RealClipCaptionGenerateInput) => fakeRealClipCaption(input));
+      const { app: appWithR2, arrayBuffer } = createR2CaptionApp({
+        media: { [audioS3Key]: { contentType: 'audio/mp4', sizeBytes: 15_000_001 } },
+        generate
+      });
+
+      const response = await request(appWithR2)
+        .post('/captions/generate-from-clip')
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-subscription-plan', 'STARTER')
+        .send({ audioS3Key })
+        .expect(413);
+
+      expect(response.body.code).toBe('AI_MEDIA_TOO_LARGE');
+      expect(arrayBuffer).not.toHaveBeenCalled();
+      expect(generate).not.toHaveBeenCalled();
+    });
+
+    it('captions extracted M4A audio as audio/mp4 and deletes it after use', async () => {
+      const userId = 'seller-audio-caption';
+      const audioS3Key = ownedUploadKey(userId, 'postdee-ai-edit-audio.m4a');
+      const generate = vi.fn(async (input: RealClipCaptionGenerateInput) => fakeRealClipCaption(input));
+      const { app: appWithR2, deleteObject } = createR2CaptionApp({
+        media: { [audioS3Key]: { contentType: 'audio/mp4', sizeBytes: 512 * 1024 } },
+        generate
+      });
+
+      await request(appWithR2)
+        .post('/captions/generate-from-clip')
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-subscription-plan', 'STARTER')
+        .send({ audioS3Key, deleteAfterUse: true })
+        .expect(200);
+
+      expect(generate).toHaveBeenCalledWith(
+        expect.objectContaining({ audio: expect.objectContaining({ mimeType: 'audio/mp4' }) })
+      );
+      expect(deleteObject).toHaveBeenCalledWith({ bucket: 'postdee-r2-temp', key: audioS3Key });
+    });
+
+    it('rejects caption audio that is not stored as audio/mp4', async () => {
+      const userId = 'seller-audio-type';
+      const audioS3Key = ownedUploadKey(userId, 'fake.m4a');
+      const generate = vi.fn(async (input: RealClipCaptionGenerateInput) => fakeRealClipCaption(input));
+      const { app: appWithR2, arrayBuffer } = createR2CaptionApp({
+        media: { [audioS3Key]: { contentType: 'video/mp4', sizeBytes: 1024 } },
+        generate
+      });
+
+      const response = await request(appWithR2)
+        .post('/captions/generate-from-clip')
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-subscription-plan', 'STARTER')
+        .send({ audioS3Key, deleteAfterUse: true })
+        .expect(415);
+
+      expect(response.body.code).toBe('AI_CAPTION_MEDIA_TYPE_INVALID');
+      expect(arrayBuffer).not.toHaveBeenCalled();
+      expect(generate).not.toHaveBeenCalled();
+    });
+
+    it('rejects an audioS3Key that is not an M4A file', async () => {
+      const userId = 'seller-audio-ext';
+
+      const response = await request(createApp())
+        .post('/captions/generate-from-clip')
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-subscription-plan', 'STARTER')
+        .send({ audioS3Key: ownedUploadKey(userId, 'clip.mp4') })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        status: 'error',
+        message: 'audioS3Key must identify an M4A file'
+      });
+    });
+
+    it('rejects requests that send both audioS3Key and videoS3Key', async () => {
+      const userId = 'seller-audio-both';
+
+      const response = await request(createApp())
+        .post('/captions/generate-from-clip')
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-subscription-plan', 'STARTER')
+        .send({
+          audioS3Key: ownedUploadKey(userId, 'clip.m4a'),
+          videoS3Key: ownedUploadKey(userId, 'clip.mp4')
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        status: 'error',
+        message: 'Provide exactly one of audioS3Key or videoS3Key'
+      });
+    });
+
+    it('rejects caption audio owned by another user before fetching it', async () => {
+      const fetchClipMedia = vi.fn();
+
+      const response = await request(createApp({ fetchClipMedia }))
+        .post('/captions/generate-from-clip')
+        .set('x-postdee-user-id', 'seller-audio-owner')
+        .set('x-postdee-subscription-plan', 'STARTER')
+        .send({ audioS3Key: ownedUploadKey('other-seller', 'clip.m4a') })
+        .expect(403);
+
+      expect(response.body.code).toBe('MEDIA_KEY_FORBIDDEN');
+      expect(fetchClipMedia).not.toHaveBeenCalled();
+    });
+
+    it('transcribes caption audio as audio when no AI caption provider is set', async () => {
+      const userId = 'seller-audio-transcript';
+      const audioS3Key = ownedUploadKey(userId, 'clip.m4a');
+      const transcribe = vi.fn(async () => ({
+        text: 'hello',
+        language: 'en',
+        durationSeconds: 3,
+        segments: [{ text: 'hello', start: 0, end: 3 }],
+        words: [],
+        model: 'test-whisper',
+        timingIntegrity: 'trusted' as const,
+        hasTimedAudioEvents: false
+      }));
+
+      await request(createApp({ transcriptionProvider: { transcribe } }))
+        .post('/captions/generate-from-clip')
+        .set('x-postdee-user-id', userId)
+        .set('x-postdee-subscription-plan', 'STARTER')
+        .send({ audioS3Key })
+        .expect(200);
+
+      expect(transcribe).toHaveBeenCalledWith(
+        expect.objectContaining({ mediaS3Key: audioS3Key, mediaKind: 'audio' })
+      );
     });
   });
 

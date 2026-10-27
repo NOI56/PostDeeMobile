@@ -79,7 +79,9 @@ export type RealClipCaptionWritingStyle = {
 };
 
 export type RealClipCaptionRequest = {
+  // Clip media key: the extracted M4A when mediaKind is 'audio', else the video.
   videoS3Key: string;
+  mediaKind?: 'audio' | 'video';
   platforms?: Platform[];
   guidance?: string;
   writingStyle?: RealClipCaptionWritingStyle;
@@ -209,12 +211,29 @@ const validateWritingStyle = (value: unknown) => {
 
 export const validateRealClipCaptionRequest = (body: unknown) => {
   const payload = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-  const videoS3Key = readRequiredString(payload.videoS3Key);
+  const audioS3Key = readRequiredString(payload.audioS3Key);
+  const requestedVideoS3Key = readRequiredString(payload.videoS3Key);
+
+  if (audioS3Key && requestedVideoS3Key) {
+    return {
+      ok: false as const,
+      message: 'Provide exactly one of audioS3Key or videoS3Key'
+    };
+  }
+
+  const videoS3Key = audioS3Key ?? requestedVideoS3Key;
 
   if (!videoS3Key) {
     return {
       ok: false as const,
-      message: 'videoS3Key is required'
+      message: 'audioS3Key or videoS3Key is required'
+    };
+  }
+
+  if (audioS3Key && !audioS3Key.toLowerCase().endsWith('.m4a')) {
+    return {
+      ok: false as const,
+      message: 'audioS3Key must identify an M4A file'
     };
   }
 
@@ -241,6 +260,7 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
     ok: true as const,
     request: {
       videoS3Key,
+      ...(audioS3Key ? { mediaKind: 'audio' as const } : {}),
       ...(platforms !== undefined ? { platforms: platforms as Platform[] } : {}),
       guidance: readOptionalString(payload.guidance),
       ...(writingStyle.style ? { writingStyle: writingStyle.style } : {}),

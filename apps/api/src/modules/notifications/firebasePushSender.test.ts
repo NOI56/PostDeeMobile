@@ -64,7 +64,7 @@ describe('Firebase push sender', () => {
     const sender = createFirebasePushSender({ serviceAccountJson: 'not-json' });
 
     expect(firebase.getApps).not.toHaveBeenCalled();
-    await expect(sender.send({ ...message, tokens: [] })).resolves.toBeUndefined();
+    await expect(sender.send({ ...message, tokens: [] })).resolves.toEqual({ invalidTokens: [] });
 
     expect(firebase.cert).not.toHaveBeenCalled();
     expect(firebase.initializeApp).not.toHaveBeenCalled();
@@ -118,8 +118,8 @@ describe('Firebase push sender', () => {
 
   it('keeps the messaging cache scoped to each sender', async () => {
     firebase.getApps.mockReturnValue([firebase.app]);
-    const firstSend = vi.fn(async () => undefined);
-    const secondSend = vi.fn(async () => undefined);
+    const firstSend = vi.fn(async () => ({ successCount: 2, failureCount: 0, responses: [] }));
+    const secondSend = vi.fn(async () => ({ successCount: 2, failureCount: 0, responses: [] }));
     firebase.getMessaging
       .mockReturnValueOnce({ sendEachForMulticast: firstSend })
       .mockReturnValueOnce({ sendEachForMulticast: secondSend });
@@ -161,13 +161,31 @@ describe('Firebase push sender', () => {
     }
   );
 
+  it('reports tokens FCM no longer accepts and keeps other failures', async () => {
+    firebase.sendEachForMulticast.mockResolvedValueOnce({
+      successCount: 1,
+      failureCount: 3,
+      responses: [
+        { success: true, messageId: 'm1' },
+        { success: false, error: { code: 'messaging/registration-token-not-registered' } },
+        { success: false, error: { code: 'messaging/invalid-registration-token' } },
+        { success: false, error: { code: 'messaging/internal-error' } }
+      ]
+    });
+    const sender = createFirebasePushSender({ serviceAccountJson });
+
+    await expect(
+      sender.send({ ...message, tokens: ['ok', 'unregistered', 'invalid', 'flaky'] })
+    ).resolves.toEqual({ invalidTokens: ['unregistered', 'invalid'] });
+  });
+
   it('surfaces provider failures and retains the initialized sender for retry', async () => {
     const providerError = new Error('FCM unavailable');
     firebase.sendEachForMulticast.mockRejectedValueOnce(providerError);
     const sender = createFirebasePushSender({ serviceAccountJson });
 
     await expect(sender.send(message)).rejects.toBe(providerError);
-    await expect(sender.send(message)).resolves.toBeUndefined();
+    await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
 
     expect(firebase.getMessaging).toHaveBeenCalledTimes(1);
     expect(firebase.sendEachForMulticast).toHaveBeenCalledTimes(2);
@@ -181,7 +199,7 @@ describe('Firebase push sender', () => {
     const sender = createFirebasePushSender({ serviceAccountJson });
 
     await expect(sender.send(message)).rejects.toBe(initializationError);
-    await expect(sender.send(message)).resolves.toBeUndefined();
+    await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
 
     expect(firebase.initializeApp).toHaveBeenCalledTimes(2);
     expect(firebase.sendEachForMulticast).toHaveBeenCalledTimes(1);

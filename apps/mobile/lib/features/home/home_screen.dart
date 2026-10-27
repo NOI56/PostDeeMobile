@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -106,8 +105,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _shopKey = GlobalKey<_LinkInBioShortcutCardState>();
   final _statusKey = GlobalKey<HomeServiceStatusBannerState>();
   bool? _refreshSucceeded;
-  String? _postsErrorMessage;
-  String? _subscriptionErrorMessage;
+  bool _postsLoadFailed = false;
+  Object? _subscriptionError;
   var _subscriptionLoadGeneration = 0;
   var _activityRefreshToken = 0;
   String? _ownerUserId;
@@ -155,8 +154,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _subscription = null;
       _recentPosts = const [];
       _hasLoadedPosts = false;
-      _postsErrorMessage = null;
-      _subscriptionErrorMessage = null;
+      _postsLoadFailed = false;
+      _subscriptionError = null;
       _isLoadingPosts = widget.isActive;
       _isLoadingSubscription = true;
       _openingComposer = false;
@@ -233,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _isLoadingPosts =
           !_hasLoadedPosts && (!preserveContent || _recentPosts.isEmpty);
-      _postsErrorMessage = null;
+      _postsLoadFailed = false;
       _refreshSucceeded = null;
     });
 
@@ -245,17 +244,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() {
           _recentPosts = posts;
           _hasLoadedPosts = true;
-          _postsErrorMessage = null;
+          _postsLoadFailed = false;
         });
         return true;
       }
     } catch (_) {
       if (mounted && ownerGeneration == _ownerGeneration) {
-        final isThai = Localizations.localeOf(context).languageCode == 'th';
         setState(() {
-          _postsErrorMessage = isThai
-              ? 'โหลดโพสต์ล่าสุดไม่สำเร็จ'
-              : 'Could not load latest posts';
+          _postsLoadFailed = true;
         });
       }
     } finally {
@@ -288,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final loadGeneration = ++_subscriptionLoadGeneration;
     setState(() {
       _isLoadingSubscription = _subscription == null;
-      _subscriptionErrorMessage = null;
+      _subscriptionError = null;
       _refreshSucceeded = null;
     });
 
@@ -305,32 +301,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _subscription = subscription;
       });
       return true;
-    } on ApiException catch (error) {
+    } catch (error) {
       if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
         return false;
       }
 
       setState(() {
-        _subscriptionErrorMessage = apiErrorMessage(error,
-            fallbackMessage: 'ตรวจสอบแพ็กเกจไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
-      });
-    } on SocketException {
-      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
-        return false;
-      }
-
-      final l10n = PostDeeLocalizations.of(context);
-      setState(() {
-        _subscriptionErrorMessage = l10n.homeApiConnectionError;
-      });
-    } catch (_) {
-      if (!mounted || loadGeneration != _subscriptionLoadGeneration) {
-        return false;
-      }
-
-      final l10n = PostDeeLocalizations.of(context);
-      setState(() {
-        _subscriptionErrorMessage = l10n.homeAnalyticsLoadError;
+        _subscriptionError = error;
       });
     } finally {
       if (mounted && loadGeneration == _subscriptionLoadGeneration) {
@@ -390,8 +367,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => PaywallScreen(loadSubscription: loader,
-          onAddonPurchased: () { if (mounted) _loadSubscription(force: true); }),
+        builder: (context) => PaywallScreen(
+            loadSubscription: loader,
+            onAddonPurchased: () {
+              if (mounted) _loadSubscription(force: true);
+            }),
       ),
     );
 
@@ -477,6 +457,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final l10n = PostDeeLocalizations.of(context);
     final isThai = l10n.locale.languageCode == 'th';
+    final subscriptionErrorMessage = _subscriptionError == null
+        ? null
+        : apiErrorMessage(
+            _subscriptionError!,
+            languageCode: l10n.locale.languageCode,
+            fallbackMessage: isThai
+                ? 'ตรวจสอบแพ็กเกจไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'
+                : 'Could not check your plan. Please try again.',
+          );
+    final postsErrorMessage = !_postsLoadFailed
+        ? null
+        : isThai
+            ? 'โหลดโพสต์ล่าสุดไม่สำเร็จ'
+            : 'Could not load latest posts';
     final name = widget.userName?.trim();
     final avatarInitial = (name != null && name.isNotEmpty)
         ? name.characters.first.toUpperCase()
@@ -513,7 +507,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _PlanSummaryCard(
                       subscription: _subscription,
                       isLoading: _isLoadingSubscription,
-                      errorMessage: _subscriptionErrorMessage,
+                      errorMessage: subscriptionErrorMessage,
                       onTap: _openPaywall,
                       onRetry: _loadSubscription,
                       animateSkeleton: widget.isActive && _ownerUserId != null,
@@ -541,7 +535,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     HomeActivitySection(
                       key: _activityKey,
                       isActive: widget.isActive,
-                      hasPosts: _isLoadingPosts || _postsErrorMessage != null
+                      hasPosts: _isLoadingPosts || _postsLoadFailed
                           ? null
                           : _recentPosts.isNotEmpty,
                       loadDrafts: widget.loadDrafts,
@@ -588,13 +582,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _LatestPostList(
                       posts: _recentPosts,
                       isLoading: _isLoadingPosts,
-                      errorMessage: _postsErrorMessage,
+                      errorMessage: postsErrorMessage,
                       onRetry: _loadRecentPosts,
                       onOpenPost: _openPostDetail,
                       isActive: widget.isActive,
                       createVideoThumbnailController:
                           widget.createVideoThumbnailController,
                       onCreatePost: _openingComposer ? null : _createPost,
+                      now: widget.now,
                     ),
                     const SizedBox(height: 16),
                     _LinkInBioShortcutCard(
@@ -1002,7 +997,8 @@ class _LinkInBioShortcutCardState extends State<_LinkInBioShortcutCard>
                                   ? Semantics(
                                       label: subtitle,
                                       child: PostDeeSkeleton(
-                                        key: const ValueKey('home-shop-skeleton'),
+                                        key: const ValueKey(
+                                            'home-shop-skeleton'),
                                         width: 130,
                                         height: 11,
                                         animate:
@@ -1132,7 +1128,8 @@ class _PlanSummaryCard extends StatelessWidget {
     final title = _planTitle(l10n);
     final subtitle = _planSubtitle(l10n);
     final isPro = subscription?.plan.toUpperCase() == 'PRO';
-    final canSpendCredits = isPro || subscription?.plan.toUpperCase() == 'STARTER';
+    final canSpendCredits =
+        isPro || subscription?.plan.toUpperCase() == 'STARTER';
     final bankPosts = subscription?.addonPostUnits ?? 0;
     final bankCaptions = subscription?.addonAiCaptions ?? 0;
     final hasBank = bankPosts > 0 || bankCaptions > 0;
@@ -1175,18 +1172,28 @@ class _PlanSummaryCard extends StatelessWidget {
                           key: const ValueKey('home-plan-subtitle'),
                           style: TextStyle(
                               fontSize: 12, color: AppTheme.textSecondary)),
-                    if (hasBank) Text(isThai
-                        ? 'เครดิตเติมคงเหลือ: โพสต์ $bankPosts หน่วย · AI $bankCaptions เครดิต'
-                        : 'Purchased balance: $bankPosts post units · $bankCaptions AI credits',
-                      key: const ValueKey('home-addon-balance'),
-                      style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                    if (hasBank)
+                      Text(
+                          isThai
+                              ? 'เครดิตเติมคงเหลือ: โพสต์ $bankPosts หน่วย · AI $bankCaptions เครดิต'
+                              : 'Purchased balance: $bankPosts post units · $bankCaptions AI credits',
+                          key: const ValueKey('home-addon-balance'),
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textSecondary)),
                     if (hasBank && canSpendCredits && availablePosts != null)
-                      Text(isThai ? 'โพสต์ได้รวม $availablePosts หน่วย' : '$availablePosts post units available',
-                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                      Text(
+                          isThai
+                              ? 'โพสต์ได้รวม $availablePosts หน่วย'
+                              : '$availablePosts post units available',
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textSecondary)),
                     if (hasBank && !canSpendCredits)
-                      Text(isThai ? 'เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'
-                          : 'Credits remain available after subscribing to Starter or Pro',
-                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                      Text(
+                          isThai
+                              ? 'เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'
+                              : 'Credits remain available after subscribing to Starter or Pro',
+                          style: TextStyle(
+                              fontSize: 11, color: AppTheme.textMuted)),
                   ],
                 ),
               ),
@@ -1229,6 +1236,7 @@ class _LatestPostList extends StatelessWidget {
     required this.isActive,
     required this.createVideoThumbnailController,
     required this.onCreatePost,
+    this.now,
   });
 
   final List<PostSummaryResult> posts;
@@ -1239,6 +1247,7 @@ class _LatestPostList extends StatelessWidget {
   final bool isActive;
   final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
   final VoidCallback? onCreatePost;
+  final DateTime Function()? now;
 
   @override
   Widget build(BuildContext context) {
@@ -1286,6 +1295,7 @@ class _LatestPostList extends StatelessWidget {
             onTap: () => onOpenPost(posts[index]),
             isActive: isActive,
             createVideoThumbnailController: createVideoThumbnailController,
+            now: now,
           ),
           if (index < posts.length - 1) const SizedBox(height: 9),
         ],
@@ -1389,7 +1399,9 @@ class _LatestPostsEmptyState extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'ยังไม่มีโพสต์',
+                Localizations.localeOf(context).languageCode == 'th'
+                    ? 'ยังไม่มีโพสต์'
+                    : 'No posts yet',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14.5,
@@ -1492,12 +1504,14 @@ class _LatestPostRow extends StatelessWidget {
     required this.onTap,
     required this.isActive,
     required this.createVideoThumbnailController,
+    this.now,
   });
 
   final PostSummaryResult post;
   final VoidCallback onTap;
   final bool isActive;
   final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
+  final DateTime Function()? now;
 
   static SocialPlatform? _platformFor(String apiValue) {
     for (final platform in SocialPlatform.values) {
@@ -1510,7 +1524,8 @@ class _LatestPostRow extends StatelessWidget {
 
   // Pill colors are fixed in both themes, matching the prototype's statusMeta
   // (published mint, scheduled cream, draft gray).
-  ({String label, Color bg, Color ink}) _statusInfo() {
+  ({String label, Color bg, Color ink}) _statusInfo(String languageCode) {
+    final isThai = languageCode == 'th';
     const publishedBg = Color(0xFFE2F3EA);
     const publishedInk = Color(0xFF0E9F6E);
     const scheduledBg = Color(0xFFFBEFD7);
@@ -1520,7 +1535,7 @@ class _LatestPostRow extends StatelessWidget {
 
     if (hasUnconfirmedDeliveryOutcome(post.platformResults)) {
       return (
-        label: 'ผลยังไม่ยืนยัน',
+        label: isThai ? 'ผลยังไม่ยืนยัน' : 'Delivery unconfirmed',
         bg: draftBg,
         ink: draftInk,
       );
@@ -1529,12 +1544,17 @@ class _LatestPostRow extends StatelessWidget {
     // Some providers finish before others and the API may omit pending rows.
     // The aggregate post is still sending until its actual status changes.
     if (post.status.toUpperCase() == 'PUBLISHING') {
-      return (label: 'กำลังส่ง', bg: publishedBg, ink: publishedInk);
+      return (
+        label: isThai ? 'กำลังส่ง' : 'Sending',
+        bg: publishedBg,
+        ink: publishedInk
+      );
     }
 
     final deliveryLabel = aggregatePostDeliveryOutcomeLabel(
       post.platformResults,
       compact: true,
+      languageCode: languageCode,
     );
     if (deliveryLabel != null) {
       return (
@@ -1545,74 +1565,112 @@ class _LatestPostRow extends StatelessWidget {
     }
 
     return switch (post.status.toUpperCase()) {
-      'PUBLISHED' => (label: 'เผยแพร่', bg: publishedBg, ink: publishedInk),
+      'PUBLISHED' => (
+          label: isThai ? 'เผยแพร่' : 'Published',
+          bg: publishedBg,
+          ink: publishedInk
+        ),
       'PARTIAL_PUBLISHED' => (
-          label: 'ส่งบางส่วน',
+          label: isThai ? 'ส่งบางส่วน' : 'Partially delivered',
           bg: scheduledBg,
           ink: scheduledInk,
         ),
       'PUBLISHING' => (
-          label: 'กำลังส่ง',
+          label: isThai ? 'กำลังส่ง' : 'Sending',
           bg: publishedBg,
           ink: publishedInk,
         ),
       'FAILED' => (
-          label: 'ล้มเหลว',
+          label: isThai ? 'ล้มเหลว' : 'Failed',
           bg: const Color(0xFFFDE4E4),
           ink: const Color(0xFFDC2626),
         ),
       'QUEUED' when post.scheduledAt != null => (
-          label: 'รอส่ง',
+          label: isThai ? 'รอส่ง' : 'Scheduled',
           bg: scheduledBg,
           ink: scheduledInk,
         ),
-      _ => (label: 'รอส่ง', bg: draftBg, ink: draftInk),
+      _ => (label: isThai ? 'รอส่ง' : 'Queued', bg: draftBg, ink: draftInk),
     };
   }
 
-  String _relativeTime() {
-    final reference = post.publishedAt ?? post.scheduledAt ?? post.createdAt;
-    final now = DateTime.now();
-    final diff = now.difference(reference.toLocal());
-
-    if (diff.isNegative) {
-      final ahead = reference.toLocal().difference(now);
-      if (ahead.inDays >= 1) return 'อีก ${ahead.inDays} วัน';
-      if (ahead.inHours >= 1) return 'อีก ${ahead.inHours} ชม.';
-      return 'อีก ${ahead.inMinutes.clamp(1, 59)} นาที';
+  String _relativeTime(String languageCode) {
+    final isThai = languageCode == 'th';
+    String englishTime(int count, String unit, {bool future = false}) {
+      final duration = '$count $unit${count == 1 ? '' : 's'}';
+      return future ? 'in $duration' : '$duration ago';
     }
 
-    if (diff.inDays >= 1) return '${diff.inDays} วันก่อน';
-    if (diff.inHours >= 1) return '${diff.inHours} ชม.ก่อน';
-    if (diff.inMinutes >= 1) return '${diff.inMinutes} นาทีก่อน';
-    return 'เมื่อสักครู่';
+    final reference = post.publishedAt ?? post.scheduledAt ?? post.createdAt;
+    final currentTime = (now ?? DateTime.now)();
+    final diff = currentTime.difference(reference.toLocal());
+
+    if (diff.isNegative) {
+      final ahead = reference.toLocal().difference(currentTime);
+      if (ahead.inDays >= 1) {
+        return isThai
+            ? 'อีก ${ahead.inDays} วัน'
+            : englishTime(ahead.inDays, 'day', future: true);
+      }
+      if (ahead.inHours >= 1) {
+        return isThai
+            ? 'อีก ${ahead.inHours} ชม.'
+            : englishTime(ahead.inHours, 'hour', future: true);
+      }
+      final minutes = ahead.inMinutes.clamp(1, 59);
+      return isThai
+          ? 'อีก $minutes นาที'
+          : englishTime(minutes, 'minute', future: true);
+    }
+
+    if (diff.inDays >= 1) {
+      return isThai
+          ? '${diff.inDays} วันก่อน'
+          : englishTime(diff.inDays, 'day');
+    }
+    if (diff.inHours >= 1) {
+      return isThai
+          ? '${diff.inHours} ชม.ก่อน'
+          : englishTime(diff.inHours, 'hour');
+    }
+    if (diff.inMinutes >= 1) {
+      return isThai
+          ? '${diff.inMinutes} นาทีก่อน'
+          : englishTime(diff.inMinutes, 'minute');
+    }
+    return isThai ? 'เมื่อสักครู่' : 'Just now';
   }
 
   @override
   Widget build(BuildContext context) {
     final platforms =
         post.platforms.map(_platformFor).whereType<SocialPlatform>().toList();
-    final status = _statusInfo();
-    final sending =
-        post.status.toUpperCase() == 'PUBLISHING' && status.label == 'กำลังส่ง';
+    final languageCode = Localizations.localeOf(context).languageCode;
+    final status = _statusInfo(languageCode);
+    final unconfirmed = hasUnconfirmedDeliveryOutcome(post.platformResults);
+    final sending = post.status.toUpperCase() == 'PUBLISHING' && !unconfirmed;
     final stackStatus = MediaQuery.textScalerOf(context).scale(13.5) > 18;
     final statusBadge = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: sending || stackStatus ? 190 : 108),
+      constraints: BoxConstraints(
+          maxWidth: sending || stackStatus
+              ? 190
+              : languageCode == 'th'
+                  ? 108
+                  : 160),
       child: _StatusPill(
         label: status.label,
         bg: status.bg,
         ink: status.ink,
         sending: sending,
-        icon: post.status.toUpperCase() == 'PUBLISHED' &&
-                status.label != 'ผลยังไม่ยืนยัน'
+        icon: post.status.toUpperCase() == 'PUBLISHED' && !unconfirmed
             ? Icons.check_circle_outline_rounded
             : null,
       ),
     );
     final caption = post.caption.trim();
-    final title = caption.isEmpty ? _relativeTime() : caption;
+    final title = caption.isEmpty ? _relativeTime(languageCode) : caption;
     final sub = platforms.isEmpty
-        ? _relativeTime()
+        ? _relativeTime(languageCode)
         : platforms.map((p) => p.label).join(' · ');
 
     return Semantics(
@@ -1677,9 +1735,11 @@ class _LatestPostRow extends StatelessWidget {
                                 const SizedBox(height: 5),
                                 Row(
                                   children: [
-                                    for (final platform in platforms.take(4)) ...[
+                                    for (final platform
+                                        in platforms.take(4)) ...[
                                       Padding(
-                                        padding: const EdgeInsets.only(right: 3),
+                                        padding:
+                                            const EdgeInsets.only(right: 3),
                                         child: SocialPlatformLogo(
                                           platform: platform,
                                           size: 16,
@@ -1728,10 +1788,12 @@ class _LatestPostRow extends StatelessWidget {
                           ),
                           const SizedBox(height: 10),
                           KeyedSubtree(
-                            key: ValueKey('home-publishing-channels-${post.id}'),
+                            key:
+                                ValueKey('home-publishing-channels-${post.id}'),
                             child: PostDeePlatformDeliveryRow(
                               platforms: post.platforms,
                               results: post.platformResults,
+                              languageCode: languageCode,
                             ),
                           ),
                         ],

@@ -77,4 +77,98 @@ void main() {
     expect(isKnownDeliveryOutcome(unknown.deliveryOutcome), isFalse);
     expect(isPublishedDeliveryOutcome(unknown.deliveryOutcome), isFalse);
   });
+
+  test('English preserves each delivery visibility and unknown outcome', () {
+    const labels = {
+      'DRAFT': 'Sent as draft',
+      'PRIVATE': 'Private',
+      'UNLISTED': 'Unlisted',
+      'LIVE': 'Published',
+      'SOMETHING_NEW': 'Delivery unconfirmed',
+    };
+    for (final entry in labels.entries) {
+      expect(
+        postDeliveryOutcomeLabel(entry.key, languageCode: 'en'),
+        entry.value,
+      );
+      expect(
+        postDeliveryOutcomeLabel(entry.key, compact: true, languageCode: 'en'),
+        entry.value,
+      );
+      expect(
+        aggregatePostDeliveryOutcomeLabel([
+          result(
+            platform: 'TIKTOK',
+            status: 'PUBLISHED',
+            deliveryOutcome: entry.key,
+          ),
+        ], languageCode: 'en'),
+        entry.value,
+      );
+    }
+    expect(postDeliveryOutcomeLabel(null, languageCode: 'en'), isNull);
+  });
+
+  test('English distinguishes partial delivery from mixed visibility', () {
+    final partial = [
+      result(
+        platform: 'TIKTOK',
+        status: 'PUBLISHED',
+        deliveryOutcome: 'DRAFT',
+      ),
+      result(platform: 'YOUTUBE_SHORTS', status: 'FAILED'),
+    ];
+    expect(
+      aggregatePostDeliveryOutcomeLabel(partial,
+          compact: true, languageCode: 'en'),
+      'Partially delivered',
+    );
+    expect(
+      aggregatePostDeliveryOutcomeLabel(partial, languageCode: 'en'),
+      'Delivered to some channels',
+    );
+
+    final mixed = [
+      result(
+        platform: 'TIKTOK',
+        status: 'PUBLISHED',
+        deliveryOutcome: 'DRAFT',
+      ),
+      result(
+        platform: 'YOUTUBE_SHORTS',
+        status: 'PUBLISHED',
+        deliveryOutcome: 'PRIVATE',
+      ),
+    ];
+    expect(
+      aggregatePostDeliveryOutcomeLabel(mixed,
+          compact: true, languageCode: 'en'),
+      'Delivered',
+    );
+    expect(
+      aggregatePostDeliveryOutcomeLabel(mixed, languageCode: 'en'),
+      'Delivered with different visibility',
+    );
+  });
+
+  test('English keeps pending and legacy missing outcomes unconfirmed', () {
+    expect(
+      aggregatePostDeliveryOutcomeLabel([
+        result(
+          platform: 'TIKTOK',
+          status: 'PUBLISHED',
+          deliveryOutcome: 'DRAFT',
+        ),
+        result(platform: 'YOUTUBE_SHORTS', status: 'PUBLISHING'),
+      ], languageCode: 'en'),
+      isNull,
+    );
+    expect(
+      aggregatePostDeliveryOutcomeLabel([
+        result(platform: 'TIKTOK', status: 'PUBLISHED'),
+      ], languageCode: 'en'),
+      isNull,
+    );
+    expect(aggregatePostDeliveryOutcomeLabel([], languageCode: 'en'), isNull);
+  });
 }

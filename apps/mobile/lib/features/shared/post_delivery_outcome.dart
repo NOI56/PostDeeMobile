@@ -3,14 +3,16 @@ import '../../core/network/postdee_api_client.dart';
 String? postDeliveryOutcomeLabel(
   String? value, {
   bool compact = false,
+  String languageCode = 'th',
 }) {
   if (value == null) return null;
+  final isThai = languageCode == 'th';
   return switch (value.trim().toUpperCase()) {
-    'DRAFT' => 'ส่งเป็นร่างแล้ว',
-    'PRIVATE' => 'ส่วนตัว',
-    'UNLISTED' => 'ไม่แสดงในรายการ',
-    'LIVE' => compact ? 'เผยแพร่' : 'เผยแพร่แล้ว',
-    _ => 'ผลยังไม่ยืนยัน',
+    'DRAFT' => isThai ? 'ส่งเป็นร่างแล้ว' : 'Sent as draft',
+    'PRIVATE' => isThai ? 'ส่วนตัว' : 'Private',
+    'UNLISTED' => isThai ? 'ไม่แสดงในรายการ' : 'Unlisted',
+    'LIVE' => isThai ? (compact ? 'เผยแพร่' : 'เผยแพร่แล้ว') : 'Published',
+    _ => isThai ? 'ผลยังไม่ยืนยัน' : 'Delivery unconfirmed',
   };
 }
 
@@ -37,7 +39,9 @@ bool hasUnconfirmedDeliveryOutcome(Iterable<PostPlatformResult> results) =>
 String? aggregatePostDeliveryOutcomeLabel(
   Iterable<PostPlatformResult> results, {
   bool compact = false,
+  String languageCode = 'th',
 }) {
+  final isThai = languageCode == 'th';
   final resultList = results.toList(growable: false);
   final publishedCount = resultList
       .where((result) => result.status.trim().toUpperCase() == 'PUBLISHED')
@@ -47,14 +51,16 @@ String? aggregatePostDeliveryOutcomeLabel(
       .length;
 
   if (publishedCount > 0 && failedCount > 0) {
-    return compact ? 'ส่งบางส่วน' : 'ส่งสำเร็จบางช่องทาง';
+    return isThai
+        ? (compact ? 'ส่งบางส่วน' : 'ส่งสำเร็จบางช่องทาง')
+        : (compact ? 'Partially delivered' : 'Delivered to some channels');
   }
   if (resultList.isEmpty || publishedCount != resultList.length) {
     return null;
   }
 
   if (hasUnconfirmedDeliveryOutcome(resultList)) {
-    return 'ผลยังไม่ยืนยัน';
+    return isThai ? 'ผลยังไม่ยืนยัน' : 'Delivery unconfirmed';
   }
 
   final outcomes = resultList
@@ -64,9 +70,12 @@ String? aggregatePostDeliveryOutcomeLabel(
       .toSet();
   if (outcomes.isEmpty) return null;
   if (outcomes.length == 1) {
-    return postDeliveryOutcomeLabel(outcomes.single, compact: compact);
+    return postDeliveryOutcomeLabel(outcomes.single,
+        compact: compact, languageCode: languageCode);
   }
-  return compact ? 'ส่งสำเร็จ' : 'ส่งสำเร็จหลายรูปแบบ';
+  return isThai
+      ? (compact ? 'ส่งสำเร็จ' : 'ส่งสำเร็จหลายรูปแบบ')
+      : (compact ? 'Delivered' : 'Delivered with different visibility');
 }
 
 bool isProviderDraftOutcome(String? value) =>

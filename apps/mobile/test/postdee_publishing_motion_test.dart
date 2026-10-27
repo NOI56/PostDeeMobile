@@ -279,6 +279,57 @@ void main() {
     'PENDING': 'รอส่ง',
     'UNRECOGNIZED': 'ผลยังไม่ยืนยัน',
   };
+  test('English platform labels preserve delivery and missing-result states',
+      () {
+    expect(
+        postPlatformDeliveryLabel(null, languageCode: 'en'), 'Awaiting result');
+    for (final entry in {
+      'PUBLISHED': 'Published',
+      'FAILED': 'Failed',
+      'PUBLISHING': 'Sending',
+      'PENDING': 'Pending',
+      'UNRECOGNIZED': 'Delivery unconfirmed',
+    }.entries) {
+      expect(
+        postPlatformDeliveryLabel(_result(status: entry.key),
+            languageCode: 'en'),
+        entry.value,
+      );
+    }
+    for (final entry in {
+      'DRAFT': 'Sent as draft',
+      'PRIVATE': 'Private',
+      'UNLISTED': 'Unlisted',
+      'LIVE': 'Published',
+      'NEW_PROVIDER_OUTCOME': 'Delivery unconfirmed',
+    }.entries) {
+      expect(
+        postPlatformDeliveryLabel(
+            _result(status: 'PUBLISHED', outcome: entry.key),
+            languageCode: 'en'),
+        entry.value,
+      );
+    }
+    expect(
+      postPlatformDeliveryLabel(_result(status: 'FAILED', outcome: 'LIVE'),
+          languageCode: 'en'),
+      'Failed',
+    );
+  });
+
+  testWidgets('English channel row forwards its language to visible labels',
+      (tester) async {
+    await tester.pumpWidget(_app(PostDeePlatformDeliveryRow(
+      languageCode: 'en',
+      platforms: const ['TIKTOK', 'YOUTUBE_SHORTS'],
+      results: [_result(status: 'PUBLISHED', outcome: 'DRAFT')],
+    )));
+    expect(find.text('TikTok · Sent as draft'), findsOneWidget);
+    expect(find.text('Shorts · Awaiting result'), findsOneWidget);
+    expect(find.textContaining('เผยแพร่แล้ว'), findsNothing);
+    await _dispose(tester);
+  });
+
   for (final entry in statusLabels.entries) {
     testWidgets('${entry.key} keeps its own platform delivery label',
         (tester) async {

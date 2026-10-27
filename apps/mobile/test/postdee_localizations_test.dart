@@ -89,7 +89,7 @@ void main() {
       expect(localizations.homeOverviewSubtitle, "Today's posting overview");
       expect(localizations.homeViewPackage, 'View package');
       expect(localizations.homeTotalPosts, 'Total views');
-      expect(localizations.homeLatestPostStatus, 'Latest post status');
+      expect(localizations.homeLatestPostStatus, 'Latest posts');
       expect(localizations.homeViewAll, 'View all');
       expect(localizations.homeShortcuts, 'Shortcuts');
       expect(localizations.homeCalendarShortcut, 'Calendar');

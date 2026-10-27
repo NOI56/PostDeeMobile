@@ -124,7 +124,7 @@ class PostDeeLocalizations {
             homeOverviewSubtitle: "Today's posting overview",
             homeViewPackage: 'View package',
             homeTotalPosts: 'Total views',
-            homeLatestPostStatus: 'Latest post status',
+            homeLatestPostStatus: 'Latest posts',
             homeViewAll: 'View all',
             homeShortcuts: 'Shortcuts',
             homeCalendarShortcut: 'Calendar',

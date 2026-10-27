@@ -123,7 +123,7 @@ void main() {
     expect(find.text('Create a new post'), findsNothing);
     expect(find.text('Profile link'), findsOneWidget);
     expect(find.text('Store link'), findsOneWidget);
-    expect(find.text('Latest post status'), findsOneWidget);
+    expect(find.text('Latest posts'), findsOneWidget);
     expect(find.text('View all'), findsNothing);
     expect(find.text('Pro package'), findsNothing);
     expect(find.text('23 days left'), findsNothing);

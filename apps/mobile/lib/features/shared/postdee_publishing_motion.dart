@@ -6,16 +6,22 @@ import '../platforms/social_platform.dart';
 import 'post_delivery_outcome.dart';
 
 /// Missing provider results are different from an explicitly pending delivery.
-String postPlatformDeliveryLabel(PostPlatformResult? result) => result == null
-    ? 'รอผล'
-    : switch (result.status.trim().toUpperCase()) {
-        'FAILED' => 'ส่งไม่สำเร็จ',
-        'PUBLISHING' => 'กำลังส่ง',
-        'PENDING' => 'รอส่ง',
-        'PUBLISHED' =>
-          postDeliveryOutcomeLabel(result.deliveryOutcome) ?? 'เผยแพร่แล้ว',
-        _ => 'ผลยังไม่ยืนยัน',
-      };
+String postPlatformDeliveryLabel(
+  PostPlatformResult? result, {
+  String languageCode = 'th',
+}) {
+  final isThai = languageCode == 'th';
+  if (result == null) return isThai ? 'รอผล' : 'Awaiting result';
+  return switch (result.status.trim().toUpperCase()) {
+    'FAILED' => isThai ? 'ส่งไม่สำเร็จ' : 'Failed',
+    'PUBLISHING' => isThai ? 'กำลังส่ง' : 'Sending',
+    'PENDING' => isThai ? 'รอส่ง' : 'Pending',
+    'PUBLISHED' => postDeliveryOutcomeLabel(result.deliveryOutcome,
+            languageCode: languageCode) ??
+        (isThai ? 'เผยแพร่แล้ว' : 'Published'),
+    _ => isThai ? 'ผลยังไม่ยืนยัน' : 'Delivery unconfirmed',
+  };
+}
 
 /// One clock for a post's sending badge, channel icons and indeterminate light.
 /// This is activity feedback, never an estimate of upload/publishing progress.
@@ -279,10 +285,12 @@ class PostDeePlatformDeliveryRow extends StatelessWidget {
     super.key,
     required this.platforms,
     required this.results,
+    this.languageCode = 'th',
   });
 
   final List<String> platforms;
   final List<PostPlatformResult> results;
+  final String languageCode;
 
   @override
   Widget build(BuildContext context) => Wrap(
@@ -297,7 +305,7 @@ class PostDeePlatformDeliveryRow extends StatelessWidget {
     final result =
         results.where((value) => value.platform == platformValue).firstOrNull;
     final status = result?.status.trim().toUpperCase();
-    final label = postPlatformDeliveryLabel(result);
+    final label = postPlatformDeliveryLabel(result, languageCode: languageCode);
     final platform = SocialPlatform.values
         .where((value) => value.apiValue == platformValue)
         .firstOrNull;

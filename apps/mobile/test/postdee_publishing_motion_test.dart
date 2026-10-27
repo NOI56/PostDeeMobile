@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/shared/postdee_publishing_motion.dart';
@@ -35,6 +36,8 @@ Widget _sendingHost({
   bool reduceMotion = false,
   bool tickerEnabled = true,
   String label = 'กำลังส่ง',
+  bool wrapLabel = false,
+  double textScale = 1,
 }) =>
     _app(
       PostDeePublishingMotion(
@@ -49,6 +52,7 @@ Widget _sendingHost({
               background: Colors.green.shade50,
               foreground: Colors.green.shade800,
               sending: true,
+              wrapLabel: wrapLabel,
             ),
             const SizedBox(height: 8),
             const PostDeePublishingRail(),
@@ -73,6 +77,7 @@ Widget _sendingHost({
       ),
       reduceMotion: reduceMotion,
       tickerEnabled: tickerEnabled,
+      textScale: textScale,
     );
 
 Widget _guardedHost(String guard, bool blocked) => _sendingHost(
@@ -124,6 +129,25 @@ Future<void> _dispose(WidgetTester tester) async {
   expect(tester.takeException(), isNull);
 }
 
+void _pause(TestWidgetsFlutterBinding binding) {
+  for (final state in [
+    AppLifecycleState.inactive,
+    AppLifecycleState.hidden,
+    AppLifecycleState.paused,
+  ]) {
+    binding.handleAppLifecycleStateChanged(state);
+  }
+}
+
+void _expectReadableLabel(WidgetTester tester, String label) {
+  final paragraph = tester.renderObject<RenderParagraph>(find.text(label));
+  expect(paragraph.didExceedMaxLines, isFalse);
+  expect(
+      paragraph.size.height,
+      greaterThanOrEqualTo(
+          paragraph.getMinIntrinsicHeight(paragraph.size.width) - 0.5));
+}
+
 PostPlatformResult _result({
   String platform = 'TIKTOK',
   required String status,
@@ -139,6 +163,151 @@ PostPlatformResult _result({
 void main() {
   setUp(() => _resume(TestWidgetsFlutterBinding.ensureInitialized()));
   tearDown(() => _resume(TestWidgetsFlutterBinding.ensureInitialized()));
+
+  testWidgets(
+      'opt-in wrapped badge keeps long English labels readable at 320dp 2x',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_app(
+      const PostDeePublishingBadge(
+        label: 'Delivery unconfirmed',
+        background: Color(0xFFE7F7EE),
+        foreground: Color(0xFF137A47),
+        icon: Icons.help_outline,
+        fontSize: 12,
+        wrapLabel: true,
+      ),
+      textScale: 2,
+    ));
+    await tester.pumpAndSettle();
+    final paragraph =
+        tester.renderObject<RenderParagraph>(find.text('Delivery unconfirmed'));
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(
+        paragraph.size.height,
+        greaterThanOrEqualTo(
+            paragraph.getMinIntrinsicHeight(paragraph.size.width) - 0.5));
+    expect(tester.takeException(), isNull);
+    await _dispose(tester);
+  });
+
+  testWidgets('default badge remains compact for existing callers',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_app(
+      const PostDeePublishingBadge(
+        label: 'Delivery unconfirmed',
+        background: Color(0xFFE7F7EE),
+        foreground: Color(0xFF137A47),
+        icon: Icons.help_outline,
+        fontSize: 12,
+      ),
+      textScale: 2,
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(PostDeePublishingBadge)).width,
+        lessThanOrEqualTo(190));
+    expect(
+        tester
+            .renderObject<RenderParagraph>(find.text('Delivery unconfirmed'))
+            .didExceedMaxLines,
+        isTrue);
+    expect(tester.takeException(), isNull);
+    await _dispose(tester);
+  });
+
+  testWidgets(
+      'wrapped badge late background label update stays static and resumes fresh',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_sendingHost(wrapLabel: true, textScale: 2));
+    await tester.pump(const Duration(milliseconds: 260));
+    final controller = _badgeController(tester);
+    expect(controller.isAnimating, isTrue);
+    expect(controller.value, greaterThan(0));
+    _pause(tester.binding);
+    tester.binding.scheduleForcedFrame();
+    await tester.pump();
+    expect(controller.isAnimating, isFalse);
+    expect(controller.value, 0);
+    const label = 'Sending to selected channels';
+    await tester
+        .pumpWidget(_sendingHost(wrapLabel: true, textScale: 2, label: label));
+    tester.binding.scheduleForcedFrame();
+    await tester.pump();
+    expect(find.text('กำลังส่ง'), findsNothing);
+    expect(find.text(label), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byType(PostDeePublishingBadge),
+            matching: find.byType(AnimatedSwitcher)),
+        findsNothing);
+    expect(_badgeController(tester), same(controller));
+    expect(controller.isAnimating, isFalse);
+    _expectReadableLabel(tester, label);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    expect(controller.value, 0);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    _resume(tester.binding);
+    await tester.pump();
+    expect(_badgeController(tester), same(controller));
+    expect(controller.isAnimating, isTrue);
+    expect(controller.value, 0);
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(controller.value, greaterThan(0));
+    expect(tester.takeException(), isNull);
+    await _dispose(tester);
+  });
+
+  for (final guard in ['reduced', 'ticker']) {
+    testWidgets('wrapped badge late label respects $guard motion guard',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Widget host(String label, bool blocked) => _sendingHost(
+          wrapLabel: true,
+          textScale: 2,
+          label: label,
+          reduceMotion: guard == 'reduced' && blocked,
+          tickerEnabled: guard != 'ticker' || !blocked);
+      await tester.pumpWidget(host('Sending', true));
+      final controller = _badgeController(tester);
+      expect(controller.isAnimating, isFalse);
+      const label = 'Sending to selected channels';
+      await tester.pumpWidget(host(label, true));
+      expect(find.text('Sending'), findsNothing);
+      expect(find.text(label), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(PostDeePublishingBadge),
+              matching: find.byType(AnimatedSwitcher)),
+          findsNothing);
+      _expectReadableLabel(tester, label);
+      await tester.pumpAndSettle();
+      expect(controller.value, 0);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.pumpWidget(host(label, false));
+      expect(_badgeController(tester), same(controller));
+      expect(controller.isAnimating, isTrue);
+      expect(controller.value, 0);
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(controller.value, greaterThan(0));
+      expect(tester.takeException(), isNull);
+      await _dispose(tester);
+    });
+  }
 
   testWidgets('badge and sending channel share a running motion phase',
       (tester) async {

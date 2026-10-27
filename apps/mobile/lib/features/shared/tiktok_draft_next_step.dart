@@ -18,9 +18,11 @@ bool hasConfirmedTikTokDraft(Iterable<PostPlatformResult> results) =>
 /// notification: https://developers.tiktok.com/docs/en/content-posting-api-get-started-upload-content
 /// This opens the public homepage, never a provider-supplied URL or publish API.
 class TikTokDraftNextStepCard extends StatefulWidget {
-  const TikTokDraftNextStepCard({super.key, this.launchTikTokUrl});
+  const TikTokDraftNextStepCard(
+      {super.key, this.launchTikTokUrl, this.languageCode = 'th'});
 
   final TikTokDraftUrlLauncher? launchTikTokUrl;
+  final String languageCode;
 
   @override
   State<TikTokDraftNextStepCard> createState() =>
@@ -30,6 +32,9 @@ class TikTokDraftNextStepCard extends StatefulWidget {
 class _TikTokDraftNextStepCardState extends State<TikTokDraftNextStepCard> {
   bool _opening = false;
   bool _openFailed = false;
+
+  String _text(String thai, String english) =>
+      widget.languageCode == 'th' ? thai : english;
 
   Future<void> _openTikTok() async {
     if (_opening) return;
@@ -58,14 +63,18 @@ class _TikTokDraftNextStepCardState extends State<TikTokDraftNextStepCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('เผยแพร่ต่อใน TikTok',
+            Text(_text('เผยแพร่ต่อใน TikTok', 'Continue in TikTok'),
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
             const SizedBox(height: 8),
             Text(
-              'การส่งเป็นร่างยังไม่ใช่การเผยแพร่ให้ผู้ชม '
-              'เปิดแอป TikTok ด้วยบัญชีที่เชื่อมต่อ ไปที่ Inbox แล้วแตะการแจ้งเตือน '
-              'เพื่อตรวจ แก้ไข และยืนยันเผยแพร่ด้วยตนเอง',
+              _text(
+                  'การส่งเป็นร่างยังไม่ใช่การเผยแพร่ให้ผู้ชม '
+                      'เปิดแอป TikTok ด้วยบัญชีที่เชื่อมต่อ ไปที่ Inbox แล้วแตะการแจ้งเตือน '
+                      'เพื่อตรวจ แก้ไข และยืนยันเผยแพร่ด้วยตนเอง',
+                  'A draft is not published to viewers. Open the TikTok app '
+                      'with your connected account, go to Inbox, and tap the notification '
+                      'to review, edit, and publish it yourself.'),
               style: TextStyle(
                   fontSize: 13, height: 1.5, color: AppTheme.textSecondary),
             ),
@@ -74,21 +83,29 @@ class _TikTokDraftNextStepCardState extends State<TikTokDraftNextStepCard> {
               key: const ValueKey('tiktok-draft-open'),
               onPressed: _opening ? null : _openTikTok,
               icon: const Icon(Icons.open_in_new, size: 18),
-              label: Text(_opening ? 'กำลังเปิด TikTok...' : 'เปิด TikTok'),
+              label: Text(_opening
+                  ? _text('กำลังเปิด TikTok...', 'Opening TikTok...')
+                  : _text('เปิด TikTok', 'Open TikTok')),
               style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48)),
             ),
             const SizedBox(height: 6),
             Text(
-              'ปุ่มนี้อาจเปิดเป็นเว็บไซต์ หากเป็นเช่นนั้นให้เปิดแอป TikTok เอง '
-              'ปุ่มนี้ไม่ส่งคลิปซ้ำ',
+              _text(
+                  'ปุ่มนี้อาจเปิดเป็นเว็บไซต์ หากเป็นเช่นนั้นให้เปิดแอป TikTok เอง '
+                      'ปุ่มนี้ไม่ส่งคลิปซ้ำ',
+                  'This button may open a website. If it does, open the TikTok '
+                      'app yourself. This does not send your video again.'),
               style: TextStyle(
                   fontSize: 12, height: 1.4, color: AppTheme.textMuted),
             ),
             if (_openFailed) ...[
               const SizedBox(height: 8),
               Text(
-                'เปิด TikTok ไม่สำเร็จ กรุณาเปิดแอป TikTok ด้วยตนเอง แล้วตรวจ Inbox',
+                _text(
+                    'เปิด TikTok ไม่สำเร็จ กรุณาเปิดแอป TikTok ด้วยตนเอง แล้วตรวจ Inbox',
+                    'Could not open TikTok. Open the TikTok app yourself '
+                        'and check Inbox.'),
                 key: const ValueKey('tiktok-draft-open-error'),
                 style: TextStyle(
                     color: Theme.of(context).colorScheme.error, height: 1.4),

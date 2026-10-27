@@ -3238,8 +3238,8 @@ void main() {
     await tester.tap(find.text('Published calendar clip'));
     await tester.pumpAndSettle();
 
-    expect(find.text('รายละเอียดโพสต์'), findsOneWidget);
-    expect(find.text('เผยแพร่สำเร็จ'), findsOneWidget);
+    expect(find.text('Post details'), findsOneWidget);
+    expect(find.text('Delivered'), findsNWidgets(2));
   });
 
   testWidgets('refreshes latest home posts whenever the user returns home',

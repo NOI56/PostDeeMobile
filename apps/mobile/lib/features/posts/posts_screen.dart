@@ -453,6 +453,15 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
   bool _ownerInvalidated = false;
   bool _loadFailed = false;
 
+  String get _languageCode =>
+      Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+          ?.locale
+          .languageCode ??
+      'th';
+
+  String _text(String thai, String english) =>
+      _languageCode == 'th' ? thai : english;
+
   Future<PostSummaryResult?> _readPost(String id) async {
     if (widget.loadPost != null) return widget.loadPost!(id);
     if (widget.loadPosts != null) {
@@ -532,26 +541,40 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
               : null,
           refreshOnOpen: false);
     }
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final retry = !_ownerInvalidated && _owner == _sessions.session.stableUserId
+        ? _load
+        : null;
     return Scaffold(
-        appBar: AppBar(title: const Text('รายละเอียดโพสต์')),
+        appBar: AppBar(title: Text(_text('รายละเอียดโพสต์', 'Post details'))),
         body: Center(
             child: _loading
                 ? const CircularProgressIndicator()
                 : Padding(
                     padding: const EdgeInsets.all(16),
-                    child: PostDeeNotice(
-                        key: const ValueKey('post-detail-unavailable'),
-                        icon: Icons.info_outline,
-                        message: _ownerInvalidated
-                            ? 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายละเอียดใหม่'
-                            : _loadFailed
-                                ? 'โหลดโพสต์ไม่สำเร็จ กรุณาลองใหม่เมื่อเชื่อมต่อได้'
-                                : 'ไม่พบโพสต์นี้ในบัญชีที่ใช้งาน อาจถูกยกเลิกหรือถูกนำออก',
-                        color: AppTheme.accent,
-                        actionLabel: 'ลองใหม่',
-                        onAction: !_ownerInvalidated &&
-                                _owner == _sessions.session.stableUserId
-                            ? _load
-                            : null))));
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      PostDeeNotice(
+                          key: const ValueKey('post-detail-unavailable'),
+                          icon: Icons.info_outline,
+                          message: _ownerInvalidated
+                              ? _text(
+                                  'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายละเอียดใหม่',
+                                  'Your account has changed. Reopen Post details.')
+                              : _loadFailed
+                                  ? _text(
+                                      'โหลดโพสต์ไม่สำเร็จ กรุณาลองใหม่เมื่อเชื่อมต่อได้',
+                                      'Could not load this post. Please try again when connected.')
+                                  : _text(
+                                      'ไม่พบโพสต์นี้ในบัญชีที่ใช้งาน อาจถูกยกเลิกหรือถูกนำออก',
+                                      'This post was not found in your account. It may have been canceled or removed.'),
+                          color: AppTheme.accent,
+                          actionLabel:
+                              largeText ? null : _text('ลองใหม่', 'Try again'),
+                          onAction: retry),
+                      if (largeText && retry != null)
+                        TextButton(
+                            onPressed: retry,
+                            child: Text(_text('ลองใหม่', 'Try again'))),
+                    ]))));
   }
 }

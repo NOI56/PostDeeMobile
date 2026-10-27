@@ -161,6 +161,7 @@ class PostDeePublishingBadge extends StatelessWidget {
     this.sending = false,
     this.icon,
     this.fontSize = 11,
+    this.wrapLabel = false,
   });
 
   final String label;
@@ -169,6 +170,7 @@ class PostDeePublishingBadge extends StatelessWidget {
   final bool sending;
   final IconData? icon;
   final double fontSize;
+  final bool wrapLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -187,8 +189,8 @@ class PostDeePublishingBadge extends StatelessWidget {
         ],
         Flexible(
           child: Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              maxLines: wrapLabel ? null : 1,
+              overflow: wrapLabel ? null : TextOverflow.ellipsis,
               style: TextStyle(
                   fontSize: fontSize,
                   fontWeight: FontWeight.w700,
@@ -200,7 +202,8 @@ class PostDeePublishingBadge extends StatelessWidget {
       label: label,
       excludeSemantics: true,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 190),
+        constraints:
+            BoxConstraints(maxWidth: wrapLabel ? double.infinity : 190),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: background,

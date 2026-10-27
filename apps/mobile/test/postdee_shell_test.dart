@@ -26,6 +26,7 @@ import 'package:postdee_mobile/features/posts/post_detail_screen.dart';
 import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
+import 'package:postdee_mobile/features/notifications/notifications_screen.dart';
 import 'package:postdee_mobile/features/legal/legal_document_screen.dart';
 import 'package:postdee_mobile/features/templates/templates_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
@@ -1125,7 +1126,7 @@ void main() {
         .signIn(const AuthSession(userId: 'b', idToken: 'b'));
     ready.complete();
     await tester.pumpAndSettle();
-    expect(find.text('การแจ้งเตือน'), findsNothing);
+    expect(find.byType(NotificationsScreen), findsNothing);
   });
 
   testWidgets('account transitions clear the shared notification history',
@@ -1593,7 +1594,111 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Notifications'));
     await tester.pumpAndSettle();
     expect(pushGateway.initializeCalls, 1);
-    expect(find.text('การแจ้งเตือน'), findsOneWidget);
+    expect(find.text('Notifications'), findsOneWidget);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+  });
+
+  testWidgets(
+      'English notification initialization failure shows translated toast',
+      (tester) async {
+    final language = _signInShell();
+    final initialization = Completer<void>();
+    final gateway = _FakePushMessagingGateway()
+      ..initialization = initialization.future;
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
+      pushMessagingGateway: gateway,
+    )));
+    await tester.pumpAndSettle();
+    expect(gateway.initializeCalls, 0);
+    await tester.tap(find.bySemanticsLabel('Notifications'));
+    await tester.pump();
+    initialization.completeError(StateError('opaque-notification-error'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not connect to notifications. Please try again.'),
+        findsOneWidget);
+    expect(find.textContaining('opaque-notification-error'), findsNothing);
+    expect(gateway.initializeCalls, 1);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'Thai notification initialization failure keeps the original toast',
+      (tester) async {
+    final language = _signInShell()..setLocale(const Locale('th'));
+    final initialization = Completer<void>();
+    final gateway = _FakePushMessagingGateway()
+      ..initialization = initialization.future;
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.dark,
+      locale: const Locale('th'),
+      localizationsDelegates: const [
+        PostDeeLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: PostDeeLocalizations.supportedLocales,
+      home: PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        pushMessagingGateway: gateway,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(gateway.initializeCalls, 0);
+    await tester.tap(find.bySemanticsLabel('แจ้งเตือน'));
+    await tester.pump();
+    initialization.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง'),
+        findsOneWidget);
+    expect(gateway.initializeCalls, 1);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('notification failure uses the locale when initialization finishes',
+      (tester) async {
+    final language = _signInShell()..setLocale(const Locale('th'));
+    final initialization = Completer<void>();
+    final gateway = _FakePushMessagingGateway()
+      ..initialization = initialization.future;
+    final shell = PostDeeShell(
+      languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
+      pushMessagingGateway: gateway,
+    );
+    await tester.pumpWidget(AnimatedBuilder(
+      animation: language,
+      builder: (context, _) => MaterialApp(
+        theme: AppTheme.dark,
+        locale: language.locale,
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: shell,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('แจ้งเตือน'));
+    await tester.pump();
+    language.setLocale(const Locale('en'));
+    await tester.pumpAndSettle();
+    initialization.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not connect to notifications. Please try again.'),
+        findsOneWidget);
+    expect(find.text('เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง'), findsNothing);
+    expect(gateway.initializeCalls, 1);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('opens the email sign-in form from the login gate',

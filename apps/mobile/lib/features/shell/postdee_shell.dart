@@ -288,9 +288,16 @@ class _PostDeeShellState extends State<PostDeeShell> {
           .timeout(const Duration(seconds: 10));
     } catch (_) {
       if (mounted && binding.isCurrent) {
+        final languageCode = Localizations.of<PostDeeLocalizations>(
+                    context, PostDeeLocalizations)
+                ?.locale
+                .languageCode ??
+            'th';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง')),
+          SnackBar(
+              content: Text(languageCode == 'th'
+                  ? 'เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง'
+                  : 'Could not connect to notifications. Please try again.')),
         );
       }
     }

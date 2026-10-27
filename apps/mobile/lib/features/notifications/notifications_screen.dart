@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/theme/app_theme.dart';
 import '../posts/posts_screen.dart';
 import 'push_notification.dart';
@@ -53,6 +54,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   bool get _usesLiveCenter => widget.items == null;
 
+  String _text(String thai, String english) =>
+      _notificationsText(context, thai, english);
+
   @override
   void initState() {
     super.initState();
@@ -87,17 +91,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       ? _center.hasUnread
       : _resolveItems().any((item) => item.isUnread);
 
-  NotificationItem _toItem(PostDeeNotification notification) =>
-      NotificationItem(
-        icon: Icons.notifications_none,
-        color: AppTheme.accentCyanInk,
-        title: notification.title,
-        body: notification.body,
-        time: _relativeTime(notification.receivedAt),
-        isUnread: _center.isUnread(notification),
-        postId: notification.postId,
-        sourceNotification: notification,
-      );
+  NotificationItem _toItem(PostDeeNotification notification) {
+    final copy = _notificationMessageCopy(notification,
+        languageCode: _notificationsLanguageCode(context));
+    return NotificationItem(
+      icon: Icons.notifications_none,
+      color: AppTheme.accentCyanInk,
+      title: copy.title,
+      body: copy.body,
+      time: _relativeTime(notification.receivedAt),
+      isUnread: _center.isUnread(notification),
+      postId: notification.postId,
+      sourceNotification: notification,
+    );
+  }
 
   void _openPost(NotificationItem item) {
     final source = item.sourceNotification;
@@ -118,35 +125,49 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String _relativeTime(DateTime time) {
     final diff = DateTime.now().difference(time.toLocal());
 
-    if (diff.inDays >= 1) return '${diff.inDays} วันก่อน';
-    if (diff.inHours >= 1) return '${diff.inHours} ชม.ก่อน';
-    if (diff.inMinutes >= 1) return '${diff.inMinutes} นาทีก่อน';
-    return 'เมื่อสักครู่';
+    if (diff.inDays >= 1) {
+      return _text('${diff.inDays} วันก่อน',
+          '${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago');
+    }
+    if (diff.inHours >= 1) {
+      return _text('${diff.inHours} ชม.ก่อน',
+          '${diff.inHours} hour${diff.inHours == 1 ? '' : 's'} ago');
+    }
+    if (diff.inMinutes >= 1) {
+      return _text('${diff.inMinutes} นาทีก่อน',
+          '${diff.inMinutes} minute${diff.inMinutes == 1 ? '' : 's'} ago');
+    }
+    return _text('เมื่อสักครู่', 'Just now');
   }
 
   @override
   Widget build(BuildContext context) {
     final data = _resolveItems();
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.4;
+    final canMarkAllRead = _hasUnread && _usesLiveCenter;
+    final markAllRead = TextButton(
+      onPressed: _center.markAllRead,
+      style: TextButton.styleFrom(
+        foregroundColor: AppTheme.accentCyanInk,
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+      child: Text(_text('อ่านทั้งหมด', 'Mark all as read')),
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'การแจ้งเตือน',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        toolbarHeight: largeText
+            ? kToolbarHeight * MediaQuery.textScalerOf(context).scale(16) / 16
+            : null,
+        title: Text(
+          _text('การแจ้งเตือน', 'Notifications'),
+          maxLines: largeText ? 2 : 1,
+          softWrap: largeText,
+          overflow: largeText ? TextOverflow.visible : TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         actions: [
-          if (_hasUnread && _usesLiveCenter)
-            TextButton(
-              onPressed: _center.markAllRead,
-              style: TextButton.styleFrom(
-                foregroundColor: AppTheme.accentCyanInk,
-                textStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              child: const Text('อ่านทั้งหมด'),
-            ),
+          if (canMarkAllRead && !largeText) markAllRead,
         ],
       ),
       body: SafeArea(
@@ -155,13 +176,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           child: Column(
             children: [
               const _NotificationSessionNotice(),
+              if (canMarkAllRead && largeText)
+                Align(alignment: Alignment.centerRight, child: markAllRead),
               Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
                     key: const ValueKey('notifications-open-posts'),
                     onPressed: _openAllPosts,
                     icon: const Icon(Icons.video_library_outlined),
-                    label: const Text('ดูโพสต์ทั้งหมด'),
+                    label: Text(_text('ดูโพสต์ทั้งหมด', 'View all posts')),
                   )),
               Expanded(
                 child: data.isEmpty
@@ -212,7 +235,10 @@ class _NotificationSessionNotice extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'รายการที่ได้รับบนอุปกรณ์นี้ในรอบการใช้งานนี้',
+              _notificationsText(
+                  context,
+                  'รายการที่ได้รับบนอุปกรณ์นี้ในรอบการใช้งานนี้',
+                  'Received on this device during this session'),
               style: TextStyle(
                 fontSize: 11.5,
                 height: 1.35,
@@ -235,6 +261,40 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.4;
+    final title = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (item.isUnread) ...[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: AppTheme.accent,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 7),
+        ],
+        Expanded(
+          child: Text(
+            item.title,
+            maxLines: largeText ? null : 1,
+            overflow: largeText ? null : TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: item.isUnread ? FontWeight.w700 : FontWeight.w600,
+              color:
+                  item.isUnread ? AppTheme.textPrimary : AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+    final time = Text(
+      item.time,
+      style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+    );
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -269,46 +329,17 @@ class _NotificationTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      if (item.isUnread) ...[
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: AppTheme.accent,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 7),
-                      ],
-                      Expanded(
-                        child: Text(
-                          item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: item.isUnread
-                                ? FontWeight.w700
-                                : FontWeight.w600,
-                            color: item.isUnread
-                                ? AppTheme.textPrimary
-                                : AppTheme.textSecondary,
-                          ),
-                        ),
-                      ),
+                  if (largeText)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [title, const SizedBox(height: 4), time],
+                    )
+                  else
+                    Row(children: [
+                      Expanded(child: title),
                       const SizedBox(width: 8),
-                      Text(
-                        item.time,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: AppTheme.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
+                      time,
+                    ]),
                   const SizedBox(height: 4),
                   Text(
                     item.body,
@@ -354,7 +385,8 @@ class _NotificationsEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 15),
             Text(
-              'ไม่มีการแจ้งเตือน',
+              _notificationsText(
+                  context, 'ไม่มีการแจ้งเตือน', 'No notifications'),
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -363,7 +395,10 @@ class _NotificationsEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'เมื่อได้รับผลการเผยแพร่โพสต์บนอุปกรณ์นี้ จะแสดงที่นี่',
+              _notificationsText(
+                  context,
+                  'เมื่อได้รับผลการเผยแพร่โพสต์บนอุปกรณ์นี้ จะแสดงที่นี่',
+                  'Post delivery results received on this device will appear here.'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12.5,
@@ -376,4 +411,52 @@ class _NotificationsEmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+String _notificationsLanguageCode(BuildContext context) =>
+    Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+        ?.locale
+        .languageCode ??
+    'th';
+
+String _notificationsText(BuildContext context, String thai, String english) =>
+    _notificationsLanguageCode(context) == 'th' ? thai : english;
+
+({String title, String body}) _notificationMessageCopy(
+  PostDeeNotification notification, {
+  required String languageCode,
+}) {
+  if (languageCode == 'th') {
+    return (title: notification.title, body: notification.body);
+  }
+  // Translate known receipt templates at display time, retaining read identity.
+  return switch ((notification.title, notification.body)) {
+    (
+      'ส่งคลิปสำเร็จ',
+      'ระบบส่งคลิปไปยังช่องทางที่เลือกเรียบร้อยแล้ว แตะเพื่อดูผลลัพธ์'
+    ) =>
+      (
+        title: 'Video delivered',
+        body:
+            'Your video was sent to the selected channels. Tap to view the result.',
+      ),
+    (
+      'ส่งคลิปสำเร็จบางช่องทาง',
+      'บางช่องทางส่งคลิปไม่สำเร็จ แตะเพื่อดูรายละเอียด'
+    ) =>
+      (
+        title: 'Video partially delivered',
+        body: 'Your video could not be sent to some channels. Tap for details.',
+      ),
+    (
+      'ส่งคลิปไม่สำเร็จ',
+      'ส่งคลิปไปยังช่องทางที่เลือกไม่สำเร็จ แตะเพื่อดูรายละเอียด'
+    ) =>
+      (
+        title: 'Video delivery failed',
+        body:
+            'Your video could not be sent to the selected channels. Tap for details.',
+      ),
+    _ => (title: notification.title, body: notification.body),
+  };
 }

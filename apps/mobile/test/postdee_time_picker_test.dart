@@ -22,6 +22,7 @@ class _Harness {
     this.dark = false,
     this.keyboardInset = 0,
     this.reducedMotion = false,
+    this.languageCode = 'th',
   });
 
   TimeOfDay initial;
@@ -30,6 +31,7 @@ class _Harness {
   final bool dark;
   final double keyboardInset;
   final bool reducedMotion;
+  final String languageCode;
   TimeOfDay? result;
   var completions = 0;
 
@@ -53,6 +55,7 @@ class _Harness {
                     context: context,
                     initialTime: initial,
                     date: date,
+                    languageCode: languageCode,
                   );
                   completions++;
                   if (result != null) initial = result!;
@@ -101,6 +104,109 @@ void _expectTime(WidgetTester tester, String time) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets(
+      'English picker translates copy, date and accessibility without Thai suffix',
+      (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await _open(
+          tester,
+          _Harness(
+              languageCode: 'en',
+              initial: const TimeOfDay(hour: 23, minute: 59),
+              date: DateTime(2026, 10, 27)));
+      expect(find.text('Choose posting time'), findsOneWidget);
+      expect(find.text('Hours'), findsOneWidget);
+      expect(find.text('Minutes'), findsOneWidget);
+      expect(find.text('Selected time'), findsOneWidget);
+      expect(find.text('27 Oct 2026 · Local device time'), findsOneWidget);
+      expect(find.text('23:59'), findsOneWidget);
+      expect(find.text('Use 23:59'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(
+          tester.getSemantics(find.byKey(_hourKey)),
+          isSemantics(
+              label: 'Hours',
+              value: '23',
+              increasedValue: '00',
+              decreasedValue: '22',
+              hasIncreaseAction: true,
+              hasDecreaseAction: true));
+      expect(
+          tester.getSemantics(find.byKey(_minuteKey)),
+          isSemantics(
+              label: 'Minutes',
+              value: '59',
+              increasedValue: '00',
+              decreasedValue: '58',
+              hasIncreaseAction: true,
+              hasDecreaseAction: true));
+      for (final text in tester.widgetList<Text>(find.descendant(
+          of: find.byKey(const ValueKey('postdee-time-picker')),
+          matching: find.byType(Text)))) {
+        expect(text.data ?? '', isNot(matches(RegExp(r'[\u0E00-\u0E7F]'))));
+      }
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets(
+      'English picker keeps independent wheel wrapping and exact confirmation',
+      (tester) async {
+    final harness = _Harness(
+        languageCode: 'en',
+        initial: const TimeOfDay(hour: 23, minute: 59),
+        date: DateTime(2026, 10, 27));
+    await _open(tester, harness);
+    await _jump(tester, _hourKey, 24);
+    expect(find.text('00:59'), findsOneWidget);
+    await _jump(tester, _minuteKey, 60);
+    expect(find.text('00:00'), findsOneWidget);
+    expect(find.text('27 Oct 2026 · Local device time'), findsOneWidget);
+    await tester.tap(find.byKey(_confirmKey));
+    await tester.pumpAndSettle();
+    expect(harness.result, const TimeOfDay(hour: 0, minute: 0));
+    expect(harness.completions, 1);
+  });
+
+  testWidgets('English cancellation does not commit a changed selection',
+      (tester) async {
+    final harness = _Harness(languageCode: 'en');
+    await _open(tester, harness);
+    expect(find.text('24-hour format · Local device time'), findsOneWidget);
+    await _jump(tester, _hourKey, 20);
+    await tester.tap(find.byKey(_cancelKey));
+    await tester.pumpAndSettle();
+    expect(harness.result, isNull);
+    expect(harness.initial, const TimeOfDay(hour: 18, minute: 30));
+    expect(harness.completions, 1);
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('English picker fits narrow large text, dark=$dark',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 680);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      AppTheme.applyThemeMode(dark ? ThemeMode.dark : ThemeMode.light);
+      addTearDown(() => AppTheme.applyThemeMode(ThemeMode.dark));
+      await _open(
+          tester,
+          _Harness(
+              languageCode: 'en',
+              dark: dark,
+              textScale: 2,
+              date: DateTime(2026, 10, 27),
+              reducedMotion: true));
+      expect(find.text('Choose posting time'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(_confirmKey));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets(
       'opens native looping wheels at the supplied 23:59 and local date',

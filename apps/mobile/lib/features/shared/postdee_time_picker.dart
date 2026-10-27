@@ -7,6 +7,7 @@ Future<TimeOfDay?> showPostDeeTimePicker({
   required BuildContext context,
   required TimeOfDay initialTime,
   DateTime? date,
+  String languageCode = 'th',
 }) {
   FocusManager.instance.primaryFocus?.unfocus();
   return showModalBottomSheet<TimeOfDay>(
@@ -25,7 +26,8 @@ Future<TimeOfDay?> showPostDeeTimePicker({
     builder: (sheetContext) => Padding(
       padding:
           EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
-      child: PostDeeTimePicker(initialTime: initialTime, date: date),
+      child: PostDeeTimePicker(
+          initialTime: initialTime, date: date, languageCode: languageCode),
     ),
   );
 }
@@ -37,10 +39,12 @@ class PostDeeTimePicker extends StatefulWidget {
     super.key,
     required this.initialTime,
     this.date,
+    this.languageCode = 'th',
   });
 
   final TimeOfDay initialTime;
   final DateTime? date;
+  final String languageCode;
 
   @override
   State<PostDeeTimePicker> createState() => _PostDeeTimePickerState();
@@ -56,6 +60,8 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
 
   String get _formattedTime => '${_two(_hour)}:${_two(_minute)}';
   String _two(int value) => value.toString().padLeft(2, '0');
+  bool get _isThai => widget.languageCode == 'th';
+  String _text(String thai, String english) => _isThai ? thai : english;
 
   @override
   void dispose() {
@@ -77,20 +83,35 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
   }
 
   String _dateLabel(DateTime date) {
-    const months = [
-      'ม.ค.',
-      'ก.พ.',
-      'มี.ค.',
-      'เม.ย.',
-      'พ.ค.',
-      'มิ.ย.',
-      'ก.ค.',
-      'ส.ค.',
-      'ก.ย.',
-      'ต.ค.',
-      'พ.ย.',
-      'ธ.ค.',
-    ];
+    final months = _isThai
+        ? const [
+            'ม.ค.',
+            'ก.พ.',
+            'มี.ค.',
+            'เม.ย.',
+            'พ.ค.',
+            'มิ.ย.',
+            'ก.ค.',
+            'ส.ค.',
+            'ก.ย.',
+            'ต.ค.',
+            'พ.ย.',
+            'ธ.ค.',
+          ]
+        : const [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec',
+          ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
@@ -182,7 +203,7 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
                 Icon(Icons.schedule, color: colors.primary, size: 24),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text('เลือกเวลาโพสต์',
+                  child: Text(_text('เลือกเวลาโพสต์', 'Choose posting time'),
                       style: Theme.of(context)
                           .textTheme
                           .titleLarge
@@ -192,8 +213,9 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
               const SizedBox(height: 8),
               Text(
                 widget.date == null
-                    ? 'รูปแบบ 24 ชั่วโมง · เวลาตามเครื่อง'
-                    : '${_dateLabel(widget.date!)} · เวลาตามเครื่อง',
+                    ? _text('รูปแบบ 24 ชั่วโมง · เวลาตามเครื่อง',
+                        '24-hour format · Local device time')
+                    : '${_dateLabel(widget.date!)} · ${_text('เวลาตามเครื่อง', 'Local device time')}',
                 key: const ValueKey('postdee-time-date'),
                 style: Theme.of(context)
                     .textTheme
@@ -201,10 +223,10 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
                     ?.copyWith(color: colors.onSurfaceVariant),
               ),
               const SizedBox(height: 20),
-              const Row(children: [
-                Expanded(child: Center(child: Text('ชั่วโมง'))),
-                SizedBox(width: 18),
-                Expanded(child: Center(child: Text('นาที'))),
+              Row(children: [
+                Expanded(child: Center(child: Text(_text('ชั่วโมง', 'Hours')))),
+                const SizedBox(width: 18),
+                Expanded(child: Center(child: Text(_text('นาที', 'Minutes')))),
               ]),
               const SizedBox(height: 8),
               SizedBox(
@@ -225,7 +247,7 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
                       Expanded(
                         child: _wheel(
                           key: const ValueKey('postdee-time-hour-picker'),
-                          label: 'ชั่วโมง',
+                          label: _text('ชั่วโมง', 'Hours'),
                           count: 24,
                           selected: _hour,
                           controller: _hourController,
@@ -247,7 +269,7 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
                       Expanded(
                         child: _wheel(
                           key: const ValueKey('postdee-time-minute-picker'),
-                          label: 'นาที',
+                          label: _text('นาที', 'Minutes'),
                           count: 60,
                           selected: _minute,
                           controller: _minuteController,
@@ -274,9 +296,9 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
                     spacing: 12,
                     runSpacing: 4,
                     children: [
-                      Text('เวลาที่เลือก',
+                      Text(_text('เวลาที่เลือก', 'Selected time'),
                           style: TextStyle(color: colors.onSurfaceVariant)),
-                      Text('$_formattedTime น.',
+                      Text(_text('$_formattedTime น.', _formattedTime),
                           style: Theme.of(context)
                               .textTheme
                               .titleLarge
@@ -290,7 +312,8 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
                 final cancel = OutlinedButton(
                   key: const ValueKey('postdee-time-cancel'),
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('ยกเลิก', textAlign: TextAlign.center),
+                  child: Text(_text('ยกเลิก', 'Cancel'),
+                      textAlign: TextAlign.center),
                 );
                 final confirm = FilledButton(
                   key: const ValueKey('postdee-time-confirm'),
@@ -299,7 +322,8 @@ class _PostDeeTimePickerState extends State<PostDeeTimePicker> {
                       minimumSize: const Size(0, 48),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 12)),
-                  child: Text('ใช้เวลา $_formattedTime',
+                  child: Text(
+                      _text('ใช้เวลา $_formattedTime', 'Use $_formattedTime'),
                       textAlign: TextAlign.center),
                 );
                 final stack = constraints.maxWidth < 300 &&

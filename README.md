@@ -7,6 +7,12 @@ still contain Thai copy and are not fully localized. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
+> **Retired features (2026-10-28):** AI video editing / auto editing, Groq, AI
+> Clip Review, the Analytics bottom-navigation tab, and the Home monthly
+> views/likes cards are out of the active product. Sections below that still
+> describe them (including the AI editing notes under Mobile and Backend) are
+> history. The canonical list is in `AGENTS.md` under "Retired Features".
+
 ## Compact post quota on the clip step (2026-10-25, follow-up candidate)
 
 The uploader's clip-selection step shows a small post-quota strip immediately

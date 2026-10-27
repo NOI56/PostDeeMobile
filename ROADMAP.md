@@ -2,6 +2,24 @@
 
 Build roadmap for PostDee.
 
+## Retired Features (2026-10-28)
+
+These features are out of the active product. They are not planned work or
+launch requirements, and sections below that still describe them are history.
+The canonical table, with what code remains and why, is in `AGENTS.md` under
+"Retired Features"; it wins when an older section disagrees.
+
+- AI video editing / auto editing, including the editor, subtitle burn-in,
+  music and sound effects, beat sync, and editing minutes/top-ups. The
+  navigation entry was replaced by Store link on 2026-10-05, and since
+  2026-10-24 every `/ai-edits/*` request answers `410 AI_EDITING_RETIRED`
+  unless the `AI_EDITING_ENABLED=true` rollback switch is set.
+- Groq as a transcription or planning provider.
+- AI Clip Review (`/clip-reviews`).
+- The Analytics bottom-navigation tab; analytics stays reachable from post
+  details and publish results.
+- Home monthly views/likes cards, removed from Home for now.
+
 ## Shop-link limits by plan (2026-10-26, API on Staging)
 
 - Basic/free allows 2 links, Starter 199 THB/month 7, and Pro 299 THB/month 20.
@@ -1489,7 +1507,9 @@ Current status:
 - Mobile UI refresh has a first-pass shared dark theme, glass cards, Thai
   bottom navigation labels, auth bar copy, and Home dashboard direction.
   Upload, Calendar, AI Editing, Analytics, Profile, and package/paywall surfaces
-  have the approved design structure; final device-specific visual polish
+  have the approved design structure (AI Editing and the Analytics tab were
+  later retired from navigation; see Retired Features); final
+  device-specific visual polish
   remains.
 - Gemini backend smoke test passed.
 - Legacy signed upload and managed R2 multipart both passed disposable-account
@@ -1660,7 +1680,7 @@ Primary backend choices:
 | Video storage | Cloudflare R2 | Store temporary upload videos and signed upload/download URLs | R2 adapter and managed multipart sessions exist | Use `VIDEO_STORAGE=r2` with `UPLOAD_PROTOCOL_MODE=dual` during rollout. New clients opt in to `multipart-v1`; move to strict `multipart` after old clients are retired. Keep videos temporary and delete after successful publishing where possible. |
 | Auth | Firebase Auth | Google Sign-In, Firebase ID token verification, and Phone Auth for Basic quota unlock | Dedicated Android Debug Staging config and Google login/token/API smoke pass on Emulator; Production, iOS, Phone Auth, and physical-device tests remain | Keep Debug Staging on `com.postdee.postdee_mobile.staging`; do not mix its Dart defines with Profile/Release Firebase files. |
 | AI caption from real clip | Gemini multimodal (listens to clip; Pro also sees frames) | Generate captions, SEO wording, hashtags, and hooks from a selected clip. Starter = audio only; Pro = audio + selected frames. | `POST /captions/generate-from-clip` sends MP4 within a 15,000,000-byte clip budget, or extracted M4A through additive `audioS3Key` for larger clips, to configured-primary Gemini 2.5 Flash-Lite; it retries transient failures, then falls back directly to the local template. Media keys are user-scoped, AI-only uploads can request cleanup, and quota is reserved before calling AI; Pro can add `selectedFrameKeys`. | Deploy the API before Mobile using `audioS3Key`; the per-clip cap does not guarantee the total inline request fits. Verify real-device audio/Pro frame flow, cleanup, Gemini quota/tier and the Prisma usage ledger before selling as production AI. |
-| AI auto editing | ElevenLabs Scribe v2 + Gemini 3.5 Flash-Lite + mobile FFmpeg | Pro transcript/highlight planning, optional verified-silence/repeated-speech cleanup, AI-selected sound effects, subtitle burn-in, phone-side review, and video export | `/ai-edits/prepare`, fair quota outcomes, waveform-verified silence, safe repeated-speech review, atomic accepted-source state, subtitle-safe rendering, and local colour compatibility exist. AI SFX uses a separate catalog-only planner: it returns at most eight trusted `soundId + sourceSeconds` anchors; mobile fixes volume, maps through final cuts, and mixes bundled procedural WAVs. Manual SFX selection is removed. Production beat sync and the 3-second hook remain default-off. | Tasks 3–8 and deployed identity/health are verified. Pixel 8 `color-local` passed device/render checks, while the main matrix remains blocked: a new STT-only Staging key still received upstream HTTP `401`, PostDee quota stayed unchanged, and ElevenLabs showed only 6/10,000 workspace credits remaining. Wait for or restore provider quota, rerun the API-dependent matrix, then capture AI SFX Preview/full-export listening, peak, and A/V-sync evidence on Android and iPhone before Production. |
+| AI auto editing (retired 2026-10-05; history only) | ElevenLabs Scribe v2 + Gemini 3.5 Flash-Lite + mobile FFmpeg | Pro transcript/highlight planning, optional verified-silence/repeated-speech cleanup, AI-selected sound effects, subtitle burn-in, phone-side review, and video export | `/ai-edits/prepare`, fair quota outcomes, waveform-verified silence, safe repeated-speech review, atomic accepted-source state, subtitle-safe rendering, and local colour compatibility exist. AI SFX uses a separate catalog-only planner: it returns at most eight trusted `soundId + sourceSeconds` anchors; mobile fixes volume, maps through final cuts, and mixes bundled procedural WAVs. Manual SFX selection is removed. Production beat sync and the 3-second hook remain default-off. | Tasks 3–8 and deployed identity/health are verified. Pixel 8 `color-local` passed device/render checks, while the main matrix remains blocked: a new STT-only Staging key still received upstream HTTP `401`, PostDee quota stayed unchanged, and ElevenLabs showed only 6/10,000 workspace credits remaining. Wait for or restore provider quota, rerun the API-dependent matrix, then capture AI SFX Preview/full-export listening, peak, and A/V-sync evidence on Android and iPhone before Production. |
 | Subscriptions | RevenueCat | Manage Starter and Pro subscriptions across Apple App Store and Google Play | Test Store purchase and true Restore/resync E2E pass on Emulator; RevenueCat Play config, production Android public SDK key, and signed AAB are ready | Verify Play Console access on a physical Android device, then create the Play app/subscriptions/service credentials/internal testing and test lifecycle plus real Google Play/App Store purchases before claiming production billing E2E. |
 | Social posting | PostPeer API | Publish to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels through one provider | Per-user connect uses a native Android Custom Tab bridge with external-only fallback, trusted OAuth-host validation, fixed Android return targets and one authenticated return/resume/manual refresh, and provider-first disconnect; iOS currently uses the external system browser; fresh users are ensured before a pseudonymous named profile is saved; `202` results poll for about two minutes without fake ids; `GET /posts` returns per-platform results; the config-only readiness gate and fail-fast create/reschedule path exist; Staging has an opt-in startup guard whose single atomic aggregate status-in query refuses PostPeer activation when any global `QUEUED` (including future) or `PUBLISHING` row exists, or when inspection fails; YouTube defaults private and TikTok SELF_ONLY for controlled testing; the disabled Mobile fail-fast passed, but the first controlled YouTube attempt stopped at readiness before upload and the runtime mode/guard pass were not observable, so connected-account E2E is still pending | Readiness does not probe PostPeer/accounts. Injected-URI warm return passed on the Staging APK; verify real provider/browser handoff, Open App confirmation, cold-start authentication, the iOS external-browser flow and manual fallback on physical devices. The fixed-target API is Live on Staging; other environments need API before mobile. Generate new links to use the return target. Keep Staging disabled except for a controlled run; require explicit runtime-mode and empty-backlog guard-pass evidence before another single private attempt. `FACEBOOK_REELS` always requests Page Reels via `contentType: 'reel'`, retaining publish/Page-draft choices with no Page feed fallback; real-account E2E remains pending. Retry only an explicitly safe pre-accept error; unknown outcomes require checking the destination first. |
 | Error tracking | Sentry | Capture allowlisted backend, publisher/worker and Dart/Flutter errors | Clean Staging a0540a3 serves the CI-tested 12e0589 API tree; isolated ingestion and actual drained-main-process fatal/restart are verified, temporary hook removed | Native Crashlytics/APK12041 remain accepted. Crash during active publishing, forced HTTP-500 middleware and native/iOS runtime remain separate; tracing/logs/Replay stay off. |
@@ -1684,7 +1704,7 @@ pass the backend suite. The high/critical production audit gate stays enabled;
 four moderate dependency findings remain for separate follow-up. No API/schema
 or trust-proxy configuration changes are part of this patch.
 
-### AI auto-editing update (2026-08-08)
+### AI auto-editing update (2026-08-08, retired feature; history only)
 
 The table's earlier audio-only deployment note is superseded. ElevenLabs M4A
 transcription uses balanced source-audio chunks no longer than 30 seconds.
@@ -1736,7 +1756,7 @@ Recommended activation order:
     the bounded async poll, and `GET /posts.platformResults`; then restore
     `disabled` and verify readiness returns `503` before enabling public claims.
 11. Deploy and verify the real-clip AI caption usage ledger with `CAPTION_USAGE_STORE=prisma` before selling the paid AI caption quotas.
-12. Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.
+12. Retired, not a launch task: ~~Harden Pro AI auto editing with persistent job/session recovery, top-up handling, and real-device tests of the setup-to-review-to-post/manual-editor flow before production launch.~~
 
 ## Mobile UI Direction
 
@@ -1999,7 +2019,7 @@ Recommended order:
    - Editors can prepare posts and schedules without seeing social account passwords.
    - Use role-based access around connected OAuth accounts.
 
-8. Harden the Existing AI Auto Editing System
+8. Harden the Existing AI Auto Editing System (retired 2026-10-05; history only, not planned work)
    - The existing ElevenLabs + Gemini + mobile FFmpeg flow lets Pro users request Thai transcription, receive internal silence candidates, verify those candidates against the source waveform, burn in subtitles, review the phone-rendered result, and remove supported AI edits they do not want. Only waveform-approved intersections become silence cuts; probe failure keeps the original audio and exposes a local retry that does not upload, prepare, or charge again. The verified Tasks 3–8 implementation is committed locally in `43fa6e0`; Task 9 Steps 1–5 and deployment evidence are complete. Pixel 8 `color-local` passed device/render checks with no quota change but still needs direct zero-upload/prepare log evidence. A new 30-day, Speech-to-Text-only Staging key was deployed on the unchanged SHA, yet `target-30` still failed closed/no-charge with upstream HTTP `401`; ElevenLabs showed 9,994/10,000 credits used. Provider-side quota exhaustion is therefore the leading diagnosis, but the missing upstream response detail prevents calling it confirmed. Wait for or restore provider quota under separate approval, then rerun once before continuing Steps 6–10.
    - Mobile starts every optional capability off. The seller can explicitly enable subtitles, silence cleanup, repeated-speech cleanup, or `AI ใส่เอฟเฟกต์เสียงให้`; with no optional capability selected, target-length shortening can still run by itself. The colour/light and audio-cleanup cards are hidden from setup, with restored values forced off, while legacy internal support remains intact. SFX is an AI analysis path: the server may return only an allowlisted PostDee sound ID at a trusted source anchor, mobile fixes volume at 25%, maps it through final cuts, and renders locally. The manual picker/Studio path is removed.
    - Backend handles auth, quota, temporary storage, ElevenLabs Scribe v2 transcription, Gemini 3.5 Flash-Lite visual/transcript planning with structured JSON and provider-default sampling (no explicit `temperature`), and deterministic rule fallback. It validates the complete timing timeline before using it for subtitles, planning, repeated-speech cleanup, or silence candidates; partial or damaged timing fails closed instead of falling back to a repaired-looking subset.
@@ -2041,8 +2061,8 @@ Recommended order:
 - Keep `ENABLE_EXPERIMENTAL_AI_HOOK` and `ENABLE_EXPERIMENTAL_BEAT_SYNC` absent or
   `false` in production until their real analyzers/renderers pass device tests.
 - Keep Phase 2 behind Pro or future Agency plan gates where appropriate.
-- Do not market separate AI audio review while real-clip AI captioning and
-  ElevenLabs + Gemini auto editing cover that user need.
+- Do not market separate AI audio review while real-clip AI captioning covers
+  that user need. AI auto editing is retired and is not a substitute.
 - Keep Pro-only social/team tools scoped so editors can prepare work without
   seeing owner credentials or tokens.
 

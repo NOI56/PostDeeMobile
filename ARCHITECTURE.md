@@ -2,6 +2,15 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+> **Retired features (2026-10-28):** AI video editing / auto editing (editor,
+> subtitles, music and sound effects, beat sync, editing minutes), Groq, AI Clip
+> Review, the Analytics bottom-navigation tab, and the Home monthly views/likes
+> cards are out of the active product. `/ai-edits/*` answers
+> `410 AI_EDITING_RETIRED` unless `AI_EDITING_ENABLED=true`; the retained
+> editing modules are compatibility code, not current architecture. Sections
+> below that describe them are history. The canonical list is in `AGENTS.md`
+> under "Retired Features" and wins when an older section disagrees.
+
 ## Uploader post-quota presentation (2026-10-25, follow-up candidate)
 
 The clip-selection step renders a compact post-quota strip even with no clip
@@ -1880,9 +1889,9 @@ Current mobile pieces:
   30 seconds, displays terminal posts by their actual publish time, and opens
   completed results read-only.
 - Upload AI caption entry point after a video is selected.
-- AI editing advanced settings use a single-open accordion. Beat sync remains
-  visible but locked as `เร็ว ๆ นี้` in production; internal QA can expose its
-  setup-only controls with `ENABLE_EXPERIMENTAL_BEAT_SYNC=true`.
+- AI video editing is retired and has no navigation entry since 2026-10-05.
+  Its accordion settings and locked beat-sync controls exist only in retained
+  compatibility code under `features/ai_editing`.
 - AI captioning is gated by paid Starter/Pro status. Starter should use
   audio-only understanding from the selected clip; Pro can add selected visual
   frames.
@@ -1980,7 +1989,7 @@ Backend stack:
 - Firebase ID token verifier
 - Firebase Cloud Messaging (FCM) sender
 - Gemini caption provider with production provider/device verification remaining
-- ElevenLabs Scribe v2 transcription + Gemini AI auto-editing recipe flow with physical-device acceptance remaining
+- ElevenLabs Scribe v2 transcription (available to the real-clip caption fallback); the Gemini AI auto-editing recipe flow is retired and its routes answer `410` unless `AI_EDITING_ENABLED=true`
 - RevenueCat webhook and authenticated Restore/resync adapters
 - Opt-in Sentry reporter verified by local API/APK12041 ingestion, isolated cloud event and actual drained-main-process fatal/restart; clean Staging a0540a3, temporary hook removed, native Crashlytics retained/enabled
 
@@ -2076,7 +2085,8 @@ Important models:
 - `Subscription`: Basic/Starter/Pro entitlement state.
 - `RealClipCaptionUsage`: monthly usage ledger for paid AI caption generations
   from selected clips.
-- `AiEditUsage`: monthly minute ledger for Pro AI editing.
+- `AiEditUsage`: monthly minute ledger for the retired Pro AI editing feature;
+  kept so account deletion can clear historical rows.
 - `DeviceToken`: per-user FCM registration token.
 - `SocialConnection` and `PostPeerProfile`: per-user provider connection state.
 
@@ -2106,7 +2116,7 @@ delivery visibility cannot be reconstructed.
 | Video storage | `VIDEO_STORAGE=mock`, `UPLOAD_PROTOCOL_MODE=legacy` | `VIDEO_STORAGE=r2`, with strict `UPLOAD_PROTOCOL_MODE=multipart` (Staging keeps `dual`) |
 | Captions | `CAPTION_PROVIDER=mock` | Real-clip caption provider using backend AI |
 | Caption usage | `CAPTION_USAGE_STORE=memory` | `CAPTION_USAGE_STORE=prisma` |
-| AI auto editing | `TRANSCRIPTION_PROVIDER=mock` | ElevenLabs Scribe v2 transcribes; `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite` plans from visual proxy/transcript with structured JSON and provider-default sampling (no explicit `temperature`); PostDee rules are the final fallback; FFmpeg export stays on mobile |
+| AI auto editing (retired; only with `AI_EDITING_ENABLED=true`) | `TRANSCRIPTION_PROVIDER=mock` | ElevenLabs Scribe v2 transcribes; `GEMINI_EDIT_PLAN_MODEL=gemini-3.5-flash-lite` plans from visual proxy/transcript with structured JSON and provider-default sampling (no explicit `temperature`); PostDee rules are the final fallback; FFmpeg export stays on mobile |
 | Auth | `AUTH_PROVIDER=mock` | `AUTH_PROVIDER=firebase` |
 | Billing | `BILLING_PROVIDER=mock` | `BILLING_PROVIDER=revenuecat` |
 | Social publishing | Local uses `mock`; initial Staging uses fail-closed `disabled` | `SOCIAL_PUBLISHER=postpeer` with per-user social connections and signed R2/S3 media URLs; `FACEBOOK_REELS` always requests Facebook Page Reels with `contentType: 'reel'`, preserving `PUBLISH` / `PAGE_DRAFT` and optional `isAiGenerated`, with no Page feed fallback; real-account E2E remains pending; shared `POSTPEER_*_ACCOUNT_ID` values are rejected in production |
@@ -2919,7 +2929,7 @@ sequenceDiagram
 The active route and mobile UI have been removed. It should not be marketed as
 a separate "AI audio review" package feature. Useful output ideas such as
 caption angles, hooks, hashtags, and SEO keywords should move into real-clip AI
-captioning or Pro ElevenLabs + Gemini auto editing.
+captioning (AI auto editing is retired and is not a destination for them).
 
 Known limitations:
 
@@ -2940,7 +2950,11 @@ Cleanup direction:
 - Reuse useful product ideas such as hooks, hashtags, and SEO fields inside
   real-clip captioning where they help.
 
-## AI Auto Editing With ElevenLabs + Gemini Flow
+## AI Auto Editing With ElevenLabs + Gemini Flow (retired; history only)
+
+This flow was retired from the product on 2026-10-05, and its API routes answer
+`410 AI_EDITING_RETIRED` by default since 2026-10-24. It is kept here only to
+explain the retained compatibility code.
 
 ```mermaid
 sequenceDiagram
@@ -3447,9 +3461,8 @@ cd apps/mobile
   provider-level testing.
 - Legacy AI Clip Review internals have been removed; only false compatibility
   fields remain for older clients.
-- Pro AI auto editing has minute-metered prepare recipes and recoverable local
-  review/render states, but still needs persistent job/session recovery, top-up
-  handling, and real-device export/review testing.
+- AI auto editing is retired. Its retained prepare recipes and local
+  review/render states are compatibility code, not a launch requirement.
 - Real R2 upload requires Cloudflare credentials and integration testing.
 - Redis/BullMQ scheduling needs infrastructure testing.
 - The publish-draft/replay path still needs physical Android/iPhone storage,
@@ -3486,7 +3499,7 @@ cd apps/mobile
 6. Expand RevenueCat notification event coverage from sandbox evidence.
 7. Run the `RealClipCaptionUsage` migration in staging/production and set
    `CAPTION_USAGE_STORE=prisma` before selling paid AI caption quotas.
-8. Harden Pro ElevenLabs + Gemini job/session persistence, top-up, retry/recovery, and real-device review/export states.
+8. Retired, not a next step: ~~Harden Pro ElevenLabs + Gemini job/session persistence, top-up, retry/recovery, and real-device review/export states.~~
 9. Test Firebase Google Sign-In and Phone Auth on real Android/iOS devices.
 10. Test video picker and 9:16 preview on real devices.
 11. Connect disposable per-user PostPeer accounts and run the full controlled

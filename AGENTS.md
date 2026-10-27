@@ -6,6 +6,20 @@ Working guide for Codex and AI assistants helping to develop the PostDee project
 
 PostDee is a mobile app for online sellers, creators, and affiliate marketers in Thailand. The long-term goal is to upload a single vertical video, then post or schedule it to TikTok, YouTube Shorts, Instagram Reels, Facebook, Shopee Video, and Lazada Video from one place. The current PostPeer path targets TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels. The existing `FACEBOOK_REELS` value must always send PostPeer `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and optional `isAiGenerated`; there is no fallback to a Page feed video. Facebook Reel delivery and optional best-effort thumbnails still require real-account end-to-end verification before production claims. Shopee Video and Lazada Video remain future targets. Do not apply Facebook Page Video duration or width limits to Page Reels.
 
+## Retired Features (do not revive)
+
+The owner removed these from the product. Code, tests, and older dated sections of `ROADMAP.md`, `ARCHITECTURE.md`, `README.md`, and `API.md` may still describe them; treat them as retired, not as current features, launch TODOs, or review targets. Do not re-add an entry point, package benefit, or marketing copy for them unless the user explicitly asks to bring one back.
+
+| Feature | Status | What still exists and why |
+| --- | --- | --- |
+| AI video editing / auto editing (editor, subtitle burn-in, music and sound effects, beat sync, editing minutes and top-ups) | Navigation entry removed 2026-10-05 (Store link took its place); API retired 2026-10-24 | Every `/ai-edits/*` request answers `410 AI_EDITING_RETIRED` unless the rollback switch `AI_EDITING_ENABLED=true` is set. `apps/api/src/modules/aiEdits` and `apps/mobile/lib/features/ai_editing` remain as compatibility code: Upload still uses `AiEditAudioExtractor` for AI-caption audio and the cover editor uses `ReviewVideoTimeline`, so the folder cannot simply be deleted. The `AiEditUsage` table stays so account deletion can clear historical rows. |
+| Groq transcription/planning provider | Retired | Runtime configuration rejects Groq. Transcription uses ElevenLabs; captions use Gemini. |
+| AI Clip Review | Removed | UI, `/clip-reviews` route, config, and provider code are gone; only false compatibility flags remain for older clients. |
+| Analytics bottom-navigation tab | Removed from navigation | Analytics stays reachable from post details and publish results. |
+| Home monthly views/likes cards | Removed from Home for now | Their analytics request was removed with them. |
+
+Dated sections in the other docs are a history log. When they conflict with this table, this table wins. When a feature is retired or restored, update this table in the same change.
+
 ## How to work with this project
 
 Before modifying code or creating files every time, follow these steps:
@@ -83,7 +97,7 @@ Current Stack:
 - PostgreSQL schema
 - Redis + BullMQ queue adapters
 - Mock, Cloudflare R2, and legacy S3 video storage adapters
-- Mock and Gemini planning/caption adapters, ElevenLabs transcription, and legacy OpenAI adapters; Groq is intentionally rejected by current runtime configuration
+- Mock and Gemini caption adapters, ElevenLabs transcription, and legacy OpenAI adapters; Groq is intentionally rejected by current runtime configuration. Gemini edit-planning adapters belong to retired AI editing and are built only when `AI_EDITING_ENABLED=true`
 - Mock/Firebase auth plus Firebase Admin push adapter
 - Memory/Prisma stores, PostPeer publisher, and RevenueCat billing adapters
 
@@ -110,8 +124,11 @@ Location: `apps/mobile`
 Current Stack:
 
 - Flutter mobile app with light/dark themes (light is the default)
-- Home, uploader, AI editing/review, calendar, caption assistant, templates,
-  analytics, profile, billing, and publishing flows
+- Bottom navigation: Home, Calendar, Create post, Store link, and Account
+- Full-screen create-post flow with AI captions and saved caption templates,
+  plus publishing, notifications, billing, and analytics reached from post
+  details and publish results
+- AI video editing is retired; see Retired Features above
 
 Note: In the current environment, Flutter might not be in `PATH` yet. Do not claim `flutter analyze` or `flutter test` passed if they haven't been actually run.
 

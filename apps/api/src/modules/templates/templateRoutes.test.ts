@@ -55,6 +55,51 @@ describe('template routes', () => {
     expect(listResponse.body.templates).toEqual([createResponse.body.template]);
   });
 
+  it('deletes an owned template so its slot can be reused', async () => {
+    const app = createApp();
+    const created = await request(app)
+      .post('/templates')
+      .set('x-postdee-user-id', 'seller-template-delete')
+      .send({ title: 'Old', body: 'Remove me' })
+      .expect(201);
+    const templateId = created.body.template.id as string;
+
+    await request(app)
+      .delete(`/templates/${templateId}`)
+      .set('x-postdee-user-id', 'seller-template-delete')
+      .expect(200, { status: 'ok' });
+
+    const list = await request(app)
+      .get('/templates')
+      .set('x-postdee-user-id', 'seller-template-delete')
+      .expect(200);
+    expect(list.body.templates).toEqual([]);
+    await request(app)
+      .delete(`/templates/${templateId}`)
+      .set('x-postdee-user-id', 'seller-template-delete')
+      .expect(404);
+  });
+
+  it("does not delete another user's template", async () => {
+    const app = createApp();
+    const created = await request(app)
+      .post('/templates')
+      .set('x-postdee-user-id', 'seller-template-owner')
+      .send({ title: 'Mine', body: 'Keep me' })
+      .expect(201);
+
+    await request(app)
+      .delete(`/templates/${created.body.template.id}`)
+      .set('x-postdee-user-id', 'seller-template-intruder')
+      .expect(404);
+
+    const list = await request(app)
+      .get('/templates')
+      .set('x-postdee-user-id', 'seller-template-owner')
+      .expect(200);
+    expect(list.body.templates).toHaveLength(1);
+  });
+
   it('scopes templates by authenticated user', async () => {
     const app = createApp();
 
@@ -99,6 +144,39 @@ describe('template routes', () => {
     });
   });
 
+  it('rejects a template title or body over its length limit', async () => {
+    const app = createApp();
+    const create = (title: string, body: string) =>
+      request(app)
+        .post('/templates')
+        .set('x-postdee-user-id', 'seller-template-length')
+        .send({ title, body });
+
+    const longTitle = await create('😀'.repeat(81), 'body').expect(400);
+    const longBody = await create('title', '😀'.repeat(2201)).expect(400);
+    await create('😀'.repeat(80), '😀'.repeat(2200)).expect(201);
+
+    expect(longTitle.body).toMatchObject({ code: 'TEMPLATE_TOO_LONG' });
+    expect(longBody.body).toMatchObject({ code: 'TEMPLATE_TOO_LONG' });
+  });
+
+  it('limits each user to 30 saved templates', async () => {
+    const app = createApp();
+    const create = (userId: string, index: number) =>
+      request(app)
+        .post('/templates')
+        .set('x-postdee-user-id', userId)
+        .send({ title: `Template ${index}`, body: 'Saved text' });
+
+    for (let index = 0; index < 30; index += 1) {
+      await create('seller-template-limit', index).expect(201);
+    }
+
+    const response = await create('seller-template-limit', 30).expect(409);
+    expect(response.body).toMatchObject({ code: 'TEMPLATE_LIMIT_REACHED' });
+    await create('seller-template-other', 0).expect(201);
+  });
+
   it('supports async template repositories for future Prisma persistence', async () => {
     const template: TextTemplate = {
       id: 'template-1',
@@ -108,7 +186,8 @@ describe('template routes', () => {
     };
     const asyncStore: TemplateStore = {
       list: async () => [template],
-      create: async () => template
+      create: async () => template,
+      remove: async () => false
     };
     const app = express();
     app.use(express.json());

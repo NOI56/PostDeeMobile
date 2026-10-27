@@ -13,6 +13,7 @@ export type PlatformPublishInput = {
   userId?: string;
   postId: string;
   caption?: string;
+  youtubeTitle?: string;
   videoS3Key?: string;
   coverImageS3Key?: string;
   coverFrameTimeMs?: number;
@@ -82,7 +83,7 @@ const readErrorMessage = (error: unknown) =>
 
 const publicPlatformPublishErrorMessage =
   'Publishing to this platform failed. Please try again later.';
-const publicPublishOutcomeUnknownErrorMessage =
+export const publicPublishOutcomeUnknownErrorMessage =
   'Publishing result could not be confirmed. Check the platform before trying again.';
 const publicCleanupErrorMessage = 'Video cleanup failed. Please try again later.';
 
@@ -153,14 +154,16 @@ export const processPublishJob = async ({
 }): Promise<PublishWorkerResult> => {
   const attemptLimit = Math.max(1, Math.floor(maxPublishAttempts));
   const retryBackoffMs = Math.max(0, publishRetryBackoffMs);
+  const uniquePlatforms = [...new Set(jobData.platforms)];
   const platformResults = await Promise.all(
-    jobData.platforms.map(async (platform): Promise<PlatformPublishResult> => {
+    uniquePlatforms.map(async (platform): Promise<PlatformPublishResult> => {
       for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
         try {
           return await publisher.publish({
             ...(jobData.userId ? { userId: jobData.userId } : {}),
             postId: jobData.postId,
             caption: jobData.caption,
+            ...(jobData.youtubeTitle ? { youtubeTitle: jobData.youtubeTitle } : {}),
             videoS3Key: jobData.videoS3Key,
             ...(jobData.coverImageS3Key
               ? { coverImageS3Key: jobData.coverImageS3Key }

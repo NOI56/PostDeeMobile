@@ -5,10 +5,19 @@ import type {
 } from './aiEditUsageStore.js';
 
 type PrismaAiEditUsage = {
+  id: string;
   userId: string;
   monthKey: string;
   minutes: number;
   createdAt: Date;
+};
+
+type AiEditUsageSelect = {
+  id: true;
+  userId: true;
+  monthKey: true;
+  minutes: true;
+  createdAt: true;
 };
 
 type AiEditUsageDelegate = {
@@ -18,8 +27,18 @@ type AiEditUsageDelegate = {
   }) => Promise<{ _sum: { minutes: number | null } }>;
   create: (args: {
     data: { userId: string; monthKey: string; minutes: number };
-    select: { userId: true; monthKey: true; minutes: true; createdAt: true };
+    select: AiEditUsageSelect;
   }) => Promise<PrismaAiEditUsage>;
+  findFirst: (args: {
+    where: { id: string; userId: string; monthKey: string };
+    select: AiEditUsageSelect;
+  }) => Promise<PrismaAiEditUsage | null>;
+  update: (args: {
+    where: { id: string };
+    data: { minutes: number };
+    select: AiEditUsageSelect;
+  }) => Promise<PrismaAiEditUsage>;
+  deleteMany: (args: { where: { id: string; userId: string } }) => Promise<{ count: number }>;
 };
 
 export type PrismaAiEditUsageClient = {
@@ -31,6 +50,7 @@ export type PrismaAiEditUsageClient = {
 };
 
 const mapUsageRecord = (record: PrismaAiEditUsage): AiEditUsageRecord => ({
+  id: record.id,
   userId: record.userId,
   monthKey: record.monthKey,
   minutes: record.minutes,
@@ -43,6 +63,7 @@ export const createPrismaAiEditUsageRepository = ({
   prisma: PrismaAiEditUsageClient;
 }): AiEditUsageStore => {
   const usageSelect = {
+    id: true,
     userId: true,
     monthKey: true,
     minutes: true,
@@ -87,6 +108,68 @@ export const createPrismaAiEditUsageRepository = ({
     };
   };
 
+  // Two requests from one user can conflict under Serializable isolation
+  // (Prisma P2034). Retry a few times so the loser gets a real quota answer
+  // instead of a 500.
+  const runSerializable = async <T>(
+    operation: (client: { aiEditUsage: AiEditUsageDelegate }) => Promise<T>
+  ): Promise<T> => {
+    if (!prisma.$transaction) {
+      return operation(prisma);
+    }
+
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await prisma.$transaction(operation, { isolationLevel: 'Serializable' });
+      } catch (error) {
+        const isWriteConflict =
+          typeof error === 'object' && error !== null &&
+          'code' in error && error.code === 'P2034';
+
+        if (!isWriteConflict || attempt >= 3) {
+          throw error;
+        }
+      }
+    }
+  };
+
+  const settleWithClient = async (
+    client: { aiEditUsage: AiEditUsageDelegate },
+    {
+      id,
+      userId,
+      monthKey,
+      minutes,
+      limit
+    }: { id: string; userId: string; monthKey: string; minutes: number; limit: number }
+  ): Promise<AiEditUsageReservation> => {
+    const reserved = await client.aiEditUsage.findFirst({
+      where: { id, userId, monthKey },
+      select: usageSelect
+    });
+    const result = await client.aiEditUsage.aggregate({
+      where: { userId, monthKey },
+      _sum: { minutes: true }
+    });
+    const usedMinutes = result._sum.minutes ?? 0;
+
+    if (!reserved || usedMinutes - reserved.minutes + minutes > limit) {
+      return { ok: false, usedMinutes };
+    }
+
+    const record = await client.aiEditUsage.update({
+      where: { id },
+      data: { minutes },
+      select: usageSelect
+    });
+
+    return {
+      ok: true,
+      usedMinutes: usedMinutes - reserved.minutes + minutes,
+      record: mapUsageRecord(record)
+    };
+  };
+
   return {
     sumMinutesForMonth: async ({ userId, monthKey }) => {
       const result = await prisma.aiEditUsage.aggregate({
@@ -104,14 +187,12 @@ export const createPrismaAiEditUsageRepository = ({
 
       return mapUsageRecord(record);
     },
-    reserve: async (input) => {
-      if (prisma.$transaction) {
-        return prisma.$transaction((client) => reserveWithClient(client, input), {
-          isolationLevel: 'Serializable'
-        });
-      }
-
-      return reserveWithClient(prisma, input);
+    reserve: (input) =>
+      runSerializable((client) => reserveWithClient(client, input)),
+    settle: (input) =>
+      runSerializable((client) => settleWithClient(client, input)),
+    release: async ({ id, userId }) => {
+      await prisma.aiEditUsage.deleteMany({ where: { id, userId } });
     }
   };
 };

@@ -7,6 +7,7 @@ export type PublishJob = {
   queueName: 'publish-posts';
   userId?: string;
   postId: string;
+  youtubeTitle?: string;
   coverImageS3Key?: string;
   coverFrameTimeMs?: number;
   platforms: Platform[];
@@ -31,6 +32,7 @@ export const createInMemoryPublishQueue = (): PublishQueue => {
       queueName: 'publish-posts' as const,
       userId: post.userId,
       postId: post.id,
+      ...(post.youtubeTitle ? { youtubeTitle: post.youtubeTitle } : {}),
       ...(post.coverImageS3Key
         ? { coverImageS3Key: post.coverImageS3Key }
         : {}),
@@ -47,11 +49,18 @@ export const createInMemoryPublishQueue = (): PublishQueue => {
     return job;
   };
 
+  // Compacts in place: spreading a large queue into splice() overflows the stack.
   const remove = async (postId: string, exceptJobId?: string) => {
-    const remainingJobs = jobs.filter(
-      (job) => job.postId !== postId || job.id === exceptJobId
-    );
-    jobs.splice(0, jobs.length, ...remainingJobs);
+    let kept = 0;
+
+    for (const job of jobs) {
+      if (job.postId !== postId || job.id === exceptJobId) {
+        jobs[kept] = job;
+        kept += 1;
+      }
+    }
+
+    jobs.length = kept;
   };
 
   return {

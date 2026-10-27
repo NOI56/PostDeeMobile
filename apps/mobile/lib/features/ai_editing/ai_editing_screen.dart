@@ -13,12 +13,14 @@ import '../billing/paywall_screen.dart';
 import '../shared/postdee_status_sheet.dart';
 import '../uploader/uploader_screen.dart';
 import '../uploader/video_picker_service.dart';
+import 'ai_edit_audio_extractor.dart';
+import 'ai_edit_media_strategy.dart';
 import 'beat_music_picker.dart';
-import 'capcut_editor_screen.dart';
 import 'edit_styles.dart';
 import 'review_video_timeline.dart';
 import 'style_options.dart';
 import 'subtitle_burn_video_processor.dart';
+import 'video_duration_probe.dart';
 
 typedef EditorVideoPicker = Future<PickedVideoFile?> Function();
 typedef EditorUploadCreator = Future<UploadResult> Function(
@@ -31,6 +33,10 @@ typedef EditorVideoUploader = Future<void> Function(
 typedef AiEditPreparer = Future<AiEditPrepareResult> Function(
   AiEditPrepareRequest request,
 );
+typedef AiEditAudioExtraction = Future<AiEditAudioArtifact> Function(
+  File source,
+);
+typedef AiEditAudioCleanup = Future<void> Function(String audioS3Key);
 typedef AiVideoRenderer = Future<BurnedSubtitleResult> Function(
   BurnSubtitleRequest request,
 );
@@ -40,11 +46,17 @@ typedef ReviewVideoControllerFactory = VideoPlayerController Function(
   File file,
 );
 
-enum _AiDurationMode { seconds30, seconds60, custom }
+enum _AiDurationMode { unselected, seconds30, seconds60, custom }
 
 enum _AiEditingStage { setup, review }
 
 enum _AiCapabilityGroup { pace, look, sales }
+
+const _capabilityGroupDisplayOrder = <_AiCapabilityGroup>[
+  _AiCapabilityGroup.sales,
+  _AiCapabilityGroup.pace,
+  _AiCapabilityGroup.look,
+];
 
 enum _BeatMusicSource { auto, library, device, original }
 
@@ -62,7 +74,7 @@ const _requiredMusicPublishingPlatforms = <String>{
   'TikTok',
   'YouTube Shorts',
   'Instagram Reels',
-  'Facebook Video',
+  'Facebook Reels',
   'Shopee Video',
   'Lazada Video',
 };
@@ -195,6 +207,13 @@ const _capabilityDefinitions = <_AiCapabilityDefinition>[
   ),
 ];
 
+const _deferredCapabilityIds = <String>{
+  'translate',
+  'pricetag',
+  'cta',
+  'watermark',
+};
+
 class _AiPreset {
   _AiPreset({
     required this.name,
@@ -304,10 +323,13 @@ class AiEditingScreen extends StatefulWidget {
     this.pickVideo,
     this.createUpload,
     this.uploadVideoFile,
-    this.transcribeClip,
+    this.extractAudio,
+    this.cleanupAiEditAudio,
     this.prepareEdit,
     this.loadSubscription,
     this.loadAiEditQuota,
+    this.probeVideoDuration,
+    this.initialTargetDurationSeconds,
     this.burnVideo,
     this.pickMusic,
     this.musicCatalog = const [],
@@ -320,10 +342,13 @@ class AiEditingScreen extends StatefulWidget {
   final EditorVideoPicker? pickVideo;
   final EditorUploadCreator? createUpload;
   final EditorVideoUploader? uploadVideoFile;
-  final CapCutTranscriptLoader? transcribeClip;
+  final AiEditAudioExtraction? extractAudio;
+  final AiEditAudioCleanup? cleanupAiEditAudio;
   final AiEditPreparer? prepareEdit;
   final EditorSubscriptionLoader? loadSubscription;
   final AiEditQuotaLoader? loadAiEditQuota;
+  final VideoDurationProbe? probeVideoDuration;
+  final int? initialTargetDurationSeconds;
   final AiVideoRenderer? burnVideo;
   final BeatMusicPicker? pickMusic;
   final List<PostDeeMusicTrack> musicCatalog;
@@ -344,7 +369,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   final _priceBeforeController = TextEditingController(text: '359');
 
   PickedVideoFile? _selectedVideo;
-  UploadResult? _uploadedVideo;
   AiEditPrepareResult? _preparedEdit;
   BurnedSubtitleResult? _renderedResult;
   _AiSetupSnapshot? _acceptedSetup;
@@ -355,9 +379,9 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   final Map<String, Duration> _reviewVideoDurations = {};
   ReviewVideoSource _reviewVideoSource = ReviewVideoSource.ai;
   int _reviewResultRevision = 0;
-  bool _advancedMode = false;
   String? _expandedAdvancedCapabilityId;
   bool _processing = false;
+  bool _processingAttemptInFlight = false;
   bool _updatingReviewPreview = false;
   bool _reviewPreviewLoading = false;
   bool _isPickingVideo = false;
@@ -365,7 +389,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   bool _aiEditQuotaLoadFailed = false;
   AiEditQuota? _aiEditQuota;
   String _processingTitle = 'AI กำลังวิเคราะห์คลิป...';
-  _AiDurationMode _durationMode = _AiDurationMode.seconds30;
+  _AiDurationMode _durationMode = _AiDurationMode.unselected;
   int _customDurationSeconds = 45;
 
   final Map<String, bool> _capabilities = {
@@ -409,6 +433,18 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   @override
   void initState() {
     super.initState();
+    final initialTarget = widget.initialTargetDurationSeconds;
+    if (initialTarget != null && initialTarget > 0) {
+      if (initialTarget == 30) {
+        _durationMode = _AiDurationMode.seconds30;
+      } else if (initialTarget == 60) {
+        _durationMode = _AiDurationMode.seconds60;
+      } else {
+        _durationMode = _AiDurationMode.custom;
+        _customDurationSeconds = initialTarget.clamp(1, 180);
+        _customDurationController.text = _customDurationSeconds.toString();
+      }
+    }
     if (widget.enableExperimentalBeatSync) {
       _capabilities['beatsync'] = true;
     }
@@ -470,9 +506,21 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         throw const ApiException('ไม่พบไฟล์วิดีโอในเครื่อง');
       }
 
+      final width = picked.width;
+      final height = picked.height;
+      if (width == null || height == null || width < 1 || height < 1) {
+        throw const ApiException(
+          'อ่านขนาดวิดีโอไม่ได้ กรุณาเลือกวิดีโอใหม่',
+        );
+      }
+      if (!isVerticalNineBySixteen(width: width, height: height)) {
+        throw const ApiException(
+          'ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920',
+        );
+      }
+
       setState(() {
         _selectedVideo = picked;
-        _uploadedVideo = null;
         _preparedEdit = null;
         _preparedEditsBySignature.clear();
         _renderedResult = null;
@@ -543,9 +591,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   void _collapseAdvancedIfUnavailable() {
     final expandedId = _expandedAdvancedCapabilityId;
-    if (!_advancedMode ||
-        expandedId == null ||
-        !_isCapabilityEnabled(expandedId)) {
+    if (expandedId == null || !_isCapabilityEnabled(expandedId)) {
       _expandedAdvancedCapabilityId = null;
     }
   }
@@ -575,151 +621,214 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Future<void> _processVideo() async {
     final picked = _selectedVideo;
-    if (picked == null || _processing) {
+    if (picked == null ||
+        !_hasSelectedDuration ||
+        _processing ||
+        _processingAttemptInFlight) {
       return;
     }
 
-    final shouldCheckSubscription = widget.loadSubscription != null ||
-        (widget.createUpload == null &&
-            widget.uploadVideoFile == null &&
-            widget.prepareEdit == null);
-    if (shouldCheckSubscription) {
-      try {
-        final loadSubscription =
-            widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
-        final subscription = await loadSubscription();
-        if (!subscription.isPro) {
-          throw const ApiException(
-            'Pro plan is required for AI editing',
-            statusCode: 402,
-          );
-        }
-      } on ApiException catch (error) {
-        if (mounted) {
-          _showError(_friendlyAiError(error));
-        }
-        return;
-      } catch (_) {
-        if (mounted) {
-          _showError('ตรวจสอบแพ็กเกจไม่สำเร็จ ลองใหม่อีกครั้ง');
-        }
-        return;
-      }
-    }
-
-    final file = File(picked.path);
-    final fileName = picked.name.trim().isNotEmpty
-        ? picked.name.trim()
-        : _readFileNameFromPath(picked.path);
-
+    _processingAttemptInFlight = true;
     setState(() {
       _processing = true;
-      _processingTitle = 'AI กำลังวิเคราะห์คลิป...';
+      // Keep the existing analysis label while entitlement is checked.
     });
-
     try {
-      if (!file.existsSync()) {
-        throw const ApiException('ไม่พบไฟล์วิดีโอในเครื่อง');
-      }
-
-      var upload = _uploadedVideo;
-      if (upload == null) {
-        final createUpload = widget.createUpload ?? _apiClient.createUpload;
-        final uploadVideoFile =
-            widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-        upload = await createAndUploadFileWithRetry(
-          request: CreateUploadRequest(
-            fileName: fileName,
-            contentType: 'video/mp4',
-            sizeBytes:
-                picked.sizeBytes > 0 ? picked.sizeBytes : file.lengthSync(),
-            width: picked.width,
-            height: picked.height,
-          ),
-          file: file,
-          createUpload: createUpload,
-          uploadFile: uploadVideoFile,
-          onRetry: () {
-            if (mounted) {
-              setState(() {
-                _processingTitle = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
-              });
-            }
-          },
-        );
-
-        if (!mounted) {
+      final shouldCheckSubscription = widget.loadSubscription != null ||
+          (widget.createUpload == null &&
+              widget.uploadVideoFile == null &&
+              widget.prepareEdit == null);
+      if (shouldCheckSubscription) {
+        try {
+          final loadSubscription =
+              widget.loadSubscription ?? _apiClient.loadCurrentSubscription;
+          final subscription = await loadSubscription();
+          if (!mounted) {
+            return;
+          }
+          if (!subscription.isPro) {
+            throw const ApiException(
+              'Pro plan is required for AI editing',
+              statusCode: 402,
+            );
+          }
+        } on ApiException catch (error) {
+          if (mounted) {
+            _showError(_friendlyAiError(error));
+          }
+          return;
+        } catch (_) {
+          if (mounted) {
+            _showError('ตรวจสอบแพ็กเกจไม่สำเร็จ ลองใหม่อีกครั้ง');
+          }
           return;
         }
-        setState(() => _uploadedVideo = upload);
       }
 
-      if (!mounted) {
-        return;
-      }
+      final sourceFile = File(picked.path);
 
-      final prepareRequest = _buildPrepareRequest(upload.videoS3Key);
-      final prepareSignature = jsonEncode(prepareRequest.toJson());
-      var prepared = _preparedEditsBySignature[prepareSignature];
-      if (prepared == null) {
-        final prepareEdit = widget.prepareEdit ?? _apiClient.prepareAiEdit;
-        final preparedFromApi = await prepareEdit(prepareRequest);
-        if (!mounted) {
-          return;
-        }
-        _preparedEditsBySignature[prepareSignature] = preparedFromApi;
-        prepared = preparedFromApi;
-      }
-
-      if (!mounted) {
-        return;
-      }
-      final preparedResult = prepared;
       setState(() {
-        _aiEditQuota = preparedResult.quota;
-        _isLoadingAiEditQuota = false;
-        _aiEditQuotaLoadFailed = false;
-        _processingTitle = 'กำลังสร้างวิดีโอตัวอย่าง...';
+        _processing = true;
+        _processingTitle = 'AI กำลังวิเคราะห์คลิป...';
       });
 
-      final reviewCapabilities =
-          _buildReviewCapabilities(preparedResult.recipe);
-      final result = await _renderPreparedRecipe(
-        recipe: preparedResult.recipe,
-        capabilities: reviewCapabilities,
-      );
+      try {
+        if (!sourceFile.existsSync()) {
+          throw const ApiException('ไม่พบไฟล์วิดีโอในเครื่อง');
+        }
 
-      if (result.colorFilterSkipped) {
-        reviewCapabilities.remove('color');
-      }
+        final VideoDurationProbe? probeVideoDuration =
+            widget.probeVideoDuration ??
+                (widget.pickVideo == null
+                    ? const FfprobeVideoDurationProbe().call
+                    : null);
+        final sourceDurationSeconds = probeVideoDuration == null
+            ? null
+            : await probeVideoDuration(sourceFile);
+        if (!mounted) {
+          return;
+        }
 
-      if (mounted) {
-        final acceptedSetup = _captureSetupSnapshot();
+        final prepareSignature = _buildPrepareSignature(
+          picked,
+          sourceFile,
+          sourceDurationSeconds: sourceDurationSeconds,
+        );
+        var prepared = _preparedEditsBySignature[prepareSignature];
+
+        if (prepared == null) {
+          AiEditAudioArtifact? audioArtifact;
+          String? uploadedAudioS3Key;
+
+          try {
+            final prepareTemplate = _buildPrepareRequest(
+              '__pending_audio__.m4a',
+              sourceDurationSeconds: sourceDurationSeconds,
+            );
+            selectAiEditAnalysisMode(prepareTemplate.capabilities);
+
+            final extractAudio =
+                widget.extractAudio ?? AiEditAudioExtractor().extract;
+            audioArtifact = await extractAudio(sourceFile);
+            if (!mounted) {
+              return;
+            }
+
+            final audioFile = audioArtifact.file;
+            final createUpload = widget.createUpload ?? _apiClient.createUpload;
+            final uploadAudioFile =
+                widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+            final upload = await createAndUploadFileWithRetry(
+              request: CreateUploadRequest(
+                fileName: _readFileNameFromPath(audioFile.path),
+                contentType: 'audio/mp4',
+                sizeBytes: audioFile.lengthSync(),
+                purpose: 'ai-edit-audio',
+              ),
+              file: audioFile,
+              createUpload: createUpload,
+              uploadFile: uploadAudioFile,
+              onRetry: () {
+                if (mounted) {
+                  setState(() {
+                    _processingTitle = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+                  });
+                }
+              },
+            );
+            uploadedAudioS3Key = upload.videoS3Key;
+
+            if (!mounted) {
+              return;
+            }
+
+            final prepareRequest = _buildPrepareRequest(
+              uploadedAudioS3Key,
+              sourceDurationSeconds: sourceDurationSeconds,
+            );
+            final prepareEdit = widget.prepareEdit ?? _apiClient.prepareAiEdit;
+            final preparedFromApi = await prepareEdit(prepareRequest);
+            if (!mounted) {
+              return;
+            }
+            _preparedEditsBySignature[prepareSignature] = preparedFromApi;
+            prepared = preparedFromApi;
+          } finally {
+            if (audioArtifact != null) {
+              await _cleanupLocalAudioBestEffort(audioArtifact);
+            }
+            if (uploadedAudioS3Key != null) {
+              await _cleanupRemoteAudioBestEffort(uploadedAudioS3Key);
+            }
+          }
+        }
+
+        if (!mounted) {
+          return;
+        }
+        final preparedResult = prepared;
         setState(() {
-          _preparedEdit = preparedResult;
-          _renderedResult = result;
-          _prepareReviewForResult(result);
-          _acceptedSetup = acceptedSetup;
-          _reviewCapabilities
-            ..clear()
-            ..addAll(reviewCapabilities);
-          _appliedReviewCapabilities
-            ..clear()
-            ..addAll(reviewCapabilities);
-          _stage = _AiEditingStage.review;
-          _processing = false;
+          _aiEditQuota = preparedResult.quota;
+          _isLoadingAiEditQuota = false;
+          _aiEditQuotaLoadFailed = false;
+          _processingTitle = 'กำลังสร้างวิดีโอตัวอย่าง...';
         });
+
+        final reviewCapabilities =
+            _buildReviewCapabilities(preparedResult.recipe);
+        final result = await _renderPreparedRecipe(
+          recipe: preparedResult.recipe,
+          capabilities: reviewCapabilities,
+        );
+
+        if (result.colorFilterSkipped) {
+          reviewCapabilities.remove('color');
+        }
+
+        if (mounted) {
+          final acceptedSetup = _captureSetupSnapshot();
+          setState(() {
+            _preparedEdit = preparedResult;
+            _renderedResult = result;
+            _prepareReviewForResult(result);
+            _acceptedSetup = acceptedSetup;
+            _reviewCapabilities
+              ..clear()
+              ..addAll(reviewCapabilities);
+            _appliedReviewCapabilities
+              ..clear()
+              ..addAll(reviewCapabilities);
+            _stage = _AiEditingStage.review;
+            _processing = false;
+          });
+        }
+      } on AiEditAudioExtractionException catch (error) {
+        _handleProcessingFailure(error.message);
+      } on UnsupportedAiEditAnalysisException catch (error) {
+        _handleProcessingFailure(error.toString());
+      } on ApiException catch (error) {
+        _handleProcessingFailure(_friendlyAiError(error));
+      } on SubtitleBurnException catch (error) {
+        _handleProcessingFailure(error.message);
+      } catch (_) {
+        _handleProcessingFailure('AI ตัดต่อวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง');
       }
-    } on ApiException catch (error) {
-      _handleProcessingFailure(_friendlyAiError(error));
-    } on SubtitleBurnException catch (error) {
-      _handleProcessingFailure(error.message);
-    } catch (_) {
-      _handleProcessingFailure('AI ตัดต่อวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง');
+    } finally {
+      _processingAttemptInFlight = false;
+      if (_processing) {
+        if (mounted) {
+          setState(() => _processing = false);
+        } else {
+          _processing = false;
+        }
+      }
     }
   }
 
-  AiEditPrepareRequest _buildPrepareRequest(String videoS3Key) {
+  AiEditPrepareRequest _buildPrepareRequest(
+    String audioS3Key, {
+    double? sourceDurationSeconds,
+  }) {
     final capabilities = _effectiveCapabilities;
     final canUseBeatMusic =
         _isCapabilityEnabled('beatsync') && _beatMusicSelectionComplete;
@@ -730,8 +839,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         canUseBeatMusic ? _musicSource : _BeatMusicSource.original;
 
     return AiEditPrepareRequest(
-      videoS3Key: videoS3Key,
-      durationSeconds: _selectedDurationSeconds.toDouble(),
+      audioS3Key: audioS3Key,
+      durationSeconds:
+          sourceDurationSeconds ?? _selectedDurationSeconds.toDouble(),
+      targetDurationSeconds: _selectedDurationSeconds.toDouble(),
       capabilities: {
         ...capabilities,
         'sfx': false,
@@ -774,6 +885,50 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ),
       ),
     );
+  }
+
+  String _buildPrepareSignature(
+    PickedVideoFile picked,
+    File sourceFile, {
+    double? sourceDurationSeconds,
+  }) {
+    final request = _buildPrepareRequest(
+      '__signature_audio__.m4a',
+      sourceDurationSeconds: sourceDurationSeconds,
+    ).toJson()
+      ..remove('audioS3Key')
+      ..remove('videoS3Key');
+
+    return jsonEncode({
+      'source': {
+        'path': picked.path,
+        'name': picked.name,
+        'sizeBytes': sourceFile.lengthSync(),
+        'lastModifiedMs': sourceFile.lastModifiedSync().millisecondsSinceEpoch,
+      },
+      'request': request,
+    });
+  }
+
+  Future<void> _cleanupRemoteAudioBestEffort(String audioS3Key) async {
+    try {
+      final cleanup =
+          widget.cleanupAiEditAudio ?? _apiClient.cleanupAiEditAudio;
+      await cleanup(audioS3Key);
+    } catch (_) {
+      // The API also deletes owned temporary audio; this call covers lost
+      // responses and upload-completed requests that never reached prepare.
+    }
+  }
+
+  Future<void> _cleanupLocalAudioBestEffort(
+    AiEditAudioArtifact artifact,
+  ) async {
+    try {
+      await artifact.cleanup();
+    } catch (_) {
+      // Do not replace a successful edit or the original processing error.
+    }
   }
 
   void _handleProcessingFailure(String message) {
@@ -823,6 +978,23 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     };
   }
 
+  List<SilenceCutRange> _buildPreparedCutRanges({
+    required AiEditRecipeResult recipe,
+    required Map<String, bool> capabilities,
+  }) {
+    return [
+      // Style/free-prompt cuts are always part of the prepared edit.
+      for (final range in recipe.plan.cuts)
+        SilenceCutRange(start: range.start, end: range.end),
+      if (capabilities['silence'] ?? false)
+        for (final range in recipe.silenceRanges)
+          SilenceCutRange(start: range.start, end: range.end),
+      if (capabilities['filler'] ?? false)
+        for (final range in recipe.fillerRanges)
+          SilenceCutRange(start: range.start, end: range.end),
+    ];
+  }
+
   Future<BurnedSubtitleResult> _renderPreparedRecipe({
     required AiEditRecipeResult recipe,
     required Map<String, bool> capabilities,
@@ -834,21 +1006,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
     final originalFile = File(picked.path);
     final options = _buildEditOptions(capabilities);
-    var cutRanges = <SilenceCutRange>[
-      // Style/free-prompt cuts come from the AI plan and are independent of
-      // the silence/filler review toggles below.
-      for (final range in recipe.plan.cuts)
-        SilenceCutRange(start: range.start, end: range.end),
-      if (capabilities['silence'] ?? false)
-        for (final range in recipe.silenceRanges)
-          SilenceCutRange(start: range.start, end: range.end),
-      if (capabilities['filler'] ?? false)
-        for (final range in recipe.fillerRanges)
-          SilenceCutRange(start: range.start, end: range.end),
-    ];
+    var cutRanges = _buildPreparedCutRanges(
+      recipe: recipe,
+      capabilities: capabilities,
+    );
 
     final sourceDuration = recipe.transcript.durationSeconds;
     if (sourceDuration > 0) {
+      // The backend selects the best transcript moments. This is only a final
+      // safety cap for old or malformed recipes that exceed the requested time.
       cutRanges = withTargetLength(
         cutRanges,
         sourceDuration,
@@ -1049,6 +1215,10 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   String _friendlyAiError(ApiException error) {
+    if (error.code == 'AI_EDIT_PLAN_PROVIDER_FAILED') {
+      return 'ระบบวางแผนตัดต่อด้วย AI ยังไม่พร้อม · ลองใหม่อีกครั้ง '
+          '(ครั้งนี้ยังไม่หักโควตา)';
+    }
     if (error.statusCode == 402 || error.message.contains('Pro plan')) {
       return 'การตัดต่ออัตโนมัติต้องใช้แพ็กเกจ Pro';
     }
@@ -1059,10 +1229,13 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
   }
 
   int get _selectedDurationSeconds => switch (_durationMode) {
+        _AiDurationMode.unselected => 0,
         _AiDurationMode.seconds30 => 30,
         _AiDurationMode.seconds60 => 60,
         _AiDurationMode.custom => _customDurationSeconds.clamp(1, 180),
       };
+
+  bool get _hasSelectedDuration => _durationMode != _AiDurationMode.unselected;
 
   bool get _reviewIsDirty {
     final keys = {
@@ -1220,23 +1393,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     });
   }
 
-  Future<void> _openManualEditor() async {
-    final result = _renderedResult;
-    if (result == null || _reviewIsDirty) {
-      return;
-    }
-
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => CapCutEditorScreen(
-          videoName: result.fileName,
-          videoFile: result.file,
-          onExported: _openPostFlow,
-        ),
-      ),
-    );
-  }
-
   Future<void> _openPostFlow(BurnedSubtitleResult result) async {
     if (!mounted) {
       return;
@@ -1257,6 +1413,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               initialVideoPath: result.file.path,
               initialVideoName: result.fileName,
               initialVideoSizeBytes: result.sizeBytes,
+              initialVideoWidth: _selectedVideo?.width,
+              initialVideoHeight: _selectedVideo?.height,
             ),
           ),
         ),
@@ -1418,8 +1576,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
       children: [
-        _buildAdvancedModeCard(),
-        const SizedBox(height: 18),
         if (_selectedVideo == null)
           _AddVideoCard(
             onTap: _pickVideo,
@@ -1437,10 +1593,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         ),
         const SizedBox(height: 12),
         ..._buildCapabilityGroups(),
-        if (_advancedMode) ...[
-          const SizedBox(height: 18),
-          _buildPresetCard(),
-        ],
+        const SizedBox(height: 18),
+        _buildPresetCard(),
       ],
     );
   }
@@ -1514,6 +1668,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             !_reviewCapabilities.containsKey(definition.id))
           definition,
     ];
+    final plan = _preparedEdit?.recipe.plan;
+    final usesMockPlan = plan?.model.startsWith('mock-') ?? false;
 
     return ListView(
       key: const ValueKey('ai-result-review'),
@@ -1575,6 +1731,71 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             ],
           ),
         ),
+        if (usesMockPlan) ...[
+          const SizedBox(height: 12),
+          Container(
+            key: const ValueKey('ai-plan-test-mode'),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.science_outlined,
+                  size: 18,
+                  color: Color(0xFFF59E0B),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'กฎพื้นฐาน (โหมดทดสอบ) · ไม่ได้ใช้ AI ออนไลน์',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if ((plan?.summary.trim().isNotEmpty ?? false)) ...[
+          const SizedBox(height: 12),
+          Container(
+            key: const ValueKey('ai-plan-summary'),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: AppTheme.mint,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.auto_awesome,
+                    size: 18, color: AppTheme.accentCyanInk),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    plan!.summary.trim(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.45,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         if (result.colorFilterSkipped) ...[
           Container(
@@ -2224,56 +2445,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     );
   }
 
-  Widget _buildAdvancedModeCard() {
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: _cardDecoration(radius: 14),
-      child: Row(
-        children: [
-          _iconBox(Icons.tune, enabled: false),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'โหมดตั้งค่าขั้นสูง',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'เปิดแล้วกดปุ่มตั้งค่าในหัวข้อที่ต้องการ '
-                  'ระบบจะเปิดให้ปรับทีละหัวข้อ',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          _DesignSwitch(
-            key: const ValueKey('ai-advanced-toggle'),
-            value: _advancedMode,
-            semanticsLabel: 'โหมดตั้งค่าขั้นสูง',
-            onChanged: (value) => setState(() {
-              _advancedMode = value;
-              if (!value) {
-                _expandedAdvancedCapabilityId = null;
-              }
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSelectedVideoCard(PickedVideoFile video) {
     final details = <String>[
       if ((video.width ?? 0) > 0 && (video.height ?? 0) > 0)
@@ -2359,7 +2530,6 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
               onTap: () {
                 setState(() {
                   _selectedVideo = null;
-                  _uploadedVideo = null;
                   _preparedEdit = null;
                   _preparedEditsBySignature.clear();
                   _renderedResult = null;
@@ -2394,7 +2564,8 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
         _sectionHeading(
           icon: Icons.timer_outlined,
           title: 'ความยาวที่อยากได้',
-          description: 'AI จะเลือกช่วงที่ดีที่สุดให้พอดีกับเวลาที่ตั้ง',
+          description:
+              'AI จะเลือกท่อนขายที่ดีที่สุดจากคำพูด โดยคงลำดับเรื่องและไม่เกินเวลาที่ตั้ง',
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -2424,6 +2595,17 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             ),
           ],
         ),
+        if (!_hasSelectedDuration) ...[
+          const SizedBox(height: 8),
+          Text(
+            'เลือกความยาวก่อนเริ่ม เพื่อให้ AI รู้ว่าจะคัดช่วงมาเท่าไร',
+            key: const ValueKey('ai-duration-required-message'),
+            style: TextStyle(
+              fontSize: 11.5,
+              color: AppTheme.textMuted,
+            ),
+          ),
+        ],
         if (_durationMode == _AiDurationMode.custom) ...[
           const SizedBox(height: 12),
           Container(
@@ -2483,7 +2665,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     };
 
     return [
-      for (final group in _AiCapabilityGroup.values) ...[
+      for (final group in _capabilityGroupDisplayOrder) ...[
         Padding(
           padding: const EdgeInsets.only(left: 2, bottom: 9),
           child: Text(
@@ -2496,12 +2678,15 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
             ),
           ),
         ),
-        for (final definition
-            in _capabilityDefinitions.where((item) => item.group == group)) ...[
+        for (final definition in _capabilityDefinitions.where(
+          (item) =>
+              item.group == group && !_deferredCapabilityIds.contains(item.id),
+        )) ...[
           _buildCapabilityCard(definition),
           const SizedBox(height: 9),
         ],
-        if (group != _AiCapabilityGroup.sales) const SizedBox(height: 9),
+        if (group != _capabilityGroupDisplayOrder.last)
+          const SizedBox(height: 9),
       ],
     ];
   }
@@ -2511,8 +2696,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     final enabled = _isCapabilityEnabled(definition.id);
     final experimentalHookPreview =
         definition.id == 'hook' && widget.enableExperimentalAiHook;
-    final hasDisclosure =
-        _advancedMode && definition.hasAdvancedSettings && available;
+    final hasDisclosure = definition.hasAdvancedSettings && available;
     final canExpand = hasDisclosure && enabled;
     final showAdvanced =
         canExpand && _expandedAdvancedCapabilityId == definition.id;
@@ -2635,7 +2819,7 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
                     button: true,
                     enabled: canExpand,
                     expanded: showAdvanced,
-                    label: 'ตั้งค่าขั้นสูง ${definition.title}',
+                    label: 'ตั้งค่า ${definition.title}',
                     onTap: onDisclosurePressed,
                     child: ExcludeSemantics(
                       child: SizedBox(
@@ -4000,16 +4184,21 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
 
   Widget _buildSetupAction() {
     final hasVideo = _selectedVideo != null;
-    final canProcess = hasVideo && !_processing && _fillerSelectionComplete;
+    final canProcess = hasVideo &&
+        _hasSelectedDuration &&
+        !_processing &&
+        _fillerSelectionComplete;
     final usesPendingMusic = _isCapabilityEnabled('beatsync') &&
         _musicSource != _BeatMusicSource.original;
     final label = !hasVideo
         ? 'เพิ่มวิดีโอก่อน'
-        : !_fillerSelectionComplete
-            ? 'เลือกคำฟุ่มเฟือยอย่างน้อย 1 คำ'
-            : usesPendingMusic
-                ? 'ตัดต่อโดยยังไม่ใส่เพลง'
-                : 'ให้ AI ตัดต่อให้เลย';
+        : !_hasSelectedDuration
+            ? 'เลือกความยาวก่อน'
+            : !_fillerSelectionComplete
+                ? 'เลือกคำฟุ่มเฟือยอย่างน้อย 1 คำ'
+                : usesPendingMusic
+                    ? 'ตัดต่อโดยยังไม่ใส่เพลง'
+                    : 'ให้ AI ตัดต่อให้เลย';
     return ElevatedButton(
       key: const ValueKey('ai-process-button'),
       onPressed: canProcess ? _processVideo : null,
@@ -4090,52 +4279,27 @@ class _AiEditingScreenState extends State<AiEditingScreen> {
     }
 
     final result = _renderedResult;
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            key: const ValueKey('ai-review-edit-more'),
-            onPressed: result == null ? null : _openManualEditor,
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(0, 54),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              foregroundColor: AppTheme.textPrimary,
-              side: BorderSide(color: AppTheme.border),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-            ),
-            icon: const Icon(Icons.tune, size: 18),
-            label: const Text(
-              'ตัดต่อเพิ่ม',
-              maxLines: 1,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-            ),
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        key: const ValueKey('ai-review-post'),
+        onPressed: result == null ? null : () => _openPostFlow(result),
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(0, 54),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          backgroundColor: AppTheme.accent,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: ElevatedButton.icon(
-            key: const ValueKey('ai-review-post'),
-            onPressed: result == null ? null : () => _openPostFlow(result),
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(0, 54),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              backgroundColor: AppTheme.accent,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-            ),
-            icon: const Icon(Icons.send_rounded, size: 18),
-            label: const Text(
-              'ไปหน้าโพสต์',
-              maxLines: 1,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-            ),
-          ),
+        icon: const Icon(Icons.send_rounded, size: 18),
+        label: const Text(
+          'ไปหน้าโพสต์',
+          maxLines: 1,
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
-      ],
+      ),
     );
   }
 

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { Platform } from '../modules/posts/postStore.js';
+import type { BullMqPublishJobData } from '../modules/queue/bullMqPublishQueue.js';
+
 import {
   PublishOutcomeUnknownError,
   RetryablePublishError,
@@ -30,7 +33,7 @@ const makeFakePostStore = ({ status = 'QUEUED' }: { status?: string } = {}) => {
   };
 };
 
-const publishedResult = (platform: string) => ({
+const publishedResult = (platform: Platform) => ({
   platform,
   status: 'PUBLISHED' as const,
   externalPostId: `mock-${platform}`,
@@ -43,10 +46,10 @@ describe('processPublishJobForPost', () => {
     postId: 'post-1',
     caption: 'Caption',
     videoS3Key: 'uploads/video.mp4',
-    platforms: ['TIKTOK', 'YOUTUBE_SHORTS'] as const,
+    platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
     runAt: '2026-06-01T00:00:00.000Z',
     status: 'READY' as const
-  };
+  } satisfies BullMqPublishJobData;
 
   it('does not claim or publish a post after account deletion starts', async () => {
     const { store, statuses } = makeFakePostStore();
@@ -201,12 +204,58 @@ const baseJobData = {
   postId: 'post-1',
   caption: 'Caption',
   videoS3Key: 'uploads/video.mp4',
-  platforms: ['TIKTOK', 'YOUTUBE_SHORTS'] as const,
+  platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
   runAt: '2026-06-01T00:00:00.000Z',
   status: 'READY' as const
-};
+} satisfies BullMqPublishJobData;
 
 describe('processPublishJob', () => {
+  it('preserves the YouTube title and caption on safe publish retries', async () => {
+    const publisher = { publish: vi.fn(async ({ platform }) => {
+      if (publisher.publish.mock.calls.length === 1) {
+        throw new RetryablePublishError('not accepted');
+      }
+      return publishedResult(platform);
+    }) };
+    await processPublishJob({
+      jobData: { ...baseJobData, youtubeTitle: 'Short title', platforms: ['YOUTUBE_SHORTS'] },
+      publisher, sleep: async () => undefined
+    });
+
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    for (const [input] of publisher.publish.mock.calls) {
+      expect(input).toMatchObject({ caption: 'Caption', youtubeTitle: 'Short title' });
+    }
+  });
+
+  it('publishes each unique platform once for legacy jobs with duplicates', async () => {
+    const publisher = {
+      publish: vi.fn(async ({ platform }) => publishedResult(platform))
+    };
+    const platformPublishStore = {
+      recordResults: vi.fn(async () => [])
+    };
+
+    const result = await processPublishJob({
+      jobData: {
+        ...baseJobData,
+        platforms: ['TIKTOK', 'TIKTOK', 'YOUTUBE_SHORTS', 'TIKTOK']
+      },
+      publisher,
+      platformPublishStore
+    });
+
+    expect(publisher.publish).toHaveBeenCalledTimes(2);
+    expect(publisher.publish.mock.calls.map(([input]) => input.platform)).toEqual([
+      'TIKTOK',
+      'YOUTUBE_SHORTS'
+    ]);
+    expect(result.platformResults.map((platformResult) => platformResult.platform)).toEqual([
+      'TIKTOK',
+      'YOUTUBE_SHORTS'
+    ]);
+  });
+
   it('retries an explicitly safe provider rejection with exponential backoff', async () => {
     const sleep = vi.fn(async () => undefined);
     const publisher = {

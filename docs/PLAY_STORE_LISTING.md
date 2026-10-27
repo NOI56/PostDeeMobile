@@ -1,6 +1,6 @@
 # Google Play listing draft — PostDee
 
-อัปเดตล่าสุด: 15 กรกฎาคม 2026
+อัปเดตล่าสุด: 20 ตุลาคม 2026
 
 สถานะ: **เอกสารเตรียมข้อมูลเท่านั้น — ยังห้าม Submit หรือเปิด Production**
 
@@ -22,7 +22,7 @@
 | Android ขั้นต่ำ | API 24 | ยืนยันจาก release manifest ล่าสุด |
 | Target SDK | API 36 | ยืนยันจาก release manifest ล่าสุด |
 | มีโฆษณา | ไม่พบ Ad SDK หรือพื้นที่โฆษณาในแอป | เสนอให้ตอบ “No”; ต้องตรวจ final AAB อีกครั้ง |
-| การซื้อในแอป | Starter / Pro แบบสมาชิก | มี flow ในโค้ด แต่ Google Play products และ RevenueCat production ยังไม่พร้อม |
+| การซื้อในแอป | Starter / Pro แบบสมาชิก | RevenueCat Play configuration, Android public SDK key และ signed AAB เตรียมแล้ว; Play Console และการซื้อจริงยังรอทดสอบ |
 
 ข้อกำหนดข้อความปัจจุบันของ Google Play คือชื่อไม่เกิน 30 ตัวอักษร,
 คำอธิบายสั้นไม่เกิน 80 ตัวอักษร และคำอธิบายเต็มไม่เกิน 4,000 ตัวอักษร
@@ -41,10 +41,10 @@ PostDee
 
 ### Short description
 
-64/80 ตัวอักษร:
+66/80 ตัวอักษร:
 
 ```text
-เตรียมคลิป แคปชั่น ตารางโพสต์ และตัดต่อวิดีโอสำหรับครีเอเตอร์ไทย
+เตรียมคลิป แคปชั่น ตารางโพสต์ และตัดต่อด้วย AI สำหรับครีเอเตอร์ไทย
 ```
 
 ### Full description
@@ -58,11 +58,11 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 • บันทึกเทมเพลตแคปชั่นที่ใช้บ่อยแล้วนำกลับมาใช้ได้
 • วางแผนวันเวลาและตรวจสถานะงานผ่านปฏิทินโพสต์
 
-ปรับวิดีโอก่อนนำไปใช้
-• ดูตัวอย่างและเลื่อนไทม์ไลน์ไปยังช่วงที่ต้องการ
-• ตัดต้นท้าย แบ่งช่วง ปรับความเร็วและระดับเสียง
-• เพิ่มข้อความ สติกเกอร์ ฟิลเตอร์ และปรับแสงสี
-• ส่งออกคลิปที่แก้ไขแล้วเพื่อนำไปใช้ในขั้นตอนโพสต์
+เตรียมคลิปด้วย AI สำหรับแพ็กเกจ Pro
+• เปิดเมนูตัดต่อด้วย AI จากหน้าแรก เลือกคลิปและความยาวผลลัพธ์ที่ต้องการ
+• ให้ AI เตรียมผลลัพธ์ตามตัวเลือกซับ ตัดช่วงเงียบ ตัดคำฟุ่มเฟือย และปรับแสงสี
+• ดูตัวอย่างผลลัพธ์ เปิดหรือปิดตัวเลือกที่รองรับ แล้วให้แอปสร้างพรีวิวใหม่
+• ยอมรับผลลัพธ์แล้วไปต่อที่ขั้นตอนอัปโหลดและสร้างโพสต์
 
 ออกแบบเพื่อผู้ใช้ภาษาไทย
 • หน้าจอและขั้นตอนหลักใช้ภาษาไทย
@@ -83,21 +83,23 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 - สร้างแคปชั่นและใช้เทมเพลตที่บันทึกไว้
 - ปฏิทินและหน้ารายละเอียดแสดงสถานะ `QUEUED`, ตั้งเวลา, กำลังโพสต์,
   สำเร็จบางส่วน และไม่สำเร็จ โดยไม่ตีความ “เข้าคิว” ว่าเผยแพร่สำเร็จแล้ว
-- เครื่องมือตัดต่อด้วยมือรองรับตัดต้นท้าย, แบ่งช่วง, ความเร็ว, ระดับเสียง,
-  ข้อความ, สติกเกอร์, ฟิลเตอร์, แสงสี และส่งออกผ่าน FFmpeg ในเครื่อง
-- หน้าตรวจผลงานวิดีโอมีตัวเล่น, ไทม์ไลน์, เวลาเล่น/เวลารวม และการลองใหม่เมื่อเปิดไฟล์ไม่ได้
+- หน้าตรวจผลงาน AI มีตัวเล่น, เวลาเล่น/เวลารวม และการลองใหม่เมื่อเปิดไฟล์ไม่ได้
+- เมื่อยอมรับผล AI แล้ว ผู้ใช้ไปต่อที่ขั้นตอน Upload/Post; PostDee ไม่มี
+  เครื่องมือตัดต่อไทม์ไลน์ด้วยมือในแอป
+- ผู้ใช้ที่ต้องการตัดต่อเองอาจใช้เครื่องมือภายนอก เช่น CapCut แยกต่างหาก
+  ห้ามสื่อว่า PostDee เชื่อมต่อ ส่งออก หรือแชร์ไป CapCut
 - ผู้ใช้มีทางเริ่มลบบัญชีจากหน้าโปรไฟล์
 
 ### มี integration ในโค้ด แต่ยังห้ามใช้เป็นคำรับรอง production
 
 | ความสามารถ | สถานะจริง | เงื่อนไขก่อนเพิ่มใน Store copy/ภาพ |
 | --- | --- | --- |
-| โพสต์ TikTok, YouTube Shorts, Instagram Reels และ Facebook Page Video | PostPeer per-user connection/publisher, async polling และผลรายแพลตฟอร์มมีในโค้ด; `FACEBOOK_REELS` เป็นชื่อภายในเท่านั้น | เชื่อมบัญชี disposable จริงและทดสอบตั้งแต่อัปโหลดถึง provider URL/ID และ `GET /posts.platformResults`; ห้ามเรียก Facebook ว่า Reels จน provider รองรับจริง |
+| โพสต์ TikTok, YouTube Shorts, Instagram Reels และ Facebook Page Reels | PostPeer per-user connection/publisher, async polling และผลรายแพลตฟอร์มมีในโค้ด; `FACEBOOK_REELS` ส่ง `platform: 'facebook'` กับ `platformSpecificData.contentType: 'reel'` เสมอ ไม่มี Page feed fallback | เชื่อมบัญชี disposable จริงและทดสอบตั้งแต่อัปโหลดถึง provider URL/ID และ `GET /posts.platformResults`; ยืนยัน Facebook เป็น Page Reel จริงก่อนใช้เป็นคำรับรอง production |
 | ตั้งเวลาโพสต์บน Cloud | BullMQ/Redis adapter มีในโค้ด | เปิด Upstash + worker แยก, ใช้ Prisma และทดสอบ delayed job, restart, retry, cancel |
 | Firebase Email/Google/Phone Auth | gateway มีในแอปและ API; release SHA/OAuth ตรงกับ APK ที่เซ็นแล้ว | ทดสอบ Email/Google/Phone บน Internal testing AAB และมือถือจริง |
-| Starter/Pro | Paywall และ RevenueCat gateway มีในโค้ด | สร้าง Google Play products/offerings, ใส่ Android production SDK key และทดสอบซื้อ ต่ออายุ ยกเลิก คืนเงิน และ restore |
+| Starter/Pro | Paywall/gateway มีในโค้ด; Test Store purchase และ true Restore/resync E2E ผ่านบน Emulator; RevenueCat Play app/products/entitlements/default offering, production Android public SDK key และ signed AAB เตรียมแล้ว | ยืนยันสิทธิ์ Play Console ด้วย Android จริง, ตั้งค่า Play app/subscriptions/service credentials/internal testing, ตรวจ platform key ใน final AAB และทดสอบซื้อ ต่ออายุ ยกเลิก คืนเงิน และ restore ผ่าน Google Play จริง |
 | AI แคปชั่นจากคลิป | Gemini/Groq adapters และ quota มีในโค้ด | ทดสอบ provider, โควตา, frame flow และ usage ledger ด้วยบัญชี Starter/Pro จริง |
-| Pro AI ตัดต่อ | renderer จริงรองรับซับ, ตัดช่วงเงียบ, ตัดคำฟุ่มเฟือย และแสงสี | ทดสอบ Groq + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
+| Pro AI ตัดต่อ | renderer จริงรองรับซับ, ตัดช่วงเงียบ, ตัดคำฟุ่มเฟือย และแสงสี | ทดสอบ Groq + upload + FFmpeg + review + Upload/Post บนอุปกรณ์จริงหลายรุ่น |
 | Analytics | API/UI ใช้ข้อมูล backend และไม่สร้างตัวเลขปลอม | ต้องมีผลโพสต์จริงจาก provider และตรวจช่วงวันที่/ยอดจากบัญชีจริง |
 | Push notification | FCM mobile/server code มี | เปิด Firebase sender, ทดสอบ permission, token refresh, logout/unregister และ invalid-token cleanup |
 | ลบบัญชีครบทุกระบบ | มี in-app flow และ backend cleanup barrier | ตรวจ production credentials, R2/PostPeer/Firebase cleanup, RevenueCat behavior และ public deletion URL |
@@ -105,11 +107,12 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 ### ห้ามนำไปใส่ Store listing หรือ screenshots ตอนนี้
 
 - Shopee Video และ Lazada Video ในฐานะปลายทางที่โพสต์ได้จริง
-- Facebook Reels (PostPeer path ปัจจุบันรองรับ Facebook Page Video เท่านั้น)
+- Facebook Page Reels ในฐานะฟีเจอร์ที่พร้อมใช้จริง จนกว่าจะผ่าน controlled publish E2E ด้วยบัญชีจริง
 - ตัดคลิปเป็น EP อัตโนมัติ
 - Hashtag Radar, ศูนย์คอมเมนต์ AI และแจ้งเตือนไวรัล
 - Link in Bio ที่เผยแพร่เป็นเว็บไซต์จริง
 - Team & Editor Access
+- เครื่องมือตัดต่อไทม์ไลน์ด้วยมือ เช่น ตัดต้นท้าย แบ่งช่วง ปรับความเร็ว/ระดับเสียง หรือเพิ่มข้อความ/สติกเกอร์
 - Beat sync/เพลงอัตโนมัติ และ Hook 3 วินาที
 - Auto reframe, auto zoom, ลดเสียงรบกวน, แปลซับ, ป้ายราคา, CTA card
   และลายน้ำจากหน้า AI
@@ -120,10 +123,17 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 
 ตารางนี้บันทึกข้อความปัจจุบันใน Paywall ไม่ใช่การยืนยันว่า Google Play product พร้อมขาย
 
+RevenueCat Test Store เป็นการทดสอบแยกจาก Google Play: purchase และ true
+Restore/resync E2E ผ่านบน Emulator โดยไม่เรียกเก็บเงินจริง ส่วน RevenueCat
+Play configuration, production Android public SDK key และ signed AAB เตรียมแล้ว
+แต่ Play Console app/subscriptions, service credentials, internal testing และ
+การซื้อจริงยังรอการยืนยันสิทธิ์ด้วยมือถือ Android จริงและทดสอบครบวงจร ตามสถานะใน
+`README.md` และ `docs/superpowers/plans/2026-06-21-production-foundation-revenuecat-plan.md`
+
 | แพ็กเกจ | UI ปัจจุบัน | ข้อควรระวังสำหรับ Store |
 | --- | --- | --- |
 | Basic | 3 post units/เดือนหลังยืนยันเบอร์ | Phone Auth และ real publishing ต้องผ่าน production test |
-| Starter | 120 post units, ตั้งเวลา/ปฏิทิน/เทมเพลต, AI แคปชั่นจากเสียง 50 ครั้ง, ลายน้ำ PostDee อัตโนมัติ | Google product/RevenueCat และ AI provider ยังไม่ผ่าน checkout-to-entitlement E2E |
+| Starter | 120 post units, ตั้งเวลา/ปฏิทิน/เทมเพลต, AI แคปชั่นจากเสียง 50 ครั้ง, ลายน้ำ PostDee อัตโนมัติ | Test Store purchase/restore ผ่านแล้ว; ยังต้องทดสอบ Google Play checkout-to-entitlement และ AI provider จริง |
 | Pro | 250 post units, Starter, analytics, AI แคปชั่นเสียง+ภาพ 120 ครั้ง, AI ตัดต่อ 200 นาที | ต้องทดสอบ entitlement, quota, provider และอุปกรณ์จริงก่อนโฆษณา |
 
 - หนึ่ง post unit นับต่อหนึ่งแพลตฟอร์ม ไม่ใช่ต่อหนึ่งวิดีโอ
@@ -242,9 +252,9 @@ Google Play กำหนดอย่างน้อย 2 ภาพ; สำหร
 
 - [ ] ภาพ 1 — Home หลังล็อกอินด้วยบัญชีทดสอบจริง; ไม่แสดงข้อมูลส่วนตัว
 - [ ] ภาพ 2 — ขั้นตอนเลือกคลิป 9:16/เขียนแคปชั่น
-- [ ] ภาพ 3 — เครื่องมือตัดต่อด้วยมือและ preview จริง
+- [ ] ภาพ 3 — AI setup/result review เมื่อ provider + renderer ผ่าน real-device E2E
 - [ ] ภาพ 4 — ปฏิทินและสถานะคิว/ตั้งเวลา โดยไม่อ้างว่าคิวคือโพสต์สำเร็จ
-- [ ] ภาพ AI review ใช้ได้ต่อเมื่อ provider + renderer ผ่าน real-device E2E
+- [ ] ห้ามใช้ภาพหรือข้อความที่สื่อว่ามี manual timeline editor หรือเชื่อมต่อ CapCut
 - [ ] ภาพ Analytics ใช้ได้ต่อเมื่อเป็นข้อมูลจาก real publish ไม่ใช่ mock/demo
 - [ ] ภาพ Paywall ใช้ได้ต่อเมื่อ Google products/ราคา/entitlement ตรง production
 - [ ] ลบ notification, email, UID, ชื่อบัญชี, token และข้อมูลลูกค้าออกจากภาพ
@@ -266,7 +276,7 @@ Google Play กำหนดอย่างน้อย 2 ภาพ; สำหร
 - [ ] App access: ตอบว่าบางส่วนถูกจำกัดด้วยการเข้าสู่ระบบและแพ็กเกจ
 - [ ] เตรียม reviewer email/password ที่ไม่ต้องใช้ข้อมูลส่วนตัวหรือ OTP ของ reviewer
 - [ ] เปิด Pro ให้ reviewer ผ่าน entitlement จริง ห้ามใช้ mock header หรือ Test Store key
-- [ ] เขียนขั้นตอน reviewer ตั้งแต่ sign-in > เลือกคลิป > ตัดต่อ > review > upload/post
+- [ ] เขียนขั้นตอน reviewer ตั้งแต่ sign-in > Home > ตัดต่อด้วย AI > เลือกคลิป/ความยาวผลลัพธ์ > prepare/render > review > upload/post
 - [ ] ระบุถ้า social connection ต้องใช้บัญชีทดสอบหรือขั้นตอนพิเศษ
 - [ ] Content rating (IARC): กรอกตาม content จริงและ user-generated video workflow
 - [ ] Data safety: ใช้ checklist ในหัวข้อ 5 หลังตรวจ SDK/final AAB
@@ -281,15 +291,17 @@ Privacy policy ต้องมี URL ทั้งใน Play Console และ�
 
 ## 9. Release / testing checklist ก่อนคิดเรื่อง Submit
 
-- [ ] สร้าง `.aab` ที่เซ็นด้วย production upload key และเปิด Play App Signing
+- [ ] ตรวจ signed AAB ที่เตรียมไว้กับ final release configuration และเปิด Play App Signing
 - [ ] ใช้ production Dart defines: Render HTTPS, Firebase enabled, local mock auth disabled
 - [x] เพิ่ม Firebase release SHA-1/SHA-256, ดาวน์โหลด `google-services.json` ใหม่ และยืนยัน SHA-1 ตรงกับ release APK ที่เซ็นจริง
-- [ ] เปลี่ยน RevenueCat Test Store key เป็น Android production SDK key
-- [ ] สร้างและ activate `postdee_starter_monthly` / `postdee_pro_monthly`
+- [ ] ยืนยันสิทธิ์ Play Console ด้วยมือถือ Android จริง แล้วตั้งค่า Play app/subscriptions/service credentials/internal testing
+- [ ] ตรวจ final AAB ใช้ RevenueCat production Android public SDK key ที่เตรียมไว้ ไม่ใช้ key จาก local Test Store configuration
+- [ ] สร้างและ activate `postdee_starter_monthly` / `postdee_pro_monthly` ใน Play Console ให้ตรงกับ RevenueCat products/entitlements/offering ที่เตรียมไว้
 - [ ] ทดสอบ purchase, renewal, cancel, refund, billing issue และ restore บน Internal testing
 - [ ] เปิด/test PostPeer per-user connections และ controlled publish ทุกแพลตฟอร์ม
       ที่กล่าวใน Store โดย YouTube เริ่ม `private`, TikTok เริ่ม `SELF_ONLY`,
-      Facebook ใช้ Page Video และตรวจ `platformResults`/provider URL จริง
+      Facebook ต้องเป็น Page Reel (`contentType: 'reel'`) ไม่มี Page feed fallback
+      และตรวจ `platformResults`/provider URL จริง
 - [ ] ทดสอบ `202` polling และ outcome-unknown UX ว่าไม่รายงานสำเร็จก่อนเวลา,
       ไม่สร้าง external id ปลอม และไม่ยิงโพสต์ซ้ำโดยยังไม่ตรวจปลายทาง
 - [ ] เปิด/test Upstash worker และ scheduling หลัง restart/retry

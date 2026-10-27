@@ -8,7 +8,8 @@ describe('createVideoStorageFromConfig', () => {
       config: {
         videoStorage: 'mock',
         awsS3Bucket: undefined,
-        awsS3UploadExpiresSeconds: 900
+        awsS3UploadExpiresSeconds: 900,
+        cloudflareR2UploadExpiresSeconds: 900
       }
     });
 
@@ -43,7 +44,8 @@ describe('createVideoStorageFromConfig', () => {
       config: {
         videoStorage: 'mock',
         awsS3Bucket: undefined,
-        awsS3UploadExpiresSeconds: 900
+        awsS3UploadExpiresSeconds: 900,
+        cloudflareR2UploadExpiresSeconds: 900
       }
     });
 
@@ -69,7 +71,8 @@ describe('createVideoStorageFromConfig', () => {
       config: {
         videoStorage: 's3',
         awsS3Bucket: 'postdee-video-temp',
-        awsS3UploadExpiresSeconds: 1200
+        awsS3UploadExpiresSeconds: 1200,
+        cloudflareR2UploadExpiresSeconds: 900
       },
       s3Client
     });
@@ -334,7 +337,8 @@ describe('createVideoStorageFromConfig', () => {
       config: {
         videoStorage: 's3',
         awsS3Bucket: 'postdee-video-temp',
-        awsS3UploadExpiresSeconds: 900
+        awsS3UploadExpiresSeconds: 900,
+        cloudflareR2UploadExpiresSeconds: 900
       },
       s3Client: {
         createPresignedUploadUrl: async () => 'https://s3.local/upload-url',
@@ -470,7 +474,8 @@ describe('createVideoStorageFromConfig', () => {
       config: {
         videoStorage: 's3',
         awsS3Bucket: undefined,
-        awsS3UploadExpiresSeconds: 900
+        awsS3UploadExpiresSeconds: 900,
+        cloudflareR2UploadExpiresSeconds: 900
       },
       s3Client: {
         createPresignedUploadUrl: async () => 'https://s3.local/upload-url',

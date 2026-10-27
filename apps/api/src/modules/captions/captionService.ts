@@ -70,7 +70,9 @@ const defaultSeoKeywords = ['short video', 'affiliate seller', 'online shop', 'v
 export type RealClipCaptionMode = 'AUDIO_ONLY' | 'AUDIO_WITH_FRAMES';
 
 export type RealClipCaptionRequest = {
+  // Clip media key: the extracted M4A when mediaKind is 'audio', else the video.
   videoS3Key: string;
+  mediaKind: 'audio' | 'video';
   guidance?: string;
   selectedFrameKeys: string[];
   deleteAfterUse: boolean;
@@ -139,19 +141,37 @@ const readBoolean = (value: unknown) => value === true;
 
 export const validateRealClipCaptionRequest = (body: unknown) => {
   const payload = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const audioS3Key = readRequiredString(payload.audioS3Key);
   const videoS3Key = readRequiredString(payload.videoS3Key);
 
-  if (!videoS3Key) {
+  if (audioS3Key && videoS3Key) {
     return {
       ok: false as const,
-      message: 'videoS3Key is required'
+      message: 'Provide exactly one of audioS3Key or videoS3Key'
+    };
+  }
+
+  const clipS3Key = audioS3Key ?? videoS3Key;
+
+  if (!clipS3Key) {
+    return {
+      ok: false as const,
+      message: 'audioS3Key or videoS3Key is required'
+    };
+  }
+
+  if (audioS3Key && !audioS3Key.toLowerCase().endsWith('.m4a')) {
+    return {
+      ok: false as const,
+      message: 'audioS3Key must identify an M4A file'
     };
   }
 
   return {
     ok: true as const,
     request: {
-      videoS3Key,
+      videoS3Key: clipS3Key,
+      mediaKind: audioS3Key ? ('audio' as const) : ('video' as const),
       guidance: readOptionalString(payload.guidance),
       selectedFrameKeys: normalizeStringList(payload.selectedFrameKeys),
       deleteAfterUse: readBoolean(payload.deleteAfterUse)

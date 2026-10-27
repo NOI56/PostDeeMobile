@@ -1,4 +1,5 @@
 import type { AuthUser } from '../auth/authTypes.js';
+import { runActiveOwnerTransaction, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
 import {
   type AppUser,
   type UserStore,
@@ -34,8 +35,13 @@ type UserDelegate = {
   }) => Promise<PrismaUser>;
 };
 
-export type PrismaUserClient = {
+type PrismaUserTransaction = PrismaOwnerLifecycleTransaction & {
   user: UserDelegate;
+};
+export type PrismaUserClient = PrismaUserTransaction & {
+  $transaction: <T>(operation: (transaction: PrismaUserTransaction) => Promise<T>, options: {
+    isolationLevel: 'Serializable'; maxWait: number; timeout: number;
+  }) => Promise<T>;
 };
 
 const mapUser = (user: PrismaUser): AppUser => ({
@@ -59,9 +65,9 @@ export const createPrismaUserRepository = ({
         select: { id: true }
       })
     ),
-  ensure: async (authUser: AuthUser) => {
+  ensure: (authUser: AuthUser) => runActiveOwnerTransaction(prisma, authUser.id, async (transaction) => {
     const user = normalizeAuthUserForStorage(authUser);
-    const persistedUser = await prisma.user.upsert({
+    const persistedUser = await transaction.user.upsert({
       where: { id: user.id },
       update: {
         email: user.email,
@@ -71,5 +77,5 @@ export const createPrismaUserRepository = ({
     });
 
     return mapUser(persistedUser);
-  }
+  })
 });

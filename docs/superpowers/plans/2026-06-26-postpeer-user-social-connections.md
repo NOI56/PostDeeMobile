@@ -2,9 +2,26 @@
 
 > Historical implementation plan: the final runtime diverged from the proposed
 > signed-state callback architecture. It uses PostPeer profile state and
-> explicit `POST /social-connections/refresh` polling. Unchecked steps below do
+> authenticated `POST /social-connections/refresh` polling. Unchecked steps below do
 > not describe current completion status; use `API.md`, `ARCHITECTURE.md`, and
 > the current route code as the source of truth.
+
+> **Native connection proposal (2026-10-21):** Start by registering the TikTok
+> developer app and sandbox accounts, then implement native authorization with
+> an official browser fallback. This is a design/security plan only; no native
+> social SDK, native API contract, direct credential store, or direct publisher
+> is implemented. Publishing still uses PostPeer. Continue with the setup and security
+> prerequisites in
+> [the TikTok native connection plan](2026-10-21-tiktok-native-connection.md).
+
+> **Managed mobile trial (2026-10-25):** Android now attempts an explicit
+> Custom Tab for HTTPS connect URLs, with external-browser fallback. Mobile
+> automatically checks the existing authenticated refresh endpoint after a
+> pending attempt leaves and returns to the same auth session. Manual refresh
+> remains available. No automatic browser-to-app redirect or signed completion
+> contract has been added. Native social-app handoff and password-free login
+> remain unverified on physical devices. See
+> [the trial guide](2026-10-25-postpeer-mobile-connection-trial.md).
 
 > **Current-state addendum (2026-07-15):** The active runtime ensures a fresh
 > `User` before saving a PostPeer profile and sends a required stable
@@ -13,9 +30,34 @@
 > `GET /posts` returns user-scoped `platformResults`. Controlled-first requests
 > use YouTube `private` and TikTok `SELF_ONLY` (`draft: false`). Only explicitly
 > safe pre-accept failures are retried; unknown outcomes require checking the
-> provider before retry. `FACEBOOK_REELS` remains an internal compatibility key
-> for Facebook Page Video, not Reels. Real connected-account E2E is still
-> pending.
+> provider before retry. The existing `FACEBOOK_REELS` value now requests
+> Facebook Page Reels only, as clarified in the contract update below. Real
+> connected-account E2E is still pending.
+
+> **Facebook Page Reels contract update (2026-10-24):** Retain the existing
+> `FACEBOOK_REELS` mobile/API value and PostPeer `platform: 'facebook'`, but
+> always send `platformSpecificData.contentType: 'reel'`. A video is required;
+> never fall back to a Facebook Page feed video. Optional signed
+> `videoThumbnailUrl` is best effort, and its display on the Reel requires
+> real-account verification because the provider may choose the cover. Do not
+> apply Page Video duration limits to Page Reels. Per-user connection lookup,
+> bounded async polling, and unknown-outcome retry safeguards stay unchanged.
+> Existing queued/scheduled `FACEBOOK_REELS` posts use this route after the
+> updated publisher is deployed; no new client fields, environment variables,
+> or database migrations are required.
+> This contract update does not confirm deployment or connected-account E2E.
+
+> **YouTube title contract update (2026-10-18):** An optional `youtubeTitle`
+> override is persisted and passed through queued/scheduled publishing. Without
+> it, derive the title from the first sentence of the first nonempty caption
+> line, removing `<`/`>` and limiting it to 100 Unicode code points; the full
+> caption remains unchanged as the description. Automatic requests omit the
+> override. A nonempty override requires a selected YouTube destination,
+> is trimmed, and rejects `<`/`>` or more than 100 code points. Empty captions
+> are allowed only for YouTube-only posts with a nonempty custom title. Mobile
+> previews the chosen title, preserves explicit titles across caption changes,
+> and lets the user reset to automatic. This update does not confirm a live
+> provider release or connected-account E2E.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

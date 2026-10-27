@@ -52,6 +52,6 @@ void main() {
     expect(find.text('TikTok'), findsOneWidget);
     expect(find.text('YouTube Shorts'), findsOneWidget);
     expect(find.text('เสร็จสิ้น'), findsOneWidget);
-    expect(find.text('ดูสถิติโพสต์'), findsOneWidget);
+    expect(find.text('ดูสถิติโพสต์'), findsNothing);
   });
 }

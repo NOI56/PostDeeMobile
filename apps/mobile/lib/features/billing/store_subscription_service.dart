@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:purchases_flutter/purchases_flutter.dart' as purchases;
 
+import '../../core/auth/auth_session.dart';
 import '../../core/config/app_config.dart';
 import '../../core/network/postdee_api_client.dart';
 
@@ -15,6 +15,27 @@ typedef StorePurchaseVerifier = Future<StoreSubscriptionVerificationResult>
 typedef SubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef SubscriptionWait = Future<void> Function(Duration duration);
 typedef RevenueCatSubscriptionResync = Future<String> Function();
+typedef SubscriptionPurchasePreparation = Future<void> Function();
+typedef BoundSubscriptionApiClientFactory = PostDeeApiClient Function(
+    AuthSessionBinding sessionBinding);
+
+PostDeeApiClient _createBoundSubscriptionApiClient(AuthSessionBinding binding) =>
+    PostDeeApiClient(authHeaders: PostDeeApiAuthHeaders(sessionBinding: binding));
+
+class _RevenueCatOperation {
+  const _RevenueCatOperation({
+    required this.binding,
+    required this.userId,
+    required this.prepare,
+    required this.load,
+    required this.resync,
+  });
+  final AuthSessionBinding binding;
+  final String? userId;
+  final SubscriptionPurchasePreparation prepare;
+  final SubscriptionLoader load;
+  final RevenueCatSubscriptionResync resync;
+}
 
 Future<void> _defaultSubscriptionWait(Duration duration) =>
     Future<void>.delayed(duration);
@@ -101,37 +122,60 @@ class StoreSubscriptionService {
     Duration revenueCatEntitlementPollInterval = const Duration(seconds: 1),
     SubscriptionWait? revenueCatEntitlementWait,
     RevenueCatSubscriptionResync? resyncRevenueCatSubscription,
+    SubscriptionPurchasePreparation? prepareSubscriptionPurchase,
+    PostDeeAuthSessionStore? sessionStore,
+    BoundSubscriptionApiClientFactory? apiClientFactory,
   })  : assert(revenueCatEntitlementPollAttempts > 0),
+        _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance,
+        _apiClientFactory = apiClientFactory ?? _createBoundSubscriptionApiClient,
         _revenueCatEntitlementPollAttempts = revenueCatEntitlementPollAttempts,
         _revenueCatEntitlementPollInterval = revenueCatEntitlementPollInterval,
         _revenueCatEntitlementWait =
             revenueCatEntitlementWait ?? _defaultSubscriptionWait,
-        _resyncRevenueCatSubscription = resyncRevenueCatSubscription ??
-            PostDeeApiClient().resyncRevenueCatSubscription,
+        _resyncRevenueCatSubscription = resyncRevenueCatSubscription,
+        _prepareSubscriptionPurchase = prepareSubscriptionPurchase,
         _gateway = gateway ??
             (useRevenueCat
                 ? const _UnavailableStoreBillingGateway()
                 : InAppPurchaseStoreBillingGateway()),
         _revenueCatGateway = useRevenueCat
-            ? revenueCatGateway ?? createRevenueCatBillingGatewayFromConfig()
+            ? revenueCatGateway ??
+                createRevenueCatBillingGatewayFromConfig(
+                  sessionStore: sessionStore,
+                )
             : null,
-        _loadSubscription =
-            loadSubscription ?? PostDeeApiClient().loadCurrentSubscription,
+        _loadSubscription = loadSubscription,
         _verifyPurchase =
             verifyPurchase ?? PostDeeApiClient().verifyStoreSubscription;
 
   final StoreBillingGateway _gateway;
   final RevenueCatBillingGateway? _revenueCatGateway;
   final StorePurchaseVerifier _verifyPurchase;
-  final SubscriptionLoader _loadSubscription;
+  final SubscriptionLoader? _loadSubscription;
+  final PostDeeAuthSessionStore _sessionStore;
+  final BoundSubscriptionApiClientFactory _apiClientFactory;
   final int _revenueCatEntitlementPollAttempts;
   final Duration _revenueCatEntitlementPollInterval;
   final SubscriptionWait _revenueCatEntitlementWait;
-  final RevenueCatSubscriptionResync _resyncRevenueCatSubscription;
+  final RevenueCatSubscriptionResync? _resyncRevenueCatSubscription;
+  final SubscriptionPurchasePreparation? _prepareSubscriptionPurchase;
   final String productId;
   final String starterProductId;
 
   bool get supportsUnifiedRestore => _revenueCatGateway != null;
+
+  _RevenueCatOperation _captureRevenueCatOperation() {
+    final binding = _sessionStore.captureSession();
+    final userId = _sessionStore.session.userId;
+    final api = _apiClientFactory(binding);
+    return _RevenueCatOperation(
+      binding: binding,
+      userId: userId,
+      prepare: _prepareSubscriptionPurchase ?? api.prepareSubscriptionPurchase,
+      load: _loadSubscription ?? api.loadCurrentSubscription,
+      resync: _resyncRevenueCatSubscription ?? api.resyncRevenueCatSubscription,
+    );
+  }
 
   Future<StoreProductInfo?> loadStarterProduct() async {
     final products = await _queryProducts({starterProductId});
@@ -225,9 +269,13 @@ class StoreSubscriptionService {
       );
     }
 
+    final operation = _captureRevenueCatOperation();
+    operation.binding.ensureCurrent();
     await _ensureRevenueCatAvailable(revenueCatGateway);
+    operation.binding.ensureCurrent();
     await revenueCatGateway.restorePurchases();
-    final resyncedPlan = await _resyncRevenueCatForRestore();
+    operation.binding.ensureCurrent();
+    final resyncedPlan = await _resyncRevenueCatForRestore(operation);
     final expectedProductsByPlan = {
       'STARTER': starterProductId,
       'PRO': productId,
@@ -237,6 +285,7 @@ class StoreSubscriptionService {
     return _readRevenueCatSubscription(
       expectedProductsByPlan: expectedProductsByPlan,
       operation: 'restore',
+      sessionOperation: operation,
     );
   }
 
@@ -252,8 +301,12 @@ class StoreSubscriptionService {
     final revenueCatGateway = _revenueCatGateway;
 
     if (revenueCatGateway != null) {
+      final binding = _sessionStore.captureSession();
       await _ensureRevenueCatAvailable(revenueCatGateway);
-      return revenueCatGateway.queryProducts(productIds);
+      binding.ensureCurrent();
+      final products = await revenueCatGateway.queryProducts(productIds);
+      binding.ensureCurrent();
+      return products;
     }
 
     await _ensureStoreAvailable();
@@ -275,13 +328,38 @@ class StoreSubscriptionService {
     required String productId,
     required String expectedPlan,
   }) async {
+    final operation = _captureRevenueCatOperation();
+    operation.binding.ensureCurrent();
     await _ensureRevenueCatAvailable(gateway);
+    operation.binding.ensureCurrent();
+    await _prepareRevenueCatPurchase(operation);
+    operation.binding.ensureCurrent();
     await gateway.buySubscription(productId);
+    operation.binding.ensureCurrent();
 
     return _readRevenueCatSubscription(
       expectedProductsByPlan: {expectedPlan: productId},
       operation: 'purchase',
+      sessionOperation: operation,
     );
+  }
+
+  Future<void> _prepareRevenueCatPurchase(_RevenueCatOperation operation) async {
+    try {
+      operation.binding.ensureCurrent();
+      await operation.prepare();
+      operation.binding.ensureCurrent();
+    } on ApiException catch (error) {
+      operation.binding.ensureCurrent();
+      if (error.code == 'PURCHASE_READINESS_UNSUPPORTED' ||
+          error.statusCode == HttpStatus.notFound ||
+          error.statusCode == HttpStatus.notImplemented) {
+        throw const StoreSubscriptionException(
+          'ระบบสมาชิกยังไม่พร้อมสำหรับแอปเวอร์ชันนี้ กรุณาลองใหม่ภายหลัง',
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<StoreSubscriptionVerificationResult> _restoreRevenueCatSubscription({
@@ -289,21 +367,32 @@ class StoreSubscriptionService {
     required String productId,
     required String expectedPlan,
   }) async {
+    final operation = _captureRevenueCatOperation();
+    operation.binding.ensureCurrent();
     await _ensureRevenueCatAvailable(gateway);
+    operation.binding.ensureCurrent();
     await gateway.restorePurchases();
-    final resyncedPlan = await _resyncRevenueCatForRestore();
+    operation.binding.ensureCurrent();
+    final resyncedPlan = await _resyncRevenueCatForRestore(operation);
     _ensureRestorablePlan(resyncedPlan, {expectedPlan});
 
     return _readRevenueCatSubscription(
       expectedProductsByPlan: {expectedPlan: productId},
       operation: 'restore',
+      sessionOperation: operation,
     );
   }
 
-  Future<String> _resyncRevenueCatForRestore() async {
+  Future<String> _resyncRevenueCatForRestore(
+    _RevenueCatOperation operation,
+  ) async {
     try {
-      return await _resyncRevenueCatSubscription();
+      operation.binding.ensureCurrent();
+      final plan = await operation.resync();
+      operation.binding.ensureCurrent();
+      return plan;
     } on ApiException catch (error) {
+      operation.binding.ensureCurrent();
       final code = error.code;
       final statusCode = error.statusCode;
 
@@ -348,15 +437,19 @@ class StoreSubscriptionService {
   Future<StoreSubscriptionVerificationResult> _readRevenueCatSubscription({
     required Map<String, String> expectedProductsByPlan,
     required String operation,
+    required _RevenueCatOperation sessionOperation,
   }) async {
     for (var attempt = 0;
         attempt < _revenueCatEntitlementPollAttempts;
         attempt += 1) {
       late final SubscriptionStatusResult subscription;
+      sessionOperation.binding.ensureCurrent();
 
       try {
-        subscription = await _loadSubscription();
+        subscription = await sessionOperation.load();
+        sessionOperation.binding.ensureCurrent();
       } catch (error) {
+        sessionOperation.binding.ensureCurrent();
         final hasAnotherAttempt =
             attempt + 1 < _revenueCatEntitlementPollAttempts;
         if (!hasAnotherAttempt || !_isRetryableSubscriptionLoadError(error)) {
@@ -366,7 +459,17 @@ class StoreSubscriptionService {
         await _revenueCatEntitlementWait(
           _revenueCatEntitlementPollInterval,
         );
+        sessionOperation.binding.ensureCurrent();
         continue;
+      }
+
+      final expectedUserId = sessionOperation.userId;
+      if (expectedUserId != null &&
+          expectedUserId.trim().isNotEmpty &&
+          subscription.userId != expectedUserId) {
+        throw const StoreSubscriptionException(
+          'Subscription does not belong to the account that started this operation.',
+        );
       }
 
       final productId = expectedProductsByPlan[subscription.plan.toUpperCase()];
@@ -387,6 +490,7 @@ class StoreSubscriptionService {
         await _revenueCatEntitlementWait(
           _revenueCatEntitlementPollInterval,
         );
+        sessionOperation.binding.ensureCurrent();
       }
     }
 
@@ -461,7 +565,9 @@ class StoreSubscriptionService {
   }
 }
 
-RevenueCatBillingGateway? createRevenueCatBillingGatewayFromConfig() {
+RevenueCatBillingGateway? createRevenueCatBillingGatewayFromConfig({
+  PostDeeAuthSessionStore? sessionStore,
+}) {
   if (!AppConfig.enableRevenueCatBilling) {
     return null;
   }
@@ -470,7 +576,64 @@ RevenueCatBillingGateway? createRevenueCatBillingGatewayFromConfig() {
     apiKey: AppConfig.revenueCatApiKey,
     androidApiKey: AppConfig.revenueCatAndroidApiKey,
     iosApiKey: AppConfig.revenueCatIosApiKey,
+    sessionStore: sessionStore,
   );
+}
+
+abstract class RevenueCatPurchasesSdk {
+  Future<bool> get isConfigured;
+  Future<String> get appUserId;
+  Future<void> setDebugLogLevel();
+  Future<void> configure(String apiKey, String appUserId);
+  Future<void> logIn(String appUserId);
+  Future<bool> canMakePayments();
+  Future<List<purchases.StoreProduct>> getProducts(List<String> productIds);
+  Future<void> purchase(purchases.StoreProduct product);
+  Future<void> restorePurchases();
+}
+
+class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk {
+  const _RevenueCatPurchasesSdk();
+
+  @override
+  Future<bool> get isConfigured => purchases.Purchases.isConfigured;
+
+  @override
+  Future<String> get appUserId => purchases.Purchases.appUserID;
+
+  @override
+  Future<void> setDebugLogLevel() =>
+      purchases.Purchases.setLogLevel(purchases.LogLevel.debug);
+
+  @override
+  Future<void> configure(String apiKey, String appUserId) =>
+      purchases.Purchases.configure(
+        purchases.PurchasesConfiguration(apiKey)..appUserID = appUserId,
+      );
+
+  @override
+  Future<void> logIn(String appUserId) async {
+    await purchases.Purchases.logIn(appUserId);
+  }
+
+  @override
+  Future<bool> canMakePayments() => purchases.Purchases.canMakePayments();
+
+  @override
+  Future<List<purchases.StoreProduct>> getProducts(List<String> productIds) =>
+      purchases.Purchases.getProducts(productIds);
+
+  @override
+  Future<void> purchase(purchases.StoreProduct product) async {
+    await purchases.Purchases.purchase(
+      purchases.PurchaseParams.storeProduct(product),
+    );
+  }
+
+  @override
+  Future<void> restorePurchases() async {
+    await purchases.Purchases.restorePurchases();
+  }
 }
 
 class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
@@ -479,67 +642,120 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
     required this.androidApiKey,
     required this.iosApiKey,
     this.appUserIdProvider,
-  });
+    PostDeeAuthSessionStore? sessionStore,
+    RevenueCatPurchasesSdk? sdk,
+  }) : _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance,
+       _sdk = sdk ?? const _RevenueCatPurchasesSdk();
 
   final String apiKey;
   final String androidApiKey;
   final String iosApiKey;
   final Future<String?> Function()? appUserIdProvider;
+  final PostDeeAuthSessionStore _sessionStore;
+  final RevenueCatPurchasesSdk _sdk;
 
-  @override
-  Future<bool> isAvailable() async {
-    await _ensureConfigured();
-    return purchases.Purchases.canMakePayments();
-  }
+  // RevenueCat's native identity is global. Keep configuration through the
+  // terminal purchase/restore callback serialized across gateway instances.
+  // A dispatched native operation cannot be canceled on a session change.
+  static Future<void> _sdkQueue = Future<void>.value();
 
-  @override
-  Future<List<StoreProductInfo>> queryProducts(Set<String> productIds) async {
-    await _ensureConfigured();
-    final products = await purchases.Purchases.getProducts(productIds.toList());
-
-    return products
-        .map(
-          (product) => StoreProductInfo(
-            id: product.identifier,
-            title: product.title,
-            description: product.description,
-            price: product.priceString,
-          ),
-        )
-        .toList();
-  }
-
-  @override
-  Future<void> buySubscription(String productId) async {
-    await _ensureConfigured();
-    final product = await _loadProduct(productId);
-
-    try {
-      await purchases.Purchases.purchase(
-        purchases.PurchaseParams.storeProduct(product),
-      );
-    } on PlatformException catch (error) {
-      throw StoreSubscriptionException(
-        error.message ?? 'RevenueCat purchase failed.',
+  Future<T> _runWithSession<T>(
+    Future<T> Function(AuthSessionBinding binding, String userId) operation,
+  ) async {
+    final binding = _sessionStore.captureSession();
+    final session = _sessionStore.session;
+    final userId = session.userId;
+    if (!session.isSignedIn || userId == null || userId.trim().isEmpty) {
+      throw const StoreSubscriptionException(
+        'Sign in with Firebase before starting RevenueCat purchases.',
       );
     }
+    final result = _sdkQueue.then((_) async {
+      binding.ensureCurrent();
+      try {
+        final value = await operation(binding, userId);
+        binding.ensureCurrent();
+        return value;
+      } catch (_) {
+        binding.ensureCurrent();
+        rethrow;
+      }
+    });
+    _sdkQueue = result.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return result;
   }
 
   @override
-  Future<void> restorePurchases() async {
-    await _ensureConfigured();
+  Future<bool> isAvailable() => _runWithSession((binding, userId) async {
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final available = await _sdk.canMakePayments();
+        binding.ensureCurrent();
+        return available;
+      });
 
-    try {
-      await purchases.Purchases.restorePurchases();
-    } on PlatformException catch (error) {
-      throw StoreSubscriptionException(
-        error.message ?? 'RevenueCat restore failed.',
-      );
-    }
-  }
+  @override
+  Future<List<StoreProductInfo>> queryProducts(Set<String> productIds) =>
+      _runWithSession((binding, userId) async {
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final products = await _sdk.getProducts(productIds.toList());
+        binding.ensureCurrent();
 
-  Future<purchases.StoreProduct> _loadProduct(String productId) async {
-    final products = await purchases.Purchases.getProducts([productId]);
+        return products
+            .map(
+              (product) => StoreProductInfo(
+                id: product.identifier,
+                title: product.title,
+                description: product.description,
+                price: product.priceString,
+              ),
+            )
+            .toList();
+      });
+
+  @override
+  Future<void> buySubscription(String productId) =>
+      _runWithSession((binding, userId) async {
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+        final product = await _loadProduct(productId, binding);
+        binding.ensureCurrent();
+
+        try {
+          await _sdk.purchase(product);
+          binding.ensureCurrent();
+        } on PlatformException catch (error) {
+          binding.ensureCurrent();
+          throw StoreSubscriptionException(
+            error.message ?? 'RevenueCat purchase failed.',
+          );
+        }
+      });
+
+  @override
+  Future<void> restorePurchases() => _runWithSession((binding, userId) async {
+        await _ensureConfigured(binding, userId);
+        binding.ensureCurrent();
+
+        try {
+          await _sdk.restorePurchases();
+          binding.ensureCurrent();
+        } on PlatformException catch (error) {
+          binding.ensureCurrent();
+          throw StoreSubscriptionException(
+            error.message ?? 'RevenueCat restore failed.',
+          );
+        }
+      });
+
+  Future<purchases.StoreProduct> _loadProduct(
+    String productId,
+    AuthSessionBinding binding,
+  ) async {
+    binding.ensureCurrent();
+    final products = await _sdk.getProducts([productId]);
+    binding.ensureCurrent();
     final matchingProducts =
         products.where((product) => product.identifier == productId);
 
@@ -552,7 +768,11 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
     return matchingProducts.first;
   }
 
-  Future<void> _ensureConfigured() async {
+  Future<void> _ensureConfigured(
+    AuthSessionBinding binding,
+    String appUserId,
+  ) async {
+    binding.ensureCurrent();
     final selectedApiKey = _apiKeyForCurrentPlatform();
 
     if (selectedApiKey.isEmpty) {
@@ -561,29 +781,38 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
       );
     }
 
-    final appUserId = await _readAppUserId();
-
-    if (appUserId == null || appUserId.isEmpty) {
-      throw const StoreSubscriptionException(
-        'Sign in with Firebase before starting RevenueCat purchases.',
-      );
+    // Retain the injection seam as a consistency check, never as a source of a
+    // later account's UID. Identity comes from the session captured at admission.
+    final provider = appUserIdProvider;
+    if (provider != null) {
+      final providedUserId = await provider();
+      binding.ensureCurrent();
+      if (providedUserId != appUserId) {
+        throw const StoreSubscriptionException(
+          'RevenueCat identity does not match the account that started this operation.',
+        );
+      }
     }
 
-    if (!await purchases.Purchases.isConfigured) {
+    final isConfigured = await _sdk.isConfigured;
+    binding.ensureCurrent();
+    if (!isConfigured) {
       if (!kReleaseMode) {
-        await purchases.Purchases.setLogLevel(purchases.LogLevel.debug);
+        await _sdk.setDebugLogLevel();
+        binding.ensureCurrent();
       }
 
-      final configuration = purchases.PurchasesConfiguration(selectedApiKey)
-        ..appUserID = appUserId;
-      await purchases.Purchases.configure(configuration);
+      await _sdk.configure(selectedApiKey, appUserId);
+      binding.ensureCurrent();
       return;
     }
 
-    final currentAppUserId = await purchases.Purchases.appUserID;
+    final currentAppUserId = await _sdk.appUserId;
+    binding.ensureCurrent();
 
     if (currentAppUserId != appUserId) {
-      await purchases.Purchases.logIn(appUserId);
+      await _sdk.logIn(appUserId);
+      binding.ensureCurrent();
     }
   }
 
@@ -604,14 +833,6 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway {
     }
 
     return apiKey.trim();
-  }
-
-  Future<String?> _readAppUserId() async {
-    final provided = await appUserIdProvider?.call();
-    final appUserId =
-        provided ?? firebase_auth.FirebaseAuth.instance.currentUser?.uid.trim();
-
-    return appUserId == null || appUserId.isEmpty ? null : appUserId;
   }
 }
 

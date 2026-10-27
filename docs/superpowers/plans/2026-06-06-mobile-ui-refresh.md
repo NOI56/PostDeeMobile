@@ -114,6 +114,14 @@ Expected: pass for sections already added in the first UI round; fail only for m
 
 Polish the existing Home dashboard without changing API calls: greeting, plan/status cards, latest platform rows, quick actions, and compact performance summary. Keep existing buttons for API health, Gemini smoke test, subscription refresh, and phone verification reachable lower in the scroll.
 
+2026-08-19 implementation note: a later product request intentionally extended
+the Home data contract. Latest-post rows now request the three newest optional
+owner-scoped signed cover/video URLs, render the cover when present, and
+otherwise initialize a paused video frame. The API limits before signing and
+mobile releases video previews while Home is hidden. Missing or failed media
+retains the original play-icon placeholder, and widget/API tests cover these
+paths.
+
 - [ ] **Step 4: Verify Home**
 
 Run from `apps/mobile`:
@@ -154,6 +162,30 @@ Expected: fail until the current scaffold form is replaced with the refreshed Th
 - [x] **Step 3: Refresh Upload layout**
 
 Keep `_createPost`, `_pickVideoFile`, `_loadTemplates`, `_selectedPlatforms`, and subscription checks intact. Rebuild only the visible layout into: top title row, vertical 9:16 preview, edit-thumbnail action, platform toggle grid, schedule mode selector, date/time controls, template entry point, error/success messages, and one gradient Post button.
+
+2026-07-17 implementation note: the edit-thumbnail action is a functional
+cover editor, not a placeholder. It selects a source-video frame, renders one
+Thai text layer with font/style/position, uploads the normalized 1080x1920 JPEG
+with the post, and keeps `coverFrameTimeMs` for destinations that select a
+video frame. Delivery remains capability-aware: Instagram image, Facebook
+Page Reels best-effort thumbnail (display on a Reel still needs real-account
+verification; the provider may choose the cover), TikTok frame time, and
+YouTube Shorts final selection in the YouTube mobile app. Facebook retains
+`FACEBOOK_REELS` and always sends PostPeer `platform: 'facebook'` with
+`platformSpecificData.contentType: 'reel'`; there is no Page feed fallback.
+
+2026-10-18 YouTube title UX update: write the shared caption once and show an
+automatic title preview from the first sentence of its first nonempty line
+(maximum 100 Unicode code points, removing `<`/`>`). Keep the full caption as
+the description. Hide the title field until `ปรับชื่อเฉพาะ YouTube` is selected;
+retain custom titles when the caption changes and provide `ใช้ชื่อจากแคปชัน`
+to reset to automatic. Automatic requests omit the override and let the backend
+derive the title. Custom titles reject `<`/`>`
+and more than 100 code points. Only a YouTube-only post with a nonempty custom
+title can omit the caption text. Carry the optional `youtubeTitle` through the
+API, persistence, queue, and publisher, including scheduled posts. Verify title
+preview/override/reset, API validation, Unicode limits, and provider payloads;
+a real connected-account publish remains a separate validation step.
 
 - [x] **Step 4: Verify Upload**
 

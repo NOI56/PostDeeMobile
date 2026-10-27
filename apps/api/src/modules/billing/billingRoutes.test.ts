@@ -1,16 +1,183 @@
 import request from 'supertest';
+import express from 'express';
 import { describe, expect, it } from 'vitest';
 
-import { createApp } from '../../app.js';
+import { createAccountAwareAuthMiddleware, createApp } from '../../app.js';
 import { readServerConfig } from '../../config/env.js';
+import { createAuthMiddlewareFromConfig } from '../auth/authMiddlewareFactory.js';
+import { createPostStore } from '../posts/postStore.js';
+import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import { createManagedUploadService } from '../uploads/managedUploadService.js';
+import { createInMemoryUploadSessionStore } from '../uploads/uploadSessionStore.js';
+import { createUserStore } from '../users/userStore.js';
+import { registerBillingRoutes } from './billingRoutes.js';
+import { registerRevenueCatWebhookRoutes } from './revenueCatWebhookRoutes.js';
 
 const encodeGoogleNotification = (payload: Record<string, unknown>) =>
   Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+
+const createPurchaseReadinessFixture = () => {
+  const app = express();
+  const router = express.Router();
+  const authUser = { id: 'firebase-first-buyer', provider: 'firebase' as const };
+  const config = readServerConfig({
+    AUTH_PROVIDER: 'firebase',
+    FIREBASE_PROJECT_ID: 'postdee-test',
+    BILLING_PROVIDER: 'revenuecat',
+    REVENUECAT_WEBHOOK_AUTH_TOKEN: 'readiness-webhook-token'
+  });
+  const userStore = createUserStore();
+  const subscriptionStore = createSubscriptionStore();
+  const uploadSessionStore = createInMemoryUploadSessionStore();
+  const unexpectedStorageCall = async () => {
+    throw new Error('Purchase readiness must not call object storage');
+  };
+  const managedUploadService = createManagedUploadService({
+    store: uploadSessionStore,
+    storage: {
+      createUpload: unexpectedStorageCall,
+      createPartUpload: unexpectedStorageCall,
+      completeUpload: unexpectedStorageCall,
+      abortUpload: unexpectedStorageCall,
+      getCompletedObjectSize: unexpectedStorageCall,
+      listUploadsForOwner: unexpectedStorageCall
+    },
+    partSizeBytes: 5 * 1024 * 1024,
+    sessionExpiresSeconds: 3600
+  });
+  const authMiddleware = createAccountAwareAuthMiddleware({
+    authMiddleware: createAuthMiddlewareFromConfig({
+      config,
+      firebaseVerifier: { verifyIdToken: async () => authUser }
+    }),
+    managedUploadService,
+    userStore
+  });
+  app.use(express.json());
+  registerBillingRoutes(
+    router,
+    authMiddleware,
+    userStore,
+    subscriptionStore,
+    createPostStore(),
+    { config }
+  );
+  registerRevenueCatWebhookRoutes({ router, config, userStore, subscriptionStore });
+  app.use(router);
+  return { app, authUser, userStore, uploadSessionStore };
+};
 
 describe('billing routes', () => {
   const googlePlayNotificationAuthToken = 'google-play-notification-token';
   const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
     'uploads/' + encodeURIComponent(userId) + '/' + uploadId + '/' + fileName;
+  it.each(['new', 'deleted'] as const)(
+    'keeps subscription reads from creating a %s user record',
+    async (state) => {
+      const { app, authUser, userStore } = createPurchaseReadinessFixture();
+      if (state === 'deleted') {
+        await userStore.ensure(authUser);
+        await userStore.deleteAllForUser?.(authUser.id);
+      }
+      expect(await userStore.exists(authUser.id)).toBe(false);
+
+      const response = await request(app)
+        .get('/billing/subscription')
+        .set('Authorization', 'Bearer fixture-token')
+        .expect(200);
+
+      expect(response.body.subscription.plan).toBe('BASIC');
+      expect(await userStore.exists(authUser.id)).toBe(false);
+    }
+  );
+
+  it('prepares a first Firebase buyer before accepting their initial purchase webhook', async () => {
+    const { app, authUser, userStore } = createPurchaseReadinessFixture();
+    expect(await userStore.exists(authUser.id)).toBe(false);
+
+    await request(app)
+      .post('/billing/purchase-readiness')
+      .set('Authorization', 'Bearer fixture-token')
+      .send({ userId: 'must-not-create-this-user' })
+      .expect(200, {
+        status: 'ok',
+        purchaseReady: true,
+        preparationProtocol: 1
+      });
+    expect(await userStore.exists(authUser.id)).toBe(true);
+    expect(await userStore.exists('must-not-create-this-user')).toBe(false);
+
+    await request(app)
+      .post('/billing/revenuecat/webhooks')
+      .set('Authorization', 'Bearer readiness-webhook-token')
+      .send({
+        event: {
+          id: 'prepared-initial-purchase',
+          event_timestamp_ms: 1_784_044_800_000,
+          type: 'INITIAL_PURCHASE',
+          app_user_id: authUser.id,
+          entitlement_ids: ['pro'],
+          product_id: 'postdee_pro_monthly',
+          expiration_at_ms: 4_102_444_800_000
+        }
+      })
+      .expect(200);
+
+    const response = await request(app)
+      .get('/billing/subscription')
+      .set('Authorization', 'Bearer fixture-token')
+      .expect(200);
+    expect(response.body.subscription.plan).toBe('PRO');
+  });
+
+  it('acknowledges readiness for an existing buyer without activating a plan', async () => {
+    const { app, authUser, userStore } = createPurchaseReadinessFixture();
+    await userStore.ensure(authUser);
+
+    await request(app)
+      .post('/billing/purchase-readiness')
+      .set('Authorization', 'Bearer fixture-token')
+      .send({})
+      .expect(200, {
+        status: 'ok',
+        purchaseReady: true,
+        preparationProtocol: 1
+      });
+
+    const response = await request(app)
+      .get('/billing/subscription')
+      .set('Authorization', 'Bearer fixture-token')
+      .expect(200);
+    expect(response.body.subscription.plan).toBe('BASIC');
+  });
+
+  it.each(['DELETING', 'DELETED'] as const)(
+    'rejects purchase readiness for a %s account without recreating its user',
+    async (state) => {
+      const { app, authUser, userStore, uploadSessionStore } =
+        createPurchaseReadinessFixture();
+      await uploadSessionStore.beginOwnerDeletion(authUser.id);
+      if (state === 'DELETED') {
+        await uploadSessionStore.finishOwnerDeletion(authUser.id);
+      }
+
+      const response = await request(app)
+        .post('/billing/purchase-readiness')
+        .set('Authorization', 'Bearer fixture-token')
+        .send({})
+        .expect(409);
+
+      expect(response.body.code).toBe('ACCOUNT_DELETION_IN_PROGRESS');
+      expect(await userStore.exists(authUser.id)).toBe(false);
+    }
+  );
+
+  it('requires authentication before purchase readiness can create a user', async () => {
+    const { app, authUser, userStore } = createPurchaseReadinessFixture();
+    await request(app).post('/billing/purchase-readiness').send({}).expect(401);
+    expect(await userStore.exists(authUser.id)).toBe(false);
+  });
+
   it('returns the current Basic subscription status', async () => {
     const app = createApp();
 
@@ -242,7 +409,7 @@ describe('billing routes', () => {
   });
 
   it('activates mock Pro billing for the authenticated user', async () => {
-    const app = createApp();
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
 
     const billingResponse = await request(app)
       .post('/billing/mock-success')
@@ -277,7 +444,7 @@ describe('billing routes', () => {
   });
 
   it('activates Pro from a verified Android store subscription purchase', async () => {
-    const app = createApp();
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
 
     const billingResponse = await request(app)
       .post('/billing/store/verify')
@@ -703,6 +870,51 @@ describe('billing routes', () => {
         status: 'ACTIVE'
       }
     });
+  });
+
+  it('reports account deletion when a pending store verification resumes after cleanup', async () => {
+    const uploadSessionStore = createInMemoryUploadSessionStore();
+    let release!: () => void;
+    let entered!: () => void;
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const reached = new Promise<void>((resolve) => { entered = resolve; });
+    const app = createApp({
+      uploadSessionStore,
+      storePurchaseVerifier: {
+        verify: async (purchase) => {
+          entered();
+          await paused;
+          return {
+            provider: 'google-play',
+            platform: purchase.platform,
+            productId: purchase.productId,
+            purchaseToken: purchase.purchaseToken,
+            verifiedAt: '2026-10-13T00:00:00.000Z'
+          };
+        }
+      }
+    });
+    const pending = request(app)
+      .post('/billing/store/verify')
+      .set('x-postdee-user-id', 'seller-delayed-store')
+      .send({
+        platform: 'ANDROID',
+        productId: 'postdee_pro_monthly',
+        purchaseToken: 'dummy-delayed-purchase'
+      })
+      .then((response) => response);
+    await reached;
+    await request(app).delete('/account')
+      .set('x-postdee-user-id', 'seller-delayed-store').expect(200);
+    release();
+    const response = await pending;
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('ACCOUNT_DELETION_IN_PROGRESS');
+    const subscription = await request(app).get('/billing/subscription')
+      .set('x-postdee-user-id', 'seller-delayed-store').expect(200);
+    expect(subscription.body.subscription.plan).toBe('BASIC');
+    await request(app).post('/billing/purchase-readiness')
+      .set('x-postdee-user-id', 'seller-delayed-store').expect(409);
   });
 
   it('rejects store subscription verification for unsupported platforms', async () => {

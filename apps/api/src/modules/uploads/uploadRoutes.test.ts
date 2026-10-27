@@ -9,6 +9,14 @@ import {
 } from './managedUploadService.js';
 
 describe('upload routes', () => {
+  const readManagedUploadConfig = (
+    uploadProtocolMode: 'dual' | 'multipart' = 'dual'
+  ) =>
+    readServerConfig({
+      DATABASE_URL: 'postgresql://user:pass@localhost:5432/postdee',
+      UPLOAD_PROTOCOL_MODE: uploadProtocolMode
+    });
+
   const managedUpload = {
     id: 'managed-session-1',
     videoS3Key: 'uploads/seller-upload/managed/video.mp4',
@@ -24,7 +32,7 @@ describe('upload routes', () => {
   const createManagedUploadService = (): ManagedUploadService => ({
     assertOwnerActive: vi.fn(async () => undefined),
     create: vi.fn(async () => managedUpload),
-    createPart: vi.fn(async (_id, _ownerId, partNumber) => ({
+    createPart: vi.fn<ManagedUploadService['createPart']>(async (_id, _ownerId, partNumber) => ({
       partNumber,
       sizeBytes: partNumber === 3 ? 1 : 8,
       uploadUrl: `https://r2.test/part-${partNumber}`,
@@ -33,7 +41,7 @@ describe('upload routes', () => {
       uploadExpiresAt: '2026-07-13T10:05:00.000Z'
     })),
     complete: vi.fn(async () => managedUpload),
-    get: vi.fn(async () => ({
+    get: vi.fn<ManagedUploadService['get']>(async () => ({
       sessionStatus: 'COMPLETED',
       upload: managedUpload
     })),
@@ -106,6 +114,7 @@ describe('upload routes', () => {
       }),
       s3Client: {
         createPresignedUploadUrl: async () => 'https://s3.local/upload-url',
+        createPresignedDownloadUrl: async () => 'https://s3.local/download-url',
         deleteObject: async () => undefined
       }
     });
@@ -153,7 +162,7 @@ describe('upload routes', () => {
   it('keeps the legacy response unchanged while dual mode is enabled', async () => {
     const managedUploadService = createManagedUploadService();
     const app = createApp({
-      config: readServerConfig({ UPLOAD_PROTOCOL_MODE: 'dual' }),
+      config: readManagedUploadConfig(),
       managedUploadService
     });
 
@@ -176,7 +185,7 @@ describe('upload routes', () => {
       )
     );
     const app = createApp({
-      config: readServerConfig({ UPLOAD_PROTOCOL_MODE: 'dual' }),
+      config: readManagedUploadConfig(),
       managedUploadService
     });
 
@@ -195,7 +204,7 @@ describe('upload routes', () => {
   it('fails startup when managed mode has no multipart-capable storage', () => {
     expect(() =>
       createApp({
-        config: readServerConfig({ UPLOAD_PROTOCOL_MODE: 'dual' })
+        config: readManagedUploadConfig()
       })
     ).toThrow('UPLOAD_PROTOCOL_MODE requires multipart-capable object storage');
   });
@@ -203,7 +212,7 @@ describe('upload routes', () => {
   it('creates and completes an owner-scoped multipart upload when explicitly requested', async () => {
     const managedUploadService = createManagedUploadService();
     const app = createApp({
-      config: readServerConfig({ UPLOAD_PROTOCOL_MODE: 'dual' }),
+      config: readManagedUploadConfig(),
       managedUploadService
     });
 
@@ -278,7 +287,7 @@ describe('upload routes', () => {
 
   it('requires a current client after strict multipart mode is enabled', async () => {
     const app = createApp({
-      config: readServerConfig({ UPLOAD_PROTOCOL_MODE: 'multipart' }),
+      config: readManagedUploadConfig('multipart'),
       managedUploadService: createManagedUploadService()
     });
 

@@ -1,7 +1,8 @@
-import type {
-  DevicePlatform,
-  DeviceToken,
-  DeviceTokenStore
+import {
+  maxDeviceTokensPerUser,
+  type DevicePlatform,
+  type DeviceToken,
+  type DeviceTokenStore
 } from './deviceTokenStore.js';
 
 type PrismaDeviceToken = {
@@ -25,10 +26,18 @@ type DeviceTokenDelegate = {
     create: { userId: string; token: string; platform?: string | null };
     select: DeviceTokenSelect;
   }) => Promise<PrismaDeviceToken>;
-  findMany: (args: {
-    where: { userId: string };
-    select: DeviceTokenSelect;
-  }) => Promise<PrismaDeviceToken[]>;
+  findMany: {
+    (args: { where: { userId: string }; select: DeviceTokenSelect }): Promise<PrismaDeviceToken[]>;
+    (args: {
+      where: { userId: string };
+      orderBy: { updatedAt: 'desc' };
+      skip: number;
+      select: { id: true };
+    }): Promise<Array<{ id: string }>>;
+  };
+  deleteMany: (args: {
+    where: { id: { in: string[] } } | { userId: string; token: { in: string[] } };
+  }) => Promise<{ count: number }>;
 };
 
 export type PrismaDeviceTokenClient = {
@@ -62,7 +71,24 @@ export const createPrismaDeviceTokenRepository = ({
       select: deviceTokenSelect
     });
 
+    const staleTokens = await prisma.deviceToken.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+      skip: maxDeviceTokensPerUser,
+      select: { id: true }
+    });
+    if (staleTokens.length > 0) {
+      await prisma.deviceToken.deleteMany({
+        where: { id: { in: staleTokens.map(({ id }) => id) } }
+      });
+    }
+
     return mapToken(record);
+  },
+  removeTokens: async ({ userId, tokens }) => {
+    if (tokens.length > 0) {
+      await prisma.deviceToken.deleteMany({ where: { userId, token: { in: tokens } } });
+    }
   },
   listForUser: async (userId) => {
     const records = await prisma.deviceToken.findMany({

@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/monitoring/postdee_analytics.dart';
 import '../../core/theme/app_theme.dart';
+import '../ai_editing/ai_edit_audio_extractor.dart';
+import '../ai_editing/review_video_timeline.dart';
 import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
@@ -14,15 +18,21 @@ import '../shared/growth_tool_settings_store.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_status_sheet.dart';
+import 'caption_quota_strip.dart';
 import 'clip_frame_extractor.dart';
+import 'cover_editor_screen.dart';
+import 'cover_image_processor.dart';
+import 'post_caption.dart';
 import 'publish_flow_screen.dart';
 import 'publish_review_screen.dart';
 import 'video_picker_service.dart';
 import 'watermark_video_processor.dart';
+import 'youtube_title.dart';
 
 typedef UploaderTemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef UploaderSubscriptionLoader = Future<SubscriptionStatusResult>
     Function();
+typedef UploaderCaptionQuotaLoader = Future<CaptionQuotaResult> Function();
 typedef UploaderCaptionGenerator = Future<CaptionResult> Function(
     List<String> keywords);
 typedef UploaderRealClipCaptionGenerator = Future<RealClipCaptionResult>
@@ -38,12 +48,28 @@ typedef UploaderPostCreator = Future<QueuedPostResult> Function(
 typedef UploaderScheduledPostCreated = void Function(QueuedPostResult post);
 typedef UploaderConnectionsLoader = Future<List<SocialConnectionResult>>
     Function();
+typedef UploaderAudioExtractor = Future<AiEditAudioArtifact> Function(
+    File source);
+
+const postScheduleLimit = Duration(days: 30);
+
+/// Matches the API's real-clip caption clip limit (Gemini inline budget).
+/// At the extractor's 64 kbps mono this is roughly 20 minutes of audio.
+const aiCaptionAudioMaxBytes = 10 * 1024 * 1024;
+
+bool isPostScheduleWithinLimit({
+  required DateTime scheduledAt,
+  required DateTime now,
+}) =>
+    !scheduledAt.isAfter(now.add(postScheduleLimit));
 
 class UploaderScreen extends StatefulWidget {
   const UploaderScreen({
     super.key,
     this.loadTemplates,
     this.loadSubscription,
+    this.loadCaptionQuota,
+    this.isActive = true,
     this.generateCaption,
     this.generateRealClipCaption,
     this.pickVideo,
@@ -53,11 +79,13 @@ class UploaderScreen extends StatefulWidget {
     this.loadSocialConnections,
     this.onScheduledPostCreated,
     this.onPublishFinished,
-    this.onViewAnalytics,
     this.analytics,
     this.watermarkVideo,
+    this.openCoverEditor,
+    this.coverImageProcessor,
     this.now = DateTime.now,
     this.extractFrames,
+    this.extractCaptionAudio,
     this.growthToolSettingsStore =
         const SharedPreferencesGrowthToolSettingsStore(),
     this.initialVideoPath,
@@ -69,6 +97,8 @@ class UploaderScreen extends StatefulWidget {
 
   final UploaderTemplateLoader? loadTemplates;
   final UploaderSubscriptionLoader? loadSubscription;
+  final UploaderCaptionQuotaLoader? loadCaptionQuota;
+  final bool isActive;
   final UploaderCaptionGenerator? generateCaption;
   final UploaderRealClipCaptionGenerator? generateRealClipCaption;
   final UploaderVideoPicker? pickVideo;
@@ -78,9 +108,10 @@ class UploaderScreen extends StatefulWidget {
   final UploaderConnectionsLoader? loadSocialConnections;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
-  final VoidCallback? onViewAnalytics;
   final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
+  final UploaderCoverEditorLauncher? openCoverEditor;
+  final CoverImageProcessor? coverImageProcessor;
 
   // Wall clock used to reject schedules in the past. Injectable so tests can
   // pin "now" instead of depending on the real time of day.
@@ -89,6 +120,10 @@ class UploaderScreen extends StatefulWidget {
   // Extracts still frames from the clip for Pro AI captioning (Gemini "sees"
   // them). Injectable so tests don't touch the native FFmpeg plugin.
   final UploaderClipFrameExtractor? extractFrames;
+
+  // Extracts the clip's audio for AI captioning so only a small M4A is
+  // uploaded. Injectable so tests don't touch the native FFmpeg plugin.
+  final UploaderAudioExtractor? extractCaptionAudio;
   final PostDeeGrowthToolSettingsStore growthToolSettingsStore;
 
   // Pre-fills the screen with an already-on-device clip (e.g. the editor's
@@ -103,11 +138,15 @@ class UploaderScreen extends StatefulWidget {
   State<UploaderScreen> createState() => _UploaderScreenState();
 }
 
-class _UploaderScreenState extends State<UploaderScreen> {
+class _UploaderScreenState extends State<UploaderScreen>
+    with WidgetsBindingObserver {
   final _apiClient = PostDeeApiClient();
   PostDeeAnalytics get _analytics =>
       widget.analytics ?? PostDeeAnalytics.instance;
   final _captionController = TextEditingController();
+  final _youtubeTitleController = TextEditingController();
+  String? _youtubeTitleOverride;
+  bool _isEditingYoutubeTitle = false;
   final _fileNameController = TextEditingController();
   final _localFilePathController = TextEditingController();
   final _sizeBytesController = TextEditingController();
@@ -123,6 +162,11 @@ class _UploaderScreenState extends State<UploaderScreen> {
   bool _isSubmitting = false;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
+  CaptionQuotaResult? _captionQuota;
+  bool _isLoadingCaptionQuota = false;
+  bool _captionQuotaLoadFailed = false;
+  int _captionQuotaRequestId = 0;
+  late AuthSessionBinding _captionQuotaSession;
   bool _isAdvancedModeEnabled = true;
   bool _isLoadingConnections = true;
   String? _connectionsErrorMessage;
@@ -131,6 +175,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
   String? _templateErrorMessage;
   String? _aiCaptionErrorMessage;
   String? _selectedVideoName;
+  CoverEditorResult? _coverResult;
   PostDeeStatusSheetData? _pendingStatusSheet;
   bool _pickVideoAfterStatus = false;
   String? _pendingInlineError;
@@ -138,8 +183,81 @@ class _UploaderScreenState extends State<UploaderScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
+    PostDeeAuthSessionStore.instance
+        .addListener(_handleCaptionQuotaSessionChanged);
+    _captionController.addListener(_syncAutomaticYoutubeTitle);
     _prefillInitialVideo();
     unawaited(_loadConnections());
+    if (widget.isActive) unawaited(_loadCaptionQuota());
+  }
+
+  @override
+  void didUpdateWidget(covariant UploaderScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      unawaited(_loadCaptionQuota());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && widget.isActive) {
+      unawaited(_loadCaptionQuota());
+    }
+  }
+
+  Future<void> _loadCaptionQuota() async {
+    if (_isGeneratingCaption) return;
+    final requestId = ++_captionQuotaRequestId;
+    final session = _captionQuotaSession;
+    setState(() {
+      _isLoadingCaptionQuota = true;
+      _captionQuotaLoadFailed = false;
+      _captionQuota = null;
+    });
+    try {
+      final loader = widget.loadCaptionQuota ??
+          PostDeeApiClient(
+            authHeaders: PostDeeApiAuthHeaders(sessionBinding: session),
+          ).fetchAiCaptionQuota;
+      final result = await loader();
+      if (!mounted ||
+          !session.isCurrent ||
+          requestId != _captionQuotaRequestId) {
+        return;
+      }
+      setState(() {
+        _captionQuota = result;
+        _isLoadingCaptionQuota = false;
+      });
+    } catch (_) {
+      if (!mounted ||
+          !session.isCurrent ||
+          requestId != _captionQuotaRequestId) {
+        return;
+      }
+      setState(() {
+        _isLoadingCaptionQuota = false;
+        _captionQuotaLoadFailed = true;
+      });
+    }
+  }
+
+  void _handleCaptionQuotaSessionChanged() {
+    if (_captionQuotaSession.isCurrent) return;
+    _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
+    _captionQuotaRequestId++;
+    setState(() {
+      _captionQuota = null;
+      _isLoadingCaptionQuota = false;
+      _captionQuotaLoadFailed = false;
+    });
+    if (widget.isActive &&
+        PostDeeAuthSessionStore.instance.session.isSignedIn) {
+      unawaited(_loadCaptionQuota());
+    }
   }
 
   Future<void> _loadConnections() async {
@@ -160,6 +278,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
           .where((result) => result.connected)
           .map((result) => _platformFromApiValue(result.platform))
           .whereType<SocialPlatform>()
+          .where(connectablePlatforms.contains)
           .toSet();
 
       setState(() {
@@ -239,7 +358,16 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    PostDeeAuthSessionStore.instance
+        .removeListener(_handleCaptionQuotaSessionChanged);
+    _captionQuotaRequestId++;
+    final cover = _coverResult;
+    _coverResult = null;
+    if (cover != null) unawaited(_evictAndCleanupCover(cover));
+    _captionController.removeListener(_syncAutomaticYoutubeTitle);
     _captionController.dispose();
+    _youtubeTitleController.dispose();
     _fileNameController.dispose();
     _localFilePathController.dispose();
     _sizeBytesController.dispose();
@@ -248,6 +376,33 @@ class _UploaderScreenState extends State<UploaderScreen> {
     _scheduledAtController.dispose();
     _aiGuidanceController.dispose();
     super.dispose();
+  }
+
+  void _cleanupCoverAfterFrame(CoverEditorResult? cover) {
+    if (cover == null) return;
+    if (cover.imageBytes != null) {
+      // Managed covers are previewed from memory, so no widget keeps the
+      // temporary JPEG open and it can be removed immediately.
+      unawaited(cover.cleanupTemporaryFiles());
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_evictAndCleanupCover(cover));
+    });
+    // addPostFrameCallback does not request a frame by itself. This matters
+    // when the editor returns after the current frame has already finished.
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  Future<void> _evictAndCleanupCover(CoverEditorResult cover) async {
+    if (cover.imageBytes == null) {
+      try {
+        await FileImage(cover.imageFile).evict();
+      } catch (_) {
+        // A cache miss or decoder shutdown must not block owned temp cleanup.
+      }
+    }
+    await cover.cleanupTemporaryFiles();
   }
 
   int? _readPositiveInt(TextEditingController controller) {
@@ -263,16 +418,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
   bool _isVerticalNineBySixteen({
     required int width,
     required int height,
-  }) {
-    if (height <= width) {
-      return false;
-    }
-
-    final expectedHeight = width * 16 / 9;
-    final tolerance = expectedHeight * 0.02;
-
-    return (height - expectedHeight).abs() <= tolerance;
-  }
+  }) =>
+      isVerticalNineBySixteen(width: width, height: height);
 
   DateTime? _readScheduledAt() {
     final value = _scheduledAtController.text.trim();
@@ -285,7 +432,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
   }
 
   DateTime _scheduleDateFromToday(int daysFromToday) {
-    final now = DateTime.now();
+    final now = widget.now().toLocal();
     final today = DateTime(now.year, now.month, now.day);
 
     return today.add(Duration(days: daysFromToday));
@@ -357,7 +504,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       context: context,
       initialDate: _selectedScheduleDate ?? _scheduleDateFromToday(1),
       firstDate: today,
-      lastDate: today.add(const Duration(days: 365)),
+      lastDate: today.add(postScheduleLimit),
     );
 
     if (picked == null || !mounted) {
@@ -382,15 +529,11 @@ class _UploaderScreenState extends State<UploaderScreen> {
     return loader();
   }
 
-  Future<String?> _uploadSelectedClipForAiCaption() async {
+  /// Extracts the clip's audio on device and uploads only that small M4A for
+  /// AI captioning. Uploading the full video made the API hold it in memory.
+  Future<String?> _uploadSelectedClipAudioForAiCaption() async {
     final localFilePath = _localFilePathController.text.trim();
     final localVideoFile = localFilePath.isEmpty ? null : File(localFilePath);
-    final fileName = _fileNameController.text.trim().isNotEmpty
-        ? _fileNameController.text.trim()
-        : localVideoFile == null
-            ? (_selectedVideoName ?? '').trim()
-            : _readFileNameFromPath(localFilePath);
-    var sizeBytes = _readPositiveInt(_sizeBytesController);
     final width = _readPositiveInt(_widthController);
     final height = _readPositiveInt(_heightController);
 
@@ -408,15 +551,6 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return null;
     }
 
-    sizeBytes ??= localVideoFile.lengthSync();
-
-    if (fileName.isEmpty || sizeBytes < 1) {
-      setState(() {
-        _aiCaptionErrorMessage = 'ไฟล์วิดีโอที่เลือกมีข้อมูลไม่ครบ';
-      });
-      return null;
-    }
-
     if (width != null &&
         height != null &&
         !_isVerticalNineBySixteen(width: width, height: height)) {
@@ -426,30 +560,53 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return null;
     }
 
-    final createUpload = widget.createUpload ?? _apiClient.createUpload;
-    final uploadVideoFile =
-        widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-    final upload = await createAndUploadFileWithRetry(
-      request: CreateUploadRequest(
-        fileName: fileName,
-        contentType: 'video/mp4',
-        sizeBytes: sizeBytes,
-        width: width,
-        height: height,
-      ),
-      file: localVideoFile,
-      createUpload: createUpload,
-      uploadFile: uploadVideoFile,
-      onRetry: () {
+    final extractAudio =
+        widget.extractCaptionAudio ?? AiEditAudioExtractor().extract;
+    final audioArtifact = await extractAudio(localVideoFile);
+
+    try {
+      final audioFile = audioArtifact.file;
+      final audioSizeBytes = audioFile.lengthSync();
+
+      if (audioSizeBytes > aiCaptionAudioMaxBytes) {
         if (mounted) {
           setState(() {
-            _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+            _aiCaptionErrorMessage =
+                'คลิปยาวเกินไปสำหรับ AI แคปชั่น ลองตัดให้สั้นลงแล้วลองใหม่';
           });
         }
-      },
-    );
+        return null;
+      }
 
-    return upload.videoS3Key;
+      final createUpload = widget.createUpload ?? _apiClient.createUpload;
+      final uploadFile = widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
+      final upload = await createAndUploadFileWithRetry(
+        request: CreateUploadRequest(
+          fileName: _readFileNameFromPath(audioFile.path),
+          contentType: 'audio/mp4',
+          sizeBytes: audioSizeBytes,
+          purpose: 'ai-edit-audio',
+        ),
+        file: audioFile,
+        createUpload: createUpload,
+        uploadFile: uploadFile,
+        onRetry: () {
+          if (mounted) {
+            setState(() {
+              _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+            });
+          }
+        },
+      );
+
+      return upload.videoS3Key;
+    } finally {
+      try {
+        await audioArtifact.cleanup();
+      } catch (_) {
+        // Temp audio cleanup must not replace the caption result or error.
+      }
+    }
   }
 
   /// Extracts still frames from the selected clip and uploads them, returning
@@ -598,6 +755,12 @@ class _UploaderScreenState extends State<UploaderScreen> {
   }
 
   Future<void> _generateAiCaption() async {
+    if (_isGeneratingCaption ||
+        (_captionQuota?.isPaid == true &&
+            _captionQuota!.quota.remainingThisMonth == 0)) {
+      return;
+    }
+    final session = _captionQuotaSession;
     final selectedVideoName = (_selectedVideoName ?? '').trim();
 
     if (selectedVideoName.isEmpty) {
@@ -608,13 +771,18 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return;
     }
 
+    var quotaUpdated = false;
+    // A read started before generation must not overwrite its newer balance.
+    _captionQuotaRequestId++;
     setState(() {
       _isGeneratingCaption = true;
+      _isLoadingCaptionQuota = false;
       _aiCaptionErrorMessage = null;
     });
 
     try {
       final subscription = await _loadSubscription();
+      if (!mounted || !session.isCurrent) return;
 
       if (!subscription.canUseAiCaptions) {
         if (!mounted) {
@@ -628,9 +796,9 @@ class _UploaderScreenState extends State<UploaderScreen> {
         return;
       }
 
-      final videoS3Key = await _uploadSelectedClipForAiCaption();
+      final audioS3Key = await _uploadSelectedClipAudioForAiCaption();
 
-      if (videoS3Key == null) {
+      if (audioS3Key == null || !mounted || !session.isCurrent) {
         return;
       }
 
@@ -639,13 +807,14 @@ class _UploaderScreenState extends State<UploaderScreen> {
       final selectedFrameKeys = subscription.isPro
           ? await _uploadAiCaptionFrames()
           : const <String>[];
+      if (!mounted || !session.isCurrent) return;
 
       final guidance = _aiGuidanceController.text.trim();
       final generator =
           widget.generateRealClipCaption ?? _apiClient.generateCaptionFromClip;
       final caption = await generator(
         GenerateRealClipCaptionRequest(
-          videoS3Key: videoS3Key,
+          audioS3Key: audioS3Key,
           guidance: guidance.isEmpty ? null : guidance,
           selectedFrameKeys: selectedFrameKeys,
           deleteAfterUse: true,
@@ -653,18 +822,32 @@ class _UploaderScreenState extends State<UploaderScreen> {
       );
       final nextCaption = _formatRealClipCaption(caption);
 
-      if (!mounted) {
+      if (!mounted || !session.isCurrent) {
         return;
       }
 
       setState(() {
+        _captionQuota = CaptionQuotaResult(
+          plan: subscription.plan,
+          quota: caption.quota,
+        );
+        _captionQuotaLoadFailed = false;
         _captionController.value = TextEditingValue(
           text: nextCaption,
           selection: TextSelection.collapsed(offset: nextCaption.length),
         );
       });
+      quotaUpdated = true;
     } on ApiException catch (error) {
-      if (!mounted) {
+      if (!mounted || !session.isCurrent) {
+        return;
+      }
+
+      setState(() {
+        _aiCaptionErrorMessage = error.message;
+      });
+    } on AiEditAudioExtractionException catch (error) {
+      if (!mounted || !session.isCurrent) {
         return;
       }
 
@@ -672,7 +855,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _aiCaptionErrorMessage = error.message;
       });
     } on SocketException {
-      if (!mounted) {
+      if (!mounted || !session.isCurrent) {
         return;
       }
 
@@ -680,7 +863,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _aiCaptionErrorMessage = 'เชื่อมต่อ PostDee API ไม่ได้';
       });
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || !session.isCurrent) {
         return;
       }
 
@@ -692,6 +875,8 @@ class _UploaderScreenState extends State<UploaderScreen> {
         setState(() {
           _isGeneratingCaption = false;
         });
+        // A provider failure may happen after the server reserved a use.
+        if (!quotaUpdated) unawaited(_loadCaptionQuota());
       }
     }
   }
@@ -723,13 +908,130 @@ class _UploaderScreenState extends State<UploaderScreen> {
     );
   }
 
+  Future<void> _openCoverEditor() async {
+    final localFilePath = _localFilePathController.text.trim();
+    final videoName = (_selectedVideoName ?? '').trim();
+    final videoFile = localFilePath.isEmpty ? null : File(localFilePath);
+
+    if (videoFile == null || videoName.isEmpty || !videoFile.existsSync()) {
+      setState(() {
+        _errorMessage = 'เลือกวิดีโอจริงจากเครื่องก่อนแต่งหน้าปก';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    final request = CoverEditorRequest(
+      videoFile: videoFile,
+      videoName: videoName,
+      platforms:
+          SocialPlatform.values.where(_selectedPlatforms.contains).toList(),
+      initialResult: _coverResult,
+    );
+    final result = widget.openCoverEditor != null
+        ? await widget.openCoverEditor!(context, request)
+        : await Navigator.of(context).push<CoverEditorResult>(
+            MaterialPageRoute<CoverEditorResult>(
+              builder: (context) => CoverEditorScreen(
+                videoFile: request.videoFile,
+                videoName: request.videoName,
+                platforms: request.platforms,
+                initialResult: request.initialResult,
+                processCover: widget.coverImageProcessor,
+              ),
+            ),
+          );
+
+    if (result == null) return;
+    if (!mounted) {
+      await result.cleanupTemporaryFiles();
+      return;
+    }
+    final previousCover = _coverResult;
+    setState(() {
+      _coverResult = result;
+      _errorMessage = null;
+      _successMessage = 'บันทึกหน้าปกแล้ว';
+    });
+    if (!identical(previousCover, result)) {
+      _cleanupCoverAfterFrame(previousCover);
+    }
+  }
+
+  Future<void> _removeCover() async {
+    final cover = _coverResult;
+    if (cover == null || _isSubmitting) return;
+
+    final confirmed = await showPostDeeStatusSheet(
+      context,
+      data: const PostDeeStatusSheetData(
+        icon: Icons.hide_image_outlined,
+        iconColor: Color(0xFFF59E0B),
+        iconTint: Color(0x24F59E0B),
+        title: 'ใช้หน้าปกอัตโนมัติ?',
+        body: 'หน้าปกที่แต่งไว้จะถูกลบ และระบบจะกลับไปเลือกภาพอัตโนมัติ',
+        primaryLabel: 'ลบหน้าปก',
+        secondaryLabel: 'ยกเลิก',
+      ),
+    );
+    if (confirmed != true || !mounted || !identical(_coverResult, cover)) {
+      return;
+    }
+
+    setState(() {
+      _coverResult = null;
+      _errorMessage = null;
+      _successMessage = 'กลับมาใช้หน้าปกอัตโนมัติแล้ว';
+    });
+    _cleanupCoverAfterFrame(cover);
+  }
+
+  Future<CoverEditorResult> _readCoverForUpload({
+    required File videoFile,
+    required String fileName,
+  }) async {
+    final cover = _coverResult;
+    if (cover == null) {
+      throw const CoverImageException('ยังไม่ได้เลือกหน้าปก');
+    }
+    final coverFile = cover.imageFile;
+    if (coverFile.existsSync() && coverFile.lengthSync() > 0) {
+      return cover;
+    }
+
+    if (mounted) {
+      setState(() {
+        _successMessage = 'กำลังสร้างไฟล์หน้าปกใหม่...';
+      });
+    }
+    final processor =
+        widget.coverImageProcessor ?? FfmpegCoverImageProcessor().call;
+    final regenerated = await processor(
+      CoverImageRequest(
+        videoFile: videoFile,
+        fileName: fileName,
+        design: cover.design,
+        durationMs: cover.durationMs,
+      ),
+    );
+    if (!mounted) {
+      await regenerated.cleanupTemporaryFiles();
+      throw const CoverImageException('ยกเลิกการสร้างหน้าปกแล้ว');
+    }
+    setState(() => _coverResult = regenerated);
+    if (!identical(cover, regenerated)) {
+      _cleanupCoverAfterFrame(cover);
+    }
+    return regenerated;
+  }
+
   Future<void> _pickVideoFile() async {
     final picker = widget.pickVideo ?? GalleryVideoPicker().pickVideo;
 
     try {
       final video = await picker();
 
-      if (video == null) {
+      if (!mounted || video == null) {
         return;
       }
 
@@ -747,8 +1049,10 @@ class _UploaderScreenState extends State<UploaderScreen> {
         return;
       }
 
+      final previousCover = _coverResult;
       setState(() {
         _selectedVideoName = fileName;
+        _coverResult = null;
         _localFilePathController.text = video.path;
         _fileNameController.text = fileName;
         _sizeBytesController.text = video.sizeBytes.toString();
@@ -758,10 +1062,14 @@ class _UploaderScreenState extends State<UploaderScreen> {
         _errorMessage = null;
         _successMessage = null;
       });
+      _cleanupCoverAfterFrame(previousCover);
       unawaited(_analytics.logVideoSelected(
         hasDimensions: video.width != null && video.height != null,
       ));
     } catch (error) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _errorMessage = 'เลือกวิดีโอไม่ได้: $error';
         _successMessage = null;
@@ -818,28 +1126,43 @@ class _UploaderScreenState extends State<UploaderScreen> {
       return;
     }
 
-    // The backend requires a caption, so catch it here instead of letting the
-    // user confirm the review only to have the post bounce back.
-    if (_captionController.text.trim().isEmpty) {
-      setState(() {
-        _errorMessage = 'เพิ่มแคปชั่นก่อนโพสต์';
-        _successMessage = null;
-      });
+    final watermarkEnabled = await _shouldApplyAutoWatermark();
+    if (!mounted) return;
+    if (_selectedPlatforms.isEmpty) {
+      setState(() => _errorMessage = 'เลือกอย่างน้อย 1 ช่องทางก่อนโพสต์');
       return;
     }
 
-    final watermarkEnabled = await _shouldApplyAutoWatermark();
-    if (!mounted) return;
+    final reviewedCaption = _captionController.text.trim();
+    final reviewedYoutubeTitle = _hasYoutube ? _youtubeTitleOverride : null;
+    final textError = _postTextValidationError(
+      caption: reviewedCaption,
+      youtubeTitle: reviewedYoutubeTitle,
+    );
+    if (textError != null) {
+      setState(() {
+        _errorMessage = textError;
+        _successMessage = null;
+        if (_hasYoutube && _captionController.text.trim().isEmpty) {
+          _isEditingYoutubeTitle = true;
+        }
+      });
+      return;
+    }
 
     final confirmed = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (context) => PublishReviewScreen(
           videoName: selectedVideoName,
-          caption: _captionController.text,
+          caption: reviewedCaption,
+          youtubeTitle: _hasYoutube
+              ? reviewedYoutubeTitle ?? deriveYoutubeTitle(reviewedCaption)
+              : null,
           platforms:
               SocialPlatform.values.where(_selectedPlatforms.contains).toList(),
           scheduledAt: _readScheduledAt(),
           watermarkEnabled: watermarkEnabled,
+          coverResult: _coverResult,
         ),
       ),
     );
@@ -853,7 +1176,10 @@ class _UploaderScreenState extends State<UploaderScreen> {
         builder: (context) => PublishFlowScreen(
           platforms: selectedPlatforms,
           isScheduled: _readScheduledAt() != null,
-          publish: _createPost,
+          publish: () => _createPost(
+            reviewedCaption: reviewedCaption,
+            reviewedYoutubeTitle: reviewedYoutubeTitle,
+          ),
         ),
       ),
     );
@@ -868,18 +1194,24 @@ class _UploaderScreenState extends State<UploaderScreen> {
     switch (action) {
       case PublishFlowAction.finish:
         widget.onPublishFinished?.call();
-      case PublishFlowAction.analytics:
-        widget.onViewAnalytics?.call();
       case null:
         break;
     }
   }
 
-  Future<QueuedPostResult?> _createPost() async {
+  Future<QueuedPostResult?> _createPost({
+    String? reviewedCaption,
+    String? reviewedYoutubeTitle,
+  }) async {
     _pendingStatusSheet = null;
     _pickVideoAfterStatus = false;
     _pendingInlineError = null;
-    final caption = _captionController.text.trim();
+    final caption = reviewedCaption ?? _captionController.text.trim();
+    final youtubeTitle = reviewedCaption != null
+        ? reviewedYoutubeTitle
+        : _hasYoutube
+            ? _youtubeTitleOverride
+            : null;
     final localFilePath = _localFilePathController.text.trim();
     final localVideoFile = localFilePath.isEmpty ? null : File(localFilePath);
     final fileName = _fileNameController.text.trim().isNotEmpty
@@ -910,9 +1242,13 @@ class _UploaderScreenState extends State<UploaderScreen> {
 
     sizeBytes ??= localVideoFile.lengthSync();
 
-    if (caption.isEmpty) {
+    final textError = _postTextValidationError(
+      caption: caption,
+      youtubeTitle: youtubeTitle,
+    );
+    if (textError != null) {
       setState(() {
-        _errorMessage = 'เพิ่มแคปชั่นก่อนโพสต์';
+        _errorMessage = textError;
         _successMessage = null;
       });
       return null;
@@ -937,6 +1273,18 @@ class _UploaderScreenState extends State<UploaderScreen> {
     if (scheduledAt != null && !scheduledAt.isAfter(widget.now())) {
       setState(() {
         _errorMessage = 'เวลาตั้งโพสต์ต้องเป็นเวลาในอนาคต';
+        _successMessage = null;
+      });
+      return null;
+    }
+
+    if (scheduledAt != null &&
+        !isPostScheduleWithinLimit(
+          scheduledAt: scheduledAt,
+          now: widget.now(),
+        )) {
+      setState(() {
+        _errorMessage = 'ตั้งเวลาโพสต์ล่วงหน้าได้สูงสุด 30 วัน';
         _successMessage = null;
       });
       return null;
@@ -969,6 +1317,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _successMessage = null;
     });
 
+    WatermarkedVideoResult? watermarkedVideoForCleanup;
     try {
       final subscription = await _loadSubscription();
 
@@ -1022,6 +1371,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
           fileName: fileName,
         );
 
+        watermarkedVideoForCleanup = watermarkedVideo;
         uploadVideoFileForRequest = watermarkedVideo.file;
         uploadFileName = watermarkedVideo.fileName;
         uploadSizeBytes = watermarkedVideo.sizeBytes;
@@ -1031,35 +1381,99 @@ class _UploaderScreenState extends State<UploaderScreen> {
       final createUpload = widget.createUpload ?? _apiClient.createUpload;
       final uploadVideoFile =
           widget.uploadVideoFile ?? _apiClient.uploadVideoFile;
-      final upload = await createAndUploadFileWithRetry(
-        request: CreateUploadRequest(
-          fileName: uploadFileName,
-          contentType: 'video/mp4',
-          sizeBytes: uploadSizeBytes,
-          width: width,
-          height: height,
-        ),
-        file: uploadVideoFileForRequest,
-        createUpload: createUpload,
-        uploadFile: uploadVideoFile,
-        onRetry: () {
-          if (mounted) {
-            setState(() {
-              _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
-            });
-          }
-        },
-      );
+      late final UploadResult upload;
+      try {
+        upload = await createAndUploadFileWithRetry(
+          request: CreateUploadRequest(
+            fileName: uploadFileName,
+            contentType: 'video/mp4',
+            sizeBytes: uploadSizeBytes,
+            width: width,
+            height: height,
+          ),
+          file: uploadVideoFileForRequest,
+          createUpload: createUpload,
+          uploadFile: uploadVideoFile,
+          onRetry: () {
+            if (mounted) {
+              setState(() {
+                _successMessage = 'ลิงก์อัปโหลดหมดอายุ กำลังลองใหม่...';
+              });
+            }
+          },
+        );
+      } finally {
+        await watermarkedVideoForCleanup?.cleanupTemporaryFiles();
+        watermarkedVideoForCleanup = null;
+      }
+      String? coverImageS3Key;
+      var selectedCover = _coverResult;
+      final shouldUploadCoverImage = selectedCover != null &&
+          _selectedPlatforms.any(
+            (platform) =>
+                platform == SocialPlatform.instagramReels ||
+                platform == SocialPlatform.facebookReels,
+          );
+      if (shouldUploadCoverImage) {
+        final cover = await _readCoverForUpload(
+          videoFile: localVideoFile,
+          fileName: fileName,
+        );
+        selectedCover = cover;
+        if (mounted) {
+          setState(() {
+            _successMessage = 'กำลังอัปโหลดหน้าปก...';
+          });
+        }
+        final coverFile = cover.imageFile;
+        final coverLease = cover.retainTemporaryFiles();
+        try {
+          final coverUpload = await createAndUploadFileWithRetry(
+            request: CreateUploadRequest(
+              fileName: 'postdee-cover.jpg',
+              contentType: 'image/jpeg',
+              sizeBytes: coverFile.lengthSync(),
+              width: 1080,
+              height: 1920,
+            ),
+            file: coverFile,
+            createUpload: createUpload,
+            uploadFile: uploadVideoFile,
+            onRetry: () {
+              if (mounted) {
+                setState(() {
+                  _successMessage = 'ลิงก์อัปโหลดหน้าปกหมดอายุ กำลังลองใหม่...';
+                });
+              }
+            },
+          );
+          coverImageS3Key = coverUpload.videoS3Key;
+        } finally {
+          await coverLease?.release();
+        }
+      }
       final createPost = widget.createPost ?? _apiClient.createPost;
       final post = await createPost(
         CreatePostRequest(
           caption: caption,
+          youtubeTitle: youtubeTitle,
           videoS3Key: upload.videoS3Key,
           platforms:
               _selectedPlatforms.map((platform) => platform.apiValue).toList(),
           scheduledAt: scheduledAt,
+          coverImageS3Key: coverImageS3Key,
+          coverFrameTimeMs: selectedCover?.coverFrameTimeMs,
         ),
       );
+
+      if (identical(_coverResult, selectedCover)) {
+        if (mounted) {
+          setState(() => _coverResult = null);
+        } else {
+          _coverResult = null;
+        }
+      }
+      _cleanupCoverAfterFrame(selectedCover);
 
       unawaited(_analytics.logPublishSucceeded(
         platformCount: post.platforms.length,
@@ -1080,6 +1494,15 @@ class _UploaderScreenState extends State<UploaderScreen> {
             '$watermarkTextจัดคิวโพสต์ ${post.platforms.length} แพลตฟอร์มแล้ว: ${post.id}';
       });
       return post;
+    } on CoverImageException catch (error) {
+      unawaited(_analytics.logPublishFailed(reason: 'cover'));
+      if (!mounted) return null;
+      setState(() {
+        _errorMessage = null;
+        _successMessage = null;
+      });
+      _setUploadStatus(error.message);
+      return null;
     } on WatermarkVideoException catch (error) {
       unawaited(_analytics.logPublishFailed(reason: 'watermark'));
       if (!mounted) {
@@ -1126,6 +1549,7 @@ class _UploaderScreenState extends State<UploaderScreen> {
       _setUploadStatus('เกิดข้อผิดพลาดระหว่างสร้างโพสต์');
       return null;
     } finally {
+      await watermarkedVideoForCleanup?.cleanupTemporaryFiles();
       if (mounted) {
         setState(() {
           _isSubmitting = false;
@@ -1210,9 +1634,51 @@ class _UploaderScreenState extends State<UploaderScreen> {
               const SizedBox(height: AppTheme.spaceSm),
               _VideoPreviewCard(
                 videoName: _selectedVideoName,
+                coverImagePath: _coverResult?.localImagePath,
+                coverImageBytes: _coverResult?.imageBytes,
                 isSubmitting: _isSubmitting,
                 onPickVideo: _pickVideoFile,
               ),
+              if (_selectedVideoName != null) ...[
+                const SizedBox(height: 10),
+                Center(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('uploader-cover-edit-button'),
+                    onPressed: _isSubmitting ? null : _openCoverEditor,
+                    icon: Icon(
+                      _coverResult == null
+                          ? Icons.add_photo_alternate_outlined
+                          : Icons.edit_outlined,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _coverResult == null ? 'แต่งหน้าปก' : 'แก้หน้าปก',
+                    ),
+                  ),
+                ),
+                if (_coverResult != null) ...[
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Text(
+                      'เลือกเฟรมที่ ${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}',
+                      key: const ValueKey('uploader-cover-time'),
+                      style: TextStyle(
+                        color: AppTheme.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: TextButton.icon(
+                      key: const ValueKey('uploader-cover-remove-button'),
+                      onPressed: _isSubmitting ? null : _removeCover,
+                      icon: const Icon(Icons.hide_image_outlined, size: 17),
+                      label: const Text('ลบหน้าปก · ใช้ปกอัตโนมัติ'),
+                    ),
+                  ),
+                ],
+              ],
               const SizedBox(height: AppTheme.spaceLg),
               _PlatformSelectorSection(
                 selectedPlatforms: _selectedPlatforms,
@@ -1285,6 +1751,10 @@ class _UploaderScreenState extends State<UploaderScreen> {
             isGenerating: _isGeneratingCaption,
             errorMessage: _aiCaptionErrorMessage,
             onGenerate: _generateAiCaption,
+            quota: _captionQuota,
+            isLoadingQuota: _isLoadingCaptionQuota,
+            quotaLoadFailed: _captionQuotaLoadFailed,
+            onRetryQuota: _loadCaptionQuota,
           ),
           const SizedBox(height: AppTheme.spaceMd),
           TextField(
@@ -1297,6 +1767,10 @@ class _UploaderScreenState extends State<UploaderScreen> {
               hintText: 'เขียนแคปชั่นของคุณ...',
             ),
           ),
+          if (_hasYoutube) ...[
+            const SizedBox(height: AppTheme.spaceMd),
+            _buildYoutubeTitleSection(context),
+          ],
           const SizedBox(height: AppTheme.spaceMd),
           Row(
             children: [
@@ -1362,6 +1836,135 @@ class _UploaderScreenState extends State<UploaderScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  bool get _hasYoutube =>
+      _selectedPlatforms.contains(SocialPlatform.youtubeShorts);
+
+  String get _effectiveYoutubeTitle =>
+      _youtubeTitleOverride ?? deriveYoutubeTitle(_captionController.text);
+
+  void _syncAutomaticYoutubeTitle() {
+    if (_youtubeTitleOverride == null && _isEditingYoutubeTitle) {
+      _youtubeTitleController.text = deriveYoutubeTitle(_captionController.text);
+    }
+  }
+
+  String? _postTextValidationError({
+    required String caption,
+    required String? youtubeTitle,
+  }) {
+    if (caption.isEmpty && (!_hasYoutube || _selectedPlatforms.length > 1)) {
+      return 'เพิ่มแคปชั่นก่อนโพสต์';
+    }
+    final captionError = validatePostCaption(
+      caption,
+      includesYoutube: _hasYoutube,
+      includesOtherPlatforms: _selectedPlatforms
+          .any((platform) => platform != SocialPlatform.youtubeShorts),
+    );
+    if (captionError != null) return captionError;
+    if (_hasYoutube) {
+      final title = youtubeTitle ?? deriveYoutubeTitle(caption);
+      final error = validateYoutubeTitle(title);
+      if (error != null) return error;
+      if (title.isEmpty) {
+        return 'เพิ่มแคปชันหรือชื่อคลิป YouTube ก่อนโพสต์';
+      }
+    }
+    return null;
+  }
+
+  Widget _buildYoutubeTitleSection(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _captionController,
+      builder: (context, _, __) {
+        final title = _effectiveYoutubeTitle;
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.glass,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'ชื่อที่จะปรากฏบน YouTube Shorts',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                title.isEmpty ? 'ชื่อจะเติมจากแคปชันอัตโนมัติ' : title,
+                key: const ValueKey('uploader-youtube-title-preview'),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'แคปชันฉบับเต็มและแฮชแท็กจะใช้เป็นคำอธิบาย',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (!_isEditingYoutubeTitle)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('uploader-youtube-title-edit'),
+                    onPressed: _isSubmitting
+                        ? null
+                        : () {
+                            _youtubeTitleController.text = title;
+                            setState(() => _isEditingYoutubeTitle = true);
+                          },
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('ปรับชื่อเฉพาะ YouTube'),
+                  ),
+                ),
+              if (_isEditingYoutubeTitle) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  key: const ValueKey('uploader-youtube-title-field'),
+                  controller: _youtubeTitleController,
+                  enabled: !_isSubmitting,
+                  minLines: 1,
+                  maxLines: 2,
+                  onChanged: (value) => setState(() {
+                    _youtubeTitleOverride =
+                        value.trim().isEmpty ? null : value.trim();
+                  }),
+                  decoration: InputDecoration(
+                    labelText: 'ชื่อคลิป YouTube',
+                    helperText: 'เว้นว่างเพื่อใช้ชื่อจากแคปชัน',
+                    counterText:
+                        '${_youtubeTitleController.text.trim().runes.length}/$youtubeTitleMaxLength',
+                    errorText: validateYoutubeTitle(_youtubeTitleController.text),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    key: const ValueKey('uploader-youtube-title-reset'),
+                    onPressed: _isSubmitting
+                        ? null
+                        : () {
+                            FocusScope.of(context).unfocus();
+                            setState(() {
+                              _youtubeTitleOverride = null;
+                              _isEditingYoutubeTitle = false;
+                              _youtubeTitleController.clear();
+                            });
+                          },
+                    child: const Text('ใช้ชื่อจากแคปชัน'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1513,30 +2116,6 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
     ],
   );
 
-  static const _manualEditorDetail = GrowthToolDetail(
-    id: 'manual_editor',
-    title: 'ตัดต่อเอง',
-    description: 'วางแผนไทม์ไลน์ ซับ สติกเกอร์ และฟิลเตอร์ไว้ล่วงหน้า',
-    status: 'เร็ว ๆ นี้',
-    icon: Icons.video_settings_outlined,
-    color: AppTheme.accentCyan,
-    prototypeOnly: true,
-    settings: [
-      GrowthToolSettingOption(
-        id: 'timeline_layers',
-        label: 'จัดไทม์ไลน์และเลเยอร์ข้อความ',
-      ),
-      GrowthToolSettingOption(
-        id: 'subtitle_sticker_filter',
-        label: 'ซับ สติกเกอร์ และฟิลเตอร์ในคลิปเดียว',
-      ),
-      GrowthToolSettingOption(
-        id: 'cta_card',
-        label: 'ปรับ CTA ก่อนส่งไปโพสต์',
-      ),
-    ],
-  );
-
   static const _watermarkDetail = GrowthToolDetail(
     id: 'auto_watermark',
     title: 'ใส่ลายน้ำอัตโนมัติ',
@@ -1601,12 +2180,6 @@ class _AdvancedUploadToolsSection extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: AppTheme.spaceSm),
-        const _WideUploadToolButton(
-          key: ValueKey('uploader-tool-manual-editor'),
-          detail: _manualEditorDetail,
-        ),
-        const SizedBox(height: AppTheme.spaceSm),
         DecoratedBox(
           decoration: BoxDecoration(
             color: AppTheme.glass.withValues(alpha: 0.72),
@@ -1743,91 +2316,18 @@ class _CompactUploadToolButton extends StatelessWidget {
   }
 }
 
-class _WideUploadToolButton extends StatelessWidget {
-  const _WideUploadToolButton({
-    required this.detail,
-    super.key,
-  });
-
-  final GrowthToolDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = detail.color;
-
-    return Semantics(
-      button: true,
-      label: detail.title,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-        onTap: () => showGrowthToolDetailSheet(context, detail),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppTheme.glass.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-            border:
-                Border.all(color: AppTheme.borderSoft.withValues(alpha: 0.84)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-                  ),
-                  child: SizedBox(
-                    width: 38,
-                    height: 38,
-                    child: Icon(
-                      detail.icon,
-                      color: AppTheme.inkFor(color),
-                      size: 20,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppTheme.spaceSm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        detail.title,
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        detail.description,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppTheme.textSecondary,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: AppTheme.textMuted, size: 18),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _VideoPreviewCard extends StatelessWidget {
   const _VideoPreviewCard({
     required this.videoName,
+    required this.coverImagePath,
+    required this.coverImageBytes,
     required this.isSubmitting,
     required this.onPickVideo,
   });
 
   final String? videoName;
+  final String? coverImagePath;
+  final Uint8List? coverImageBytes;
   final bool isSubmitting;
   final VoidCallback onPickVideo;
 
@@ -1904,6 +2404,10 @@ class _VideoPreviewCard extends StatelessWidget {
 
   // Selected clip: green gradient stand-in with the 9:16 check badge.
   Widget _buildSelected(BuildContext context) {
+    final hasCoverBytes = coverImageBytes?.isNotEmpty == true;
+    final hasCoverFile =
+        coverImagePath != null && File(coverImagePath!).existsSync();
+    final hasCoverImage = hasCoverBytes || hasCoverFile;
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -1924,12 +2428,28 @@ class _VideoPreviewCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Center(
-            child: Icon(
-              Icons.play_circle_rounded,
-              size: 46,
-              color: Colors.white.withValues(alpha: 0.92),
+          if (hasCoverImage)
+            Positioned.fill(
+              child: hasCoverBytes
+                  ? Image.memory(
+                      coverImageBytes!,
+                      key: const ValueKey('uploader-cover-preview-image'),
+                      fit: BoxFit.cover,
+                    )
+                  : Image.file(
+                      File(coverImagePath!),
+                      key: const ValueKey('uploader-cover-preview-image'),
+                      fit: BoxFit.cover,
+                    ),
             ),
+          Center(
+            child: !hasCoverImage
+                ? Icon(
+                    Icons.play_circle_rounded,
+                    size: 46,
+                    color: Colors.white.withValues(alpha: 0.92),
+                  )
+                : const SizedBox.shrink(),
           ),
           Positioned(
             top: 10,
@@ -2057,14 +2577,19 @@ class _PlatformSelectorSection extends StatelessWidget {
     SocialPlatform.tiktok: 'โพสต์คลิปสั้นไป TikTok อัตโนมัติ',
     SocialPlatform.youtubeShorts: 'อัปขึ้น YouTube Shorts จากคลิปเดียว',
     SocialPlatform.instagramReels: 'แชร์ Reels ไป Instagram',
-    SocialPlatform.facebookReels: 'โพสต์วิดีโอลงเพจ Facebook',
+    SocialPlatform.facebookReels: 'โพสต์ Reels ลงเพจ Facebook',
     SocialPlatform.shopeeVideo: 'โพสต์วิดีโอขึ้น Shopee Video',
     SocialPlatform.lazadaVideo: 'โพสต์วิดีโอขึ้น Lazada Video',
   };
 
   @override
   Widget build(BuildContext context) {
-    final hasConnectedPlatforms = connectedPlatforms.isNotEmpty;
+    final visiblePlatforms = isLoadingConnections
+        ? const <SocialPlatform>[]
+        : connectablePlatforms
+            .where(connectedPlatforms.contains)
+            .toList(growable: false);
+    final hasConnectedPlatforms = visiblePlatforms.isNotEmpty;
     final statusColor = hasConnectedPlatforms
         ? AppTheme.accentCyanInk
         : const Color(0xFFB5740B);
@@ -2085,7 +2610,9 @@ class _PlatformSelectorSection extends StatelessWidget {
               ),
             ),
             Text(
-              'เลือกแล้ว ${selectedPlatforms.length} ช่องทาง',
+              isLoadingConnections
+                  ? 'กำลังตรวจสอบ'
+                  : 'เลือกแล้ว ${selectedPlatforms.length} ช่องทาง',
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
@@ -2097,15 +2624,19 @@ class _PlatformSelectorSection extends StatelessWidget {
         const SizedBox(height: 10),
         Semantics(
           button: true,
+          enabled: !isLoadingConnections,
           label: isLoadingConnections
               ? 'กำลังตรวจสอบช่องทาง'
-              : connectedPlatforms.isEmpty
-                  ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
-                  : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง',
+              : connectionsErrorMessage ??
+                  (visiblePlatforms.isEmpty
+                      ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
+                      : 'เชื่อมต่อแล้ว ${visiblePlatforms.length} ช่องทาง'),
           child: GestureDetector(
-            onTap: connectionsErrorMessage != null
-                ? onRetryConnections
-                : onOpenConnections,
+            onTap: isLoadingConnections
+                ? null
+                : connectionsErrorMessage != null
+                    ? onRetryConnections
+                    : onOpenConnections,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
               decoration: BoxDecoration(
@@ -2120,7 +2651,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                   Icon(
                     isLoadingConnections
                         ? Icons.sync_rounded
-                        : connectedPlatforms.isEmpty
+                        : visiblePlatforms.isEmpty
                             ? Icons.link_off_rounded
                             : Icons.check_circle_outline_rounded,
                     color: statusColor,
@@ -2135,9 +2666,9 @@ class _PlatformSelectorSection extends StatelessWidget {
                           isLoadingConnections
                               ? 'กำลังตรวจสอบช่องทาง...'
                               : connectionsErrorMessage ??
-                                  (connectedPlatforms.isEmpty
+                                  (visiblePlatforms.isEmpty
                                       ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
-                                      : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง'),
+                                      : 'เชื่อมต่อแล้ว ${visiblePlatforms.length} ช่องทาง'),
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
@@ -2150,9 +2681,13 @@ class _PlatformSelectorSection extends StatelessWidget {
                         ),
                         const SizedBox(height: 1),
                         Text(
-                          connectedPlatforms.isEmpty
-                              ? 'เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์'
-                              : 'เลือกเฉพาะช่องทางที่ต้องการโพสต์รอบนี้',
+                          isLoadingConnections
+                              ? 'รอสักครู่ ระบบกำลังโหลดสถานะล่าสุด'
+                              : connectionsErrorMessage != null
+                                  ? 'ลองใหม่ หรือไปจัดการช่องทางที่เชื่อมต่อ'
+                                  : visiblePlatforms.isEmpty
+                                      ? 'เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์'
+                                      : 'เลือกเฉพาะช่องทางที่ต้องการโพสต์รอบนี้',
                           style: TextStyle(
                             fontSize: 11,
                             color: hasConnectedPlatforms
@@ -2165,67 +2700,89 @@ class _PlatformSelectorSection extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFFB5740B),
-                    size: 20,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!isLoadingConnections)
+                        Text(
+                          connectionsErrorMessage != null
+                              ? 'ลองใหม่'
+                              : hasConnectedPlatforms
+                                  ? 'จัดการ'
+                                  : 'ไปเชื่อมช่องทาง',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: statusColor,
+                          ),
+                        ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.chevron_right,
+                        color: statusColor,
+                        size: 20,
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
         ),
-        const SizedBox(height: 10),
-        Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: AppTheme.glass,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.border),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF122018).withValues(alpha: 0.04),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
+        if (connectionsErrorMessage != null)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              key: const ValueKey('uploader-open-connections'),
+              onPressed: onOpenConnections,
+              icon: const Icon(Icons.link_rounded, size: 17),
+              label: const Text('ไปหน้าการเชื่อมต่อ'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.accentCyanInk,
+                textStyle: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ],
+            ),
           ),
-          child: Column(
-            children: [
-              for (var index = 0;
-                  index < SocialPlatform.values.length;
-                  index += 1) ...[
-                if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
-                _PlatformRow(
-                  platform: SocialPlatform.values[index],
-                  subLabel: connectedPlatforms.contains(
-                    SocialPlatform.values[index],
-                  )
-                      ? _subLabels[SocialPlatform.values[index]] ?? ''
-                      : connectablePlatforms.contains(
-                          SocialPlatform.values[index],
-                        )
-                          ? 'ยังไม่ได้เชื่อมต่อ'
-                          : 'ยังไม่รองรับการเชื่อมต่อ',
-                  isConnected: connectedPlatforms.contains(
-                    SocialPlatform.values[index],
-                  ),
-                  isConnectable: connectablePlatforms.contains(
-                    SocialPlatform.values[index],
-                  ),
-                  isSelected: selectedPlatforms.contains(
-                    SocialPlatform.values[index],
-                  ),
-                  onConnect: onOpenConnections,
-                  onChanged: (next) => onPlatformChanged(
-                    SocialPlatform.values[index],
-                    next,
-                  ),
+        const SizedBox(height: 10),
+        if (visiblePlatforms.isNotEmpty)
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: AppTheme.glass,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.border),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF122018).withValues(alpha: 0.04),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
                 ),
               ],
-            ],
+            ),
+            child: Column(
+              children: [
+                for (var index = 0;
+                    index < visiblePlatforms.length;
+                    index += 1) ...[
+                  if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
+                  _PlatformRow(
+                    platform: visiblePlatforms[index],
+                    subLabel: _subLabels[visiblePlatforms[index]] ?? '',
+                    isSelected: selectedPlatforms.contains(
+                      visiblePlatforms[index],
+                    ),
+                    onChanged: (next) => onPlatformChanged(
+                      visiblePlatforms[index],
+                      next,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -2235,19 +2792,13 @@ class _PlatformRow extends StatelessWidget {
   const _PlatformRow({
     required this.platform,
     required this.subLabel,
-    required this.isConnected,
-    required this.isConnectable,
     required this.isSelected,
-    required this.onConnect,
     required this.onChanged,
   });
 
   final SocialPlatform platform;
   final String subLabel;
-  final bool isConnected;
-  final bool isConnectable;
   final bool isSelected;
-  final VoidCallback onConnect;
   final ValueChanged<bool> onChanged;
 
   @override
@@ -2255,19 +2806,16 @@ class _PlatformRow extends StatelessWidget {
     return Semantics(
       label: platform.label,
       button: true,
-      enabled: isConnected,
+      enabled: true,
       selected: isSelected,
       child: InkWell(
         key: ValueKey('uploader-platform-${platform.apiValue}'),
-        onTap: isConnected ? () => onChanged(!isSelected) : null,
+        onTap: () => onChanged(!isSelected),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Opacity(
-                opacity: isConnectable ? 1 : 0.5,
-                child: SocialPlatformLogo(platform: platform, size: 36),
-              ),
+              SocialPlatformLogo(platform: platform, size: 36),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -2278,9 +2826,7 @@ class _PlatformRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: isConnectable
-                            ? AppTheme.textPrimary
-                            : AppTheme.textMuted,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 1),
@@ -2297,45 +2843,9 @@ class _PlatformRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              if (!isConnectable)
-                Container(
-                  key: ValueKey('uploader-soon-${platform.apiValue}'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.glassDeep,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'เร็ว ๆ นี้',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textMuted,
-                    ),
-                  ),
-                )
-              else if (!isConnected)
-                TextButton(
-                  key: ValueKey('uploader-connect-${platform.apiValue}'),
-                  onPressed: onConnect,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.accentCyanInk,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(44, 44),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    'เชื่อมต่อ',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                )
-              else
-                ExcludeSemantics(
-                  child: _PrototypeSwitch(isOn: isSelected),
-                ),
+              ExcludeSemantics(
+                child: _PrototypeSwitch(isOn: isSelected),
+              ),
             ],
           ),
         ),
@@ -2390,6 +2900,10 @@ class _AiCaptionPanel extends StatelessWidget {
     required this.selectedVideoName,
     required this.isGenerating,
     required this.onGenerate,
+    required this.quota,
+    required this.isLoadingQuota,
+    required this.quotaLoadFailed,
+    required this.onRetryQuota,
     this.errorMessage,
   });
 
@@ -2398,10 +2912,16 @@ class _AiCaptionPanel extends StatelessWidget {
   final bool isGenerating;
   final String? errorMessage;
   final VoidCallback onGenerate;
+  final CaptionQuotaResult? quota;
+  final bool isLoadingQuota;
+  final bool quotaLoadFailed;
+  final VoidCallback onRetryQuota;
 
   @override
   Widget build(BuildContext context) {
     final clipName = selectedVideoName?.trim();
+    final quotaExhausted =
+        quota?.isPaid == true && quota!.quota.remainingThisMonth == 0;
 
     return DecoratedBox(
       key: const ValueKey('uploader-ai-caption-panel'),
@@ -2439,13 +2959,6 @@ class _AiCaptionPanel extends StatelessWidget {
                         ),
                   ),
                 ),
-                Text(
-                  'Starter/Pro',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.accentCyanInk,
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
               ],
             ),
             const SizedBox(height: AppTheme.spaceSm),
@@ -2479,11 +2992,47 @@ class _AiCaptionPanel extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
+            if (isLoadingQuota) ...[
+              Text(
+                'กำลังโหลดโควตา...',
+                key: const ValueKey('uploader-ai-quota-loading'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSecondary,
+                    ),
+              ),
+              const SizedBox(height: AppTheme.spaceSm),
+            ] else if (quotaLoadFailed) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'โหลดโควตาไม่สำเร็จ',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppTheme.textSecondary,
+                          ),
+                    ),
+                  ),
+                  IconButton(
+                    key: const ValueKey('uploader-ai-quota-retry'),
+                    tooltip: 'โหลดโควตาอีกครั้ง',
+                    onPressed: isGenerating ? null : onRetryQuota,
+                    icon: const Icon(Icons.refresh, size: 18),
+                  ),
+                ],
+              ),
+            ] else if (quota?.isPaid == true) ...[
+              CaptionQuotaStrip(plan: quota!.plan, quota: quota!.quota),
+              const SizedBox(height: AppTheme.spaceSm),
+            ],
             PostDeeGradientButton(
               key: const ValueKey('uploader-ai-generate-button'),
-              label: isGenerating ? 'AI กำลังฟังคลิป...' : 'ให้ AI ช่วยเขียน',
+              label: isGenerating
+                  ? 'AI กำลังฟังคลิป...'
+                  : quotaExhausted
+                      ? 'โควตา AI เดือนนี้หมดแล้ว'
+                      : 'ให้ AI ช่วยเขียน',
               icon: Icons.auto_awesome,
-              onPressed: isGenerating ? null : onGenerate,
+              onPressed: isGenerating || quotaExhausted ? null : onGenerate,
             ),
           ],
         ),
@@ -2821,7 +3370,7 @@ class _SchedulePanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'ตั้งเวลาได้ในแพ็กเกจ Starter ขึ้นไป',
+                    'ตั้งเวลาได้ล่วงหน้าสูงสุด 30 วันในแพ็กเกจ Starter ขึ้นไป',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(

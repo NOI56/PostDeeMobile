@@ -1,7 +1,8 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import express from 'express';
+import { describe, expect, it, vi } from 'vitest';
 
-import { createApp } from './app.js';
+import { createAccountAwareAuthMiddleware, createApp } from './app.js';
 import { readServerConfig } from './config/env.js';
 
 describe('PostDee API scaffold', () => {
@@ -44,5 +45,43 @@ describe('PostDee API scaffold', () => {
     });
 
     expect(appWithGroq).toBeDefined();
+  });
+
+  it('ensures the authenticated user before Prisma-backed mutations', async () => {
+    const appWithRelationalMutation = express();
+    const ensure = vi.fn(async (authUser: { id: string }) => ({
+      id: authUser.id,
+      firebaseUid: `mock:${authUser.id}`,
+      email: `${authUser.id}@postdee.local`,
+      createdAt: '2026-08-13T00:00:00.000Z',
+      updatedAt: '2026-08-13T00:00:00.000Z'
+    }));
+    const authMiddleware: express.RequestHandler = (_request, response, next) => {
+      response.locals.authUser = {
+        id: 'seller-relational-mutation',
+        provider: 'mock'
+      };
+      next();
+    };
+
+    appWithRelationalMutation.post(
+      '/relational-mutation',
+      createAccountAwareAuthMiddleware({
+        authMiddleware,
+        userStore: {
+          ensure,
+          exists: vi.fn(async () => true)
+        }
+      }),
+      (_request, response) => response.json({ status: 'ok' })
+    );
+
+    await request(appWithRelationalMutation)
+      .post('/relational-mutation')
+      .expect(200, { status: 'ok' });
+    expect(ensure).toHaveBeenCalledWith({
+      id: 'seller-relational-mutation',
+      provider: 'mock'
+    });
   });
 });

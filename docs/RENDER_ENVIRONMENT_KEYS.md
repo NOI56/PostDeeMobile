@@ -102,7 +102,7 @@ intentionally want a different value.
 | `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | AI edit-plan model. |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | PostPeer API host. |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Five-minute signed upload URL lifetime; mobile retries once only when the URL explicitly expires. |
-| `UPLOAD_PROTOCOL_MODE` | `legacy` | Use `dual` during the mobile rollout; use `multipart` only after old app versions are blocked. |
+| `UPLOAD_PROTOCOL_MODE` | `legacy` | Use `dual` during the mobile rollout; use `multipart` only after old app versions are blocked. Both managed modes require `DATABASE_URL`. |
 | `MULTIPART_UPLOAD_PART_SIZE_BYTES` | `16777216` | Uniform 16 MiB R2 parts; the final part may be smaller. |
 | `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS` | `3600` | One-hour server-managed upload session lifetime. |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | 500 MiB upload metadata limit. |
@@ -138,6 +138,7 @@ These values either fail startup in production or are intentionally not in
 6. Confirm forbidden `POSTPEER_*_ACCOUNT_ID` values are not present.
 7. Deploy and open logs. These startup errors tell you exactly what is missing:
    - `DATABASE_URL is required when any Prisma-backed store is enabled`
+   - `ANALYTICS_STORE=prisma requires POST_STORE=prisma`
    - `REVENUECAT_WEBHOOK_AUTH_TOKEN is required when BILLING_PROVIDER=revenuecat in production`
    - `AUTH_PROVIDER=mock is not allowed when NODE_ENV=production`
    - `BILLING_PROVIDER=mock is not allowed when NODE_ENV=production`

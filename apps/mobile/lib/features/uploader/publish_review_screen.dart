@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
+import 'cover_editor_screen.dart';
+import 'cover_image_processor.dart';
+import 'youtube_title.dart';
 
 /// Pre-publish review (design screen #7): the user checks the clip, caption,
 /// channels, and schedule/watermark summary, then confirms. Pops `true` on
@@ -15,6 +20,8 @@ class PublishReviewScreen extends StatelessWidget {
     required this.platforms,
     required this.scheduledAt,
     required this.watermarkEnabled,
+    this.coverResult,
+    this.youtubeTitle,
   });
 
   final String videoName;
@@ -22,6 +29,8 @@ class PublishReviewScreen extends StatelessWidget {
   final List<SocialPlatform> platforms;
   final DateTime? scheduledAt;
   final bool watermarkEnabled;
+  final CoverEditorResult? coverResult;
+  final String? youtubeTitle;
 
   bool get _isScheduled => scheduledAt != null;
 
@@ -39,6 +48,11 @@ class PublishReviewScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmedCaption = caption.trim();
+    final coverBytes = coverResult?.imageBytes;
+    final hasCoverBytes = coverBytes?.isNotEmpty == true;
+    final coverFile =
+        coverResult == null ? null : File(coverResult!.localImagePath);
+    final hasCover = hasCoverBytes || coverFile?.existsSync() == true;
 
     return Scaffold(
       appBar: AppBar(
@@ -70,13 +84,32 @@ class PublishReviewScreen extends StatelessWidget {
                     ),
                     child: Stack(
                       children: [
-                        const Center(
-                          child: Icon(
-                            Icons.play_arrow_rounded,
-                            size: 30,
-                            color: Color(0xFF8FA197),
+                        if (hasCover)
+                          Positioned.fill(
+                            child: hasCoverBytes
+                                ? Image.memory(
+                                    coverBytes!,
+                                    key: const ValueKey(
+                                      'publish-review-cover-image',
+                                    ),
+                                    fit: BoxFit.cover,
+                                  )
+                                : Image.file(
+                                    coverFile!,
+                                    key: const ValueKey(
+                                      'publish-review-cover-image',
+                                    ),
+                                    fit: BoxFit.cover,
+                                  ),
+                          )
+                        else
+                          const Center(
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              size: 30,
+                              color: Color(0xFF8FA197),
+                            ),
                           ),
-                        ),
                         Positioned(
                           bottom: 6,
                           right: 6,
@@ -143,6 +176,68 @@ class PublishReviewScreen extends StatelessWidget {
                   ),
                 ],
               ),
+              if (platforms.contains(SocialPlatform.youtubeShorts)) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.glass,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('ชื่อคลิป YouTube Shorts'),
+                      const SizedBox(height: 6),
+                      Text(
+                        (youtubeTitle ?? '').trim().isNotEmpty
+                            ? youtubeTitle!.trim()
+                            : deriveYoutubeTitle(caption),
+                        key: const ValueKey('publish-review-youtube-title'),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        trimmedCaption.isEmpty
+                            ? 'ไม่มีคำอธิบายคลิป'
+                            : 'คำอธิบายใช้แคปชันฉบับเต็มด้านบน',
+                        style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (coverResult != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.photo_outlined,
+                      size: 18,
+                      color: AppTheme.accentCyanInk,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'หน้าปกเลือกจากวินาทีที่ '
+                        '${(coverResult!.coverFrameTimeMs / 1000).toStringAsFixed(1)}',
+                        key: const ValueKey('publish-review-cover-time'),
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                CoverPlatformCapabilityNotice(
+                  platforms: platforms,
+                  compact: true,
+                ),
+              ],
               const SizedBox(height: 18),
               Text(
                 'โพสต์ไปยัง ${platforms.length} ช่องทาง',
@@ -245,8 +340,8 @@ class PublishReviewScreen extends StatelessWidget {
               child: FilledButton.icon(
                 key: const ValueKey('publish-review-confirm'),
                 onPressed: () => Navigator.of(context).pop(true),
-                icon: Icon(_isScheduled ? Icons.schedule : Icons.bolt,
-                    size: 21),
+                icon:
+                    Icon(_isScheduled ? Icons.schedule : Icons.bolt, size: 21),
                 label: Text(
                   _isScheduled ? 'ยืนยันตั้งเวลาโพสต์' : 'ยืนยันโพสต์เลย',
                 ),

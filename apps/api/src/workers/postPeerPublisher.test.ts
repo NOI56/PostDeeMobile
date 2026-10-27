@@ -22,7 +22,8 @@ const createTestVideoStorage = (): VideoStorage => ({
     downloadMethod: 'GET',
     downloadExpiresAt: '2026-06-24T12:00:00.000Z'
   }),
-  deleteVideo: async () => undefined
+  deleteVideo: async () => undefined,
+  deleteAllVideosForOwner: async () => undefined
 });
 
 afterEach(() => {
@@ -30,6 +31,55 @@ afterEach(() => {
 });
 
 describe('createPostPeerPublisher', () => {
+  it.each([
+    { caption: 'คำอธิบายเต็ม\n#สินค้า', youtubeTitle: '  kkkkk  ', title: 'kkkkk' },
+    { caption: '', youtubeTitle: 'ชื่อคลิป', title: 'ชื่อคลิป' },
+    { caption: '\n  ประโยคแรก! รายละเอียดเพิ่ม\n#สินค้า', title: 'ประโยคแรก!' },
+    { caption: '<สินค้า> ใหม่\nรายละเอียดอื่น', title: 'สินค้า ใหม่' },
+    { caption: '😀'.repeat(101), title: '😀'.repeat(100) },
+    { caption: ' \n<> ', title: 'PostDee video' }
+  ])('keeps the full description and sends the correct YouTube title: %j', async ({
+    caption, youtubeTitle, title
+  }) => {
+    const bodies: Record<string, unknown>[] = [];
+    const publisher = createPostPeerPublisher({
+      apiKey: 'test-key', baseUrl: 'https://api.postpeer.test',
+      accountIds: { YOUTUBE_SHORTS: 'youtube-account' },
+      fetchImpl: async (_url, init) => {
+        bodies.push(JSON.parse(String(init.body)));
+        return { ok: true, status: 200, json: async () => ({ externalPostId: 'youtube-video' }) };
+      }
+    });
+
+    await publisher.publish({ postId: 'post-1', caption, youtubeTitle, platform: 'YOUTUBE_SHORTS' });
+
+    expect(bodies[0]).toMatchObject({
+      content: caption,
+      platforms: [{ platform: 'youtube', platformSpecificData: { title } }]
+    });
+  });
+
+  it('does not use a YouTube title for another platform', async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const publisher = createPostPeerPublisher({
+      apiKey: 'test-key', baseUrl: 'https://api.postpeer.test',
+      accountIds: { INSTAGRAM_REELS: 'instagram-account' },
+      fetchImpl: async (_url, init) => {
+        requestBody = JSON.parse(String(init.body));
+        return { ok: true, status: 200, json: async () => ({ externalPostId: 'instagram-video' }) };
+      }
+    });
+    await publisher.publish({
+      postId: 'post-1', caption: 'Full description', youtubeTitle: 'Short title',
+      platform: 'INSTAGRAM_REELS'
+    });
+
+    expect(requestBody).toEqual({
+      content: 'Full description', platforms: [{ platform: 'instagram', accountId: 'instagram-account' }],
+      publishNow: true
+    });
+  });
+
   it('resolves a PostPeer account id from the post owner before publishing', async () => {
     const calls: { body: unknown }[] = [];
     const publisher = createPostPeerPublisher({
@@ -319,6 +369,49 @@ describe('createPostPeerPublisher', () => {
     ]);
   });
 
+  // Hangs until the request's abort signal fires, like a stalled connection.
+  const hangUntilAborted = (_url: string, init: RequestInit) =>
+    new Promise<never>((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+
+  it('treats a hung PostPeer create request as an unknown outcome after the timeout', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      requestTimeoutMs: 20,
+      fetchImpl: hangUntilAborted
+    });
+
+    await expect(
+      publisher.publish({ userId: 'seller-1', postId: 'post-1', platform: 'TIKTOK' })
+    ).rejects.toBeInstanceOf(PostPeerPublishOutcomeUnknownError);
+  });
+
+  it('stops waiting on a hung PostPeer status check after the timeout', async () => {
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { TIKTOK: 'postpeer-tiktok' },
+      pollIntervalMs: 0,
+      maxPollAttempts: 2,
+      requestTimeoutMs: 20,
+      fetchImpl: async (url, init) =>
+        url.endsWith('/v1/posts')
+          ? {
+              ok: true,
+              status: 202,
+              json: async () => ({ success: true, status: 'publishing', postId: 'pp-1' })
+            }
+          : hangUntilAborted(url, init)
+    });
+
+    await expect(
+      publisher.publish({ userId: 'seller-1', postId: 'post-1', platform: 'TIKTOK' })
+    ).rejects.toThrow(/outcome is still unknown after 2 status checks/i);
+  });
+
   it('fails closed when an accepted PostPeer post never reaches a final status', async () => {
     const publisher = createPostPeerPublisher({
       apiKey: 'pp-key',
@@ -422,7 +515,7 @@ describe('createPostPeerPublisher', () => {
           platform: 'youtube',
           accountId: 'postpeer-youtube',
           platformSpecificData: {
-            title: 'รีวิวสินค้าใหม่ พร้อมโปรโมชันวันนี้',
+            title: 'รีวิวสินค้าใหม่',
             visibility: 'private'
           }
         }
@@ -586,7 +679,119 @@ describe('createPostPeerPublisher', () => {
     });
   });
 
-  it('uses a signed Facebook video thumbnail URL for a custom cover image', async () => {
+  it('always publishes Facebook as a Reel using the connected post owner account', async () => {
+    const calls: { body: Record<string, unknown> }[] = [];
+    const resolveAccountId = vi.fn(async () => 'seller-facebook-page');
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { FACEBOOK_REELS: 'operator-facebook-page' },
+      resolveAccountId,
+      resolveVideoUrl: async (key) => `https://cdn.test/${key}`,
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init.body)) });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: 'published',
+            platforms: [{
+              platform: 'facebook',
+              success: true,
+              platformPostUrl: 'https://www.facebook.com/reel/123'
+            }]
+          })
+        };
+      }
+    });
+
+    const result = await publisher.publish({
+      userId: 'seller-1',
+      postId: 'post-1',
+      caption: 'รีวิวสินค้าใหม่',
+      videoS3Key: 'uploads/videos/post-1.mp4',
+      platform: 'FACEBOOK_REELS'
+    });
+
+    expect(resolveAccountId).toHaveBeenCalledWith({
+      userId: 'seller-1', platform: 'FACEBOOK_REELS'
+    });
+    expect(calls).toEqual([{
+      body: {
+        content: 'รีวิวสินค้าใหม่',
+        platforms: [{
+          platform: 'facebook',
+          accountId: 'seller-facebook-page',
+          platformSpecificData: { contentType: 'reel' }
+        }],
+        mediaItems: [{ type: 'video', url: 'https://cdn.test/uploads/videos/post-1.mp4' }],
+        publishNow: true
+      }
+    }]);
+    expect(result).toMatchObject({
+      platform: 'FACEBOOK_REELS',
+      status: 'PUBLISHED',
+      externalPostId: 'https://www.facebook.com/reel/123'
+    });
+  });
+
+  it('does not fall back to a Facebook feed video when Reel publishing fails', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'failed',
+        platforms: [{ platform: 'facebook', success: false, error: 'Reel rejected' }]
+      })
+    }));
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { FACEBOOK_REELS: 'postpeer-facebook' },
+      fetchImpl
+    });
+
+    await expect(publisher.publish({
+      postId: 'post-1',
+      videoS3Key: 'https://cdn.test/video.mp4',
+      platform: 'FACEBOOK_REELS'
+    })).rejects.toThrow(/Reel rejected/);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { videoS3Key: undefined, resolvedUrl: undefined },
+    { videoS3Key: '', resolvedUrl: undefined },
+    { videoS3Key: '  ', resolvedUrl: undefined },
+    { videoS3Key: 'uploads/video.mp4', resolvedUrl: '' },
+    { videoS3Key: 'uploads/video.mp4', resolvedUrl: '  ' }
+  ])('rejects a Facebook Reel without a video before contacting PostPeer: %j', async ({
+    videoS3Key, resolvedUrl
+  }) => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ externalPostId: 'facebook-post-123' })
+    }));
+    const publisher = createPostPeerPublisher({
+      apiKey: 'pp-key',
+      baseUrl: 'https://api.postpeer.test',
+      accountIds: { FACEBOOK_REELS: 'postpeer-facebook' },
+      ...(resolvedUrl !== undefined ? { resolveVideoUrl: async () => resolvedUrl } : {}),
+      fetchImpl
+    });
+
+    await expect(publisher.publish({
+      postId: 'post-1',
+      videoS3Key,
+      platform: 'FACEBOOK_REELS'
+    })).rejects.toThrow(/video is required to publish Facebook Reels/);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('keeps Facebook Reel mode when sending a best-effort custom thumbnail', async () => {
     const calls: { body: Record<string, unknown> }[] = [];
     const resolveVideoUrl = vi.fn(async (key: string) => `https://cdn.test/${key}`);
     const publisher = createPostPeerPublisher({
@@ -599,7 +804,7 @@ describe('createPostPeerPublisher', () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ externalPostId: 'facebook-video-123' })
+          json: async () => ({ externalPostId: 'facebook-reel-123' })
         };
       }
     });
@@ -618,6 +823,7 @@ describe('createPostPeerPublisher', () => {
       platforms: [
         {
           platformSpecificData: {
+            contentType: 'reel',
             videoThumbnailUrl: 'https://cdn.test/uploads/covers/post-1.jpg'
           }
         }

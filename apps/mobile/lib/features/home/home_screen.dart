@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
@@ -10,6 +12,7 @@ import '../billing/paywall_screen.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
 import '../notifications/push_notification.dart';
 import '../platforms/social_platform.dart';
+import '../platforms/social_platform_logo.dart';
 import '../posts/post_detail_screen.dart';
 import '../shared/growth_tool_detail_sheet.dart';
 import '../shared/postdee_skeleton.dart';
@@ -17,6 +20,9 @@ import '../shared/postdee_skeleton.dart';
 typedef HomeAnalyticsLoader = Future<AnalyticsSummaryResult> Function();
 typedef HomeSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef HomeRecentPostsLoader = Future<List<PostSummaryResult>> Function();
+typedef HomeVideoThumbnailControllerFactory = VideoPlayerController Function(
+  Uri videoUrl,
+);
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -25,6 +31,7 @@ class HomeScreen extends StatefulWidget {
     this.loadAnalytics,
     this.loadSubscription,
     this.loadRecentPosts,
+    this.createVideoThumbnailController,
     this.onCreatePost,
     this.onViewAllPosts,
     this.onOpenNotifications,
@@ -40,6 +47,7 @@ class HomeScreen extends StatefulWidget {
   final HomeAnalyticsLoader? loadAnalytics;
   final HomeSubscriptionLoader? loadSubscription;
   final HomeRecentPostsLoader? loadRecentPosts;
+  final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
   final VoidCallback? onCreatePost;
   final VoidCallback? onViewAllPosts;
   final VoidCallback? onOpenNotifications;
@@ -54,7 +62,9 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  static const _pendingPostsRefreshInterval = Duration(seconds: 30);
+
   final _apiClient = PostDeeApiClient();
   AnalyticsSummaryResult? _analytics;
   SubscriptionStatusResult? _subscription;
@@ -64,6 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingPosts = true;
   bool _postsLoadInProgress = false;
   bool _postsReloadPending = false;
+  bool _appIsResumed = true;
+  Timer? _pendingPostsRefreshTimer;
   String? _analyticsErrorMessage;
   String? _subscriptionErrorMessage;
   var _subscriptionLoadGeneration = 0;
@@ -71,6 +83,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _appIsResumed =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     _loadSubscription();
     _loadAnalytics();
     if (widget.isActive) {
@@ -84,18 +100,45 @@ class _HomeScreenState extends State<HomeScreen> {
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (!oldWidget.isActive && widget.isActive) {
-      _loadRecentPosts();
+    if (!widget.isActive) {
+      _pendingPostsRefreshTimer?.cancel();
+      _pendingPostsRefreshTimer = null;
+      _postsReloadPending = false;
+    } else if (!oldWidget.isActive && _appIsResumed) {
+      unawaited(_loadRecentPosts(silent: _recentPosts.isNotEmpty));
     }
   }
 
-  Future<void> _loadRecentPosts() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    setState(() => _appIsResumed = state == AppLifecycleState.resumed);
+    if (!_appIsResumed) {
+      _pendingPostsRefreshTimer?.cancel();
+      _pendingPostsRefreshTimer = null;
+      _postsReloadPending = false;
+    } else if (widget.isActive) {
+      unawaited(_loadRecentPosts(silent: _recentPosts.isNotEmpty));
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pendingPostsRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadRecentPosts({bool silent = false}) async {
     if (_postsLoadInProgress) {
-      _postsReloadPending = widget.isActive;
+      _postsReloadPending = widget.isActive && _appIsResumed;
       return;
     }
     _postsLoadInProgress = true;
-    setState(() => _isLoadingPosts = true);
+    _pendingPostsRefreshTimer?.cancel();
+    _pendingPostsRefreshTimer = null;
+    if (!silent) {
+      setState(() => _isLoadingPosts = true);
+    }
 
     try {
       final loader = widget.loadRecentPosts ?? _apiClient.listRecentPosts;
@@ -107,24 +150,48 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() => _recentPosts = posts);
     } catch (_) {
-      // Non-fatal: the latest-post card falls back to the empty state.
+      // Keep the last known status during a transient background refresh error.
       if (!mounted) {
         return;
       }
 
-      setState(() => _recentPosts = const []);
+      if (!silent) {
+        setState(() => _recentPosts = const []);
+      }
     } finally {
       _postsLoadInProgress = false;
       if (mounted) {
         setState(() => _isLoadingPosts = false);
+        _syncPendingPostsRefresh();
       }
     }
 
-    final shouldReload = _postsReloadPending && mounted && widget.isActive;
+    final shouldReload =
+        _postsReloadPending && mounted && widget.isActive && _appIsResumed;
     _postsReloadPending = false;
     if (shouldReload) {
-      await _loadRecentPosts();
+      await _loadRecentPosts(silent: _recentPosts.isNotEmpty);
     }
+  }
+
+  void _syncPendingPostsRefresh() {
+    _pendingPostsRefreshTimer?.cancel();
+    _pendingPostsRefreshTimer = null;
+
+    final hasPendingPost = _recentPosts.any((post) {
+      final status = post.status.toUpperCase();
+      return status == 'QUEUED' || status == 'PUBLISHING';
+    });
+    if (!mounted || !_appIsResumed || !widget.isActive || !hasPendingPost) {
+      return;
+    }
+
+    _pendingPostsRefreshTimer = Timer(_pendingPostsRefreshInterval, () {
+      _pendingPostsRefreshTimer = null;
+      if (mounted && _appIsResumed && widget.isActive) {
+        unawaited(_loadRecentPosts(silent: true));
+      }
+    });
   }
 
   Future<void> _loadSubscription() async {
@@ -346,8 +413,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _LatestPostList(
           posts: _recentPosts,
           isLoading: _isLoadingPosts,
+          isActive: widget.isActive && _appIsResumed,
           onCreatePost: widget.onCreatePost,
           onOpenPost: _openPostDetail,
+          createVideoThumbnailController: widget.createVideoThumbnailController,
         ),
         const SizedBox(height: 18),
         // Not const: a kept-alive const subtree is skipped on rebuild and
@@ -988,14 +1057,18 @@ class _LatestPostList extends StatelessWidget {
   const _LatestPostList({
     required this.posts,
     required this.isLoading,
+    required this.isActive,
     required this.onCreatePost,
     required this.onOpenPost,
+    required this.createVideoThumbnailController,
   });
 
   final List<PostSummaryResult> posts;
   final bool isLoading;
+  final bool isActive;
   final VoidCallback? onCreatePost;
   final ValueChanged<PostSummaryResult> onOpenPost;
+  final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
 
   @override
   Widget build(BuildContext context) {
@@ -1018,7 +1091,9 @@ class _LatestPostList extends StatelessWidget {
         for (var index = 0; index < posts.length; index += 1) ...[
           _LatestPostRow(
             post: posts[index],
+            isActive: isActive,
             onTap: () => onOpenPost(posts[index]),
+            createVideoThumbnailController: createVideoThumbnailController,
           ),
           if (index < posts.length - 1) const SizedBox(height: 9),
         ],
@@ -1425,10 +1500,17 @@ class _GrowthToolRow extends StatelessWidget {
 }
 
 class _LatestPostRow extends StatelessWidget {
-  const _LatestPostRow({required this.post, required this.onTap});
+  const _LatestPostRow({
+    required this.post,
+    required this.isActive,
+    required this.onTap,
+    required this.createVideoThumbnailController,
+  });
 
   final PostSummaryResult post;
+  final bool isActive;
   final VoidCallback onTap;
+  final HomeVideoThumbnailControllerFactory? createVideoThumbnailController;
 
   static SocialPlatform? _platformFor(String apiValue) {
     for (final platform in SocialPlatform.values) {
@@ -1498,6 +1580,9 @@ class _LatestPostRow extends StatelessWidget {
     final platforms =
         post.platforms.map(_platformFor).whereType<SocialPlatform>().toList();
     final status = _statusInfo();
+    final postStatus = post.status.toUpperCase();
+    final isPublishing = postStatus == 'PUBLISHING' ||
+        (postStatus == 'QUEUED' && post.scheduledAt == null);
     final caption = post.caption.trim();
     final title = caption.isEmpty ? _relativeTime() : caption;
     final sub = platforms.isEmpty
@@ -1526,23 +1611,10 @@ class _LatestPostRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Placeholder video thumbnail (the prototype has no real images).
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
-                  ),
-                ),
-                child: const Icon(
-                  Icons.play_arrow_rounded,
-                  color: Color(0xFF8FA197),
-                  size: 21,
-                ),
+              _LatestPostThumbnail(
+                post: post,
+                isActive: isActive,
+                createVideoController: createVideoThumbnailController,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1563,13 +1635,11 @@ class _LatestPostRow extends StatelessWidget {
                     Row(
                       children: [
                         for (final platform in platforms.take(4)) ...[
-                          Container(
-                            width: 13,
-                            height: 13,
-                            margin: const EdgeInsets.only(right: 3),
-                            decoration: BoxDecoration(
-                              color: platform.displayColor,
-                              borderRadius: BorderRadius.circular(4),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 3),
+                            child: SocialPlatformLogo(
+                              platform: platform,
+                              size: 16,
                             ),
                           ),
                         ],
@@ -1591,7 +1661,30 @@ class _LatestPostRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              _StatusPill(label: status.label, bg: status.bg, ink: status.ink),
+              _StatusPill(
+                label: status.label,
+                bg: status.bg,
+                ink: status.ink,
+                leading: isPublishing
+                    ? ExcludeSemantics(
+                        child: SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            key: ValueKey('home-post-publishing-${post.id}'),
+                            strokeWidth: 1.8,
+                            color: status.ink,
+                            backgroundColor:
+                                status.ink.withValues(alpha: 0.15),
+                            value: isActive &&
+                                    !MediaQuery.disableAnimationsOf(context)
+                                ? null
+                                : 0.65,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
             ],
           ),
         ),
@@ -1600,12 +1693,218 @@ class _LatestPostRow extends StatelessWidget {
   }
 }
 
+class _LatestPostThumbnail extends StatelessWidget {
+  const _LatestPostThumbnail({
+    required this.post,
+    required this.isActive,
+    required this.createVideoController,
+  });
+
+  final PostSummaryResult post;
+  final bool isActive;
+  final HomeVideoThumbnailControllerFactory? createVideoController;
+
+  @override
+  Widget build(BuildContext context) {
+    final coverImageUrl = post.coverImageUrl;
+    final videoPreview = _LatestPostVideoPreview(
+      postId: post.id,
+      videoUrl: post.videoUrl,
+      frameTimeMs: post.coverFrameTimeMs,
+      isActive: isActive,
+      createController: createVideoController,
+    );
+
+    return ClipRRect(
+      key: ValueKey('home-latest-post-thumbnail-${post.id}'),
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: coverImageUrl == null
+            ? videoPreview
+            : Image.network(
+                coverImageUrl.toString(),
+                key: ValueKey('home-latest-post-cover-${post.id}'),
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                loadingBuilder: (context, child, loadingProgress) =>
+                    loadingProgress == null
+                        ? child
+                        : _LatestPostThumbnailPlaceholder(postId: post.id),
+                errorBuilder: (context, error, stackTrace) => videoPreview,
+              ),
+      ),
+    );
+  }
+}
+
+class _LatestPostVideoPreview extends StatefulWidget {
+  const _LatestPostVideoPreview({
+    required this.postId,
+    required this.videoUrl,
+    required this.frameTimeMs,
+    required this.isActive,
+    required this.createController,
+  });
+
+  final String postId;
+  final Uri? videoUrl;
+  final int? frameTimeMs;
+  final bool isActive;
+  final HomeVideoThumbnailControllerFactory? createController;
+
+  @override
+  State<_LatestPostVideoPreview> createState() =>
+      _LatestPostVideoPreviewState();
+}
+
+class _LatestPostVideoPreviewState extends State<_LatestPostVideoPreview> {
+  VideoPlayerController? _controller;
+  bool _isReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startController();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LatestPostVideoPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoUrl != widget.videoUrl ||
+        oldWidget.frameTimeMs != widget.frameTimeMs ||
+        oldWidget.isActive != widget.isActive ||
+        oldWidget.createController != widget.createController) {
+      final previousController = _controller;
+      _controller = null;
+      _isReady = false;
+      if (previousController != null) {
+        unawaited(previousController.dispose());
+      }
+      _startController();
+    }
+  }
+
+  void _startController() {
+    if (!widget.isActive) return;
+
+    final videoUrl = widget.videoUrl;
+    if (videoUrl == null) return;
+
+    try {
+      final controller = widget.createController?.call(videoUrl) ??
+          VideoPlayerController.networkUrl(
+            videoUrl,
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
+      _controller = controller;
+      unawaited(_initialize(controller));
+    } catch (_) {
+      _controller = null;
+    }
+  }
+
+  Future<void> _initialize(VideoPlayerController controller) async {
+    try {
+      await controller.initialize();
+      if (!mounted || !identical(_controller, controller)) {
+        return;
+      }
+
+      final requestedFrameTimeMs = widget.frameTimeMs ?? 0;
+      final durationMs = controller.value.duration.inMilliseconds;
+      if (requestedFrameTimeMs > 0 && durationMs > 1) {
+        await controller.seekTo(
+          Duration(
+            milliseconds: requestedFrameTimeMs.clamp(0, durationMs - 1).toInt(),
+          ),
+        );
+      }
+
+      if (mounted && identical(_controller, controller)) {
+        setState(() => _isReady = true);
+      }
+    } catch (_) {
+      if (identical(_controller, controller)) {
+        _controller = null;
+        await controller.dispose();
+        if (mounted) setState(() => _isReady = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    final controller = _controller;
+    _controller = null;
+    if (controller != null) unawaited(controller.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final size = controller?.value.size ?? Size.zero;
+    if (!_isReady ||
+        controller == null ||
+        !controller.value.isInitialized ||
+        size.width <= 0 ||
+        size.height <= 0) {
+      return _LatestPostThumbnailPlaceholder(postId: widget.postId);
+    }
+
+    return SizedBox.expand(
+      key: ValueKey('home-latest-post-video-${widget.postId}'),
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: VideoPlayer(controller),
+        ),
+      ),
+    );
+  }
+}
+
+class _LatestPostThumbnailPlaceholder extends StatelessWidget {
+  const _LatestPostThumbnailPlaceholder({required this.postId});
+
+  final String postId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: ValueKey('home-latest-post-placeholder-$postId'),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFE7EFE9), Color(0xFFD6E3DA)],
+        ),
+      ),
+      child: const Icon(
+        Icons.play_arrow_rounded,
+        color: Color(0xFF8FA197),
+        size: 21,
+      ),
+    );
+  }
+}
+
 class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, required this.bg, required this.ink});
+  const _StatusPill({
+    required this.label,
+    required this.bg,
+    required this.ink,
+    this.leading,
+  });
 
   final String label;
   final Color bg;
   final Color ink;
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
@@ -1618,16 +1917,27 @@ class _StatusPill extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: ink,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leading != null) ...[
+                leading!,
+                const SizedBox(width: 5),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: ink,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

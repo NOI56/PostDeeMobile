@@ -5,7 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 
-enum PublishFlowAction { finish, analytics }
+enum PublishFlowAction { finish }
 
 typedef PublishOperation = Future<QueuedPostResult?> Function();
 
@@ -228,24 +228,6 @@ class _PublishDoneView extends StatelessWidget {
                   ),
                 ),
                 child: const Text('เสร็จสิ้น'),
-              ),
-            ),
-            const SizedBox(height: 4),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: TextButton(
-                key: const ValueKey('publish-flow-analytics'),
-                onPressed: () =>
-                    Navigator.of(context).pop(PublishFlowAction.analytics),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppTheme.accentCyanInk,
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                child: const Text('ดูสถิติโพสต์'),
               ),
             ),
           ],

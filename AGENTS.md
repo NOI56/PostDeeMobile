@@ -4,7 +4,9 @@ Working guide for Codex and AI assistants helping to develop the PostDee project
 
 ## Project Goals
 
-PostDee is a mobile app for online sellers, creators, and affiliate marketers in Thailand. The main goal is to upload a single vertical video, then post or schedule it to TikTok, YouTube Shorts, Instagram Reels, Facebook Reels, Shopee Video, and Lazada Video from one place.
+PostDee is a mobile app for online sellers, creators, and affiliate marketers in Thailand. The current publishing flow accepts one vertical video and targets TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels through PostPeer. The existing `FACEBOOK_REELS` value maps to PostPeer `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`. Facebook publishing is Page Reels only, with no fallback to a Page feed video. Real connected-account end-to-end verification is still required before production claims.
+
+Shopee Video and Lazada Video are future targets, subject to provider support and end-to-end verification. Do not describe them as currently available destinations. Facebook Page Video duration limits must not be applied to Page Reels. An optional signed Facebook thumbnail is best effort; its display on a Reel still needs real-account verification.
 
 ## How to work with this project
 
@@ -57,6 +59,9 @@ Current Stack:
 - Prisma
 - PostgreSQL schema
 - Redis + BullMQ queue adapters
+- The checked-in Render deployment uses one API instance with an in-process,
+  database-backed publish scheduler (`PUBLISH_QUEUE=memory`, `POST_STORE=prisma`).
+  Redis/BullMQ and a separate worker are optional migration steps for scaling.
 - Mock, Cloudflare R2, and legacy S3 video storage adapters
 - Mock, Gemini, Groq, and legacy OpenAI AI adapters
 - Mock/Firebase auth plus Firebase Admin push adapter
@@ -67,6 +72,7 @@ Main verification commands:
 ```powershell
 cd apps/api
 npm.cmd run test
+npm.cmd run typecheck
 npm.cmd run build
 $env:DATABASE_URL='postgresql://postdee:postdee_password@localhost:5432/postdee?schema=public'; npm.cmd run prisma:validate
 ```
@@ -85,8 +91,10 @@ Location: `apps/mobile`
 Current Stack:
 
 - Flutter mobile app with light/dark themes (light is the default)
-- Home, uploader, AI editing/review, calendar, caption assistant, templates,
+- Home, uploader, AI auto editing/result review, calendar, caption assistant, templates,
   analytics, profile, billing, and publishing flows
+- The built-in manual timeline editor has been removed. Pro AI auto editing
+  still uses on-device FFmpeg and continues to Upload/Post after result review.
 
 Note: In the current environment, Flutter might not be in `PATH` yet. Do not claim `flutter analyze` or `flutter test` passed if they haven't been actually run.
 

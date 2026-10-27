@@ -82,6 +82,11 @@ services:
         value: firebase
       - key: FIREBASE_PROJECT_ID
         sync: false
+      # Staging Firebase project's own service account. With it the API checks
+      # revoked/disabled users on every request. Deletion and push stay off via
+      # FIREBASE_AUTH_DELETE_ENABLED and PUSH_SENDER below.
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
       - key: FIREBASE_AUTH_DELETE_ENABLED
         value: "false"
       - key: PUSH_SENDER

@@ -6,10 +6,29 @@
 > ไม่ผ่าน จึงยังห้ามถือว่าเปิดใช้จริงครบ เพื่อลดความเสี่ยงให้ตั้งค่าชุดทดสอบและ
 > ผ่านเช็กลิสต์ตามลำดับด้านล่างก่อน Production
 
+ทบทวนเอกสารกับ source และตรวจ infrastructure/health แบบ read-only เมื่อ 20 ตุลาคม 2026 `[x]`
+หมายถึงมีโค้ด/config หรือผลทดสอบที่บันทึกไว้ตามข้อความแต่ละรายการ ไม่ได้ยืนยันว่า
+ทุก deployment และ release candidate ล่าสุดผ่านแล้ว
+
+ผลตรวจในเครื่องวันที่ 20 ตุลาคม 2026: API tests/build/typecheck, Prisma
+schema/helper checks, Flutter analyze/tests และ Android ARM64 debug build ผ่าน
+ผลรอบแรกอยู่ใน `artifacts/readiness-check-20261020/summary.json` หลังแก้ dependency
+และ FCM SDK ตรวจ API ซ้ำบน Node 22.23.3/npm 10.9.9 ผ่าน 747 tests, typecheck/build,
+Prisma และ dependency tree; production dependency audit เหลือ 0 รายการ รายละเอียด
+ล่าสุดอยู่ใน `artifacts/dependency-fixes-20261020/summary.json` ส่วน Staging ผ่าน
+เฉพาะสถานะ API/database และ HTTP health check ไม่ใช่ provider/เครื่องจริง E2E
+
 ---
 
 ## 0) Staging แยกจาก Production
 
+ผล Staging เดือนกรกฎาคมด้านล่างเป็นบันทึกรอบเดิม วันที่ 20 ตุลาคม 2026 ตรวจพบว่า
+API และฐาน Basic ยังอยู่ตาม `docs/STAGING.md` แต่ยังไม่ได้ deploy ชุดแก้รอบนี้
+
+- [x] ตรวจ Staging วันที่ 20 ตุลาคม 2026: API `/health` HTTP 200, deploy ล่าสุด
+      18 ตุลาคมเป็น `live` และฐานข้อมูล Basic เป็น `available`
+- [ ] ตรวจความต่าง Blueprint Free/branch ชั่วคราวกับ live Starter/main และยืนยัน
+      secrets ชุดทดสอบแยกก่อน deploy/test release candidate ปัจจุบัน
 - [x] เตรียม `render.staging.yaml` และเทสต์ว่าชื่อ service/database แยกจาก Production
 - [x] ตรวจสิทธิ์และสร้าง Free PostgreSQL แยกสำเร็จโดยไม่ใช้ฐาน Production ร่วมกัน
 - [x] สร้าง Blueprint `postdee-api-staging` จาก branch
@@ -54,10 +73,11 @@
 | `TRANSCRIPTION_PROVIDER` | `mock` → `groq` | `GROQ_API_KEY` |
 | `EDIT_PLAN_PROVIDER` | `mock` → `groq` (หรือ `openai`) | `GROQ_API_KEY` |
 | `SOCIAL_PUBLISHER` | `mock` → `postpeer` | (ดูข้อ 5) |
-| `PUBLISH_QUEUE` | `memory` → `bullmq` | `REDIS_URL` (Upstash) |
+| `PUBLISH_QUEUE` | ใช้ `memory` ตาม `render.yaml`; เปลี่ยนเป็น `bullmq` เมื่อจำเป็นด้านการแยก worker/ขยายระบบ | เมื่อเลือก BullMQ ต้องมี `REDIS_URL`, `POST_STORE=prisma`, `DATABASE_URL` และ worker แยก |
 | `*_STORE` (post/subscription/analytics/template/captionUsage/aiEditUsage) | `memory` → `prisma` | `DATABASE_URL` |
 
-> ✅ ทดสอบแล้วว่าคีย์ใช้ได้จริง: **Gemini, Cloudflare R2, Groq**
+> มีบันทึกการทดสอบคีย์ **Gemini, Cloudflare R2, Groq** ผ่านจากรอบเดิม
+> การทบทวนเอกสารครั้งนี้ไม่ได้ตรวจ credentials หรือบริการจริงซ้ำ
 
 ---
 
@@ -73,10 +93,15 @@
 
 ---
 
-## 3) Worker แยก (สำคัญ — จำเป็นเมื่อ `PUBLISH_QUEUE=bullmq`)
+## 3) Worker แยก (ทางเลือกเมื่อขยายระบบ; จำเป็นเมื่อ `PUBLISH_QUEUE=bullmq`)
 
-- [ ] Deploy **worker service แยก** ที่รัน `npm run worker:publish`
-- ⚠️ ถ้าไม่มี worker: โพสต์ทันทีและตั้งเวลา **จะค้างสถานะ QUEUED** ไม่ถูกประมวลผล
+`render.yaml` ปัจจุบันใช้ API หนึ่ง instance กับ `PUBLISH_QUEUE=memory` และ
+`POST_STORE=prisma`; API มี scheduler ภายในที่อ่านโพสต์ถึงเวลาจากฐานข้อมูลแล้ว
+การใช้แบบนี้ไม่ต้องมี worker service แยก แต่ยังต้องผ่าน smoke test การโพสต์/
+ตั้งเวลาจริงในข้อ 8
+
+- [ ] เมื่อเลือก BullMQ ให้ deploy **worker service แยก** ที่รัน `npm run worker:publish`
+- ⚠️ เฉพาะโหมด BullMQ หากไม่มี worker โพสต์ทันทีและตั้งเวลาจะค้างสถานะ QUEUED
 - worker ตัวนี้เป็นคนอัปเดตสถานะโพสต์ (QUEUED → PUBLISHED/PARTIAL_PUBLISHED/FAILED)
   Retry ทำเฉพาะ error ที่ยืนยันว่าปลอดภัย; network/timeout หรือ outcome ที่ไม่
   แน่นอนต้องหยุดและให้ผู้ใช้ตรวจปลายทางก่อน เพื่อไม่สร้างโพสต์ซ้ำ
@@ -108,10 +133,11 @@
 - [x] Controlled-first request ใช้ YouTube `private` และ TikTok `SELF_ONLY`
       (`draft: false`) แล้ว; ก่อนเปิด public ต้องเพิ่มตัวเลือก privacy ที่ผู้ใช้ยืนยัน
 - [ ] ทดสอบโพสต์จริง 1 คลิปด้วยบัญชี disposable ที่เชื่อมแล้ว: TikTok,
-      YouTube Shorts, Instagram Reels และ Facebook Page Video พร้อมตรวจ URL/ID,
+      YouTube Shorts, Instagram Reels และ Facebook Page Reels พร้อมตรวจ URL/ID,
       partial/failed และ outcome-unknown ก่อน retry
-- หมายเหตุ: `FACEBOOK_REELS` เป็นชื่อ compatibility ภายใน แต่ PostPeer ปัจจุบัน
-  ส่ง Facebook Page Video ไม่ใช่ Reels จึงห้ามใช้คำว่า Facebook Reels ใน Store
+- หมายเหตุ: ใช้ enum เดิม `FACEBOOK_REELS` แต่ PostPeer ต้องรับ `platform: 'facebook'`
+  และ `platformSpecificData.contentType: 'reel'` เสมอ ไม่มี fallback เป็น Page feed
+  video; ต้องตรวจผลเป็น Page Reel จริงก่อนใช้เป็นคำรับรอง production ใน Store
 - หมายเหตุ: Shopee/Lazada ยังไม่รองรับใน PostPeer mapping (เพิ่มภายหลัง)
 
 ---
@@ -157,9 +183,15 @@
   1. ตั้ง `FIREBASE_SERVICE_ACCOUNT_JSON` ใน Render (service account key จาก Firebase Console → Project Settings → Service Accounts, เก็บเป็นความลับ)
   2. สลับ `PUSH_SENDER=firebase` (ทำหลังใส่ key แล้วเท่านั้น ไม่งั้น API จะ crash ตอนเริ่ม)
   3. ทดสอบส่ง push จริงบนเครื่อง
-- [ ] ตั้ง `FIREBASE_AUTH_DELETE_ENABLED=true` หลังใส่ service account แล้ว
-      จากนั้นทดสอบลบบัญชีจริง; โหมดนี้ใช้ Firebase Admin ตรวจ token ที่ถูก
-      revoke/ลบแล้วด้วย
+- [x] Production `render.yaml` ตั้ง `FIREBASE_AUTH_DELETE_ENABLED=true` แล้ว และมี
+      บันทึกติดตั้ง service account/ผ่าน disposable-account API smoke; โหมดนี้ใช้
+      Firebase Admin ตรวจ token ที่ถูก revoke/ลบแล้วด้วย Staging ยังปิดแยกไว้
+- [x] มีบันทึก production API/R2/Firebase smoke ผ่านทั้ง legacy signed upload และ
+      managed multipart: readiness, cleanup, deleted-account retry และไม่มี smoke
+      sessions/objects เหลือใน PostgreSQL/R2
+- [ ] ตรวจ account lifecycle/session guards ของ security remediation เดือนตุลาคม
+      กับ PostgreSQL/Redis และทดสอบลบบัญชีจากมือถือจริง/เครือข่ายช้า ผล smoke เดิม
+      ไม่ยืนยัน patch ใหม่หรือรายการนี้
 
 ---
 
@@ -173,13 +205,14 @@
       จากผู้ใช้ทั่วไป ระหว่างนี้ให้ทดสอบเฉพาะคลิปที่ทีมสร้างหรือเชื่อถือได้
 - [ ] ล็อกอิน Google + Apple + ยืนยันเบอร์ (OTP) สำเร็จ บนมือถือจริง
 - [ ] อัปคลิป → โพสต์ทันที → ขึ้นจริงทุก capability ที่ระบุไว้ → provider URL/ID
-      และ `GET /posts.platformResults` ตรงกัน (Facebook คือ Page Video)
+      และ `GET /posts.platformResults` ตรงกัน (Facebook ต้องเป็น Page Reel)
 - [ ] ตั้งเวลาโพสต์ → ปฏิทินแสดง → ถึงเวลาแล้วโพสต์จริง
 - [ ] AI แคปชั่นจากคลิป (Starter ฟัง / Pro ฟัง+ดูเฟรม)
 - [ ] AI ตัดต่อ/ซับ (Pro) + export บนเครื่อง
 - [ ] ซื้อแพ็กเกจ (sandbox) → ปลดล็อกฟีเจอร์
-- [ ] ลบบัญชี → โปรไฟล์/โพสต์/R2/Firebase UID หายจริง และแพ็กเกจใน Store
-      ยังแสดงขั้นตอนจัดการสมาชิกแยกอย่างถูกต้อง
+- [ ] ลบบัญชีจากมือถือจริง → โปรไฟล์/โพสต์/R2/Firebase UID หายจริง รวมกรณี
+      เครือข่ายช้า/อัปโหลดค้าง และแพ็กเกจใน Store ยังแสดงขั้นตอนจัดการสมาชิกแยก
+      อย่างถูกต้อง (API smoke เดิมผ่านเฉพาะส่วนที่บันทึกในข้อ 7)
 
 ---
 

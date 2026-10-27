@@ -13,6 +13,7 @@ export type BullMqPublishJobData = {
   userId?: string;
   postId: string;
   caption?: string;
+  youtubeTitle?: string;
   videoS3Key?: string;
   coverImageS3Key?: string;
   coverFrameTimeMs?: number;
@@ -89,6 +90,7 @@ export const createBullMqPublishQueueFromClient = ({
       userId: post.userId,
       postId: post.id,
       caption: post.caption,
+      ...(post.youtubeTitle ? { youtubeTitle: post.youtubeTitle } : {}),
       videoS3Key: post.videoS3Key,
       ...(post.coverImageS3Key
         ? { coverImageS3Key: post.coverImageS3Key }
@@ -117,6 +119,7 @@ export const createBullMqPublishQueueFromClient = ({
       queueName: publishQueueName,
       userId: post.userId,
       postId: post.id,
+      ...(post.youtubeTitle ? { youtubeTitle: post.youtubeTitle } : {}),
       ...(post.coverImageS3Key
         ? { coverImageS3Key: post.coverImageS3Key }
         : {}),
@@ -139,6 +142,7 @@ export const createBullMqPublishQueueFromClient = ({
         queueName: publishQueueName,
         userId: job.data.userId,
         postId: job.data.postId,
+        ...(job.data.youtubeTitle ? { youtubeTitle: job.data.youtubeTitle } : {}),
         ...(job.data.coverImageS3Key
           ? { coverImageS3Key: job.data.coverImageS3Key }
           : {}),

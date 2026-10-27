@@ -6,6 +6,7 @@ import {
   type UploadSessionStatus,
   type UploadSessionStore
 } from './uploadSessionStore.js';
+import { createOwnerOperationQueue } from '../account/ownerOperationQueue.js';
 
 type PrismaUploadOwner = {
   ownerId: string;
@@ -169,13 +170,22 @@ export const createPrismaUploadSessionRepository = ({
   prisma
 }: {
   prisma: PrismaUploadSessionClient;
-}): UploadSessionStore => ({
-  assertOwnerActive: async (ownerId) => {
+}): UploadSessionStore => {
+  const runOwnerOperation = createOwnerOperationQueue();
+  const assertStoredOwnerActive = async (ownerId: string) => {
     const owner = await prisma.managedUploadOwner.findUnique({ where: { ownerId } });
-
-    if (owner) {
-      assertOwnerActive(owner);
-    }
+    if (owner) assertOwnerActive(owner);
+  };
+  return {
+  // The queue callback may use Redis, so keep it outside a DB transaction.
+  // This drains same-process admissions and consults the durable tombstone;
+  // it does not promise atomicity between Redis and another API instance.
+  runWithActiveOwner: (ownerId, operation) => runOwnerOperation(ownerId, async () => {
+    await assertStoredOwnerActive(ownerId);
+    return operation();
+  }),
+  assertOwnerActive: async (ownerId) => {
+    await assertStoredOwnerActive(ownerId);
   },
   createForActiveOwner: (input) =>
     runSerializable(prisma, async (transaction) => {
@@ -339,7 +349,7 @@ export const createPrismaUploadSessionRepository = ({
         })
       );
     }),
-  beginOwnerDeletion: (ownerId) =>
+  beginOwnerDeletion: (ownerId) => runOwnerOperation(ownerId, () =>
     runSerializable(prisma, async (transaction) => {
       const owner = await transaction.managedUploadOwner.upsert({
         where: { ownerId },
@@ -361,7 +371,7 @@ export const createPrismaUploadSessionRepository = ({
           data: { status: 'DELETING' }
         })
       ).status;
-    }),
+    })),
   listOpenForOwner: async (ownerId) =>
     (
       await prisma.managedUploadSession.findMany({
@@ -372,7 +382,7 @@ export const createPrismaUploadSessionRepository = ({
         orderBy: { createdAt: 'asc' }
       })
     ).map(mapSession),
-  finishOwnerDeletion: (ownerId) =>
+  finishOwnerDeletion: (ownerId) => runOwnerOperation(ownerId, () =>
     runSerializable(prisma, async (transaction) => {
       await transaction.managedUploadSession.deleteMany({ where: { ownerId } });
       const owner = await transaction.managedUploadOwner.upsert({
@@ -387,5 +397,6 @@ export const createPrismaUploadSessionRepository = ({
           data: { status: 'DELETED' }
         });
       }
-    })
-});
+    }))
+  };
+};

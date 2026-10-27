@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  MediaDownloadError,
+  type MediaDownloadError,
   aiEditAudioDownloadMaxBytes,
   readAiMediaResponseBytes
 } from './mediaDownload.js';
@@ -31,10 +31,10 @@ describe('AI media download limits', () => {
 
     await expect(
       readAiMediaResponseBytes(response, 25 * 1024 * 1024)
-    ).rejects.toMatchObject<Partial<MediaDownloadError>>({
+    ).rejects.toMatchObject({
       statusCode: 413,
       code: 'AI_MEDIA_TOO_LARGE'
-    });
+    } satisfies Partial<MediaDownloadError>);
   });
 
   it('rejects AI edit audio whose actual body exceeds 25 MiB', async () => {
@@ -42,9 +42,9 @@ describe('AI media download limits', () => {
 
     await expect(
       readAiMediaResponseBytes(response, 25 * 1024 * 1024)
-    ).rejects.toMatchObject<Partial<MediaDownloadError>>({
+    ).rejects.toMatchObject({
       statusCode: 413,
       code: 'AI_MEDIA_TOO_LARGE'
-    });
+    } satisfies Partial<MediaDownloadError>);
   });
 });

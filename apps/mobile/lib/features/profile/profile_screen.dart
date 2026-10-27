@@ -10,6 +10,7 @@ import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_controller.dart';
 import '../auth/phone_verification_screen.dart';
+import '../auth/phone_verification_service.dart' show BoundPhoneAuthOperation;
 import '../billing/paywall_screen.dart';
 import '../legal/legal_document_screen.dart';
 import '../link_in_bio/link_in_bio_screen.dart';
@@ -26,6 +27,7 @@ class ProfileScreen extends StatefulWidget {
     required this.onOpenTemplates,
     required this.onDeleteAccount,
     this.onSignOut,
+    this.runNativePhoneAuthOperation,
     this.apiClient,
     this.launchConnectUrl,
     this.onManageSubscription,
@@ -39,6 +41,7 @@ class ProfileScreen extends StatefulWidget {
   final VoidCallback onOpenTemplates;
   final VoidCallback onDeleteAccount;
   final VoidCallback? onSignOut;
+  final BoundPhoneAuthOperation? runNativePhoneAuthOperation;
   final PostDeeApiClient? apiClient;
   final ConnectUrlLauncher? launchConnectUrl;
   final Future<void> Function()? onManageSubscription;
@@ -328,7 +331,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ? AppTheme.accentCyanInk
                           : AppTheme.textSecondary,
                     ),
-              onTap: () => _openPhoneVerification(context),
+              onTap: () => _openPhoneVerification(
+                context,
+                runNativeAuthOperation: widget.runNativePhoneAuthOperation,
+              ),
             ),
             _ProfileMenuRow(
               icon: Icons.text_snippet_outlined,
@@ -940,10 +946,15 @@ void _openLegal(BuildContext context, LegalDocument document) {
   );
 }
 
-void _openPhoneVerification(BuildContext context) {
+void _openPhoneVerification(
+  BuildContext context, {
+  BoundPhoneAuthOperation? runNativeAuthOperation,
+}) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (context) => const PhoneVerificationScreen(),
+      builder: (context) => PhoneVerificationScreen(
+        runNativeAuthOperation: runNativeAuthOperation,
+      ),
     ),
   );
 }

@@ -1,6 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createPrismaUserRepository } from './prismaUserRepository.js';
+import { createPrismaUserRepository as createRepository, type PrismaUserClient } from './prismaUserRepository.js';
+
+const createPrismaUserRepository = ({ prisma }: { prisma: { user: unknown } }) => {
+  const transaction = {
+    ...prisma,
+    managedUploadOwner: {
+      upsert: vi.fn(async () => ({ status: 'ACTIVE' as const })),
+      updateMany: vi.fn(async () => ({ count: 1 }))
+    }
+  };
+  return createRepository({ prisma: {
+    ...transaction,
+    $transaction: vi.fn(async (operation: (client: typeof transaction) => Promise<unknown>) => operation(transaction))
+  } as unknown as PrismaUserClient });
+};
 
 describe('createPrismaUserRepository', () => {
   it('upserts Firebase users by auth user id', async () => {

@@ -4,6 +4,10 @@ import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
+import '../uploader/post_caption.dart';
+
+/// Matches the API template title limit.
+const templateTitleMaxLength = 80;
 
 typedef TemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef TemplateCreator = Future<TextTemplateResult> Function({
@@ -11,15 +15,19 @@ typedef TemplateCreator = Future<TextTemplateResult> Function({
   required String body,
 });
 
+typedef TemplateDeleter = Future<void> Function(String templateId);
+
 class TemplatesScreen extends StatefulWidget {
   const TemplatesScreen({
     super.key,
     this.loadTemplates,
     this.createTemplate,
+    this.deleteTemplate,
   });
 
   final TemplateLoader? loadTemplates;
   final TemplateCreator? createTemplate;
+  final TemplateDeleter? deleteTemplate;
 
   @override
   State<TemplatesScreen> createState() => _TemplatesScreenState();
@@ -85,6 +93,55 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     }
   }
 
+  Future<void> _confirmAndDeleteTemplate(TextTemplateResult template) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ลบเทมเพลตนี้?'),
+        content: Text(template.title),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(dialogContext).colorScheme.error,
+            ),
+            child: const Text('ลบ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      final deleter = widget.deleteTemplate ?? _apiClient.deleteTemplate;
+      await deleter(template.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _templates.removeWhere((saved) => saved.id == template.id);
+        _errorMessage = null;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage = 'ลบเทมเพลตไม่สำเร็จ ลองใหม่อีกครั้ง';
+      });
+    }
+  }
+
   Future<void> _saveTemplate() async {
     final title = _titleController.text.trim();
     final body = _bodyController.text.trim();
@@ -92,6 +149,17 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     if (title.isEmpty || body.isEmpty) {
       setState(() {
         _errorMessage = 'กรอกชื่อและเนื้อหาเทมเพลตก่อนบันทึก';
+      });
+      return;
+    }
+
+    // Mirrors the API limits; the body is inserted into post captions.
+    final lengthError = title.runes.length > templateTitleMaxLength
+        ? 'ชื่อเทมเพลตต้องไม่เกิน $templateTitleMaxLength ตัวอักษร'
+        : validatePostCaption(body)?.replaceFirst('แคปชั่น', 'เนื้อหาเทมเพลต');
+    if (lengthError != null) {
+      setState(() {
+        _errorMessage = lengthError;
       });
       return;
     }
@@ -120,7 +188,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
       }
 
       setState(() {
-        _errorMessage = error.message;
+        _errorMessage = error.code == 'TEMPLATE_LIMIT_REACHED'
+            ? 'บันทึกเทมเพลตได้สูงสุด 30 รายการแล้ว ลบอันที่ไม่ใช้ก่อนแล้วลองใหม่'
+            : error.message;
       });
     } catch (error) {
       if (!mounted) {
@@ -277,7 +347,10 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
           ..._templates.map(
             (template) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: _SavedTemplateCard(template: template),
+              child: _SavedTemplateCard(
+                template: template,
+                onDelete: () => _confirmAndDeleteTemplate(template),
+              ),
             ),
           ),
       ],
@@ -339,9 +412,10 @@ class _EmptyTemplateCard extends StatelessWidget {
 }
 
 class _SavedTemplateCard extends StatelessWidget {
-  const _SavedTemplateCard({required this.template});
+  const _SavedTemplateCard({required this.template, required this.onDelete});
 
   final TextTemplateResult template;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -378,6 +452,17 @@ class _SavedTemplateCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary,
                   ),
+                ),
+              ),
+              IconButton(
+                key: ValueKey('template-delete-${template.id}'),
+                onPressed: onDelete,
+                tooltip: 'ลบเทมเพลต',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.delete_outline,
+                  size: 20,
+                  color: AppTheme.textMuted,
                 ),
               ),
             ],

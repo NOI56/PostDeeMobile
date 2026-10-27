@@ -1,3 +1,5 @@
+import { createOwnerOperationQueue, type RunWithActiveOwner } from '../account/ownerOperationQueue.js';
+
 export type UploadOwnerStatus = 'ACTIVE' | 'DELETING' | 'DELETED';
 
 export type UploadSessionStatus =
@@ -47,6 +49,7 @@ export class UploadSessionConflictError extends Error {
 
 export type UploadSessionStore = {
   assertOwnerActive: (ownerId: string) => Promise<void>;
+  runWithActiveOwner: RunWithActiveOwner;
   createForActiveOwner: (input: CreateUploadSessionInput) => Promise<UploadSession>;
   getForOwner: (id: string, ownerId: string) => Promise<UploadSession | undefined>;
   findForOwnerKey: (
@@ -118,8 +121,13 @@ export const createInMemoryUploadSessionStore = ({
 } = {}): UploadSessionStore => {
   const owners = new Map<string, UploadOwnerStatus>();
   const sessions = new Map<string, UploadSession>();
+  const runOwnerOperation = createOwnerOperationQueue();
 
   return {
+    runWithActiveOwner: (ownerId, operation) => runOwnerOperation(ownerId, async () => {
+      assertOwnerActive(owners, ownerId);
+      return operation();
+    }),
     assertOwnerActive: async (ownerId) => {
       assertOwnerActive(owners, ownerId);
     },
@@ -273,19 +281,19 @@ export const createInMemoryUploadSessionStore = ({
       sessions.set(id, updated);
       return updated;
     },
-    beginOwnerDeletion: async (ownerId) => {
+    beginOwnerDeletion: (ownerId) => runOwnerOperation(ownerId, async () => {
       const current = owners.get(ownerId);
       const status = current === 'DELETED' ? 'DELETED' : 'DELETING';
       owners.set(ownerId, status);
       return status;
-    },
+    }),
     listOpenForOwner: async (ownerId) =>
       [...sessions.values()].filter(
         (session) =>
           session.ownerId === ownerId &&
           (session.status === 'UPLOADING' || session.status === 'COMPLETING')
       ),
-    finishOwnerDeletion: async (ownerId) => {
+    finishOwnerDeletion: (ownerId) => runOwnerOperation(ownerId, async () => {
       owners.set(ownerId, 'DELETED');
 
       for (const [id, session] of sessions) {
@@ -293,6 +301,6 @@ export const createInMemoryUploadSessionStore = ({
           sessions.delete(id);
         }
       }
-    }
+    })
   };
 };

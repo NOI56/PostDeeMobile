@@ -45,6 +45,7 @@ class FirebaseEmailAuthGateway implements EmailAuthGateway {
       }
 
       return AuthSession(
+        userId: user.uid,
         idToken: idToken,
         email: user.email,
         displayName: user.displayName,

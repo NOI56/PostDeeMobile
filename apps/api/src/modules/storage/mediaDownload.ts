@@ -1,5 +1,10 @@
 export const aiMediaDownloadMaxBytes = 200 * 1024 * 1024;
 export const aiEditAudioDownloadMaxBytes = 25 * 1024 * 1024;
+// Real-clip captions send media inline to Gemini, which rejects requests over
+// 20 MB; base64 adds a third. A clip plus three frames stays near 13 MiB raw,
+// which also bounds how much memory one caption request can hold.
+export const realClipCaptionClipMaxBytes = 10 * 1024 * 1024;
+export const realClipCaptionFrameMaxBytes = 1024 * 1024;
 
 export class MediaDownloadError extends Error {
   constructor(

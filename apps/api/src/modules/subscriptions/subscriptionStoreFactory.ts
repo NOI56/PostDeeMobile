@@ -1,4 +1,5 @@
 import type { ServerConfig } from '../../config/env.js';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 import {
   type PrismaSubscriptionClient,
   createPrismaSubscriptionRepository
@@ -9,10 +10,12 @@ type SubscriptionStoreConfig = Pick<ServerConfig, 'subscriptionStore'>;
 
 export const createSubscriptionStoreFromConfig = ({
   config,
-  prisma
+  prisma,
+  runWithActiveOwner
 }: {
   config: SubscriptionStoreConfig;
   prisma?: PrismaSubscriptionClient;
+  runWithActiveOwner?: RunWithActiveOwner;
 }): SubscriptionStore => {
   if (config.subscriptionStore === 'prisma') {
     if (!prisma) {
@@ -22,5 +25,5 @@ export const createSubscriptionStoreFromConfig = ({
     return createPrismaSubscriptionRepository({ prisma });
   }
 
-  return createSubscriptionStore();
+  return createSubscriptionStore({ runWithActiveOwner });
 };

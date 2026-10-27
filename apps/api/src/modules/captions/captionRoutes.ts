@@ -27,6 +27,7 @@ import {
 import type {
   GeneratedRealClipCaption,
   RealClipCaptionProvider,
+  RealClipMediaKind,
   RealClipMediaPart
 } from './realClipCaptionProvider.js';
 
@@ -123,9 +124,41 @@ export const registerCaptionRoutes = (
   transcriptionProvider?: TranscriptionProvider,
   realClipCaptionUsageStore: RealClipCaptionUsageStore = createInMemoryRealClipCaptionUsageStore(),
   realClipCaptionProvider?: RealClipCaptionProvider,
-  fetchClipMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>,
+  fetchClipMedia?: (
+    mediaS3Key: string,
+    kind: RealClipMediaKind
+  ) => Promise<RealClipMediaPart>,
   deleteClipMedia?: (videoS3Key: string) => Promise<void>
 ) => {
+  router.get('/captions/quota', authMiddleware, async (_request, response) => {
+    const authUser = readAuthUser(response.locals);
+
+    if (!authUser) {
+      response.status(401).json({
+        status: 'error',
+        message: 'Authenticated user is required'
+      });
+      return;
+    }
+
+    const plan = await subscriptionStore.getPlan(authUser);
+    const limit = monthlyAiCaptionGenerationLimits[plan];
+    const usedThisMonth = await realClipCaptionUsageStore.countForMonth({
+      userId: authUser.id,
+      monthKey: readCurrentRealClipCaptionMonthKey()
+    });
+
+    response.set('Cache-Control', 'no-store').json({
+      status: 'ok',
+      plan,
+      quota: {
+        limit,
+        usedThisMonth,
+        remainingThisMonth: Math.max(limit - usedThisMonth, 0)
+      }
+    });
+  });
+
   router.post('/captions/generate', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
 
@@ -332,15 +365,33 @@ export const registerCaptionRoutes = (
       // Primary path: Gemini listens to the clip (Starter) and also looks at
       // selected frames (Pro) to write the caption — no Whisper here.
       try {
-        const audio = await fetchClipMedia(validation.request.videoS3Key);
+        const audio = await fetchClipMedia(
+          validation.request.videoS3Key,
+          validation.request.mediaKind
+        );
         let frames: RealClipMediaPart[] | undefined;
 
         if (
           mode === 'AUDIO_WITH_FRAMES' &&
           validation.request.selectedFrameKeys.length > 0
         ) {
-          frames = await Promise.all(
-            validation.request.selectedFrameKeys.map((key) => fetchClipMedia(key))
+          // Frames are optional context: skip ones that are oversized or not
+          // images instead of failing a caption the audio can still drive.
+          const fetchedFrames = await Promise.all(
+            validation.request.selectedFrameKeys.map(async (key) => {
+              try {
+                return await fetchClipMedia(key, 'frame');
+              } catch (error) {
+                if (error instanceof MediaDownloadError) {
+                  return undefined;
+                }
+
+                throw error;
+              }
+            })
+          );
+          frames = fetchedFrames.filter(
+            (frame): frame is RealClipMediaPart => frame !== undefined
           );
         }
 
@@ -384,7 +435,7 @@ export const registerCaptionRoutes = (
 
         transcript = await transcriptionProvider.transcribe({
           mediaS3Key: validation.request.videoS3Key,
-          mediaKind: 'legacy-video'
+          mediaKind: validation.request.mediaKind === 'audio' ? 'audio' : 'legacy-video'
         });
       } catch (error) {
         if (error instanceof MediaDownloadError) {

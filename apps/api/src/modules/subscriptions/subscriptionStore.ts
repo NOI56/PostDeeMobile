@@ -1,4 +1,5 @@
 import type { AuthUser } from '../auth/authTypes.js';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 
 export type SubscriptionPlan = 'BASIC' | 'STARTER' | 'PRO';
 export type PaidSubscriptionPlan = Exclude<SubscriptionPlan, 'BASIC'>;
@@ -23,6 +24,22 @@ export type UpdateSubscriptionStatusByBillingIdInput = {
   status: SubscriptionStatus;
 };
 
+export type ApplyRevenueCatEventInput = {
+  authUser: AuthUser;
+  billingSubscriptionId: string;
+  eventId: string;
+  eventTimestampMs: number;
+} & (
+  | { status: 'ACTIVE'; plan: PaidSubscriptionPlan; currentPeriodEnd?: string | null }
+  // Inactive events only change status, so a TRANSFER away needs no plan.
+  | { status: Exclude<SubscriptionStatus, 'ACTIVE'>; plan?: PaidSubscriptionPlan }
+);
+
+export type ApplyRevenueCatEventResult = {
+  applied: boolean;
+  subscription: UserSubscription | null;
+};
+
 export type SubscriptionStore = {
   getPlan: (authUser: AuthUser) => Promise<SubscriptionPlan>;
   activatePlan: (
@@ -34,6 +51,9 @@ export type SubscriptionStore = {
   updateStatusByBillingSubscriptionId: (
     input: UpdateSubscriptionStatusByBillingIdInput
   ) => Promise<UserSubscription | null>;
+  applyRevenueCatEvent: (
+    input: ApplyRevenueCatEventInput
+  ) => Promise<ApplyRevenueCatEventResult>;
   // Hard-deletes the subscription owned by userId. Used by account deletion.
   // Optional because the Prisma store relies on the User cascade instead.
   deleteAllForUser?: (userId: string) => Promise<void>;
@@ -64,12 +84,18 @@ export const isSubscriptionExpired = (
 };
 
 export const createSubscriptionStore = ({
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  runWithActiveOwner = async (_ownerId, operation) => operation()
 }: {
   now?: () => string;
+  runWithActiveOwner?: RunWithActiveOwner;
 } = {}): SubscriptionStore => {
   const subscriptions = new Map<string, UserSubscription>();
   const subscriptionUserIdsByBillingId = new Map<string, string>();
+  const lastRevenueCatEventByUserId = new Map<
+    string,
+    { id: string; timestampMs: number }
+  >();
   const activatePaidPlan = async (
     authUser: AuthUser,
     plan: PaidSubscriptionPlan,
@@ -121,8 +147,8 @@ export const createSubscriptionStore = ({
 
       return 'BASIC';
     },
-    activatePlan: activatePaidPlan,
-    activatePro: async (authUser, options = {}) => activatePaidPlan(authUser, 'PRO', options),
+    activatePlan: (authUser, plan, options) => runWithActiveOwner(authUser.id, () => activatePaidPlan(authUser, plan, options)),
+    activatePro: (authUser, options = {}) => runWithActiveOwner(authUser.id, () => activatePaidPlan(authUser, 'PRO', options)),
     updateStatusByBillingSubscriptionId: async ({ billingSubscriptionId, status }) => {
       const userId = subscriptionUserIdsByBillingId.get(billingSubscriptionId);
 
@@ -145,6 +171,62 @@ export const createSubscriptionStore = ({
       subscriptions.set(userId, subscription);
       return subscription;
     },
+    applyRevenueCatEvent: (input) => runWithActiveOwner(input.authUser.id, async () => {
+      const lastEvent = lastRevenueCatEventByUserId.get(input.authUser.id);
+
+      if (
+        lastEvent &&
+        (input.eventId === lastEvent.id ||
+          input.eventTimestampMs <= lastEvent.timestampMs)
+      ) {
+        return {
+          applied: false,
+          subscription: null
+        };
+      }
+
+      lastRevenueCatEventByUserId.set(input.authUser.id, {
+        id: input.eventId,
+        timestampMs: input.eventTimestampMs
+      });
+
+      if (input.status === 'ACTIVE') {
+        const options: ActivatePlanOptions = {
+          billingSubscriptionId: input.billingSubscriptionId
+        };
+
+        if (Object.prototype.hasOwnProperty.call(input, 'currentPeriodEnd')) {
+          options.currentPeriodEnd = input.currentPeriodEnd;
+        }
+
+        return {
+          applied: true,
+          subscription: await activatePaidPlan(input.authUser, input.plan, options)
+        };
+      }
+
+      const userId = subscriptionUserIdsByBillingId.get(input.billingSubscriptionId);
+      const existingSubscription = userId ? subscriptions.get(userId) : undefined;
+
+      if (!userId || !existingSubscription) {
+        return {
+          applied: true,
+          subscription: null
+        };
+      }
+
+      const subscription: UserSubscription = {
+        ...existingSubscription,
+        status: input.status,
+        updatedAt: now()
+      };
+
+      subscriptions.set(userId, subscription);
+      return {
+        applied: true,
+        subscription
+      };
+    }),
     deleteAllForUser: async (userId) => {
       const existingSubscription = subscriptions.get(userId);
 
@@ -153,6 +235,7 @@ export const createSubscriptionStore = ({
       }
 
       subscriptions.delete(userId);
+      lastRevenueCatEventByUserId.delete(userId);
     }
   };
 };

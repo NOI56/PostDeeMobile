@@ -1,13 +1,64 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/monitoring/postdee_analytics.dart';
+import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart';
+import 'package:postdee_mobile/features/uploader/cover_editor_screen.dart';
+import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _UploaderFontAssetBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) async => ByteData.sublistView(
+        Uint8List.fromList(const [1, 2, 3, 4]),
+      );
+}
+
+Future<CoverEditorResult> _createManagedCoverFixture({
+  required File videoFile,
+  required Directory workingDirectory,
+  int frameTimeMs = 3200,
+}) {
+  return FfmpegCoverImageProcessor(
+    assetBundle: _UploaderFontAssetBundle(),
+    createWorkingDirectory: () async => workingDirectory,
+    deleteWorkingDirectory: (directory) {
+      if (directory.existsSync()) {
+        directory.deleteSync(recursive: true);
+      }
+      return SynchronousFuture<void>(null);
+    },
+    runCommand: (arguments) async {
+      File(arguments.last).writeAsBytesSync(
+        File('assets/images/brand/postdee_mark.png').readAsBytesSync(),
+      );
+      return true;
+    },
+  )(
+    CoverImageRequest(
+      videoFile: videoFile,
+      fileName: videoFile.uri.pathSegments.last,
+      design: CoverDesign(
+        coverFrameTimeMs: frameTimeMs,
+        text: 'ปกทดสอบ',
+      ),
+      durationMs: 10000,
+    ),
+  );
+}
+
+Future<void> _waitUntilDeleted(Directory directory) async {
+  for (var attempt = 0; attempt < 50 && directory.existsSync(); attempt += 1) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
 
 Future<void> _expectTextAfterScrolling(
   WidgetTester tester,
@@ -41,6 +92,25 @@ Future<void> _tapTextAfterScrolling(
   await tester.pumpAndSettle();
 }
 
+AiEditAudioArtifact _createCaptionAudioFixture({int sizeBytes = 512}) {
+  final directory =
+      Directory.systemTemp.createTempSync('postdee-caption-audio-');
+  addTearDown(() {
+    if (directory.existsSync()) {
+      directory.deleteSync(recursive: true);
+    }
+  });
+
+  final file = File(
+    '${directory.path}${Platform.pathSeparator}postdee-ai-edit-audio.m4a',
+  )..writeAsBytesSync(List<int>.filled(sizeBytes, 7));
+
+  return AiEditAudioArtifact(file: file, workingDirectory: directory);
+}
+
+Future<AiEditAudioArtifact> _extractCaptionAudioFixture(File _) async =>
+    _createCaptionAudioFixture();
+
 PickedVideoFile _createPickedVideoFixture(
   String name, {
   int sizeBytes = 2048,
@@ -70,6 +140,9 @@ Future<List<SocialConnectionResult>> _loadConnectedSocialConnections() async =>
       SocialConnectionResult(platform: 'YOUTUBE_SHORTS', connected: true),
       SocialConnectionResult(platform: 'INSTAGRAM_REELS', connected: false),
       SocialConnectionResult(platform: 'FACEBOOK_REELS', connected: false),
+      // A stale/invalid backend response must not auto-select an unsupported
+      // coming-soon platform or leak it into a publish request.
+      SocialConnectionResult(platform: 'SHOPEE_VIDEO', connected: true),
     ];
 
 Future<void> _pickVideoFromPreview(WidgetTester tester) async {
@@ -110,13 +183,34 @@ Future<void> _confirmPublishReview(WidgetTester tester) async {
 }
 
 void main() {
+  test('limits scheduled posts to 30 days from now', () {
+    final now = DateTime.utc(2026, 7, 17, 9);
+
+    expect(
+      isPostScheduleWithinLimit(
+        scheduledAt: now.add(const Duration(days: 30)),
+        now: now,
+      ),
+      isTrue,
+    );
+    expect(
+      isPostScheduleWithinLimit(
+        scheduledAt: now.add(
+          const Duration(days: 30, seconds: 1),
+        ),
+        now: now,
+      ),
+      isFalse,
+    );
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
 
   final uploaderScroll = find.byType(Scrollable).first;
 
-  testWidgets('allows selecting only platforms connected by the real status',
+  testWidgets('shows a clear empty state when no platform is connected',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -136,32 +230,216 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+      find.text('ยังไม่ได้เชื่อมต่อช่องทาง'),
       400,
       scrollable: uploaderScroll,
     );
     await tester.pumpAndSettle();
 
     expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+    expect(find.text('ไปเชื่อมช่องทาง'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('uploader-connect-TIKTOK')),
-      findsOneWidget,
+      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+      findsNothing,
     );
     expect(
-      find.byKey(const ValueKey('uploader-soon-SHOPEE_VIDEO')),
-      findsOneWidget,
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
+      findsNothing,
     );
     expect(
-      find.byKey(const ValueKey('uploader-soon-LAZADA_VIDEO')),
-      findsOneWidget,
+      find.byKey(const ValueKey('uploader-platform-SHOPEE_VIDEO')),
+      findsNothing,
     );
-    await tester.tap(find.byKey(const ValueKey('uploader-platform-TIKTOK')));
-    await tester.pumpAndSettle();
-    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
     await tester.pumpAndSettle();
     expect(find.text('ยังไม่ได้เชื่อมช่องทาง'), findsOneWidget);
+  });
+
+  testWidgets('lists and selects only platforms that are really connected',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: () async => const [
+              SocialConnectionResult(platform: 'TIKTOK', connected: false),
+              SocialConnectionResult(
+                platform: 'YOUTUBE_SHORTS',
+                connected: true,
+              ),
+              SocialConnectionResult(
+                platform: 'INSTAGRAM_REELS',
+                connected: false,
+              ),
+              SocialConnectionResult(
+                platform: 'FACEBOOK_REELS',
+                connected: false,
+              ),
+              SocialConnectionResult(
+                platform: 'SHOPEE_VIDEO',
+                connected: true,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
+      400,
+      scrollable: uploaderScroll,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-platform-INSTAGRAM_REELS')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-platform-FACEBOOK_REELS')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-platform-SHOPEE_VIDEO')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-platform-LAZADA_VIDEO')),
+      findsNothing,
+    );
+    expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกแล้ว 0 ช่องทาง'), findsOneWidget);
+  });
+
+  testWidgets(
+      'hides platform rows while loading and keeps a connections path on error',
+      (tester) async {
+    final connections = Completer<List<SocialConnectionResult>>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: () => connections.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.scrollUntilVisible(
+      find.text('กำลังตรวจสอบช่องทาง...'),
+      400,
+      scrollable: uploaderScroll,
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+      findsNothing,
+    );
+    expect(find.text('เชื่อมต่อบัญชีโซเชียลก่อนเริ่มโพสต์'), findsNothing);
+
+    connections.completeError(Exception('network unavailable'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('ตรวจสอบช่องทางที่เชื่อมต่อไม่สำเร็จ ลองใหม่อีกครั้ง'),
+      findsOneWidget,
+    );
+    expect(find.text('ลองใหม่'), findsOneWidget);
+    expect(find.text('ไปหน้าการเชื่อมต่อ'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+      'hides stale rows and selected count while refreshing connections',
+      (tester) async {
+    final refreshedConnections = Completer<List<SocialConnectionResult>>();
+    var loadCalls = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: () {
+              loadCalls += 1;
+              if (loadCalls == 1) {
+                return Future.value(const [
+                  SocialConnectionResult(
+                    platform: 'YOUTUBE_SHORTS',
+                    connected: true,
+                  ),
+                ]);
+              }
+              return refreshedConnections.future;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
+      400,
+      scrollable: uploaderScroll,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('จัดการ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('จัดการ'));
+    await tester.pumpAndSettle();
+    expect(find.text('เชื่อมต่อช่องทาง'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pump();
+
+    expect(loadCalls, 2);
+    expect(find.text('กำลังตรวจสอบ'), findsOneWidget);
+    expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
+      findsNothing,
+    );
+
+    refreshedConnections.complete(const [
+      SocialConnectionResult(
+        platform: 'INSTAGRAM_REELS',
+        connected: true,
+      ),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(find.text('เลือกแล้ว 1 ช่องทาง'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('uploader-platform-YOUTUBE_SHORTS')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('uploader-platform-INSTAGRAM_REELS')),
+      findsOneWidget,
+    );
   });
 
   RealClipCaptionResult buildRealClipCaptionResult({
@@ -189,9 +467,11 @@ void main() {
 
   testWidgets('shows the refreshed upload workflow sections', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
-          body: UploaderScreen(),
+          body: UploaderScreen(
+            loadSocialConnections: () async => const [],
+          ),
         ),
       ),
     );
@@ -255,7 +535,7 @@ void main() {
     expect(
         find.byKey(const ValueKey('uploader-step-schedule')), findsOneWidget);
     expect(
-      find.text('ตั้งเวลาได้ในแพ็กเกจ Starter ขึ้นไป'),
+      find.text('ตั้งเวลาได้ล่วงหน้าสูงสุด 30 วันในแพ็กเกจ Starter ขึ้นไป'),
       findsOneWidget,
     );
     expect(find.text('ตั้งเวลาใช้ได้ใน Starter/Pro'), findsNothing);
@@ -272,10 +552,10 @@ void main() {
       find.byKey(const ValueKey('uploader-advanced-tools-section')),
       findsOneWidget,
     );
-    expect(find.text('ตัดต่อเอง'), findsOneWidget);
+    expect(find.text('ตัดต่อเอง'), findsNothing);
     expect(
       find.text('วางแผนไทม์ไลน์ ซับ สติกเกอร์ และฟิลเตอร์ไว้ล่วงหน้า'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('ใช้โลโก้ PostDee มุมขวาล่าง'), findsOneWidget);
     expect(find.text('โหมดตั้งค่าขั้นสูง'), findsOneWidget);
@@ -356,7 +636,6 @@ void main() {
     final toolTitles = [
       'ตัดคลิปเป็น EP',
       'ใส่ลายน้ำอัตโนมัติ',
-      'ตัดต่อเอง',
     ];
 
     for (final title in toolTitles) {
@@ -392,7 +671,7 @@ void main() {
     }
   });
 
-  testWidgets('shows platform choices as a stacked toggle list on phones',
+  testWidgets('shows connected platform choices as a stacked toggle list',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 2.75;
@@ -402,9 +681,25 @@ void main() {
     });
 
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
-          body: UploaderScreen(),
+          body: UploaderScreen(
+            loadSocialConnections: () async => const [
+              SocialConnectionResult(platform: 'TIKTOK', connected: true),
+              SocialConnectionResult(
+                platform: 'YOUTUBE_SHORTS',
+                connected: true,
+              ),
+              SocialConnectionResult(
+                platform: 'INSTAGRAM_REELS',
+                connected: true,
+              ),
+              SocialConnectionResult(
+                platform: 'FACEBOOK_REELS',
+                connected: true,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -428,12 +723,25 @@ void main() {
     for (final row in platformRows) {
       expect(row, findsOneWidget);
     }
+    expect(
+      find.byKey(
+        const ValueKey('uploader-platform-SHOPEE_VIDEO'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('uploader-platform-LAZADA_VIDEO'),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
 
-    // PostPeer currently publishes this target through the Facebook Page
-    // Videos endpoint, not the Reels API. Keep the legacy API value for stored
-    // posts, but do not promise a Reel in user-facing copy.
-    expect(find.text('Facebook Video', skipOffstage: false), findsOneWidget);
-    expect(find.text('Facebook Reels', skipOffstage: false), findsNothing);
+    expect(find.text('Facebook Reels', skipOffstage: false), findsOneWidget);
+    expect(find.text('Facebook Video', skipOffstage: false), findsNothing);
+    expect(find.text('โพสต์ Reels ลงเพจ Facebook', skipOffstage: false),
+        findsOneWidget);
 
     final firstLeft = tester.getTopLeft(platformRows.first).dx;
     var previousTop = tester.getTopLeft(platformRows.first).dy;
@@ -588,6 +896,472 @@ void main() {
     expect(find.text('mock_video.mp4'), findsNothing);
   });
 
+  testWidgets('ignores a picked video after the uploader is disposed',
+      (tester) async {
+    final picker = Completer<PickedVideoFile?>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () => picker.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-video-preview-picker')),
+    );
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    picker.complete(
+      const PickedVideoFile(
+        name: 'late-video.mp4',
+        path: 'late-video.mp4',
+        sizeBytes: 1024,
+        width: 1080,
+        height: 1920,
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ignores a picker error after the uploader is disposed',
+      (tester) async {
+    final picker = Completer<PickedVideoFile?>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () => picker.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-video-preview-picker')),
+    );
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    picker.completeError(StateError('picker failed after dispose'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('edits a cover and resets it when the selected clip changes',
+      (tester) async {
+    final firstVideo = _createPickedVideoFixture('first.mp4');
+    final secondVideo = _createPickedVideoFixture('second.mp4');
+    final coverRoot =
+        Directory.systemTemp.createTempSync('postdee-cover-uploader-owned-');
+    final firstOwnedDirectory =
+        Directory('${coverRoot.path}${Platform.pathSeparator}managed-first');
+    final secondOwnedDirectory =
+        Directory('${coverRoot.path}${Platform.pathSeparator}managed-second');
+    final firstManagedCover = await tester.runAsync(
+      () => _createManagedCoverFixture(
+        videoFile: File(firstVideo.path),
+        workingDirectory: firstOwnedDirectory,
+      ),
+    );
+    final secondManagedCover = await tester.runAsync(
+      () => _createManagedCoverFixture(
+        videoFile: File(firstVideo.path),
+        workingDirectory: secondOwnedDirectory,
+        frameTimeMs: 4200,
+      ),
+    );
+    expect(firstManagedCover, isNotNull);
+    expect(secondManagedCover, isNotNull);
+    addTearDown(() {
+      if (coverRoot.existsSync()) {
+        coverRoot.deleteSync(recursive: true);
+      }
+    });
+    var pickCalls = 0;
+    var editorCalls = 0;
+    CoverEditorRequest? editorRequest;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async => pickCalls++ == 0 ? firstVideo : secondVideo,
+            openCoverEditor: (context, request) async {
+              editorRequest = request;
+              return editorCalls++ == 0
+                  ? firstManagedCover!
+                  : secondManagedCover!;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _pickVideoFromPreview(tester);
+    expect(find.byKey(const ValueKey('uploader-cover-edit-button')),
+        findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('uploader-cover-edit-button')));
+    await tester.pumpAndSettle();
+
+    expect(editorRequest?.videoName, 'first.mp4');
+    expect(find.text('แก้หน้าปก'), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-cover-preview-image')),
+        findsOneWidget);
+    expect(
+      tester
+          .widget<Image>(
+            find.byKey(const ValueKey('uploader-cover-preview-image')),
+          )
+          .image,
+      isA<MemoryImage>(),
+    );
+    expect(find.byKey(const ValueKey('uploader-cover-remove-button')),
+        findsOneWidget);
+    expect(find.text('เลือกเฟรมที่ 00:03'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-cover-edit-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => _waitUntilDeleted(firstOwnedDirectory));
+    expect(firstOwnedDirectory.existsSync(), isFalse);
+    expect(secondOwnedDirectory.existsSync(), isTrue);
+    expect(find.text('เลือกเฟรมที่ 00:04'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('uploader-video-preview-picker')),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => _waitUntilDeleted(secondOwnedDirectory));
+
+    expect(find.text('second.mp4'), findsOneWidget);
+    expect(find.text('แต่งหน้าปก'), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-cover-preview-image')),
+        findsNothing);
+    expect(secondOwnedDirectory.existsSync(), isFalse);
+    expect(File(firstVideo.path).existsSync(), isTrue);
+  });
+
+  testWidgets('removes an owned cover only after confirmation', (tester) async {
+    final video = _createPickedVideoFixture('remove-cover.mp4');
+    final coverRoot =
+        Directory.systemTemp.createTempSync('postdee-cover-remove-owned-');
+    final ownedDirectory =
+        Directory('${coverRoot.path}${Platform.pathSeparator}managed');
+    final managedCover = await tester.runAsync(
+      () => _createManagedCoverFixture(
+        videoFile: File(video.path),
+        workingDirectory: ownedDirectory,
+      ),
+    );
+    expect(managedCover, isNotNull);
+    addTearDown(() {
+      if (coverRoot.existsSync()) {
+        coverRoot.deleteSync(recursive: true);
+      }
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async => video,
+            openCoverEditor: (_, __) async => managedCover!,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _pickVideoFromPreview(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-cover-edit-button')));
+    await tester.pumpAndSettle();
+
+    final removeButton =
+        find.byKey(const ValueKey('uploader-cover-remove-button'));
+    expect(removeButton, findsOneWidget);
+    await tester.tap(removeButton);
+    await tester.pumpAndSettle();
+    expect(find.text('ใช้หน้าปกอัตโนมัติ?'), findsOneWidget);
+    await tester.tap(find.text('ยกเลิก'));
+    await tester.pumpAndSettle();
+    expect(removeButton, findsOneWidget);
+    expect(ownedDirectory.existsSync(), isTrue);
+
+    await tester.tap(removeButton);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ลบหน้าปก'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => _waitUntilDeleted(ownedDirectory));
+
+    expect(find.byKey(const ValueKey('uploader-cover-preview-image')),
+        findsNothing);
+    expect(removeButton, findsNothing);
+    expect(find.text('แต่งหน้าปก'), findsOneWidget);
+    expect(ownedDirectory.existsSync(), isFalse);
+    expect(File(video.path).existsSync(), isTrue);
+  });
+
+  testWidgets('regenerates a missing cover from the selected video frame',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('covered-video.mp4');
+    final coverFile = File('assets/images/brand/postdee_mark.png').absolute;
+    final coverRoot =
+        Directory.systemTemp.createTempSync('postdee-gallery-cover-upload-');
+    addTearDown(() {
+      if (coverRoot.existsSync()) coverRoot.deleteSync(recursive: true);
+    });
+    final missingRenderedCover = File(
+      '${coverRoot.path}${Platform.pathSeparator}missing-cover.jpg',
+    );
+    final uploadRequests = <CreateUploadRequest>[];
+    final uploadedPaths = <String>[];
+    CoverImageRequest? regeneratedCoverRequest;
+    CreatePostRequest? postRequest;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: () => SynchronousFuture(
+              const [
+                SocialConnectionResult(
+                  platform: 'INSTAGRAM_REELS',
+                  connected: true,
+                ),
+              ],
+            ),
+            pickVideo: () async => pickedVideo,
+            openCoverEditor: (context, request) async => CoverEditorResult(
+              localImagePath: missingRenderedCover.path,
+              sizeBytes: coverFile.lengthSync(),
+              imageBytes: coverFile.readAsBytesSync(),
+              design: const CoverDesign(
+                coverFrameTimeMs: 4500,
+                text: 'ลดแรง',
+              ),
+              sourceKind: CoverSourceKind.galleryImage,
+              sourceImagePath: coverFile.path,
+              sourceImageName: 'postdee_mark.png',
+            ),
+            coverImageProcessor: (request) async {
+              regeneratedCoverRequest = request;
+              return CoverEditorResult(
+                localImagePath: coverFile.path,
+                sizeBytes: coverFile.lengthSync(),
+                imageBytes: coverFile.readAsBytesSync(),
+                design: request.design,
+                durationMs: request.durationMs,
+                sourceKind: request.sourceKind,
+                sourceImagePath: request.sourceImageFile?.path,
+                sourceImageName: 'postdee_mark.png',
+              );
+            },
+            loadSubscription: () => SynchronousFuture(
+              const SubscriptionStatusResult(
+                userId: 'seller-pro',
+                plan: 'PRO',
+                status: 'ACTIVE',
+                phoneVerified: true,
+                requiresPhoneVerification: false,
+                canUseFreePostQuota: false,
+                canSchedule: true,
+                canUseAiCaptions: true,
+                canUseAnalytics: true,
+              ),
+            ),
+            createUpload: (request) {
+              uploadRequests.add(request);
+              final isCover = request.contentType == 'image/jpeg';
+              return SynchronousFuture(
+                UploadResult(
+                  id: isCover ? 'cover-upload' : 'video-upload',
+                  videoS3Key: isCover
+                      ? 'uploads/seller/postdee-cover.jpg'
+                      : 'uploads/seller/covered-video.mp4',
+                  storageProvider: 'mock',
+                ),
+              );
+            },
+            uploadVideoFile: (_, file) {
+              uploadedPaths.add(file.path);
+              return SynchronousFuture<void>(null);
+            },
+            createPost: (request) {
+              postRequest = request;
+              return SynchronousFuture(
+                QueuedPostResult(
+                  id: 'covered-post',
+                  videoS3Key: request.videoS3Key,
+                  platforms: request.platforms,
+                  status: 'QUEUED',
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _pickVideoFromPreview(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-cover-edit-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกเฟรมที่ 00:04'), findsOneWidget);
+    await _enterUploadCaption(tester, caption: 'โพสต์พร้อมหน้าปก');
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('publish-review-cover-image')),
+        findsOneWidget);
+    expect(
+      tester
+          .widget<Image>(
+            find.byKey(const ValueKey('publish-review-cover-image')),
+          )
+          .image,
+      isA<MemoryImage>(),
+    );
+    expect(find.text('หน้าปกเลือกจากวินาทีที่ 4.5'), findsOneWidget);
+    expect(
+      find.textContaining('Instagram Reels: ใช้ภาพปกที่แต่งได้'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
+    for (var attempt = 0; attempt < 10 && postRequest == null; attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(uploadRequests, hasLength(2));
+    expect(uploadRequests.first.contentType, 'video/mp4');
+    expect(uploadRequests.last.contentType, 'image/jpeg');
+    expect(uploadRequests.last.width, 1080);
+    expect(uploadRequests.last.height, 1920);
+    expect(uploadedPaths, containsAll([pickedVideo.path, coverFile.path]));
+    expect(regeneratedCoverRequest?.sourceKind, CoverSourceKind.videoFrame);
+    expect(regeneratedCoverRequest?.sourceImageFile, isNull);
+    expect(regeneratedCoverRequest?.sourceImageName, isNull);
+    expect(postRequest?.coverImageS3Key, 'uploads/seller/postdee-cover.jpg');
+    expect(postRequest?.coverFrameTimeMs, 4500);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+      'keeps the frame time without uploading a cover for TikTok and Shorts',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('frame-only-video.mp4');
+    final coverFile = File('assets/images/brand/postdee_mark.png').absolute;
+    final uploadRequests = <CreateUploadRequest>[];
+    CreatePostRequest? postRequest;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async => pickedVideo,
+            openCoverEditor: (context, request) async => CoverEditorResult(
+              localImagePath: coverFile.path,
+              sizeBytes: coverFile.lengthSync(),
+              design: const CoverDesign(
+                coverFrameTimeMs: 2800,
+                text: 'ปกสำหรับดูในแอป',
+              ),
+            ),
+            loadSubscription: () => SynchronousFuture(
+              const SubscriptionStatusResult(
+                userId: 'seller-pro',
+                plan: 'PRO',
+                status: 'ACTIVE',
+                phoneVerified: true,
+                requiresPhoneVerification: false,
+                canUseFreePostQuota: false,
+                canSchedule: true,
+                canUseAiCaptions: true,
+                canUseAnalytics: true,
+              ),
+            ),
+            createUpload: (request) {
+              uploadRequests.add(request);
+              return SynchronousFuture(
+                const UploadResult(
+                  id: 'video-upload',
+                  videoS3Key: 'uploads/seller/frame-only-video.mp4',
+                  storageProvider: 'mock',
+                ),
+              );
+            },
+            uploadVideoFile: (_, __) => SynchronousFuture<void>(null),
+            createPost: (request) {
+              postRequest = request;
+              return SynchronousFuture(
+                QueuedPostResult(
+                  id: 'frame-only-post',
+                  videoS3Key: request.videoS3Key,
+                  platforms: request.platforms,
+                  status: 'QUEUED',
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _pickVideoFromPreview(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-cover-edit-button')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Image>(
+            find.byKey(const ValueKey('uploader-cover-preview-image')),
+          )
+          .image,
+      isA<FileImage>(),
+    );
+    await _enterUploadCaption(tester, caption: 'โพสต์แบบเลือกเฟรม');
+    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Image>(
+            find.byKey(const ValueKey('publish-review-cover-image')),
+          )
+          .image,
+      isA<FileImage>(),
+    );
+    await tester.tap(find.byKey(const ValueKey('publish-review-confirm')));
+    for (var attempt = 0; attempt < 10 && postRequest == null; attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    expect(uploadRequests, hasLength(1));
+    expect(uploadRequests.single.contentType, 'video/mp4');
+    expect(postRequest, isNotNull);
+    expect(postRequest!.coverImageS3Key, isNull);
+    expect(postRequest!.coverFrameTimeMs, 2800);
+    expect(postRequest!.platforms, containsAll(['TIKTOK', 'YOUTUBE_SHORTS']));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('inserts a saved template into the upload caption',
       (tester) async {
     final loadCompleter = Completer<List<TextTemplateResult>>();
@@ -646,13 +1420,15 @@ void main() {
   });
 
   testWidgets(
-      'generates an AI caption from the selected clip and inserts hashtags',
+      'generates an AI caption from the selected clip audio and inserts hashtags',
       (tester) async {
     GenerateRealClipCaptionRequest? requestedRequest;
     CreateUploadRequest? createdUploadRequest;
     String? uploadedFilePath;
+    String? extractedFromPath;
     List<String>? requestedKeywords;
     final pickedVideo = _createPickedVideoFixture('real-demo.mp4');
+    final audio = _createCaptionAudioFixture();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -671,12 +1447,16 @@ void main() {
               canUseAiCaptions: true,
               canUseAnalytics: false,
             ),
+            extractCaptionAudio: (source) async {
+              extractedFromPath = source.path;
+              return audio;
+            },
             createUpload: (request) async {
               createdUploadRequest = request;
 
               return const UploadResult(
                 id: 'ai-upload-1',
-                videoS3Key: 'uploads/real-demo.mp4',
+                videoS3Key: 'uploads/real-demo-audio.m4a',
                 storageProvider: 's3',
               );
             },
@@ -713,15 +1493,20 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('uploader-ai-generate-button')));
     await tester.pumpAndSettle();
 
-    expect(createdUploadRequest?.fileName, 'real-demo.mp4');
-    expect(createdUploadRequest?.sizeBytes, pickedVideo.sizeBytes);
-    expect(uploadedFilePath, pickedVideo.path);
+    // Only the extracted audio leaves the phone, never the full video.
+    expect(extractedFromPath, pickedVideo.path);
+    expect(createdUploadRequest?.fileName, 'postdee-ai-edit-audio.m4a');
+    expect(createdUploadRequest?.contentType, 'audio/mp4');
+    expect(createdUploadRequest?.purpose, 'ai-edit-audio');
+    expect(createdUploadRequest?.sizeBytes, 512);
+    expect(uploadedFilePath, audio.file.path);
     expect(requestedRequest, isNotNull);
-    expect(requestedRequest!.videoS3Key, 'uploads/real-demo.mp4');
-    expect(requestedRequest!.videoS3Key, isNot(startsWith('local-preview/')));
+    expect(requestedRequest!.audioS3Key, 'uploads/real-demo-audio.m4a');
+    expect(requestedRequest!.videoS3Key, isNull);
     expect(requestedKeywords, contains('guidance:ขอแบบขายจริงใจ'));
     expect(requestedRequest!.selectedFrameKeys, isEmpty);
     expect(requestedRequest!.deleteAfterUse, isTrue);
+    expect(audio.file.existsSync(), isFalse);
 
     final captionField = tester.widget<TextField>(
       find.byKey(const ValueKey('uploader-caption-field')),
@@ -730,6 +1515,114 @@ void main() {
     expect(captionField.controller!.text, contains('Generated SEO caption'));
     expect(captionField.controller!.text, contains('#viral'));
     expect(captionField.controller!.text, contains('#postdee'));
+  });
+
+  Future<void> pumpStarterCaptionUploader(
+    WidgetTester tester, {
+    required UploaderAudioExtractor extractCaptionAudio,
+    required UploaderUploadCreator createUpload,
+    required UploaderRealClipCaptionGenerator generateRealClipCaption,
+  }) async {
+    final pickedVideo = _createPickedVideoFixture('starter-demo.mp4');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UploaderScreen(
+            loadSocialConnections: _loadConnectedSocialConnections,
+            pickVideo: () async => pickedVideo,
+            loadSubscription: () async => const SubscriptionStatusResult(
+              userId: 'starter-user',
+              plan: 'STARTER',
+              status: 'ACTIVE',
+              phoneVerified: true,
+              requiresPhoneVerification: false,
+              canUseFreePostQuota: false,
+              canSchedule: false,
+              canUseAiCaptions: true,
+              canUseAnalytics: false,
+            ),
+            extractCaptionAudio: extractCaptionAudio,
+            createUpload: createUpload,
+            uploadVideoFile: (_, __) async {},
+            generateRealClipCaption: generateRealClipCaption,
+          ),
+        ),
+      ),
+    );
+
+    await tester
+        .tap(find.byKey(const ValueKey('uploader-video-preview-picker')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('uploader-ai-caption-panel')),
+      500,
+      scrollable: uploaderScroll,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uploader-ai-generate-button')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('refuses AI captions when the clip audio is too long to send',
+      (tester) async {
+    var uploadCount = 0;
+    var generateCount = 0;
+    final audio = _createCaptionAudioFixture(sizeBytes: 10 * 1024 * 1024 + 1);
+
+    await pumpStarterCaptionUploader(
+      tester,
+      extractCaptionAudio: (_) async => audio,
+      createUpload: (_) async {
+        uploadCount += 1;
+        return const UploadResult(
+          id: 'audio',
+          videoS3Key: 'uploads/audio.m4a',
+          storageProvider: 's3',
+        );
+      },
+      generateRealClipCaption: (_) async {
+        generateCount += 1;
+        return buildRealClipCaptionResult();
+      },
+    );
+
+    expect(uploadCount, 0);
+    expect(generateCount, 0);
+    expect(audio.file.existsSync(), isFalse);
+    expect(
+      find.text('คลิปยาวเกินไปสำหรับ AI แคปชั่น ลองตัดให้สั้นลงแล้วลองใหม่'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows why audio could not be prepared for AI captions',
+      (tester) async {
+    var uploadCount = 0;
+    var generateCount = 0;
+
+    await pumpStarterCaptionUploader(
+      tester,
+      extractCaptionAudio: (_) async => throw const AiEditAudioExtractionException(
+        AiEditAudioExtractionFailure.noAudioStream,
+      ),
+      createUpload: (_) async {
+        uploadCount += 1;
+        return const UploadResult(
+          id: 'audio',
+          videoS3Key: 'uploads/audio.m4a',
+          storageProvider: 's3',
+        );
+      },
+      generateRealClipCaption: (_) async {
+        generateCount += 1;
+        return buildRealClipCaptionResult();
+      },
+    );
+
+    expect(uploadCount, 0);
+    expect(generateCount, 0);
+    expect(find.text('วิดีโอนี้ไม่มีเสียงให้ AI วิเคราะห์'), findsOneWidget);
   });
 
   testWidgets('Pro AI captions extract and upload frames for the model to see',
@@ -765,6 +1658,7 @@ void main() {
             ),
             extractFrames: (file, {int maxFrames = 3}) async =>
                 [frame1, frame2],
+            extractCaptionAudio: _extractCaptionAudioFixture,
             createUpload: (request) async {
               createUploadRequests.add(request);
               final isImage = request.contentType.startsWith('image/');
@@ -773,7 +1667,7 @@ void main() {
                 id: 'u${createUploadRequests.length}',
                 videoS3Key: isImage
                     ? 'uploads/frames/${request.fileName}'
-                    : 'uploads/pro-demo.mp4',
+                    : 'uploads/pro-demo-audio.m4a',
                 storageProvider: 's3',
               );
             },
@@ -805,6 +1699,7 @@ void main() {
         .toList();
     expect(imageUploads, hasLength(2));
     expect(requestedRequest, isNotNull);
+    expect(requestedRequest!.audioS3Key, 'uploads/pro-demo-audio.m4a');
     expect(requestedRequest!.selectedFrameKeys, [
       'uploads/frames/frame_1.jpg',
       'uploads/frames/frame_2.jpg',
@@ -834,9 +1729,10 @@ void main() {
               canUseAiCaptions: true,
               canUseAnalytics: false,
             ),
+            extractCaptionAudio: _extractCaptionAudioFixture,
             createUpload: (_) async => const UploadResult(
               id: 'global-upload-1',
-              videoS3Key: 'uploads/global-demo.mp4',
+              videoS3Key: 'uploads/global-demo-audio.m4a',
               storageProvider: 's3',
             ),
             uploadVideoFile: (_, __) async {},
@@ -1266,15 +2162,14 @@ void main() {
   testWidgets('rejects a scheduled post whose time is already in the past',
       (tester) async {
     var createPostCalls = 0;
+    var now = DateTime(2026, 7, 17, 12);
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: UploaderScreen(
             loadSocialConnections: _loadConnectedSocialConnections,
-            // Pin "now" far in the future so the default tomorrow 18:30 schedule
-            // counts as being in the past at submit time.
-            now: () => DateTime(2100),
+            now: () => now,
             pickVideo: () async =>
                 _createPickedVideoFixture('past-scheduled.mp4'),
             loadSubscription: () async => const SubscriptionStatusResult(
@@ -1322,6 +2217,9 @@ void main() {
     await tester.tap(scheduleButton);
     await tester.pumpAndSettle();
     await _enterUploadCaption(tester);
+    // Move the clock after the schedule was selected so the chosen time has
+    // genuinely become stale before submit.
+    now = DateTime(2100);
 
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
     await _confirmPublishReview(tester);
@@ -1711,5 +2609,9 @@ void main() {
 
     expect(postRequest, isNotNull);
     expect(postRequest!.videoS3Key, 'uploads/edited.mp4');
+    expect(
+      postRequest!.platforms,
+      unorderedEquals(['TIKTOK', 'YOUTUBE_SHORTS']),
+    );
   });
 }

@@ -29,6 +29,7 @@ void main() {
       () async {
     final firebaseClient = FakeFirebaseAppleAuthClient(
       const FirebaseUserSnapshot(
+        userId: 'dummy-apple-firebase-uid',
         idToken: 'firebase-id-token',
         email: 'apple-seller@example.com',
         displayName: 'Apple Seller',
@@ -42,6 +43,7 @@ void main() {
 
     expect(firebaseClient.didSignIn, isTrue);
     expect(session.idToken, 'firebase-id-token');
+    expect(session.userId, 'dummy-apple-firebase-uid');
     expect(session.email, 'apple-seller@example.com');
     expect(session.displayName, 'Apple Seller');
     expect(session.emailVerified, isTrue);

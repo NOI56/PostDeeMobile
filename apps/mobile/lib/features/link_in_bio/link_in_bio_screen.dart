@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_session.dart';
 import '../../core/theme/app_theme.dart';
 import '../shared/postdee_card.dart';
 import 'link_in_bio_draft_store.dart';
@@ -7,10 +8,12 @@ import 'link_in_bio_draft_store.dart';
 class LinkInBioScreen extends StatefulWidget {
   const LinkInBioScreen({
     super.key,
-    this.draftStore = const SharedPreferencesLinkInBioDraftStore(),
+    this.draftStore,
+    this.sessionStore,
   });
 
-  final LinkInBioDraftStore draftStore;
+  final LinkInBioDraftStore? draftStore;
+  final PostDeeAuthSessionStore? sessionStore;
 
   @override
   State<LinkInBioScreen> createState() => _LinkInBioScreenState();
@@ -23,6 +26,11 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   late final TextEditingController _storeNameController;
   late final TextEditingController _slugController;
+  late final PostDeeAuthSessionStore _sessions;
+  late final LinkInBioDraftStore _draftStore;
+  late AuthSessionBinding _sessionBinding;
+  ModalRoute<dynamic>? _activeLinkSheet;
+  bool _linkSheetOpen = false;
   Set<String> _enabledLinkIds = LinkInBioDraft.defaults().enabledLinkIds;
   List<LinkInBioCustomLink> _customLinks =
       LinkInBioDraft.defaults().customLinks;
@@ -34,14 +42,41 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     final defaults = LinkInBioDraft.defaults();
     _storeNameController = TextEditingController(text: defaults.storeName);
     _slugController = TextEditingController(text: defaults.slug);
+    _sessions = widget.sessionStore ?? PostDeeAuthSessionStore.instance;
+    _draftStore = widget.draftStore ??
+        SharedPreferencesLinkInBioDraftStore(sessionStore: _sessions);
+    _sessionBinding = _sessions.captureSession();
+    _sessions.addListener(_handleSessionChanged);
     _loadDraft();
   }
 
   @override
   void dispose() {
+    _sessions.removeListener(_handleSessionChanged);
     _storeNameController.dispose();
     _slugController.dispose();
     super.dispose();
+  }
+
+  void _handleSessionChanged() {
+    if (_sessionBinding.isCurrent || !mounted) {
+      return;
+    }
+    _sessionBinding = _sessions.captureSession();
+    final defaults = LinkInBioDraft.defaults();
+    setState(() {
+      _storeNameController.text = defaults.storeName;
+      _slugController.text = defaults.slug;
+      _enabledLinkIds = defaults.enabledLinkIds;
+      _customLinks = defaults.customLinks;
+      _isSaving = false;
+    });
+    final sheet = _activeLinkSheet;
+    _activeLinkSheet = null;
+    if (sheet != null && sheet.isActive) {
+      sheet.navigator?.removeRoute(sheet);
+    }
+    _loadDraft();
   }
 
   void _showDraftMessage(String message) {
@@ -51,17 +86,25 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   Future<void> _loadDraft() async {
-    final draft = await widget.draftStore.loadDraft();
-
-    if (!mounted || draft == null) {
+    final binding = _sessionBinding;
+    LinkInBioDraft? draft;
+    try {
+      draft = await _draftStore.loadDraft();
+    } catch (_) {
+      // A stale account load or unreadable local draft leaves safe defaults.
       return;
     }
 
+    if (!mounted || !binding.isCurrent || draft == null) {
+      return;
+    }
+    final loadedDraft = draft;
+
     setState(() {
-      _storeNameController.text = draft.storeName;
-      _slugController.text = draft.slug;
-      _enabledLinkIds = draft.enabledLinkIds;
-      _customLinks = draft.customLinks;
+      _storeNameController.text = loadedDraft.storeName;
+      _slugController.text = loadedDraft.slug;
+      _enabledLinkIds = loadedDraft.enabledLinkIds;
+      _customLinks = loadedDraft.customLinks;
     });
   }
 
@@ -84,6 +127,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   Future<void> _saveDraft() async {
+    final binding = _sessionBinding;
     final messenger = ScaffoldMessenger.of(context);
     final draft = LinkInBioDraft(
       storeName: _storeNameController.text.trim().isEmpty
@@ -102,9 +146,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     });
 
     try {
-      await widget.draftStore.saveDraft(draft);
+      await _draftStore.saveDraft(draft);
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || !binding.isCurrent) {
         return;
       }
 
@@ -117,7 +161,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       return;
     }
 
-    if (!mounted) {
+    if (!mounted || !binding.isCurrent) {
       return;
     }
 
@@ -130,15 +174,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   Future<void> _showAddLinkSheet() async {
-    final link = await showModalBottomSheet<LinkInBioCustomLink>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const _AddLinkSheet(),
-    );
+    final binding = _sessionBinding;
+    final link = await _showLinkSheet(binding);
 
-    if (!mounted || link == null) {
+    if (!mounted || !binding.isCurrent || link == null) {
       return;
     }
 
@@ -149,15 +188,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   Future<void> _showEditLinkSheet(LinkInBioCustomLink existingLink) async {
-    final updatedLink = await showModalBottomSheet<LinkInBioCustomLink>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _AddLinkSheet(initialLink: existingLink),
-    );
+    final binding = _sessionBinding;
+    final updatedLink = await _showLinkSheet(binding, initialLink: existingLink);
 
-    if (!mounted || updatedLink == null) {
+    if (!mounted || !binding.isCurrent || updatedLink == null) {
       return;
     }
 
@@ -167,6 +201,44 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
           if (link.id == updatedLink.id) updatedLink else link,
       ];
     });
+  }
+
+  Future<LinkInBioCustomLink?> _showLinkSheet(
+    AuthSessionBinding binding, {
+    LinkInBioCustomLink? initialLink,
+  }) async {
+    if (_linkSheetOpen || !binding.isCurrent) {
+      return null;
+    }
+    _linkSheetOpen = true;
+    ModalRoute<dynamic>? ownedSheet;
+    try {
+      return await showModalBottomSheet<LinkInBioCustomLink>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) {
+          final sheet = ModalRoute.of(context);
+          ownedSheet = sheet;
+          if (!binding.isCurrent) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (sheet != null && sheet.isActive) {
+                sheet.navigator?.removeRoute(sheet);
+              }
+            });
+            return const SizedBox.shrink();
+          }
+          _activeLinkSheet = sheet;
+          return _AddLinkSheet(initialLink: initialLink);
+        },
+      );
+    } finally {
+      _linkSheetOpen = false;
+      if (identical(_activeLinkSheet, ownedSheet)) {
+        _activeLinkSheet = null;
+      }
+    }
   }
 
   void _deleteCustomLink(String linkId) {

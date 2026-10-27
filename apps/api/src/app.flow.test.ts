@@ -10,7 +10,7 @@ afterEach(() => {
 });
 describe('PostDee mock publishing flow', () => {
   it('creates an upload, generates a caption, queues a post, and exposes the queue job', async () => {
-    const app = createApp();
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
 
     const uploadResponse = await request(app)
       .post('/uploads')
@@ -116,7 +116,7 @@ describe('PostDee mock publishing flow', () => {
   });
 
   it('activates Pro and creates a scheduled queue job', async () => {
-    const app = createApp();
+    const app = createApp({ now: () => new Date('2026-06-01T00:00:00.000Z') });
     const userId = 'seller-pro-flow';
     const scheduledAt = '2026-06-05T10:00:00.000Z';
 
@@ -338,5 +338,28 @@ describe('PostDee mock publishing flow', () => {
     expect(postsResponse.body.posts.find(
       (post: { id: string }) => post.id === postResponse.body.post.id
     )?.status).toBe('PUBLISHED');
+  });
+
+  it('drops a published post from the in-memory publish queue', async () => {
+    const app = createApp();
+
+    await request(app)
+      .post('/posts')
+      .set('x-postdee-user-id', 'seller-queue-cleanup')
+      .send({
+        caption: 'publish and forget',
+        videoS3Key: 'uploads/seller-queue-cleanup/upload-1/clip.mp4',
+        platforms: ['TIKTOK'],
+        subscriptionPlan: 'PRO'
+      })
+      .expect(201);
+
+    await app.locals.publishScheduler.runOnce();
+
+    const queueResponse = await request(app)
+      .get('/queue/jobs')
+      .set('x-postdee-user-id', 'seller-queue-cleanup')
+      .expect(200);
+    expect(queueResponse.body.jobs).toEqual([]);
   });
 });

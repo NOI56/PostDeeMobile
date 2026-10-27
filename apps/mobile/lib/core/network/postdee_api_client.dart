@@ -216,24 +216,34 @@ class AiEditPrepareSettings {
 
 class AiEditPrepareRequest {
   const AiEditPrepareRequest({
-    required this.videoS3Key,
+    this.audioS3Key,
+    this.videoS3Key,
     required this.durationSeconds,
+    this.targetDurationSeconds,
     this.styleId,
     this.prompt,
     this.capabilities = const <String, bool>{},
     this.settings = const AiEditPrepareSettings(),
-  });
+  }) : assert(
+          (audioS3Key == null) != (videoS3Key == null),
+          'Provide exactly one of audioS3Key or videoS3Key',
+        );
 
-  final String videoS3Key;
+  final String? audioS3Key;
+  final String? videoS3Key;
   final double durationSeconds;
+  final double? targetDurationSeconds;
   final String? styleId;
   final String? prompt;
   final Map<String, bool> capabilities;
   final AiEditPrepareSettings settings;
 
   Map<String, Object?> toJson() => {
-        'videoS3Key': videoS3Key,
+        if (audioS3Key != null) 'audioS3Key': audioS3Key,
+        if (videoS3Key != null) 'videoS3Key': videoS3Key,
         'durationSeconds': durationSeconds,
+        if (targetDurationSeconds != null)
+          'targetDurationSeconds': targetDurationSeconds,
         if (styleId != null) 'styleId': styleId,
         if (prompt != null) 'prompt': prompt,
         'capabilities': capabilities,
@@ -589,16 +599,22 @@ class ApiHealthResult {
 class PostDeeApiAuthHeaders {
   PostDeeApiAuthHeaders({
     AuthTokenProvider? authTokenProvider,
+    this.sessionBinding,
     this.mockUserId = AppConfig.mockUserId,
     this.mockSubscriptionPlan = AppConfig.mockSubscriptionPlan,
   }) : authTokenProvider = authTokenProvider ??
+            sessionBinding?.currentIdToken ??
             PostDeeAuthSessionStore.instance.currentIdToken;
 
   final AuthTokenProvider authTokenProvider;
+  final AuthSessionBinding? sessionBinding;
   final String mockUserId;
   final String mockSubscriptionPlan;
 
+  void ensureSessionCurrent() => sessionBinding?.ensureCurrent();
+
   Future<Map<String, String>> load() async {
+    ensureSessionCurrent();
     final headers = <String, String>{
       'Accept': 'application/json',
     };
@@ -612,6 +628,7 @@ class PostDeeApiAuthHeaders {
     }
 
     final token = (await authTokenProvider())?.trim();
+    ensureSessionCurrent();
 
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
@@ -631,6 +648,7 @@ class CreateUploadRequest {
     required this.fileName,
     required this.contentType,
     required this.sizeBytes,
+    this.purpose,
     this.width,
     this.height,
   });
@@ -638,6 +656,7 @@ class CreateUploadRequest {
   final String fileName;
   final String contentType;
   final int sizeBytes;
+  final String? purpose;
   final int? width;
   final int? height;
 
@@ -646,6 +665,7 @@ class CreateUploadRequest {
         'contentType': contentType,
         'sizeBytes': sizeBytes,
         'uploadProtocol': _multipartUploadProtocol,
+        if (purpose != null) 'purpose': purpose,
         if (width != null) 'width': width,
         if (height != null) 'height': height,
       };
@@ -827,12 +847,18 @@ class CreatePostRequest {
     required this.videoS3Key,
     required this.platforms,
     this.scheduledAt,
+    this.coverImageS3Key,
+    this.coverFrameTimeMs,
+    this.youtubeTitle,
   });
 
   final String caption;
   final String videoS3Key;
   final List<String> platforms;
   final DateTime? scheduledAt;
+  final String? coverImageS3Key;
+  final int? coverFrameTimeMs;
+  final String? youtubeTitle;
 
   Map<String, Object?> toJson() => {
         'caption': caption,
@@ -840,6 +866,9 @@ class CreatePostRequest {
         'platforms': platforms,
         if (scheduledAt != null)
           'scheduledAt': scheduledAt!.toUtc().toIso8601String(),
+        if (coverImageS3Key != null) 'coverImageS3Key': coverImageS3Key,
+        if (coverFrameTimeMs != null) 'coverFrameTimeMs': coverFrameTimeMs,
+        if (youtubeTitle != null) 'youtubeTitle': youtubeTitle,
       };
 }
 
@@ -874,19 +903,26 @@ class CaptionResult {
 
 class GenerateRealClipCaptionRequest {
   const GenerateRealClipCaptionRequest({
-    required this.videoS3Key,
+    this.audioS3Key,
+    this.videoS3Key,
     this.guidance,
     this.selectedFrameKeys = const [],
     this.deleteAfterUse = false,
-  });
+  }) : assert(
+          (audioS3Key == null) != (videoS3Key == null),
+          'Provide exactly one of audioS3Key or videoS3Key',
+        );
 
-  final String videoS3Key;
+  /// Extracted M4A audio; the app sends this instead of the full video.
+  final String? audioS3Key;
+  final String? videoS3Key;
   final String? guidance;
   final List<String> selectedFrameKeys;
   final bool deleteAfterUse;
 
   Map<String, Object?> toJson() => {
-        'videoS3Key': videoS3Key,
+        if (audioS3Key != null) 'audioS3Key': audioS3Key,
+        if (videoS3Key != null) 'videoS3Key': videoS3Key,
         if (guidance != null && guidance!.trim().isNotEmpty)
           'guidance': guidance,
         if (selectedFrameKeys.isNotEmpty)
@@ -972,6 +1008,41 @@ class RealClipCaptionQuota {
         usedThisMonth: json['usedThisMonth'] as int,
         remainingThisMonth: json['remainingThisMonth'] as int,
       );
+}
+
+class CaptionQuotaResult {
+  const CaptionQuotaResult({required this.plan, required this.quota});
+
+  final String plan;
+  final RealClipCaptionQuota quota;
+
+  bool get isPaid => plan == 'STARTER' || plan == 'PRO';
+
+  factory CaptionQuotaResult.fromJson(Map<String, Object?> json) {
+    final plan = json['plan'];
+    final quota = json['quota'];
+    if (plan is! String ||
+        !const ['BASIC', 'STARTER', 'PRO'].contains(plan) ||
+        quota is! Map<String, Object?>) {
+      throw const ApiException('Caption quota response is missing quota data');
+    }
+    final limit = quota['limit'];
+    final used = quota['usedThisMonth'];
+    final remaining = quota['remainingThisMonth'];
+    if (limit is! int ||
+        used is! int ||
+        remaining is! int ||
+        limit < 0 ||
+        used < 0 ||
+        remaining < 0 ||
+        remaining > limit) {
+      throw const ApiException('Caption quota response is invalid');
+    }
+    return CaptionQuotaResult(
+      plan: plan,
+      quota: RealClipCaptionQuota.fromJson(quota),
+    );
+  }
 }
 
 class RealClipCaptionResult {
@@ -1338,6 +1409,9 @@ class ScheduledPostResult {
     required this.scheduledAt,
     required this.status,
     required this.createdAt,
+    this.userId,
+    this.publishedAt,
+    this.platformResults = const [],
   });
 
   final String id;
@@ -1347,8 +1421,21 @@ class ScheduledPostResult {
   final DateTime scheduledAt;
   final String status;
   final DateTime createdAt;
+  final String? userId;
+  final DateTime? publishedAt;
+  final List<PostPlatformResult> platformResults;
 
   factory ScheduledPostResult.fromJson(Map<String, Object?> json) {
+    String? optionalString(Object? value) {
+      if (value is! String || value.trim().isEmpty) return null;
+      return value.trim();
+    }
+
+    DateTime? optionalDate(Object? value) {
+      final date = optionalString(value);
+      return date == null ? null : DateTime.tryParse(date);
+    }
+
     final scheduledAt = json['scheduledAt'];
     final createdAt = json['createdAt'];
 
@@ -1370,6 +1457,12 @@ class ScheduledPostResult {
       scheduledAt: DateTime.parse(scheduledAt),
       status: json['status'] as String,
       createdAt: DateTime.parse(createdAt),
+      userId: optionalString(json['userId']),
+      publishedAt: optionalDate(json['publishedAt']),
+      platformResults: (json['platformResults'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(PostPlatformResult.fromJson)
+          .toList(),
     );
   }
 }
@@ -1431,6 +1524,9 @@ class PostSummaryResult {
     this.scheduledAt,
     this.publishedAt,
     this.platformResults = const [],
+    this.videoUrl,
+    this.coverImageUrl,
+    this.coverFrameTimeMs,
   });
 
   final String id;
@@ -1442,12 +1538,25 @@ class PostSummaryResult {
   final DateTime? scheduledAt;
   final DateTime? publishedAt;
   final List<PostPlatformResult> platformResults;
+  final Uri? videoUrl;
+  final Uri? coverImageUrl;
+  final int? coverFrameTimeMs;
 
   factory PostSummaryResult.fromJson(Map<String, Object?> json) {
     DateTime? parseDate(Object? value) =>
         value is String && value.trim().isNotEmpty
             ? DateTime.tryParse(value)
             : null;
+    Uri? parseMediaUrl(Object? value) {
+      if (value is! String || value.trim().isEmpty) return null;
+      final uri = Uri.tryParse(value.trim());
+      if (uri == null ||
+          !uri.hasAuthority ||
+          (uri.scheme != 'https' && uri.scheme != 'http')) {
+        return null;
+      }
+      return uri;
+    }
 
     final createdAt = parseDate(json['createdAt']);
 
@@ -1470,6 +1579,11 @@ class PostSummaryResult {
           .whereType<Map<String, Object?>>()
           .map(PostPlatformResult.fromJson)
           .toList(),
+      videoUrl: parseMediaUrl(json['videoUrl']),
+      coverImageUrl: parseMediaUrl(json['coverImageUrl']),
+      coverFrameTimeMs: json['coverFrameTimeMs'] is int
+          ? json['coverFrameTimeMs'] as int
+          : null,
     );
   }
 }
@@ -1712,6 +1826,12 @@ class PostDeeApiClient {
     );
   }
 
+  Future<void> cleanupAiEditAudio(String audioS3Key) async {
+    await _postJson('/ai-edits/audio/cleanup', {
+      'audioS3Key': audioS3Key,
+    });
+  }
+
   Future<AiEditPlanResult> requestAiEditPlan(AiEditPlanRequest request) async {
     final response = await _postJson('/ai-edits/plan', request.toJson());
     final plan = response['plan'];
@@ -1741,7 +1861,8 @@ class PostDeeApiClient {
   /// Lists the user's posts (any state), newest first, limited to [limit].
   /// Used by the Home dashboard's latest-post list.
   Future<List<PostSummaryResult>> listRecentPosts({int limit = 3}) async {
-    final response = await _getJson('/posts');
+    final limitQuery = limit > 0 ? '&limit=$limit' : '';
+    final response = await _getJson('/posts?includeMedia=true$limitQuery');
     final posts = response['posts'];
 
     if (posts is! List<dynamic>) {
@@ -1767,6 +1888,11 @@ class PostDeeApiClient {
     );
 
     return CaptionResult.fromJson(response);
+  }
+
+  Future<CaptionQuotaResult> fetchAiCaptionQuota() async {
+    final response = await _getJson('/captions/quota');
+    return CaptionQuotaResult.fromJson(response);
   }
 
   Future<RealClipCaptionResult> generateCaptionFromClip(
@@ -1811,6 +1937,10 @@ class PostDeeApiClient {
     return TextTemplateResult.fromJson(template);
   }
 
+  Future<void> deleteTemplate(String templateId) async {
+    await _deleteJson('/templates/${Uri.encodeComponent(templateId)}');
+  }
+
   Future<AnalyticsSummaryResult> loadAnalyticsSummary({
     String range = '30d',
   }) async {
@@ -1834,6 +1964,18 @@ class PostDeeApiClient {
     }
 
     return SubscriptionStatusResult.fromJson(subscription);
+  }
+
+  Future<void> prepareSubscriptionPurchase() async {
+    final response = await _postJson('/billing/purchase-readiness', const {});
+    if (response['status'] != 'ok' ||
+        response['purchaseReady'] != true ||
+        response['preparationProtocol'] != 1) {
+      throw const ApiException(
+        'Purchase readiness is not supported by this API version',
+        code: 'PURCHASE_READINESS_UNSUPPORTED',
+      );
+    }
   }
 
   Future<String> resyncRevenueCatSubscription() async {
@@ -2269,20 +2411,33 @@ class PostDeeApiClient {
 
   Future<Map<String, Object?>> _postJson(
       String path, Map<String, Object?> body) async {
+    _authHeaders.ensureSessionCurrent();
     final request = await _httpClient.postUrl(_baseUri.resolve(path));
-    request.headers.contentType = ContentType.json;
-    await _setDefaultHeaders(request);
+    try {
+      await _setDefaultHeaders(request);
+      _authHeaders.ensureSessionCurrent();
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(body));
 
-    request.write(jsonEncode(body));
-
-    return _readJsonResponse(request);
+      return await _readJsonResponse(request);
+    } catch (_) {
+      request.abort();
+      rethrow;
+    }
   }
 
   Future<Map<String, Object?>> _getJson(String path) async {
+    _authHeaders.ensureSessionCurrent();
     final request = await _httpClient.getUrl(_baseUri.resolve(path));
-    await _setDefaultHeaders(request);
+    try {
+      await _setDefaultHeaders(request);
+      _authHeaders.ensureSessionCurrent();
 
-    return _readJsonResponse(request);
+      return _readJsonResponse(request);
+    } catch (_) {
+      request.abort();
+      rethrow;
+    }
   }
 
   Future<Map<String, Object?>> _patchJson(
@@ -2297,14 +2452,22 @@ class PostDeeApiClient {
   }
 
   Future<Map<String, Object?>> _deleteJson(String path) async {
+    _authHeaders.ensureSessionCurrent();
     final request = await _httpClient.deleteUrl(_baseUri.resolve(path));
-    await _setDefaultHeaders(request);
+    try {
+      await _setDefaultHeaders(request);
+      _authHeaders.ensureSessionCurrent();
 
-    return _readJsonResponse(request);
+      return _readJsonResponse(request);
+    } catch (_) {
+      request.abort();
+      rethrow;
+    }
   }
 
   Future<void> _setDefaultHeaders(HttpClientRequest request) async {
     final headers = await _authHeaders.load();
+    _authHeaders.ensureSessionCurrent();
 
     for (final header in headers.entries) {
       request.headers.set(header.key, header.value);

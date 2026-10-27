@@ -74,6 +74,52 @@ void main() {
     expect(find.text('สมัคร Starter'), findsOneWidget);
   });
 
+  testWidgets('explains an incompatible billing API without opening a purchase',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final gateway = _FakeRevenueCatBillingGateway();
+    var entitlementLoads = 0;
+    var subscribedCalls = 0;
+    final service = StoreSubscriptionService(
+      revenueCatGateway: gateway,
+      useRevenueCat: true,
+      prepareSubscriptionPurchase: () async => throw const ApiException(
+        'Route not found',
+        statusCode: 404,
+      ),
+      loadSubscription: () async {
+        entitlementLoads += 1;
+        return _subscription(plan: 'PRO');
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PaywallScreen(
+          service: service,
+          loadSubscription: () async => _subscription(plan: 'BASIC'),
+          onSubscribed: (_) => subscribedCalls += 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('สมัคร Pro'));
+    await tester.tap(find.text('สมัคร Pro'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('ระบบสมาชิกยังไม่พร้อมสำหรับแอปเวอร์ชันนี้ กรุณาลองใหม่ภายหลัง'),
+      findsOneWidget,
+    );
+    expect(find.text('กำลังดำเนินการสั่งซื้อ...'), findsNothing);
+    expect(find.text('สมัคร Pro สำเร็จ'), findsNothing);
+    expect(gateway.purchaseCalls, 0);
+    expect(entitlementLoads, 0);
+    expect(subscribedCalls, 0);
+  });
+
   testWidgets('restores a previous Pro purchase and refreshes the current plan',
       (tester) async {
     tester.view.physicalSize = const Size(390, 1200);
@@ -248,6 +294,7 @@ class _FakeStoreBillingGateway implements StoreBillingGateway {
 
 class _FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
   var restoreCalls = 0;
+  var purchaseCalls = 0;
 
   @override
   Future<bool> isAvailable() async => true;
@@ -257,7 +304,7 @@ class _FakeRevenueCatBillingGateway implements RevenueCatBillingGateway {
       const [];
 
   @override
-  Future<void> buySubscription(String productId) async {}
+  Future<void> buySubscription(String productId) async => purchaseCalls += 1;
 
   @override
   Future<void> restorePurchases() async => restoreCalls += 1;

@@ -7,6 +7,7 @@ import type { SubscriptionStore } from '../subscriptions/subscriptionStore.js';
 import {
   aiEditMonthlyMinuteLimit,
   readCurrentAiEditMonthKey,
+  type AiEditUsageRecord,
   type AiEditUsageStore
 } from './aiEditUsageStore.js';
 import {
@@ -14,9 +15,10 @@ import {
   readAiEditCapabilities,
   readAiEditRecipeSettings
 } from './aiEditRecipe.js';
-import type {
-  EditPlanProvider,
-  EditPlanSegment
+import {
+  EditPlanProviderError,
+  type EditPlanProvider,
+  type EditPlanSegment
 } from './editPlanProvider.js';
 import type { TranscriptionProvider } from './transcriptionProvider.js';
 
@@ -87,6 +89,27 @@ const readAiEditMedia = (body: unknown): ReadAiEditMediaResult => {
   };
 };
 
+// Prompts and client-sent segments go straight into a paid LLM call, so they
+// are capped to bound the cost of one request.
+export const aiEditPromptMaxLength = 500;
+export const aiEditPlanMaxSegments = 600;
+export const aiEditPlanSegmentTextMaxLength = 300;
+
+const isPromptTooLong = (prompt: string | undefined) =>
+  prompt !== undefined && prompt.length > aiEditPromptMaxLength;
+
+const exceedsSegmentLimits = (value: unknown) =>
+  Array.isArray(value) &&
+  (value.length > aiEditPlanMaxSegments ||
+    value.some(
+      (item) =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as Record<string, unknown>).text === 'string' &&
+        ((item as Record<string, unknown>).text as string).length >
+          aiEditPlanSegmentTextMaxLength
+    ));
+
 const readSegments = (value: unknown): EditPlanSegment[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -148,12 +171,36 @@ const sendMediaDownloadErrorResponse = (response: Response, error: MediaDownload
   });
 };
 
+const sendPromptTooLongResponse = (response: Response) => {
+  response.status(400).json({
+    status: 'error',
+    code: 'AI_EDIT_PROMPT_TOO_LONG',
+    message: `prompt must be ${aiEditPromptMaxLength} characters or fewer`
+  });
+};
+
 const sendAiEditQuotaExceededResponse = (response: Response) => {
   response.status(402).json({
     status: 'error',
     code: 'AI_EDIT_QUOTA_EXCEEDED',
     message: `AI editing is limited to ${aiEditMonthlyMinuteLimit} minutes per month`
   });
+};
+
+const sendEditPlanProviderErrorResponse = (
+  response: Response,
+  error: unknown
+): boolean => {
+  if (!(error instanceof EditPlanProviderError)) {
+    return false;
+  }
+
+  response.status(502).json({
+    status: 'error',
+    code: error.code,
+    message: 'AI edit planning failed. Please try again later.'
+  });
+  return true;
 };
 
 export const registerAiEditRoutes = (
@@ -175,6 +222,49 @@ export const registerAiEditRoutes = (
     } catch (error) {
       console.error(
         'AI edit temporary audio cleanup failed:',
+        error instanceof Error ? error.message : error
+      );
+    }
+  };
+
+  // Minutes are reserved from the client estimate BEFORE the paid provider call,
+  // so parallel requests cannot all reach the provider near the monthly limit.
+  const reserveEstimatedMinutes = (userId: string, monthKey: string, minutes: number) =>
+    aiEditUsageStore.reserve({ userId, monthKey, minutes, limit: aiEditMonthlyMinuteLimit });
+
+  // Re-prices the reservation to the real transcribed duration so a client
+  // cannot under-report. If that does not fit, the estimate stays charged
+  // because the provider call already happened, and the request fails. A
+  // one-minute gap is let through: the app measures the video and the provider
+  // the audio, so honest durations can round to adjacent minutes at the limit.
+  const settleBilledMinutes = async (
+    reservation: AiEditUsageRecord,
+    transcript: { durationSeconds: number },
+    estimatedMinutes: number
+  ): Promise<{ ok: boolean; usedMinutes: number }> => {
+    const billedMinutes =
+      transcript.durationSeconds > 0
+        ? Math.ceil(transcript.durationSeconds / 60)
+        : estimatedMinutes;
+    const settled = await aiEditUsageStore.settle({
+      id: reservation.id,
+      userId: reservation.userId,
+      monthKey: reservation.monthKey,
+      minutes: billedMinutes,
+      limit: aiEditMonthlyMinuteLimit
+    });
+
+    return settled.ok || billedMinutes > estimatedMinutes + 1
+      ? settled
+      : { ok: true, usedMinutes: settled.usedMinutes };
+  };
+
+  const releaseReservation = async (reservation: AiEditUsageRecord) => {
+    try {
+      await aiEditUsageStore.release({ id: reservation.id, userId: reservation.userId });
+    } catch (error) {
+      console.error(
+        'AI edit minute reservation release failed:',
         error instanceof Error ? error.message : error
       );
     }
@@ -279,63 +369,47 @@ export const registerAiEditRoutes = (
         return;
       }
 
-    // Client-provided duration is only a pre-check estimate to reject obviously
-    // over-quota requests before spending a transcription call. Actual metering
-    // (below) uses the real clip duration the provider returns, so a client
-    // cannot under-report duration to bypass the monthly limit.
-    const estimatedMinutes = Math.max(
-      1,
-      Math.ceil((readPositiveNumber(request.body?.durationSeconds) ?? 60) / 60)
-    );
-    const monthKey = readCurrentAiEditMonthKey();
-    const usedMinutes = await aiEditUsageStore.sumMinutesForMonth({
-      userId: authUser.id,
-      monthKey
-    });
+      const estimatedMinutes = Math.max(
+        1,
+        Math.ceil((readPositiveNumber(request.body?.durationSeconds) ?? 60) / 60)
+      );
+      const monthKey = readCurrentAiEditMonthKey();
+      const reservation = await reserveEstimatedMinutes(authUser.id, monthKey, estimatedMinutes);
 
-    if (usedMinutes + estimatedMinutes > aiEditMonthlyMinuteLimit) {
-      sendAiEditQuotaExceededResponse(response);
-      return;
-    }
-
-    let transcript;
-
-    try {
-      transcript = await transcriptionProvider.transcribe({
-        mediaS3Key: media.key,
-        mediaKind: media.kind
-      });
-    } catch (error) {
-      if (error instanceof MediaDownloadError) {
-        sendMediaDownloadErrorResponse(response, error);
+      if (!reservation.ok) {
+        sendAiEditQuotaExceededResponse(response);
         return;
       }
 
-      throw error;
-    }
+      let transcript;
 
-    // Meter the real transcribed duration, not the client estimate.
-    const billedMinutes =
-      transcript.durationSeconds > 0
-        ? Math.ceil(transcript.durationSeconds / 60)
-        : estimatedMinutes;
+      try {
+        transcript = await transcriptionProvider.transcribe({
+          mediaS3Key: media.key,
+          mediaKind: media.kind
+        });
+      } catch (error) {
+        await releaseReservation(reservation.record);
 
-    const reservation = await aiEditUsageStore.reserve({
-      userId: authUser.id,
-      monthKey,
-      minutes: billedMinutes,
-      limit: aiEditMonthlyMinuteLimit
-    });
+        if (error instanceof MediaDownloadError) {
+          sendMediaDownloadErrorResponse(response, error);
+          return;
+        }
 
-    if (!reservation.ok) {
-      sendAiEditQuotaExceededResponse(response);
-      return;
-    }
+        throw error;
+      }
+
+      const settled = await settleBilledMinutes(reservation.record, transcript, estimatedMinutes);
+
+      if (!settled.ok) {
+        sendAiEditQuotaExceededResponse(response);
+        return;
+      }
 
       response.json({
         status: 'ok',
         transcript,
-        quota: buildQuota(reservation.usedMinutes)
+        quota: buildQuota(settled.usedMinutes)
       });
     } finally {
       await cleanupTemporaryAudio(media);
@@ -381,80 +455,100 @@ export const registerAiEditRoutes = (
         return;
       }
 
-    const estimatedDurationSeconds = readPositiveNumber(request.body?.durationSeconds) ?? 60;
-    const estimatedMinutes = Math.max(1, Math.ceil(estimatedDurationSeconds / 60));
-    const monthKey = readCurrentAiEditMonthKey();
-    const usedMinutes = await aiEditUsageStore.sumMinutesForMonth({
-      userId: authUser.id,
-      monthKey
-    });
+      if (isPromptTooLong(readRequiredString(request.body?.prompt))) {
+        sendPromptTooLongResponse(response);
+        return;
+      }
 
-    if (usedMinutes + estimatedMinutes > aiEditMonthlyMinuteLimit) {
-      sendAiEditQuotaExceededResponse(response);
-      return;
-    }
+      const estimatedDurationSeconds =
+        readPositiveNumber(request.body?.durationSeconds) ?? 60;
+      const estimatedMinutes = Math.max(
+        1,
+        Math.ceil(estimatedDurationSeconds / 60)
+      );
+      const monthKey = readCurrentAiEditMonthKey();
+      const reservation = await reserveEstimatedMinutes(authUser.id, monthKey, estimatedMinutes);
 
-    let transcript;
+      if (!reservation.ok) {
+        sendAiEditQuotaExceededResponse(response);
+        return;
+      }
 
-    try {
-      transcript = await transcriptionProvider.transcribe({
-        mediaS3Key: media.key,
-        mediaKind: media.kind
-      });
+      // Released unless a usable recipe (or an over-quota settle) is returned,
+      // so a provider failure cannot consume minutes.
+      let keepReservation = false;
+
+      try {
+        let transcript;
+
+        try {
+          transcript = await transcriptionProvider.transcribe({
+            mediaS3Key: media.key,
+            mediaKind: media.kind
+          });
+        } catch (error) {
+          if (error instanceof MediaDownloadError) {
+            sendMediaDownloadErrorResponse(response, error);
+            return;
+          }
+
+          throw error;
+        }
+
+        const settled = await settleBilledMinutes(reservation.record, transcript, estimatedMinutes);
+
+        if (!settled.ok) {
+          keepReservation = true;
+          sendAiEditQuotaExceededResponse(response);
+          return;
+        }
+
+        const styleId = readRequiredString(request.body?.styleId);
+        const prompt = readRequiredString(request.body?.prompt);
+        const targetDurationSeconds = readPositiveNumber(
+          request.body?.targetDurationSeconds
+        );
+        const durationSeconds =
+          transcript.durationSeconds > 0
+            ? transcript.durationSeconds
+            : estimatedDurationSeconds;
+        const editPlan =
+          styleId || prompt || targetDurationSeconds
+            ? await editPlanProvider.plan({
+                segments: transcript.segments,
+                durationSeconds,
+                targetDurationSeconds,
+                styleId,
+                prompt
+              })
+            : undefined;
+
+        const recipe = buildAiEditRecipe({
+          transcript,
+          capabilities: readAiEditCapabilities(request.body?.capabilities),
+          settings: readAiEditRecipeSettings(request.body?.settings),
+          styleId,
+          prompt,
+          plan: editPlan
+        });
+
+        keepReservation = true;
+        response.json({
+          status: 'ok',
+          recipe,
+          quota: buildQuota(settled.usedMinutes)
+        });
+      } finally {
+        if (!keepReservation) {
+          await releaseReservation(reservation.record);
+        }
+      }
     } catch (error) {
-      if (error instanceof MediaDownloadError) {
-        sendMediaDownloadErrorResponse(response, error);
+      if (sendEditPlanProviderErrorResponse(response, error)) {
         return;
       }
 
       throw error;
-    }
-
-    const billedMinutes =
-      transcript.durationSeconds > 0
-        ? Math.ceil(transcript.durationSeconds / 60)
-        : estimatedMinutes;
-
-    const reservation = await aiEditUsageStore.reserve({
-      userId: authUser.id,
-      monthKey,
-      minutes: billedMinutes,
-      limit: aiEditMonthlyMinuteLimit
-    });
-
-    if (!reservation.ok) {
-      sendAiEditQuotaExceededResponse(response);
-      return;
-    }
-
-    const styleId = readRequiredString(request.body?.styleId);
-    const prompt = readRequiredString(request.body?.prompt);
-    const durationSeconds =
-      transcript.durationSeconds > 0 ? transcript.durationSeconds : estimatedDurationSeconds;
-    const editPlan =
-      styleId || prompt
-        ? await editPlanProvider.plan({
-            segments: transcript.segments,
-            durationSeconds,
-            styleId,
-            prompt
-          })
-        : undefined;
-
-    const recipe = buildAiEditRecipe({
-      transcript,
-      capabilities: readAiEditCapabilities(request.body?.capabilities),
-      settings: readAiEditRecipeSettings(request.body?.settings),
-      styleId,
-      prompt,
-      plan: editPlan
-    });
-
-      response.json({
-        status: 'ok',
-        recipe,
-        quota: buildQuota(reservation.usedMinutes)
-      });
     } finally {
       await cleanupTemporaryAudio(media);
     }
@@ -495,22 +589,48 @@ export const registerAiEditRoutes = (
 
     const styleId = readRequiredString(request.body?.styleId);
     const prompt = readRequiredString(request.body?.prompt);
+    const targetDurationSeconds = readPositiveNumber(
+      request.body?.targetDurationSeconds
+    );
 
-    if (!styleId && !prompt) {
+    if (!styleId && !prompt && !targetDurationSeconds) {
       response.status(400).json({
         status: 'error',
-        message: 'styleId or prompt is required'
+        message: 'styleId, prompt, or targetDurationSeconds is required'
       });
       return;
     }
 
-    const plan = await editPlanProvider.plan({
-      segments: readSegments(request.body?.segments),
-      durationSeconds,
-      styleId,
-      prompt
-    });
+    if (isPromptTooLong(prompt)) {
+      sendPromptTooLongResponse(response);
+      return;
+    }
 
-    response.json({ status: 'ok', plan });
+    if (exceedsSegmentLimits(request.body?.segments)) {
+      response.status(400).json({
+        status: 'error',
+        code: 'AI_EDIT_SEGMENTS_TOO_LARGE',
+        message: `segments must have at most ${aiEditPlanMaxSegments} items of ${aiEditPlanSegmentTextMaxLength} characters or fewer`
+      });
+      return;
+    }
+
+    try {
+      const plan = await editPlanProvider.plan({
+        segments: readSegments(request.body?.segments),
+        durationSeconds,
+        targetDurationSeconds,
+        styleId,
+        prompt
+      });
+
+      response.json({ status: 'ok', plan });
+    } catch (error) {
+      if (sendEditPlanProviderErrorResponse(response, error)) {
+        return;
+      }
+
+      throw error;
+    }
   });
 };

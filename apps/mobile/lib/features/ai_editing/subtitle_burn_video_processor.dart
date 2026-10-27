@@ -303,8 +303,7 @@ String buildColorFilter({
     final signedOffset = brightnessOffset >= 0
         ? '+${brightnessOffset.toStringAsFixed(3)}'
         : brightnessOffset.toStringAsFixed(3);
-    final expression =
-        "'clip((val-128)*$lutContrast+128$signedOffset,0,255)'";
+    final expression = "'clip((val-128)*$lutContrast+128$signedOffset,0,255)'";
     filters.add('lutrgb=r=$expression:g=$expression:b=$expression');
   }
 
@@ -511,6 +510,7 @@ List<String> buildEditFfmpegArguments({
   double volume = 1.0,
   double? trimStartSec,
   double? trimEndSec,
+  bool inputHasAudio = true,
   List<SilenceCutRange> silenceRanges = const [],
   List<String> stickerImagePaths = const [],
   List<(double dx, double dy)> stickerPositions = const [],
@@ -520,22 +520,26 @@ List<String> buildEditFfmpegArguments({
   List<String> videoEncoderArgs = const ['-q:v', '4'],
   bool scaleEvenDimensions = false,
 }) {
-  final args = <String>['-y', '-i', inputPath];
+  final args = <String>['-y'];
 
-  // Sticker overlays arrive as extra image inputs (indices 1..n).
-  for (final stickerPath in stickerImagePaths) {
-    args.addAll(['-i', stickerPath]);
-  }
-
+  // Trim the main source before it enters filters. Subtitle/cut timestamps are
+  // already shifted to this trimmed timeline by the renderer.
   if (trimStartSec != null && trimStartSec > 0) {
     args.addAll(['-ss', trimStartSec.toStringAsFixed(3)]);
   }
   if (trimEndSec != null) {
     args.addAll(['-to', trimEndSec.toStringAsFixed(3)]);
   }
+  args.addAll(['-i', inputPath]);
+
+  // Sticker overlays arrive as extra image inputs (indices 1..n).
+  for (final stickerPath in stickerImagePaths) {
+    args.addAll(['-i', stickerPath]);
+  }
 
   final normalizedSilenceRanges = _normalizeSilenceRanges(silenceRanges);
   final hasSilence = normalizedSilenceRanges.isNotEmpty;
+  final hasAudioSilence = hasSilence && inputHasAudio;
   // Single-quoted so the commas inside between(t,..) survive filtergraph parsing.
   final keepExpr = normalizedSilenceRanges
       .map((range) =>
@@ -594,7 +598,7 @@ List<String> buildEditFfmpegArguments({
       ),
     );
   }
-  if (hasSilence) {
+  if (hasAudioSilence) {
     complexFilters.add(
       _buildAudioSilenceConcatFilter(
         normalizedSilenceRanges,
@@ -618,19 +622,23 @@ List<String> buildEditFfmpegArguments({
       }
       args.addAll(['-map', '0:v:0?']);
     }
-    args.addAll(['-map', hasSilence ? '[aout]' : '0:a?']);
+    if (inputHasAudio) {
+      args.addAll(['-map', hasAudioSilence ? '[aout]' : '0:a?']);
+    }
   } else if (videoFilters.isNotEmpty) {
     args.addAll(['-vf', videoFilters.join(',')]);
   }
 
-  if (!hasSilence && audioFilters.isNotEmpty) {
+  if (inputHasAudio && !hasSilence && audioFilters.isNotEmpty) {
     args.addAll(['-af', audioFilters.join(',')]);
   }
 
   args.addAll(['-c:v', videoCodec, ...videoEncoderArgs]);
-  args.addAll(hasSilence || audioFilters.isNotEmpty
-      ? ['-c:a', 'aac']
-      : ['-c:a', 'copy']);
+  if (inputHasAudio) {
+    args.addAll(hasSilence || audioFilters.isNotEmpty
+        ? ['-c:a', 'aac']
+        : ['-c:a', 'copy']);
+  }
   args.addAll(['-movflags', '+faststart', outputPath]);
 
   return args;
@@ -684,6 +692,18 @@ typedef RenderedStreamTypesProbe = Future<List<String?>?> Function(String path);
 bool renderedOutputHasVideo(Iterable<String?>? streamTypes) =>
     streamTypes != null && streamTypes.contains('video');
 
+/// A failed probe keeps the previous audio-safe behavior; a successful probe
+/// without an audio stream lets cut renders avoid referencing `[0:a]`.
+bool probedInputHasAudio(Iterable<String?>? streamTypes) =>
+    streamTypes == null || streamTypes.contains('audio');
+
+bool editNeedsInputAudioProbe({
+  List<SilenceCutRange> silenceRanges = const [],
+  double speed = 1.0,
+  double volume = 1.0,
+}) =>
+    silenceRanges.isNotEmpty || speed != 1.0 || volume != 1.0;
+
 /// Default [RenderedStreamTypesProbe]: FFprobe on the rendered file.
 Future<List<String?>?> ffprobeStreamTypes(String path) async {
   final session = await FFprobeKit.getMediaInformation(path);
@@ -701,6 +721,7 @@ class FfmpegSubtitleBurnVideoProcessor {
     this.assetBundle,
     this.fontAssetPath = 'assets/fonts/prompt/Prompt-Bold.ttf',
     this.probeStreamTypes = ffprobeStreamTypes,
+    this.probeInputStreamTypes = ffprobeStreamTypes,
     this.renderTempDirectory,
   });
 
@@ -709,6 +730,9 @@ class FfmpegSubtitleBurnVideoProcessor {
 
   /// Injectable so tests can fake the post-render stream check.
   final RenderedStreamTypesProbe probeStreamTypes;
+
+  /// Injectable input probe used before a cut render builds its audio graph.
+  final RenderedStreamTypesProbe probeInputStreamTypes;
 
   /// Overrides the render temp root in tests. Production uses the platform
   /// system temp directory.
@@ -760,6 +784,21 @@ class FfmpegSubtitleBurnVideoProcessor {
 
     if (!hasEdits) {
       throw const SubtitleBurnException('ยังไม่มีการแก้ไขให้เรนเดอร์');
+    }
+
+    var inputHasAudio = true;
+    if (editNeedsInputAudioProbe(
+      silenceRanges: trimmedSilence,
+      speed: request.speed,
+      volume: request.volume,
+    )) {
+      try {
+        inputHasAudio = probedInputHasAudio(
+          await probeInputStreamTypes(request.inputFile.path),
+        );
+      } catch (_) {
+        // Keep the audio-safe default when FFprobe itself is unavailable.
+      }
     }
 
     final workingDirectory =
@@ -846,6 +885,7 @@ class FfmpegSubtitleBurnVideoProcessor {
                 volume: request.volume,
                 trimStartSec: request.trimStartSec,
                 trimEndSec: request.trimEndSec,
+                inputHasAudio: inputHasAudio,
                 silenceRanges: trimmedSilence,
                 stickerImagePaths: stickerPaths,
                 stickerPositions:

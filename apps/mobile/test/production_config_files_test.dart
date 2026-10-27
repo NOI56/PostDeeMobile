@@ -245,6 +245,18 @@ void main() {
     expect(contents, contains('signingConfigs.getByName("release")'));
     expect(contents, isNot(contains('signingConfigs.getByName("debug")')));
   });
+  test('Android excludes app data from cloud and adb backups', () async {
+    final manifest =
+        await File('android/app/src/main/AndroidManifest.xml').readAsString();
+    final application =
+        RegExp(r'<application\b[^>]*>', dotAll: true).firstMatch(manifest)![0]!;
+
+    // The Firebase sign-in session lives in app data; a restored backup must
+    // not carry it to another device.
+    expect(application, contains('android:allowBackup="false"'));
+    expect(application, contains('android:fullBackupContent="false"'));
+  });
+
   test('Android release builds keep FFmpegKit native methods', () async {
     final appGradle = File('android/app/build.gradle.kts');
     final proguardRules = File('android/app/proguard-rules.pro');

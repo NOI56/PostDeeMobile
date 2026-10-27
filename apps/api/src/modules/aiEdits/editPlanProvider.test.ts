@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildHighlightCuts,
   buildKeywordKeepCuts,
   createMockEditPlanProvider,
   createOpenAiCompatibleEditPlanProvider,
@@ -38,6 +39,46 @@ describe('edit plan provider', () => {
   it('trims the tail to a target length', () => {
     const cuts = trimToTarget([], 60, 45);
     expect(cuts).toEqual([{ start: 45, end: 60 }]);
+  });
+
+  it('selects the strongest selling moments instead of the first seconds', () => {
+    const cuts = buildHighlightCuts(
+      [
+        { text: 'สวัสดีค่ะ วันนี้จะมาเล่าให้ฟัง', start: 0, end: 4 },
+        { text: 'ใช้แล้วช่วยประหยัดเวลาและใช้ง่ายมาก', start: 4, end: 8 },
+        { text: 'ตรงนี้เป็นรายละเอียดทั่วไป', start: 8, end: 12 },
+        { text: 'ราคาพิเศษ 99 บาท ส่งฟรีวันนี้', start: 12, end: 15 },
+        { text: 'กดตะกร้าสั่งซื้อได้เลย', start: 15, end: 18 }
+      ],
+      18,
+      10
+    );
+
+    expect(cuts).toEqual([
+      { start: 0, end: 4 },
+      { start: 8, end: 12 }
+    ]);
+  });
+
+  it('uses targetDurationSeconds to plan transcript highlights', async () => {
+    const provider = createMockEditPlanProvider();
+    const result = await provider.plan({
+      durationSeconds: 18,
+      targetDurationSeconds: 10,
+      segments: [
+        { text: 'สวัสดีค่ะ วันนี้จะมาเล่าให้ฟัง', start: 0, end: 4 },
+        { text: 'ใช้แล้วช่วยประหยัดเวลาและใช้ง่ายมาก', start: 4, end: 8 },
+        { text: 'ตรงนี้เป็นรายละเอียดทั่วไป', start: 8, end: 12 },
+        { text: 'ราคาพิเศษ 99 บาท ส่งฟรีวันนี้', start: 12, end: 15 },
+        { text: 'กดตะกร้าสั่งซื้อได้เลย', start: 15, end: 18 }
+      ]
+    });
+
+    expect(result.cuts).toEqual([
+      { start: 0, end: 4 },
+      { start: 8, end: 12 }
+    ]);
+    expect(result.summary).toContain('10');
   });
 
   it('parses a prompt target length and profanity intent', () => {
@@ -100,13 +141,25 @@ describe('edit plan provider', () => {
     ]);
   });
 
+  it('sorts and merges overlapping LLM cut ranges before rendering', () => {
+    const result = parseLlmEditPlan(
+      '{"cuts":[{"start":8,"end":10},{"start":1,"end":4},{"start":3,"end":6},{"start":10,"end":12}],"summary":"ai"}',
+      12,
+      'llm-x'
+    );
+
+    expect(result.cuts).toEqual([
+      { start: 1, end: 6 },
+      { start: 8, end: 12 }
+    ]);
+  });
+
   it('uses the LLM response when the chat call succeeds', async () => {
     const provider = createOpenAiCompatibleEditPlanProvider({
       apiKey: 'k',
       model: 'llm-x',
       endpointUrl: 'https://example.com/v1/chat/completions',
       failureLabel: 'Test edit plan',
-      fallback: createMockEditPlanProvider(),
       fetchImpl: async () => ({
         ok: true,
         json: async () => ({
@@ -124,31 +177,106 @@ describe('edit plan provider', () => {
     const result = await provider.plan({
       prompt: 'ตัดให้หน่อย',
       durationSeconds: 10,
+      targetDurationSeconds: 5,
       segments: []
     });
 
     expect(result.model).toBe('llm-x');
-    expect(result.cuts).toEqual([{ start: 1, end: 2 }]);
+    expect(result.cuts).toEqual([
+      { start: 1, end: 2 },
+      { start: 6, end: 10 }
+    ]);
   });
 
-  it('falls back to the mock when the chat call fails', async () => {
+  it('does not silently fall back to the mock when the chat call returns an HTTP error', async () => {
     const provider = createOpenAiCompatibleEditPlanProvider({
       apiKey: 'k',
       model: 'llm-x',
       endpointUrl: 'https://example.com/v1/chat/completions',
       failureLabel: 'Test edit plan',
-      fallback: createMockEditPlanProvider(),
       fetchImpl: async () => ({ ok: false, status: 500, json: async () => ({}) })
     });
 
-    const result = await provider.plan({
-      prompt: 'เหลือ 5 วิ',
-      durationSeconds: 10,
-      segments: []
+    await expect(
+      provider.plan({
+        prompt: 'เหลือ 5 วิ',
+        durationSeconds: 10,
+        segments: []
+      })
+    ).rejects.toMatchObject({
+      name: 'EditPlanProviderError',
+      code: 'AI_EDIT_PLAN_PROVIDER_FAILED'
     });
 
-    // Mock fallback handled the target-length trim.
-    expect(result.model).toBe('mock-rule');
-    expect(result.cuts).toEqual([{ start: 5, end: 10 }]);
+  });
+
+  it('aborts a hung edit plan request after the timeout', async () => {
+    const provider = createOpenAiCompatibleEditPlanProvider({
+      apiKey: 'k',
+      model: 'llm-x',
+      endpointUrl: 'https://example.com/v1/chat/completions',
+      failureLabel: 'Test edit plan',
+      timeoutMs: 20,
+      fetchImpl: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        })
+    });
+
+    await expect(
+      provider.plan({ styleId: 'flash_sale', durationSeconds: 10, segments: [] })
+    ).rejects.toMatchObject({
+      name: 'EditPlanProviderError',
+      code: 'AI_EDIT_PLAN_PROVIDER_FAILED'
+    });
+  });
+
+  it('reports network failures instead of silently using the mock planner', async () => {
+    const provider = createOpenAiCompatibleEditPlanProvider({
+      apiKey: 'k',
+      model: 'llm-x',
+      endpointUrl: 'https://example.com/v1/chat/completions',
+      failureLabel: 'Test edit plan',
+      fetchImpl: async () => {
+        throw new Error('network unavailable');
+      }
+    });
+
+    await expect(
+      provider.plan({
+        styleId: 'flash_sale',
+        durationSeconds: 10,
+        segments: []
+      })
+    ).rejects.toMatchObject({
+      name: 'EditPlanProviderError',
+      code: 'AI_EDIT_PLAN_PROVIDER_FAILED'
+    });
+  });
+
+  it('reports invalid LLM JSON instead of silently using the mock planner', async () => {
+    const provider = createOpenAiCompatibleEditPlanProvider({
+      apiKey: 'k',
+      model: 'llm-x',
+      endpointUrl: 'https://example.com/v1/chat/completions',
+      failureLabel: 'Test edit plan',
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{not-json' } }]
+        })
+      })
+    });
+
+    await expect(
+      provider.plan({
+        prompt: 'shorten this clip',
+        durationSeconds: 10,
+        segments: []
+      })
+    ).rejects.toMatchObject({
+      name: 'EditPlanProviderError',
+      code: 'AI_EDIT_PLAN_PROVIDER_FAILED'
+    });
   });
 });

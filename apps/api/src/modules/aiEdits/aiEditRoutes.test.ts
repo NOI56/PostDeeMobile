@@ -2,9 +2,24 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
+import { MediaDownloadError } from '../storage/mediaDownload.js';
+import { createOpenAiCompatibleEditPlanProvider } from './editPlanProvider.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
   `uploads/${userId}/${uploadId}/${fileName}`;
+
+const createUnavailableEditPlanProvider = () =>
+  createOpenAiCompatibleEditPlanProvider({
+    apiKey: 'test-key',
+    model: 'test-model',
+    endpointUrl: 'https://example.com/v1/chat/completions',
+    failureLabel: 'Test edit plan',
+    fetchImpl: async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({})
+    })
+  });
 
 describe('ai edit routes', () => {
   it('transcribes a clip for Pro users', async () => {
@@ -105,59 +120,54 @@ describe('ai edit routes', () => {
     });
   });
 
-  it('does not let concurrent transcriptions exceed the monthly minute quota', async () => {
-    let transcribeCalls = 0;
-    let concurrentCalls = 0;
-    let resolveBothConcurrentCalls: () => void = () => undefined;
-    let releaseConcurrentTranscriptions: () => void = () => undefined;
-    const bothConcurrentCallsStarted = new Promise<void>((resolve) => {
-      resolveBothConcurrentCalls = resolve;
-    });
-    const concurrentTranscriptionsCanFinish = new Promise<void>((resolve) => {
-      releaseConcurrentTranscriptions = resolve;
-    });
-    const transcribe = vi.fn(async () => {
-      transcribeCalls += 1;
+  const transcriptOf = (durationSeconds: number) => ({
+    text: 'clip',
+    language: 'en',
+    durationSeconds,
+    segments: [],
+    words: [],
+    model: 'test-whisper'
+  });
 
-      if (transcribeCalls === 1) {
-        return {
-          text: 'already used 199 minutes',
-          language: 'en',
-          durationSeconds: 199 * 60,
-          segments: [],
-          words: [],
-          model: 'test-whisper'
-        };
+  const useMinutes = async (app: ReturnType<typeof createApp>, minutes: number) => {
+    await request(app)
+      .post('/ai-edits/transcribe')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', `used-${minutes}.mp4`),
+        durationSeconds: minutes * 60
+      })
+      .expect(200);
+  };
+
+  const readUsedMinutes = async (app: ReturnType<typeof createApp>) => {
+    const response = await request(app)
+      .get('/ai-edits/quota')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .expect(200);
+    return response.body.quota.usedMinutes as number;
+  };
+
+  it('rejects a parallel transcription before calling the provider once reservations fill the quota', async () => {
+    let releaseBlockedCall: () => void = () => undefined;
+    let markBlockedCallStarted: () => void = () => undefined;
+    const blockedCallStarted = new Promise<void>((resolve) => {
+      markBlockedCallStarted = resolve;
+    });
+    const transcribe = vi.fn(async ({ mediaS3Key }: { mediaS3Key: string }) => {
+      if (mediaS3Key.endsWith('used-199.mp4')) {
+        return transcriptOf(199 * 60);
       }
 
-      concurrentCalls += 1;
-
-      if (concurrentCalls === 2) {
-        resolveBothConcurrentCalls();
-      }
-
-      await concurrentTranscriptionsCanFinish;
-
-      return {
-        text: 'one more minute',
-        language: 'en',
-        durationSeconds: 60,
-        segments: [],
-        words: [],
-        model: 'test-whisper'
-      };
+      markBlockedCallStarted();
+      await new Promise<void>((resolve) => {
+        releaseBlockedCall = resolve;
+      });
+      return transcriptOf(60);
     });
     const app = createApp({ transcriptionProvider: { transcribe } });
     const headers = { 'x-postdee-subscription-plan': 'PRO' };
-
-    await request(app)
-      .post('/ai-edits/transcribe')
-      .set(headers)
-      .send({
-        videoS3Key: ownedUploadKey('local-dev-user', 'already-used.mp4'),
-        durationSeconds: 199 * 60
-      })
-      .expect(200);
+    await useMinutes(app, 199);
 
     const firstRequest = request(app)
       .post('/ai-edits/transcribe')
@@ -167,35 +177,111 @@ describe('ai edit routes', () => {
         durationSeconds: 60
       })
       .then((response) => response);
-    const secondRequest = request(app)
+    await blockedCallStarted;
+
+    const secondResponse = await request(app)
       .post('/ai-edits/transcribe')
       .set(headers)
       .send({
         videoS3Key: ownedUploadKey('local-dev-user', 'concurrent-2.mp4'),
         durationSeconds: 60
       })
-      .then((response) => response);
+      .expect(402);
 
-    await bothConcurrentCallsStarted;
-    releaseConcurrentTranscriptions();
-
-    const responses = await Promise.all([firstRequest, secondRequest]);
-    const statuses = responses.map((response) => response.status).sort();
-    expect(statuses).toEqual([200, 402]);
-    expect(responses.find((response) => response.status === 402)?.body).toMatchObject({
+    expect(secondResponse.body).toMatchObject({
       status: 'error',
       code: 'AI_EDIT_QUOTA_EXCEEDED'
     });
+    expect(transcribe).toHaveBeenCalledTimes(2);
 
-    const quotaResponse = await request(app)
-      .get('/ai-edits/quota')
-      .set(headers)
+    releaseBlockedCall();
+    expect((await firstRequest).status).toBe(200);
+    expect(await readUsedMinutes(app)).toBe(200);
+  });
+
+  it('refunds reserved minutes when transcription fails', async () => {
+    const transcribe = vi.fn(async () => {
+      throw new MediaDownloadError('too large', 413, 'AI_MEDIA_TOO_LARGE');
+    });
+    const app = createApp({ transcriptionProvider: { transcribe } });
+
+    await request(app)
+      .post('/ai-edits/transcribe')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'broken.mp4'),
+        durationSeconds: 120
+      })
+      .expect(413);
+
+    expect(await readUsedMinutes(app)).toBe(0);
+  });
+
+  it('keeps the estimate charged when the real duration does not fit the remaining quota', async () => {
+    const transcribe = vi.fn(async ({ mediaS3Key }: { mediaS3Key: string }) =>
+      transcriptOf(mediaS3Key.endsWith('used-190.mp4') ? 190 * 60 : 30 * 60)
+    );
+    const app = createApp({ transcriptionProvider: { transcribe } });
+    await useMinutes(app, 190);
+
+    // The client claims 1 minute but the clip is 30 minutes long.
+    const response = await request(app)
+      .post('/ai-edits/transcribe')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'under-reported.mp4'),
+        durationSeconds: 60
+      })
+      .expect(402);
+
+    expect(response.body).toMatchObject({ code: 'AI_EDIT_QUOTA_EXCEEDED' });
+    expect(response.body).not.toHaveProperty('transcript');
+    expect(await readUsedMinutes(app)).toBe(191);
+  });
+
+  it('allows a one-minute rounding difference at the quota limit', async () => {
+    // The app measures the video (60s) and the provider the audio (61s), so an
+    // honest request can round one minute over the estimate.
+    const transcribe = vi.fn(async ({ mediaS3Key }: { mediaS3Key: string }) =>
+      transcriptOf(mediaS3Key.endsWith('used-199.mp4') ? 199 * 60 : 61)
+    );
+    const app = createApp({ transcriptionProvider: { transcribe } });
+    await useMinutes(app, 199);
+
+    const response = await request(app)
+      .post('/ai-edits/transcribe')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'rounding.mp4'),
+        durationSeconds: 60
+      })
       .expect(200);
-    expect(quotaResponse.body.quota).toEqual({
+
+    expect(response.body.transcript.durationSeconds).toBe(61);
+    expect(response.body.quota).toEqual({
       limitMinutes: 200,
       usedMinutes: 200,
       remainingMinutes: 0
     });
+  });
+
+  it('refunds prepare minutes when transcription fails', async () => {
+    const transcribe = vi.fn(async () => {
+      throw new MediaDownloadError('too large', 413, 'AI_MEDIA_TOO_LARGE');
+    });
+    const app = createApp({ transcriptionProvider: { transcribe } });
+
+    await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'broken-prepare.mp4'),
+        durationSeconds: 120,
+        styleId: 'flash_sale'
+      })
+      .expect(413);
+
+    expect(await readUsedMinutes(app)).toBe(0);
   });
 
   it('rejects transcription for a clip owned by another user', async () => {
@@ -344,6 +430,60 @@ describe('ai edit routes', () => {
     expect(response.body.recipe.capabilities.translate.state).toBe('planned');
   });
 
+  it('passes the requested result length to the planner for highlight selection', async () => {
+    const plan = vi.fn(async () => ({
+      cuts: [
+        { start: 0, end: 4 },
+        { start: 8, end: 12 }
+      ],
+      summary: 'เลือกช่วงขายที่ดีที่สุดให้เหลือประมาณ 10 วิ',
+      model: 'test-planner'
+    }));
+    const transcribe = vi.fn(async () => ({
+      text: 'คลิปขายสินค้า',
+      language: 'th',
+      durationSeconds: 18,
+      segments: [
+        { text: 'เกริ่นทั่วไป', start: 0, end: 4 },
+        { text: 'ช่วยประหยัดเวลา', start: 4, end: 8 },
+        { text: 'รายละเอียดทั่วไป', start: 8, end: 12 },
+        { text: 'ราคา 99 บาท', start: 12, end: 15 },
+        { text: 'กดตะกร้าเลย', start: 15, end: 18 }
+      ],
+      words: [],
+      model: 'test-whisper'
+    }));
+    const app = createApp({
+      transcriptionProvider: { transcribe },
+      editPlanProvider: { plan }
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'highlights.mp4'),
+        durationSeconds: 18,
+        targetDurationSeconds: 10,
+        capabilities: { subtitle: true }
+      })
+      .expect(200);
+
+    expect(plan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        durationSeconds: 18,
+        targetDurationSeconds: 10
+      })
+    );
+    expect(response.body.recipe.plan).toMatchObject({
+      cuts: [
+        { start: 0, end: 4 },
+        { start: 8, end: 12 }
+      ],
+      model: 'test-planner'
+    });
+  });
+
   it('sanitizes unsupported beat music settings without claiming they were applied', async () => {
     const app = createApp();
 
@@ -418,6 +558,51 @@ describe('ai edit routes', () => {
     expect(response.body.plan.cuts).toEqual([{ start: 5, end: 10 }]);
   });
 
+  it('returns a clear 502 when the configured AI plan provider fails', async () => {
+    const app = createApp({
+      editPlanProvider: createUnavailableEditPlanProvider()
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({ styleId: 'flash_sale', durationSeconds: 10, segments: [] })
+      .expect(502);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'AI_EDIT_PLAN_PROVIDER_FAILED'
+    });
+  });
+
+  it('returns the same provider failure contract from the prepare endpoint', async () => {
+    const app = createApp({
+      editPlanProvider: createUnavailableEditPlanProvider()
+    });
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'provider-failure.mp4'),
+        durationSeconds: 10,
+        styleId: 'flash_sale'
+      })
+      .expect(502);
+
+    expect(response.body).toMatchObject({
+      status: 'error',
+      code: 'AI_EDIT_PLAN_PROVIDER_FAILED'
+    });
+
+    const quotaResponse = await request(app)
+      .get('/ai-edits/quota')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .expect(200);
+
+    expect(quotaResponse.body.quota.usedMinutes).toBe(0);
+  });
+
   it('blocks the plan endpoint for non-Pro users', async () => {
     const app = createApp();
 
@@ -425,6 +610,77 @@ describe('ai edit routes', () => {
       .post('/ai-edits/plan')
       .send({ styleId: 'flash_sale', durationSeconds: 10, segments: [] })
       .expect(402);
+  });
+
+  const createAppWithPlanSpy = () => {
+    const plan = vi.fn(async () => ({ cuts: [], summary: '', model: 'spy' }));
+    const transcribe = vi.fn(async () => ({
+      text: 'clip', language: 'th', durationSeconds: 60, segments: [], words: [], model: 'test'
+    }));
+    return {
+      app: createApp({ editPlanProvider: { plan }, transcriptionProvider: { transcribe } }),
+      plan,
+      transcribe
+    };
+  };
+
+  it('rejects plan prompts longer than 500 characters before calling the planner', async () => {
+    const { app, plan } = createAppWithPlanSpy();
+
+    const response = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({ prompt: 'x'.repeat(501), durationSeconds: 10, segments: [] })
+      .expect(400);
+
+    expect(response.body).toMatchObject({ code: 'AI_EDIT_PROMPT_TOO_LONG' });
+    expect(plan).not.toHaveBeenCalled();
+  });
+
+  it('rejects plans with too many or too long transcript segments', async () => {
+    const { app, plan } = createAppWithPlanSpy();
+    const segment = (text: string, index: number) => ({ text, start: index, end: index + 1 });
+
+    const tooMany = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        styleId: 'flash_sale',
+        durationSeconds: 700,
+        segments: Array.from({ length: 601 }, (_, index) => segment('hi', index))
+      })
+      .expect(400);
+    const tooLong = await request(app)
+      .post('/ai-edits/plan')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        styleId: 'flash_sale',
+        durationSeconds: 10,
+        segments: [segment('y'.repeat(301), 0)]
+      })
+      .expect(400);
+
+    expect(tooMany.body).toMatchObject({ code: 'AI_EDIT_SEGMENTS_TOO_LARGE' });
+    expect(tooLong.body).toMatchObject({ code: 'AI_EDIT_SEGMENTS_TOO_LARGE' });
+    expect(plan).not.toHaveBeenCalled();
+  });
+
+  it('rejects a too-long prepare prompt before reserving minutes or transcribing', async () => {
+    const { app, transcribe } = createAppWithPlanSpy();
+
+    const response = await request(app)
+      .post('/ai-edits/prepare')
+      .set('x-postdee-subscription-plan', 'PRO')
+      .send({
+        videoS3Key: ownedUploadKey('local-dev-user', 'long-prompt.mp4'),
+        durationSeconds: 60,
+        prompt: 'x'.repeat(501)
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({ code: 'AI_EDIT_PROMPT_TOO_LONG' });
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(await readUsedMinutes(app)).toBe(0);
   });
 
   it('requires a style or prompt for a plan', async () => {

@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
+import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_editing_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/beat_music_picker.dart';
-import 'package:postdee_mobile/features/ai_editing/capcut_editor_screen.dart';
 import 'package:postdee_mobile/features/ai_editing/subtitle_burn_video_processor.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
@@ -30,6 +30,19 @@ PickedVideoFile _createPickedVideoFixture(String name) {
     sizeBytes: file.lengthSync(),
     width: 1080,
     height: 1920,
+  );
+}
+
+Future<AiEditAudioArtifact> _extractAudioFixture(File source) {
+  final directory = Directory.systemTemp.createTempSync(
+    'postdee-editor-audio-',
+  );
+  final file = File(
+    '${directory.path}${Platform.pathSeparator}postdee-ai-edit-audio.m4a',
+  );
+  file.writeAsBytesSync(List<int>.filled(512, 7));
+  return Future.value(
+    AiEditAudioArtifact(file: file, workingDirectory: directory),
   );
 }
 
@@ -344,6 +357,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           loadAiEditQuota: () async => const AiEditQuota(
             limitMinutes: 200,
             usedMinutes: 17,
@@ -368,6 +384,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           loadAiEditQuota: () async => const AiEditQuota(
             limitMinutes: 200,
             usedMinutes: 0,
@@ -400,10 +419,16 @@ void main() {
 
   testWidgets('matches the AI setup screen from PostDee.dc.html',
       (tester) async {
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
 
     expect(find.text('ตัดต่อด้วย AI'), findsOneWidget);
-    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsOneWidget);
+    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('ai-advanced-toggle')),
+      findsNothing,
+    );
     expect(find.text('เพิ่มวิดีโอ'), findsOneWidget);
     expect(find.text('ความยาวที่อยากได้'), findsOneWidget);
     expect(find.text('30 วิ'), findsOneWidget);
@@ -429,6 +454,29 @@ void main() {
     expect(find.text('ป้ายยาฉับไว'), findsNothing);
   });
 
+  testWidgets('shows automatic subtitles before the other AI capabilities',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
+    await tester.pumpAndSettle();
+
+    final subtitleCard = find.byKey(const ValueKey('ai-capability-subtitle'));
+    final silenceCard = find.byKey(const ValueKey('ai-capability-silence'));
+
+    expect(subtitleCard, findsOneWidget);
+    expect(silenceCard, findsOneWidget);
+    expect(
+      tester.getTopLeft(subtitleCard).dy,
+      lessThan(tester.getTopLeft(silenceCard).dy),
+    );
+  });
+
   testWidgets('keeps a selected clip on the setup screen until processing',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('selected-clip.mp4');
@@ -437,6 +485,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async {
             createUploadCalls += 1;
@@ -454,7 +505,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('selected-clip.mp4'), findsOneWidget);
-    expect(find.byType(CapCutEditorScreen), findsNothing);
+    expect(
+      find.byKey(const ValueKey('ai-review-edit-more')),
+      findsNothing,
+    );
     expect(createUploadCalls, 0);
     expect(find.text('ให้ AI ตัดต่อให้เลย'), findsOneWidget);
     expect(
@@ -472,12 +526,99 @@ void main() {
     expect(find.byKey(const ValueKey('ai-add-video')), findsOneWidget);
   });
 
+  testWidgets('requires the seller to choose a target length after video pick',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('choose-duration.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(pickVideo: () async => pickedVideo),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    var processButton = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('ai-process-button')),
+    );
+    expect(processButton.onPressed, isNull);
+    expect(find.text('เลือกความยาวก่อน'), findsOneWidget);
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('ai-duration-30')),
+    );
+    await tester.tap(find.byKey(const ValueKey('ai-duration-30')));
+    await tester.pumpAndSettle();
+
+    processButton = tester.widget<ElevatedButton>(
+      find.byKey(const ValueKey('ai-process-button')),
+    );
+    expect(processButton.onPressed, isNotNull);
+  });
+
+  testWidgets('rejects a landscape clip before selecting it for AI editing',
+      (tester) async {
+    final fixture = _createPickedVideoFixture('landscape-ai-clip.mp4');
+    final landscapeVideo = PickedVideoFile(
+      name: fixture.name,
+      path: fixture.path,
+      sizeBytes: fixture.sizeBytes,
+      width: 1920,
+      height: 1080,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => landscapeVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('landscape-ai-clip.mp4'), findsNothing);
+    expect(find.byKey(const ValueKey('ai-add-video')), findsOneWidget);
+    expect(find.text('ใช้วิดีโอแนวตั้ง 9:16 เช่น 1080x1920'), findsOneWidget);
+  });
+
+  testWidgets('rejects a clip with unknown dimensions for AI editing',
+      (tester) async {
+    final fixture = _createPickedVideoFixture('unknown-size-ai-clip.mp4');
+    final unknownDimensionsVideo = PickedVideoFile(
+      name: fixture.name,
+      path: fixture.path,
+      sizeBytes: fixture.sizeBytes,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => unknownDimensionsVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('unknown-size-ai-clip.mp4'), findsNothing);
+    expect(find.byKey(const ValueKey('ai-add-video')), findsOneWidget);
+    expect(
+        find.text('อ่านขนาดวิดีโอไม่ได้ กรุณาเลือกวิดีโอใหม่'), findsOneWidget);
+  });
+
   testWidgets('shows progress while reading a selected video', (tester) async {
     final pickedVideo = _createPickedVideoFixture('slow-clip.mp4');
     final picker = Completer<PickedVideoFile?>();
 
     await tester.pumpWidget(
-      _testApp(AiEditingScreen(pickVideo: () => picker.future)),
+      _testApp(AiEditingScreen(
+          initialTargetDurationSeconds: 30, pickVideo: () => picker.future)),
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
@@ -503,6 +644,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           loadSubscription: () async => _subscriptionFixture('BASIC'),
           createUpload: (_) async {
@@ -540,6 +684,174 @@ void main() {
     expect(find.text('เลือกแพ็กเกจ'), findsOneWidget);
   });
 
+  testWidgets('blocks duplicate processing while Pro entitlement is pending',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('entitlement-pending.mp4');
+    final renderedVideo =
+        _createRenderedVideoFixture('entitlement-pending-result.mp4');
+    final entitlement = Completer<SubscriptionStatusResult>();
+    var subscriptionCalls = 0;
+    var extractCalls = 0;
+    var uploadCalls = 0;
+    var prepareCalls = 0;
+    var renderCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () {
+            subscriptionCalls += 1;
+            return entitlement.future;
+          },
+          extractAudio: (source) {
+            extractCalls += 1;
+            return _extractAudioFixture(source);
+          },
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'entitlement-pending',
+            videoS3Key: 'uploads/entitlement-pending.m4a',
+            storageProvider: 'r2',
+          ),
+          uploadVideoFile: (_, __) async => uploadCalls += 1,
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async {
+            renderCalls += 1;
+            return renderedVideo;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    final process = tester
+        .widget<ElevatedButton>(
+          find.byKey(const ValueKey('ai-process-button')),
+        )
+        .onPressed!;
+
+    process();
+    process();
+    await tester.pump();
+
+    expect(subscriptionCalls, 1);
+    expect(extractCalls, 0);
+
+    entitlement.complete(_subscriptionFixture('PRO'));
+    await tester.pumpAndSettle();
+
+    expect(extractCalls, 1);
+    expect(uploadCalls, 1);
+    expect(prepareCalls, 1);
+    expect(renderCalls, 1);
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+  });
+
+  testWidgets('does not continue processing when disposed during entitlement',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('entitlement-dispose.mp4');
+    final entitlement = Completer<SubscriptionStatusResult>();
+    var createUploadCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () => entitlement.future,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'entitlement-dispose',
+              videoS3Key: 'uploads/entitlement-dispose.m4a',
+              storageProvider: 'r2',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    entitlement.complete(_subscriptionFixture('PRO'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(tester.takeException(), isNull);
+    expect(createUploadCalls, 0);
+  });
+
+  testWidgets('releases the processing guard after entitlement fails',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('entitlement-retry.mp4');
+    final renderedVideo =
+        _createRenderedVideoFixture('entitlement-retry-result.mp4');
+    var subscriptionCalls = 0;
+    var prepareCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          pickVideo: () async => pickedVideo,
+          loadSubscription: () async {
+            subscriptionCalls += 1;
+            if (subscriptionCalls == 1) {
+              throw StateError('temporary entitlement failure');
+            }
+            return _subscriptionFixture('PRO');
+          },
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
+          createUpload: (_) async => const UploadResult(
+            id: 'entitlement-retry',
+            videoS3Key: 'uploads/entitlement-retry.m4a',
+            storageProvider: 'r2',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+          burnVideo: (_) async => renderedVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(subscriptionCalls, 1);
+    expect(prepareCalls, 0);
+
+    final retryAction = tester
+        .widget<ElevatedButton>(
+          find.byKey(const ValueKey('ai-process-button')),
+        )
+        .onPressed;
+    expect(retryAction, isNotNull);
+    retryAction!();
+    await tester.pumpAndSettle();
+
+    expect(subscriptionCalls, 2);
+    expect(prepareCalls, 1);
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+  });
+
   testWidgets('renders then stays on the AI result review screen',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -555,17 +867,22 @@ void main() {
     BurnSubtitleRequest? renderRequest;
     var createUploadCalls = 0;
     var uploadCalls = 0;
+    final cleanedAudioKeys = <String>[];
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          probeVideoDuration: (_) async => 90,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (key) async => cleanedAudioKeys.add(key),
           pickVideo: () async => pickedVideo,
           createUpload: (request) async {
             createUploadCalls += 1;
             createdUploadRequest = request;
             return UploadResult(
               id: 'editor-upload-$createUploadCalls',
-              videoS3Key: 'uploads/editor-real-$createUploadCalls.mp4',
+              videoS3Key: 'uploads/editor-real-$createUploadCalls.m4a',
               storageProvider: 's3',
             );
           },
@@ -586,7 +903,7 @@ void main() {
               plan: const AiEditPlanResult(
                 cuts: [AiEditCut(start: 4, end: 5)],
                 summary: 'ตัดช่วงที่ไม่เกี่ยวข้อง',
-                model: 'test-editor',
+                model: 'mock-rule',
               ),
             );
           },
@@ -603,17 +920,33 @@ void main() {
     expect(createdUploadRequest, isNull);
 
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
-    await tester.pumpAndSettle();
+    for (var pump = 0; pump < 30; pump += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find
+          .byKey(const ValueKey('ai-result-review'))
+          .evaluate()
+          .isNotEmpty) {
+        break;
+      }
+    }
     expect(tester.takeException(), isNull);
 
-    expect(createdUploadRequest?.fileName, 'editor-real.mp4');
-    expect(createdUploadRequest?.sizeBytes, pickedVideo.sizeBytes);
-    expect(createdUploadRequest?.width, 1080);
-    expect(createdUploadRequest?.height, 1920);
-    expect(uploadedFilePath, pickedVideo.path);
+    expect(createdUploadRequest?.fileName, 'postdee-ai-edit-audio.m4a');
+    expect(createdUploadRequest?.contentType, 'audio/mp4');
+    expect(createdUploadRequest?.purpose, 'ai-edit-audio');
+    expect(createdUploadRequest?.sizeBytes, 512);
+    expect(createdUploadRequest?.width, isNull);
+    expect(createdUploadRequest?.height, isNull);
+    expect(uploadedFilePath, isNot(pickedVideo.path));
+    expect(uploadedFilePath, endsWith('.m4a'));
+    expect(File(uploadedFilePath!).existsSync(), isFalse);
     expect(createUploadCalls, 2);
     expect(uploadCalls, 2);
-    expect(prepareRequest?.videoS3Key, 'uploads/editor-real-2.mp4');
+    expect(prepareRequest?.audioS3Key, 'uploads/editor-real-2.m4a');
+    expect(prepareRequest?.videoS3Key, isNull);
+    expect(prepareRequest?.durationSeconds, 90);
+    expect(prepareRequest?.targetDurationSeconds, 30);
+    expect(cleanedAudioKeys, ['uploads/editor-real-2.m4a']);
     expect(renderRequest?.inputFile.path, pickedVideo.path);
     expect(
       renderRequest?.silenceRanges.any(
@@ -622,11 +955,274 @@ void main() {
       isTrue,
       reason: 'style/prompt plan cuts must be rendered on the mobile output',
     );
-    expect(find.byType(CapCutEditorScreen), findsNothing);
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
     expect(find.text('AI ตัดต่อให้แล้ว'), findsOneWidget);
+    expect(find.text('ตัดช่วงที่ไม่เกี่ยวข้อง'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-plan-summary')), findsOneWidget);
+    expect(
+      find.textContaining('กฎพื้นฐาน (โหมดทดสอบ)'),
+      findsOneWidget,
+    );
     expect(find.text('ไปหน้าโพสต์'), findsOneWidget);
-    expect(find.text('ตัดต่อเพิ่ม'), findsOneWidget);
+    expect(find.text('ตัดต่อเพิ่ม'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('ai-review-edit-more')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('no audio stops before upload and prepare', (tester) async {
+    final pickedVideo = _createPickedVideoFixture('no-audio.mp4');
+    var createUploadCalls = 0;
+    var prepareCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: (_) async => throw const AiEditAudioExtractionException(
+            AiEditAudioExtractionFailure.noAudioStream,
+          ),
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 0,
+            remainingMinutes: 200,
+          ),
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'must-not-upload',
+              videoS3Key: 'uploads/must-not-upload.m4a',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    for (var pump = 0; pump < 10; pump += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(createUploadCalls, 0);
+    expect(prepareCalls, 0);
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.byKey(const ValueKey('ai-process-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('upload failure cleans the local audio artifact', (tester) async {
+    final pickedVideo = _createPickedVideoFixture('upload-failure.mp4');
+    Directory? audioDirectory;
+    var prepareCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: (_) {
+            audioDirectory = Directory.systemTemp.createTempSync(
+              'postdee-upload-failure-',
+            );
+            final audioFile = File(
+              '${audioDirectory!.path}${Platform.pathSeparator}audio.m4a',
+            )..writeAsBytesSync([1, 2, 3]);
+            return Future.value(
+              AiEditAudioArtifact(
+                file: audioFile,
+                workingDirectory: audioDirectory!,
+              ),
+            );
+          },
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 0,
+            remainingMinutes: 200,
+          ),
+          createUpload: (_) async => throw const ApiException('upload failed'),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async {
+            prepareCalls += 1;
+            return _createPrepareFixture();
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    for (var pump = 0; pump < 10; pump += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(audioDirectory, isNotNull);
+    expect(audioDirectory!.existsSync(), isFalse);
+    expect(prepareCalls, 0);
+  });
+
+  testWidgets('prepare failure cleans local and remote temporary audio',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('prepare-failure.mp4');
+    Directory? audioDirectory;
+    final cleanedAudioKeys = <String>[];
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: (_) {
+            audioDirectory = Directory.systemTemp.createTempSync(
+              'postdee-prepare-failure-',
+            );
+            final audioFile = File(
+              '${audioDirectory!.path}${Platform.pathSeparator}audio.m4a',
+            )..writeAsBytesSync([1, 2, 3]);
+            return Future.value(
+              AiEditAudioArtifact(
+                file: audioFile,
+                workingDirectory: audioDirectory!,
+              ),
+            );
+          },
+          cleanupAiEditAudio: (key) async => cleanedAudioKeys.add(key),
+          pickVideo: () async => pickedVideo,
+          loadAiEditQuota: () async => const AiEditQuota(
+            limitMinutes: 200,
+            usedMinutes: 0,
+            remainingMinutes: 200,
+          ),
+          createUpload: (_) async => const UploadResult(
+            id: 'prepare-failure',
+            videoS3Key: 'uploads/prepare-failure.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => throw const ApiException(
+            'AI edit planning failed. Please try again later.',
+            statusCode: 502,
+            code: 'AI_EDIT_PLAN_PROVIDER_FAILED',
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    for (var pump = 0; pump < 10; pump += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(audioDirectory!.existsSync(), isFalse);
+    expect(cleanedAudioKeys, ['uploads/prepare-failure.m4a']);
+    expect(
+      find.textContaining('ระบบวางแผนตัดต่อด้วย AI ยังไม่พร้อม'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('cleanup failure does not replace a successful edit',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('cleanup-failure.mp4');
+    final renderedVideo = _createRenderedVideoFixture('cleanup-result.mp4');
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async => throw StateError('cleanup failed'),
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async => const UploadResult(
+            id: 'cleanup-failure',
+            videoS3Key: 'uploads/cleanup-failure.m4a',
+            storageProvider: 's3',
+          ),
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+          burnVideo: (_) async => renderedVideo,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
+    expect(find.text('cleanup-result.mp4'), findsOneWidget);
+  });
+
+  testWidgets('disposing during extraction still cleans the local artifact',
+      (tester) async {
+    final pickedVideo = _createPickedVideoFixture('dispose-extraction.mp4');
+    final extraction = Completer<AiEditAudioArtifact>();
+    Directory? audioDirectory;
+    var createUploadCalls = 0;
+
+    await tester.pumpWidget(
+      _testApp(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: (_) => extraction.future,
+          cleanupAiEditAudio: (_) async {},
+          pickVideo: () async => pickedVideo,
+          createUpload: (_) async {
+            createUploadCalls += 1;
+            return const UploadResult(
+              id: 'dispose-extraction',
+              videoS3Key: 'uploads/dispose-extraction.m4a',
+              storageProvider: 's3',
+            );
+          },
+          uploadVideoFile: (_, __) async {},
+          prepareEdit: (_) async => _createPrepareFixture(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    audioDirectory = Directory.systemTemp.createTempSync(
+      'postdee-dispose-extraction-',
+    );
+    final audioFile = File(
+      '${audioDirectory.path}${Platform.pathSeparator}audio.m4a',
+    )..writeAsBytesSync([1, 2, 3]);
+    extraction.complete(
+      AiEditAudioArtifact(
+        file: audioFile,
+        workingDirectory: audioDirectory,
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(audioDirectory.existsSync(), isFalse);
+    expect(createUploadCalls, 0);
   });
 
   testWidgets('review preview shows loading, error, and successful retry',
@@ -639,6 +1235,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-retry-preview',
@@ -703,6 +1302,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-compare-preview',
@@ -772,6 +1374,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-live-seek-preview',
@@ -833,6 +1438,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-seek-order-preview',
@@ -900,6 +1508,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-serial-preview',
@@ -960,6 +1571,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-seek-preview',
@@ -1011,6 +1625,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'color-fallback-upload',
@@ -1048,6 +1665,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u1',
@@ -1141,6 +1761,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-pending-preview',
@@ -1210,6 +1833,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-failure',
@@ -1271,6 +1897,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-setup-change',
@@ -1318,6 +1947,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-setup-failure',
@@ -1380,19 +2012,29 @@ void main() {
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('retry-render.mp4');
     final renderedVideo = _createRenderedVideoFixture('retry-success.mp4');
+    var extractCalls = 0;
+    var uploadCalls = 0;
     var prepareCalls = 0;
     var renderCalls = 0;
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: (source) async {
+            extractCalls += 1;
+            return _extractAudioFixture(source);
+          },
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-retry-render',
-            videoS3Key: 'uploads/retry-render.mp4',
+            videoS3Key: 'uploads/retry-render.m4a',
             storageProvider: 's3',
           ),
-          uploadVideoFile: (_, __) async {},
+          uploadVideoFile: (_, __) async {
+            uploadCalls += 1;
+          },
           prepareEdit: (_) async {
             prepareCalls += 1;
             return _createPrepareFixture();
@@ -1419,6 +2061,8 @@ void main() {
         .onPressed!();
     await tester.pumpAndSettle();
 
+    expect(extractCalls, 1);
+    expect(uploadCalls, 1);
     expect(prepareCalls, 1);
     expect(renderCalls, 2);
     expect(find.byKey(const ValueKey('ai-result-review')), findsOneWidget);
@@ -1432,6 +2076,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-keep-original',
@@ -1487,6 +2134,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-review-status',
@@ -1558,6 +2208,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-analysis-summary',
@@ -1614,6 +2267,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-analysis-not-found',
@@ -1676,6 +2332,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-analysis-zero',
@@ -1747,6 +2406,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-removed-setting',
@@ -1803,14 +2465,16 @@ void main() {
     expect(prepareRequests.last.capabilities['silence'], isFalse);
   });
 
-  testWidgets(
-      'review actions open posting and manual editing with latest result',
+  testWidgets('review action opens posting with the latest AI result',
       (tester) async {
     final pickedVideo = _createPickedVideoFixture('original-actions.mp4');
     final renderedVideo = _createRenderedVideoFixture('latest-ai-result.mp4');
 
     Widget buildScreen() => _testApp(
           AiEditingScreen(
+            initialTargetDurationSeconds: 30,
+            extractAudio: _extractAudioFixture,
+            cleanupAiEditAudio: (_) async {},
             key: UniqueKey(),
             pickVideo: () async => pickedVideo,
             createUpload: (_) async => const UploadResult(
@@ -1819,7 +2483,13 @@ void main() {
               storageProvider: 's3',
             ),
             uploadVideoFile: (_, __) async {},
-            prepareEdit: (_) async => _createPrepareFixture(),
+            prepareEdit: (_) async => _createPrepareFixture(
+              plan: const AiEditPlanResult(
+                cuts: [AiEditCut(start: 4, end: 5)],
+                summary: 'test plan',
+                model: 'test-editor',
+              ),
+            ),
             burnVideo: (_) async => renderedVideo,
           ),
         );
@@ -1831,29 +2501,19 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ai-process-button')));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-review-edit-more')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('ai-review-post')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('ai-review-post')));
     await tester.pumpAndSettle();
 
     expect(find.byType(UploaderScreen), findsOneWidget);
     final uploader = tester.widget<UploaderScreen>(find.byType(UploaderScreen));
     expect(uploader.initialVideoPath, renderedVideo.file.path);
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpAndSettle();
-    await tester.pumpWidget(buildScreen());
-    await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-process-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-review-edit-more')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(CapCutEditorScreen), findsOneWidget);
-    final editor = tester.widget<CapCutEditorScreen>(
-      find.byType(CapCutEditorScreen),
-    );
-    expect(editor.videoFile?.path, renderedVideo.file.path);
-    expect(editor.initialStyle, isNull);
+    expect(uploader.initialVideoWidth, pickedVideo.width);
+    expect(uploader.initialVideoHeight, pickedVideo.height);
   });
 
   testWidgets(
@@ -1866,6 +2526,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-production-hook-lock',
@@ -1884,8 +2547,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
     await tester.pumpAndSettle();
 
     final hookSwitch = find.byKey(
@@ -1955,6 +2616,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-production-beat-lock',
@@ -1973,8 +2637,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
     await tester.pumpAndSettle();
 
     final beatSwitch = find.byKey(
@@ -2049,27 +2711,20 @@ void main() {
         'ปรับเสียงให้ชัด',
         'ระบบลดเสียงรบกวนและปรับเสียงพูดในคลิปจริงกำลังพัฒนา',
       ),
-      'translate': (
-        'แปลซับ 2 ภาษา',
-        'ระบบแปลและเรนเดอร์ซับหลายภาษาในคลิปจริงกำลังพัฒนา',
-      ),
-      'pricetag': (
-        'ป้ายราคาอัตโนมัติ',
-        'ระบบตรวจราคาและเรนเดอร์ป้ายลงในคลิปจริงกำลังพัฒนา',
-      ),
-      'cta': (
-        'การ์ดปิดท้าย (CTA)',
-        'ระบบเรนเดอร์การ์ด CTA ลงในคลิปจริงกำลังพัฒนา',
-      ),
-      'watermark': (
-        'ลายน้ำร้าน',
-        'ระบบเรนเดอร์ลายน้ำจากหน้านี้ลงในคลิปจริงกำลังพัฒนา',
-      ),
+    };
+    const hiddenCapabilities = <String, String>{
+      'translate': 'แปลซับ 2 ภาษา',
+      'pricetag': 'ป้ายราคาอัตโนมัติ',
+      'cta': 'การ์ดปิดท้าย (CTA)',
+      'watermark': 'ลายน้ำร้าน',
     };
 
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-production-planned-locks',
@@ -2089,6 +2744,23 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('ชุดตั้งค่า (Preset)', skipOffstage: false),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    for (final entry in hiddenCapabilities.entries) {
+      expect(
+        find.byKey(
+          ValueKey('ai-capability-${entry.key}'),
+          skipOffstage: false,
+        ),
+        findsNothing,
+      );
+      expect(find.text(entry.value), findsNothing);
+    }
 
     for (final entry in plannedCapabilities.entries) {
       final capabilitySwitch = find.byKey(
@@ -2131,6 +2803,13 @@ void main() {
         reason: '$capability must stay out of the production render request',
       );
     }
+    for (final capability in hiddenCapabilities.keys) {
+      expect(
+        prepareRequest?.capabilities[capability],
+        isFalse,
+        reason: '$capability must stay disabled while its UI is hidden',
+      );
+    }
     for (final capability in const [
       'subtitle',
       'silence',
@@ -2151,7 +2830,8 @@ void main() {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(
       _testApp(
-        const AiEditingScreen(enableExperimentalAiHook: true),
+        const AiEditingScreen(
+            initialTargetDurationSeconds: 30, enableExperimentalAiHook: true),
       ),
     );
 
@@ -2196,14 +2876,15 @@ void main() {
 
     await tester.pumpWidget(
       _testApp(
-        const AiEditingScreen(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           enableExperimentalBeatSync: true,
           musicCatalog: [],
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'beatsync');
 
     final beatAdvanced = find.byKey(
@@ -2292,7 +2973,7 @@ void main() {
         'TikTok',
         'YouTube Shorts',
         'Instagram Reels',
-        'Facebook Video',
+        'Facebook Reels',
         'Shopee Video',
         'Lazada Video',
       ],
@@ -2319,14 +3000,15 @@ void main() {
 
     await tester.pumpWidget(
       _testApp(
-        const AiEditingScreen(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           enableExperimentalBeatSync: true,
           musicCatalog: [approvedTrack, pendingTrack, partialTrack],
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'beatsync');
 
     final catalogSource = find.byKey(
@@ -2404,6 +3086,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           enableExperimentalBeatSync: true,
           pickVideo: () async => pickedVideo,
           pickMusic: () async => pickedMusic,
@@ -2423,8 +3108,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
     await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'beatsync');
 
@@ -2496,21 +3179,22 @@ void main() {
         'TikTok',
         'YouTube Shorts',
         'Instagram Reels',
-        'Facebook Video',
+        'Facebook Reels',
         'Shopee Video',
         'Lazada Video',
       ],
     );
     await tester.pumpWidget(
       _testApp(
-        const AiEditingScreen(
+        AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           enableExperimentalBeatSync: true,
           musicCatalog: [approvedTrack],
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'beatsync');
 
     final catalogSource = find.byKey(
@@ -2591,10 +3275,10 @@ void main() {
   testWidgets('silence and filler settings use the advanced accordion',
       (tester) async {
     final semantics = tester.ensureSemantics();
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
 
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'silence');
 
     expect(
@@ -2659,10 +3343,10 @@ void main() {
   testWidgets(
       'subtitle advanced settings only expose options supported by the renderer',
       (tester) async {
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
 
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'subtitle');
 
     final panel = find.byKey(
@@ -2724,6 +3408,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-subtitle-settings',
@@ -2744,8 +3431,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
     await tester.pumpAndSettle();
     await _openAdvancedPanel(tester, 'subtitle');
 
@@ -2786,6 +3471,9 @@ void main() {
     await tester.pumpWidget(
       _testApp(
         AiEditingScreen(
+          initialTargetDurationSeconds: 30,
+          extractAudio: _extractAudioFixture,
+          cleanupAiEditAudio: (_) async {},
           pickVideo: () async => pickedVideo,
           createUpload: (_) async => const UploadResult(
             id: 'u-pace-settings',
@@ -2804,8 +3492,6 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey('ai-add-video')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
     await tester.pumpAndSettle();
 
     await _openAdvancedPanel(tester, 'silence');
@@ -2871,15 +3557,18 @@ void main() {
     expect(prepareRequest?.settings.fillerWords, ['เอ่อ', 'แบบว่า']);
   });
 
-  testWidgets('advanced accordion opens one capability at a time',
+  testWidgets('settings accordion is available without a mode toggle',
       (tester) async {
     final semantics = tester.ensureSemantics();
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
 
-    final advancedToggle = find.byKey(const ValueKey('ai-advanced-toggle'));
-    expect(tester.getSize(advancedToggle).height, greaterThanOrEqualTo(44));
-    await tester.tap(advancedToggle);
-    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-advanced-toggle')),
+      findsNothing,
+    );
+    expect(find.text('โหมดตั้งค่าขั้นสูง'), findsNothing);
 
     final silenceDisclosure = find.byKey(
       const ValueKey('ai-advanced-disclosure-silence'),
@@ -2965,7 +3654,9 @@ void main() {
 
   testWidgets('supports a custom duration capped at 180 seconds',
       (tester) async {
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
 
     await tester.tap(find.byKey(const ValueKey('ai-duration-custom')));
     await tester.pumpAndSettle();
@@ -2981,16 +3672,16 @@ void main() {
     expect(find.text('วินาที'), findsOneWidget);
   });
 
-  testWidgets('advanced layout fits the 390px reference phone width',
+  testWidgets('settings layout fits the 390px reference phone width',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(_testApp(const AiEditingScreen()));
-    await tester.tap(find.byKey(const ValueKey('ai-advanced-toggle')));
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(_testApp(const AiEditingScreen(
+      initialTargetDurationSeconds: 30,
+    )));
 
     await _openAdvancedPanel(tester, 'silence');
     expect(

@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "worker:publish": "tsx src/workers/publishWorkerRunner.ts",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
@@ -25,9 +26,9 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.5.2",
-    "firebase-admin": "^14.1.0",
+    "firebase-admin": "^14.5.0",
     "helmet": "^8.1.0",
-    "morgan": "^1.11.0"
+    "morgan": "^1.12.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -39,6 +40,11 @@
     "supertest": "^7.1.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.13"
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "@prisma/config@6.19.3": {
+      "deepmerge-ts": "8.0.2"
+    }
   }
 }

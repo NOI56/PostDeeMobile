@@ -22,12 +22,14 @@ class GoogleAccountSnapshot {
 class FirebaseUserSnapshot {
   const FirebaseUserSnapshot({
     required this.idToken,
+    this.userId,
     this.email,
     this.displayName,
     this.emailVerified = false,
   });
 
   final String idToken;
+  final String? userId;
   final String? email;
   final String? displayName;
   final bool emailVerified;
@@ -76,6 +78,7 @@ class FirebaseGoogleAuthGateway implements GoogleAuthGateway {
         await _firebaseAuthClient.signInWithGoogleIdToken(googleIdToken);
 
     return AuthSession(
+      userId: firebaseUser.userId,
       idToken: firebaseUser.idToken,
       email: firebaseUser.email ?? googleAccount.email,
       displayName: firebaseUser.displayName ?? googleAccount.displayName,
@@ -121,6 +124,7 @@ class FirebaseWebGoogleAuthGateway implements GoogleAuthGateway {
     }
 
     return AuthSession(
+      userId: user.uid,
       idToken: idToken,
       email: user.email,
       displayName: user.displayName,
@@ -214,6 +218,7 @@ class FirebaseAuthPackageClient implements FirebaseAuthClient {
     }
 
     return FirebaseUserSnapshot(
+      userId: user.uid,
       idToken: idToken,
       email: user.email,
       displayName: user.displayName,
@@ -231,6 +236,7 @@ class LocalMockGoogleAuthGateway implements GoogleAuthGateway {
   @override
   Future<AuthSession> signIn() async {
     return const AuthSession(
+      userId: AppConfig.mockUserId,
       idToken: 'local-mock-id-token',
       email: 'demo@postdee.local',
       displayName: 'PostDee Demo',

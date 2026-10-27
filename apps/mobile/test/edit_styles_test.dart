@@ -26,6 +26,14 @@ void main() {
     expect(byId('aesthetic').plan.needsSpeech, isFalse);
   });
 
+  test('custom prompt copy only promises transcript-based editing', () {
+    final custom = byId('custom_prompt');
+
+    expect(custom.editingNote, contains('เหลือ 45 วิ'));
+    expect(custom.editingNote, contains('ตัดคำหยาบ'));
+    expect(custom.editingNote, isNot(contains('เสื้อแดง')));
+  });
+
   test('gives sell styles a vivid look and aesthetic a warm look', () {
     EditStyle byId(String id) => editStyles.firstWhere((s) => s.id == id);
 

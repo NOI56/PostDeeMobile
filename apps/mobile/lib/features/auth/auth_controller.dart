@@ -106,6 +106,8 @@ class PostDeeAuthController extends ChangeNotifier {
 
   bool _isSigningIn = false;
   String? _errorMessage;
+  Future<void> _nativeAuthQueue = Future<void>.value();
+  Future<void>? _pendingSignOut;
 
   AuthSession get session => _sessionStore.session;
   bool get isSigningIn => _isSigningIn;
@@ -135,6 +137,7 @@ class PostDeeAuthController extends ChangeNotifier {
     String provider,
     Future<AuthSession> Function() signIn,
   ) async {
+    final signInSession = _sessionStore.captureSession();
     _isSigningIn = true;
     _errorMessage = null;
     notifyListeners();
@@ -142,8 +145,15 @@ class PostDeeAuthController extends ChangeNotifier {
     await _analytics.logSignInStarted(provider);
 
     try {
-      _sessionStore.signIn(await signIn());
+      await _serializeNativeAuth(() async {
+        signInSession.ensureCurrent();
+        final session = await signIn();
+        signInSession.ensureCurrent();
+        _sessionStore.signIn(session);
+      });
       await _analytics.logSignInSucceeded(provider);
+    } on AuthSessionChangedException {
+      // A later logout/sign-in superseded this attempt while native I/O waited.
     } on AuthUnavailableException catch (error) {
       _errorMessage = error.message;
       await _analytics.logSignInFailed(
@@ -162,17 +172,71 @@ class PostDeeAuthController extends ChangeNotifier {
     }
   }
 
-  Future<void> signOut() async {
+  /// Keeps account-bound native work, such as Apple reauthentication/revocation,
+  /// from overlapping provider logout or a later sign-in.
+  Future<void> runBoundNativeAuthOperation({
+    required AuthSessionBinding sessionBinding,
+    required Future<void> Function() operation,
+  }) async {
+    sessionBinding.ensureCurrent();
+    await _serializeNativeAuth(() async {
+      sessionBinding.ensureCurrent();
+      await operation();
+      sessionBinding.ensureCurrent();
+    });
+  }
+
+  Future<T> _serializeNativeAuth<T>(Future<T> Function() operation) {
+    final result = _nativeAuthQueue.then((_) => operation());
+    // A failed provider operation must still release later authentication work.
+    _nativeAuthQueue = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    return result;
+  }
+
+  Future<void> signOut({AuthSessionBinding? sessionBinding}) async {
+    sessionBinding?.ensureCurrent();
+    final pendingSignOut = _pendingSignOut;
+    if (pendingSignOut != null) {
+      await pendingSignOut;
+      return;
+    }
+
+    late final AuthSessionBinding signedOutSession;
+    late final Future<void> operation;
+    // Reserve the native queue before exposing the login gate. New sign-ins and
+    // duplicate sign-outs cannot overlap the old providers' global logout.
+    operation = _serializeNativeAuth(
+      () => _signOutProviders(signedOutSession),
+    ).whenComplete(() {
+      if (identical(_pendingSignOut, operation)) {
+        _pendingSignOut = null;
+      }
+    });
+    _pendingSignOut = operation;
+    // Invalidate pending authenticated operations before waiting for native I/O.
+    _sessionStore.signOut();
+    signedOutSession = _sessionStore.captureSession();
+    await operation;
+  }
+
+  Future<void> _signOutProviders(AuthSessionBinding signedOutSession) async {
+    if (!signedOutSession.isCurrent) return;
     try {
       await _googleAuthGateway.signOut();
     } finally {
       try {
-        await _appleAuthGateway.signOut();
+        if (signedOutSession.isCurrent) {
+          await _appleAuthGateway.signOut();
+        }
       } finally {
-        _sessionStore.signOut();
         await _analytics.logSignOut();
-        _errorMessage = null;
-        notifyListeners();
+        if (signedOutSession.isCurrent) {
+          _errorMessage = null;
+          notifyListeners();
+        }
       }
     }
   }

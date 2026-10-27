@@ -52,6 +52,7 @@ describe('createCaptionGeneratorFromConfig', () => {
     expect(() =>
       createCaptionGeneratorFromConfig({
         config: {
+          ...baseConfig,
           captionProvider: 'openai',
           openAiApiKey: undefined,
           openAiCaptionModel: 'gpt-4o-mini'
@@ -61,7 +62,7 @@ describe('createCaptionGeneratorFromConfig', () => {
   });
 
   it('uses OpenAI captions when configured', async () => {
-    const fetchImpl = vi.fn(async () => ({
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => ({
       ok: true,
       json: async () => ({
         choices: [
@@ -76,6 +77,7 @@ describe('createCaptionGeneratorFromConfig', () => {
     }));
     const generator = createCaptionGeneratorFromConfig({
       config: {
+        ...baseConfig,
         captionProvider: 'openai',
         openAiApiKey: 'openai-key',
         openAiCaptionModel: 'gpt-4o-mini'
@@ -139,7 +141,7 @@ describe('createCaptionGeneratorFromConfig', () => {
   });
 
   it('uses Gemini captions when configured', async () => {
-    const fetchImpl = vi.fn(async () => ({
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => ({
       ok: true,
       json: async () => ({
         candidates: [

@@ -17,6 +17,34 @@ const createRevenueCatConfig = (restApiKey = 'rc-secret-key') =>
   });
 
 describe('RevenueCat subscription resync', () => {
+  it('rejects a provider response that arrives after account deletion', async () => {
+    let release!: () => void;
+    let entered!: () => void;
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const reached = new Promise<void>((resolve) => { entered = resolve; });
+    const app = createApp({
+      config: createRevenueCatConfig(),
+      revenueCatSubscriberClient: {
+        loadSubscriber: async () => {
+          entered();
+          await paused;
+          return { activeEntitlements: [{ id: 'pro', productId: 'postdee_pro_monthly' }] };
+        }
+      }
+    });
+    const pending = request(app).post('/billing/revenuecat/resync')
+      .set('x-postdee-user-id', 'seller-resync-deleted').send({}).then((response) => response);
+    await reached;
+    await request(app).delete('/account').set('x-postdee-user-id', 'seller-resync-deleted').expect(200);
+    release();
+    const response = await pending;
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('ACCOUNT_DELETION_IN_PROGRESS');
+    await request(app).get('/billing/subscription').set('x-postdee-user-id', 'seller-resync-deleted')
+      .expect(200).expect(({ body }) => { expect(body.subscription.plan).toBe('BASIC'); });
+    await request(app).post('/billing/purchase-readiness')
+      .set('x-postdee-user-id', 'seller-resync-deleted').expect(409);
+  });
   it('syncs the authenticated user to Pro and ignores body user ids', async () => {
     const loadSubscriber = vi.fn().mockResolvedValue({
       activeEntitlements: [
@@ -134,7 +162,7 @@ describe('RevenueCat subscription resync', () => {
     });
 
     await request(app)
-      .get('/billing/subscription')
+      .post('/billing/purchase-readiness')
       .set('x-postdee-user-id', 'seller-google-play')
       .expect(200);
     await request(app)
@@ -142,10 +170,12 @@ describe('RevenueCat subscription resync', () => {
       .set('Authorization', 'Bearer revenuecat-webhook-token')
       .send({
         event: {
+          id: 'event-google-play-revenuecat-expired',
           type: 'INITIAL_PURCHASE',
           app_user_id: 'seller-google-play',
           entitlement_ids: ['pro'],
           product_id: 'postdee_pro_monthly',
+          event_timestamp_ms: 1_784_044_800_000,
           expiration_at_ms: 1
         }
       })

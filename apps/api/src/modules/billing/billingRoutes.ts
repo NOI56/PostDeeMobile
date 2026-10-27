@@ -14,6 +14,7 @@ import type {
   SubscriptionStore
 } from '../subscriptions/subscriptionStore.js';
 import type { UserStore } from '../users/userStore.js';
+import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 import { readPaidPlanRequest } from './billingService.js';
 import {
   StorePurchaseVerificationError,
@@ -252,7 +253,6 @@ export const registerBillingRoutes = (
       return;
     }
 
-    await userStore.ensure(authUser);
     const plan = await subscriptionStore.getPlan(authUser);
     const posts = await postStore.list({ userId: authUser.id });
     const usedPostsThisMonth = countCurrentMonthPostUnits(posts);
@@ -265,6 +265,25 @@ export const registerBillingRoutes = (
         phoneVerified: authUser.phoneVerified === true,
         usedPostsThisMonth
       })
+    });
+  });
+
+  router.post('/billing/purchase-readiness', authMiddleware, async (_request, response) => {
+    const authUser = readAuthUser(response.locals);
+
+    if (!authUser) {
+      response.status(401).json({
+        status: 'error',
+        message: 'Authenticated user is required'
+      });
+      return;
+    }
+
+    await userStore.ensure(authUser);
+    response.json({
+      status: 'ok',
+      purchaseReady: true,
+      preparationProtocol: 1
     });
   });
 
@@ -375,6 +394,7 @@ export const registerBillingRoutes = (
         subscription
       });
     } catch (error) {
+      if (error instanceof UploadSessionConflictError) throw error;
       handleStorePurchaseError(response, error);
     }
   });

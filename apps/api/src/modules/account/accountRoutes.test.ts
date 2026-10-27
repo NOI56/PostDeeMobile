@@ -10,8 +10,82 @@ import {
   ManagedUploadServiceError,
   type ManagedUploadService
 } from '../uploads/managedUploadService.js';
+import { createInMemoryUploadSessionStore } from '../uploads/uploadSessionStore.js';
+import { createInMemoryPublishQueue } from '../queue/publishQueue.js';
 
 describe('account routes', () => {
+  const orphanedPost = {
+    id: 'orphaned-post', userId: 'seller-orphan', caption: 'Rolled-back post',
+    videoS3Key: 'uploads/seller-orphan/clip/video.mp4', platforms: ['TIKTOK' as const],
+    status: 'QUEUED' as const, createdAt: '2026-10-13T00:00:00.000Z'
+  };
+
+  it('removes owned orphan queue jobs and preserves another owner during deletion', async () => {
+    const publishQueue = createInMemoryPublishQueue();
+    await publishQueue.enqueue(orphanedPost);
+    await publishQueue.enqueue({ ...orphanedPost, id: 'other-post', userId: 'seller-other' });
+    const app = createApp({ publishQueue });
+    await request(app).delete('/account').set('x-postdee-user-id', 'seller-orphan').expect(200);
+    expect(await publishQueue.list({ userId: 'seller-orphan' })).toEqual([]);
+    expect(await publishQueue.list({ userId: 'seller-other' })).toHaveLength(1);
+  });
+
+  it('keeps deletion sealed and retryable when orphan queue removal fails', async () => {
+    const base = createInMemoryPublishQueue();
+    await base.enqueue(orphanedPost);
+    const remove = vi.fn().mockRejectedValueOnce(new Error('Redis unavailable')).mockImplementation(base.remove);
+    const app = createApp({ publishQueue: { ...base, remove } });
+    await request(app).delete('/account').set('x-postdee-user-id', 'seller-orphan').expect(503)
+      .expect(({ body }) => { expect(body.code).toBe('ACCOUNT_PUBLISH_CLEANUP_FAILED'); });
+    await request(app).post('/billing/purchase-readiness').set('x-postdee-user-id', 'seller-orphan').expect(409);
+    await request(app).delete('/account').set('x-postdee-user-id', 'seller-orphan').expect(200);
+    expect(await base.list({ userId: 'seller-orphan' })).toEqual([]);
+  });
+
+  it('rejects an admitted post that resumes after account deletion without recreating data', async () => {
+    const uploadSessionStore = createInMemoryUploadSessionStore();
+    let release!: () => void;
+    let entered!: () => void;
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const reached = new Promise<void>((resolve) => { entered = resolve; });
+    const app = createApp({
+      uploadSessionStore,
+      managedUploadService: {
+        assertOwnerActive: uploadSessionStore.assertOwnerActive,
+        assertReadyForUse: async () => { entered(); await paused; },
+        prepareOwnerDeletion: async () => undefined,
+        finishOwnerDeletion: async () => undefined
+      } as unknown as ManagedUploadService
+    });
+    const pending = request(app).post('/posts')
+      .set('x-postdee-user-id', 'seller-admitted')
+      .send({ caption: 'Late post', videoS3Key: 'uploads/seller-admitted/clip/video.mp4', platforms: ['TIKTOK'], subscriptionPlan: 'PRO' })
+      .then((response) => response);
+    await reached;
+    await request(app).delete('/account').set('x-postdee-user-id', 'seller-admitted').expect(200);
+    release();
+    const response = await pending;
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe('ACCOUNT_DELETION_IN_PROGRESS');
+    await request(app).get('/posts').set('x-postdee-user-id', 'seller-admitted')
+      .expect(200, { status: 'ok', posts: [] });
+    await request(app).get('/queue/jobs').set('x-postdee-user-id', 'seller-admitted')
+      .expect(200, { status: 'ok', jobs: [] });
+    await request(app).post('/billing/purchase-readiness')
+      .set('x-postdee-user-id', 'seller-admitted').expect(409);
+  });
+
+  it('keeps the legacy owner tombstone after failed cleanup and a successful retry', async () => {
+    const cleanup = vi.fn().mockRejectedValueOnce(new Error('storage unavailable')).mockResolvedValue(undefined);
+    const app = createApp({ videoStorage: createTestVideoStorage(cleanup) });
+    await createPostAs(app, 'seller-legacy-seal');
+    await request(app).delete('/account').set('x-postdee-user-id', 'seller-legacy-seal').expect(503);
+    await request(app).post('/templates').set('x-postdee-user-id', 'seller-legacy-seal')
+      .send({ title: 'Late write', body: 'blocked during retry' }).expect(409);
+    await request(app).delete('/account').set('x-postdee-user-id', 'seller-legacy-seal').expect(200);
+    await request(app).post('/billing/purchase-readiness')
+      .set('x-postdee-user-id', 'seller-legacy-seal').expect(409);
+  });
   const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
     'uploads/' + encodeURIComponent(userId) + '/' + uploadId + '/' + fileName;
   const createPostAs = (app: ReturnType<typeof createApp>, userId: string) =>
@@ -56,7 +130,7 @@ describe('account routes', () => {
       .expect(201);
 
   const createTestVideoStorage = (
-    deleteAllVideosForOwner = vi.fn(async () => undefined)
+    deleteAllVideosForOwner: VideoStorage['deleteAllVideosForOwner'] = vi.fn(async () => undefined)
   ): VideoStorage => ({
     supportsOwnerCleanup: true,
     createUpload: vi.fn(),
@@ -261,7 +335,7 @@ describe('account routes', () => {
       postPeerAccountId: 'int-tiktok'
     });
     const postPeerConnectClient = createPostPeerCleanupClient({
-      listIntegrations: vi.fn(async () => {
+      listIntegrations: vi.fn<PostPeerConnectClient['listIntegrations']>(async () => {
         calls.push('list');
         return [
           { id: 'int-tiktok', platform: 'TIKTOK' },
@@ -313,7 +387,7 @@ describe('account routes', () => {
     const disconnectAttempts: string[] = [];
     let app: ReturnType<typeof createApp>;
     const postPeerConnectClient = createPostPeerCleanupClient({
-      listIntegrations: vi.fn(async () => {
+      listIntegrations: vi.fn<PostPeerConnectClient['listIntegrations']>(async () => {
         const queue = await request(app)
           .get('/queue/jobs')
           .set('x-postdee-user-id', userId)
@@ -467,6 +541,7 @@ describe('account routes', () => {
     const deleteMany = vi.fn(async () => ({ count: 1 }));
     const app = createApp({
       prisma: { user: { deleteMany } } as never,
+      uploadSessionStore: createInMemoryUploadSessionStore(),
       socialConnectionStore: createInMemorySocialConnectionStore()
     });
 
@@ -484,7 +559,7 @@ describe('account routes', () => {
     const userId = 'firebase-delete-order';
     const calls: string[] = [];
     const videoStorage = createTestVideoStorage(
-      vi.fn(async (ownerId) => {
+      vi.fn<VideoStorage['deleteAllVideosForOwner']>(async (ownerId) => {
         calls.push(`media:${ownerId}`);
       })
     );

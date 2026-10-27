@@ -43,10 +43,11 @@ The backend currently supports safe scaffold flows for:
 
 The backend must not publish through shared PostPeer account ids in production
 (startup rejects them). Production publishing resolves per-user social
-connections. The internal `FACEBOOK_REELS` value currently maps to PostPeer's
-Facebook Page Video capability, not Facebook Reels. Real PostPeer publishing
-must remain disabled until the per-user connect/refresh flow and a controlled
-connected-account E2E test are approved.
+connections. The existing `FACEBOOK_REELS` value maps to PostPeer
+`platform: 'facebook'` with `platformSpecificData.contentType: 'reel'` for
+Facebook Page Reels only; there is no fallback to a Page feed video. Real
+PostPeer publishing must remain disabled until the per-user connect/refresh
+flow and a controlled connected-account E2E test are approved.
 
 ## Authentication
 
@@ -197,6 +198,11 @@ Validation:
 - If `width` and `height` are provided, the media must be vertical 9:16 within a 2 percent tolerance.
 - `uploadProtocol`, when present, must be `multipart-v1`.
 
+AI edit audio is the only supported audio upload exception. It must set
+`"purpose": "ai-edit-audio"`, use an `.m4a` filename and `audio/mp4`, omit
+`width`/`height`, and be no larger than 25 MiB. Audio without this purpose is
+rejected with `UPLOAD_AI_EDIT_AUDIO_INVALID`.
+
 Mock response:
 
 ```json
@@ -255,7 +261,9 @@ When `UPLOAD_PROTOCOL_MODE=dual|multipart` and the client requests
 }
 ```
 
-`UPLOAD_PROTOCOL_MODE` defaults to `legacy`. Production uses `dual` during the
+`UPLOAD_PROTOCOL_MODE` defaults to `legacy`. `dual` and `multipart` require
+`DATABASE_URL` because managed upload sessions are persisted through Prisma.
+Production uses `dual` during the
 client rollout, so opted-in clients receive managed multipart sessions while
 old clients keep receiving the legacy response. In strict `multipart` mode, a
 request without the opt-in returns `426 UPLOAD_CLIENT_UPGRADE_REQUIRED`.
@@ -314,13 +322,26 @@ INSTAGRAM_REELS
 FACEBOOK_REELS
 ```
 
-`FACEBOOK_REELS` is retained for mobile/API compatibility. With the current
-PostPeer adapter it publishes a Facebook Page Video; it must not be presented as
-Facebook Reels in Store copy.
+`FACEBOOK_REELS` is retained for mobile/API compatibility. The server always
+sets PostPeer `platform: 'facebook'` and
+`platformSpecificData.contentType: 'reel'` for this destination. It requires a
+video and never falls back to a Facebook Page feed video. Real connected-account
+E2E must verify the result is a Page Reel before Store claims or production
+activation; Page Video duration limits do not establish a Reel duration limit.
+
+There are no new client fields, environment variables, or database migrations.
+After deploying the updated publisher, existing queued/scheduled posts carrying
+`FACEBOOK_REELS` also use the Page Reels route when they are published.
 
 ### `GET /posts`
 
 Returns posts for the authenticated user.
+
+The Home dashboard calls `GET /posts?includeMedia=true&limit=3`. When that
+opt-in query is present, each returned post can also contain short-lived,
+private-storage download URLs for its source video and optional rendered cover.
+An optional positive `limit` returns the newest posts by `createdAt`, is capped
+at 50, and is applied before platform-result lookup and media URL signing.
 
 Response:
 
@@ -330,6 +351,8 @@ Response:
   "posts": [
     {
       "id": "post-1",
+      "videoUrl": "https://private-media.example/signed/video",
+      "coverImageUrl": "https://private-media.example/signed/cover",
       "platformResults": [
         {
           "postId": "post-1",
@@ -350,16 +373,40 @@ Response:
 user's returned post ids. A failed platform result can contain `errorMessage`;
 the response does not expose another user's publish records.
 
+`videoUrl` and `coverImageUrl` are optional and appear only when
+`includeMedia=true` and the configured storage adapter can issue signed
+downloads. URLs are created only after the post list is scoped to the
+authenticated user and limited to the requested recent rows. Mobile prefers
+`coverImageUrl`; if no cover exists (for example, an older YouTube Shorts post),
+it displays a paused frame from `videoUrl`. The video preview is released when
+Home is no longer active. Both fields remain absent with mock storage, and the
+UI falls back to the play placeholder when media is missing or cannot be loaded.
+
 ### `POST /posts`
 
-Creates a queued post and hands it to the publish queue.
+Creates a queued post and hands it to the publish queue. Caption limits depend
+on the selected platforms and are checked before any post quota is used (the
+mobile app checks the same rules before uploading):
+
+- Any platform other than YouTube: at most 2,200 Unicode code points
+  (Instagram's limit, the strictest of them).
+- YouTube: the caption is sent as the video description, which the YouTube Data
+  API caps at 5,000 UTF-8 **bytes** (about 1,660 Thai characters) and which may
+  not contain `<` or `>`. A YouTube-only post may therefore exceed 2,200
+  characters in plain Latin text.
+
+Too long returns `400 CAPTION_TOO_LONG`; `<`/`>` with YouTube selected returns
+`400 CAPTION_INVALID_FOR_YOUTUBE`.
 
 Request:
 
 ```json
 {
   "caption": "Try this product today. #PostDee",
+  "youtubeTitle": "Try this product today",
   "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+  "coverImageS3Key": "uploads/local-dev-user/cover-upload-id/post-cover.jpg",
+  "coverFrameTimeMs": 4200,
   "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
   "scheduledAt": "2026-06-06T10:00:00.000Z"
 }
@@ -367,31 +414,72 @@ Request:
 
 Rules:
 
-- `caption`, `videoS3Key`, and at least one valid platform are required.
+- `caption` (a string), `videoS3Key`, and at least one valid platform are required.
+  The caption must be nonempty except for a YouTube-only post with a nonempty
+  custom `youtubeTitle`.
+- `youtubeTitle` is an optional string override for YouTube Shorts. A nonempty
+  override requires `YOUTUBE_SHORTS` among the selected platforms, is trimmed,
+  must be at most 100 Unicode code points, and must not contain `<` or `>`.
+  Omitting it or sending whitespace selects automatic title generation. The
+  optional override is stored as a nullable field and is carried through the
+  queue/worker; old requests without this field remain supported.
+- Without an override, the YouTube title strips `<` and `>` before taking the
+  first sentence of the first nonempty caption line, limited to 100 Unicode
+  code points. This cleanup affects only the generated title: the full caption
+  remains the YouTube description; other destinations keep the shared caption.
+  The mobile client omits `youtubeTitle` in automatic mode so the backend
+  derives the title using the same rule as the live preview.
 - `videoS3Key` must be an upload key owned by the authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape returned by `POST /uploads`.
+- `coverImageS3Key` is optional. When present it must be an owner-scoped JPEG
+  or PNG upload belonging to the same authenticated user and no larger than
+  2 MiB. `coverFrameTimeMs` is an optional integer from `0` through
+  `2147483647` containing the selected frame time in the source video.
 - A managed multipart upload must have status `COMPLETED` before its
-  `videoS3Key` can be used. Legacy owner-scoped keys remain accepted only while
-  the server is in `legacy` or `dual` rollout mode.
+  `videoS3Key` or `coverImageS3Key` can be used. Legacy owner-scoped keys remain
+  accepted for videos while the server is in `legacy` or `dual` rollout mode.
+  Because cover support is new, cover keys require managed confirmation in
+  `dual` and `multipart` modes; only pure `legacy` mode keeps the old fallback.
 - If `scheduledAt` is present, the user must be Starter or Pro.
+- `scheduledAt` must be a valid ISO-8601 time strictly after the server's
+  current time; invalid or past values are rejected instead of being published
+  immediately.
+- `scheduledAt` cannot be more than 30 days after the server's current time.
 - Basic users must have a verified phone number before using the free quota.
 - Basic is limited to 3 post units per month after phone verification.
 - Starter is limited to 120 post units per month.
 - Pro is limited to 250 post units per month.
 - Post units count selected platforms, not post rows.
+- Repeated platform values are collapsed before quota accounting, persistence,
+  and queueing. The quota check and post creation are one atomic store operation
+  so concurrent requests cannot overspend the monthly allowance.
 
 Worker behavior:
 
+- YouTube receives the stored custom `youtubeTitle` when present, otherwise
+  the title derived from the caption. The title and full description are sent
+  as separate fields; scheduled jobs preserve the same title choice.
 - The publish worker claims a post by moving it from `QUEUED` to `PUBLISHING`
   before calling the platform publisher.
 - PostPeer `202 pending/publishing` is not treated as success. The adapter polls
   `GET /v1/posts/{postId}` for roughly two minutes and records `PUBLISHED` only
   when the selected platform has a real `platformPostUrl` or `platformPostId`.
-  It never fabricates an external id.
+  It never fabricates an external id. Each PostPeer request times out after 60
+  seconds: a timed-out create is an unknown outcome (never resubmitted), and a
+  timed-out status check counts as one unanswered poll.
 - A provider call is retried only for an explicitly safe error proving that no
   external post was accepted. A network/timeout or uncertain PostPeer outcome is
   not submitted again; clients must check the platform before a manual retry.
 - Retry or duplicate jobs are skipped when the post is already `PUBLISHING`,
   `PUBLISHED`, `PARTIAL_PUBLISHED`, or `FAILED`.
+- The in-process scheduler publishes up to 4 due posts at once, and ticks may
+  overlap, so one slow provider publish does not delay posts that become due
+  later. Each post is started at most once per process; the atomic claim still
+  guards across instances.
+- The in-process scheduler fails posts left `PUBLISHING` for over 30 minutes
+  (for example after a restart or deploy killed their worker), checked at most
+  once a minute. Platforms without a saved result get the "result could not be
+  confirmed" error and the owner gets a `FAILED` push. These posts are never
+  published again automatically, because the provider may have accepted them.
 - Stale scheduled jobs are skipped when the job `runAt` no longer matches the
   post's current `scheduledAt`, such as after a reschedule.
 - Optional R2/S3 cleanup after a fully successful publish is best-effort. A
@@ -400,6 +488,14 @@ Worker behavior:
 - If the publish queue is unavailable while creating or rescheduling a post,
   the API returns `503` with `PUBLISH_QUEUE_UNAVAILABLE` and keeps the post
   store from advancing ahead of the queue.
+- Cover delivery is capability-aware: Instagram receives the signed cover
+  image (or the selected frame offset when no image is available). Facebook
+  Page Reels requests retain `contentType: 'reel'` and optionally send the signed
+  image as `videoThumbnailUrl` on a best-effort basis. Its display on a Reel is
+  not verified; the provider may choose the cover. TikTok Direct Post receives
+  only the selected frame time. YouTube Shorts does not
+  receive a custom thumbnail because YouTube requires Shorts cover selection
+  to be completed in the YouTube mobile app.
 
 Local-only request override:
 
@@ -424,7 +520,10 @@ Success response:
     "id": "post-id",
     "userId": "local-dev-user",
     "caption": "Try this product today. #PostDee",
+    "youtubeTitle": "Try this product today",
     "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+    "coverImageS3Key": "uploads/local-dev-user/cover-upload-id/post-cover.jpg",
+    "coverFrameTimeMs": 4200,
     "platforms": ["TIKTOK", "YOUTUBE_SHORTS"],
     "scheduledAt": "2026-06-06T10:00:00.000Z",
     "status": "QUEUED",
@@ -467,7 +566,12 @@ Post limit reached:
 Reschedules an authenticated user's queued post. Body:
 `{ "scheduledAt": "<ISO-8601 date>" }`. The route returns the updated `post`,
 returns `404` for a missing/non-queued user-owned post, and returns `503` when
-the publish queue cannot be rescheduled.
+the publish queue cannot be rescheduled. The new time must be a valid future
+ISO-8601 value and cannot be more than 30 days after the server's current time.
+The current server-resolved plan must be Starter or Pro. Basic, including an
+expired or canceled paid subscription, receives `402 PAID_PLAN_REQUIRED`
+before either the queue or post is changed. A body `subscriptionPlan` hint
+cannot grant scheduling access.
 
 ### `DELETE /posts/:id`
 
@@ -480,6 +584,16 @@ job. Returns `{ "status": "ok" }` or `404` when no user-owned post is found.
 
 Registers the authenticated user's FCM token. Body:
 `{ "token": "...", "platform": "IOS|ANDROID|WEB" }`; `platform` is optional.
+Each account keeps only its 10 most recently registered tokens; older ones are
+deleted. Tokens FCM reports as unregistered or invalid after a send are removed
+for their owner, and sends are batched at 500 tokens.
+
+Publish-result pushes include `data: { postId, type: "publish_result", userId }`,
+where `userId` is the same owner used to select device tokens. Mobile clears its
+in-app notification list on a session change and accepts messages only for the
+current UID. Older payloads without a recipient UID are ignored. This filter
+does not control OS-displayed background notifications or detach device tokens
+already registered with the backend.
 
 ### `GET /social-connections`
 
@@ -504,11 +618,25 @@ the provider profile id. If competing requests create different provider
 profiles for the same user, the previously claimed database mapping remains
 authoritative.
 
+TikTok native authorization is proposed only, pending developer registration.
+The runtime does not expose native authorization metadata or a native
+completion endpoint. Its draft contract and security requirements are in the
+[TikTok setup and design plan](docs/superpowers/plans/2026-10-21-tiktok-native-connection.md);
+they are not a current API contract.
+
 ### `POST /social-connections/refresh`
 
 Polls the user's PostPeer profile integrations after the browser OAuth flow,
 then upserts connected platforms and removes stale local connections. PostPeer
 does not call a signed-state callback in the current implementation.
+
+Mobile calls this same authenticated endpoint automatically when a pending
+connection leaves the app and the original signed-in session returns to the
+foreground. Manual refresh remains available. Opening or closing a Custom Tab
+does not establish connection success; the provider integrations returned by
+the backend determine status. This trial adds no API fields, mobile callback
+endpoint, or `redirectUri` contract. See the
+[mobile connection trial](docs/superpowers/plans/2026-10-25-postpeer-mobile-connection-trial.md).
 
 ### `DELETE /social-connections/:platform`
 
@@ -542,10 +670,22 @@ Google Play required "Delete Account" flow in the profile screen.
 
 Behavior:
 
-- Marks the owner as deleting before cleanup starts. Later authenticated
-  mutations are rejected, post creation cannot enqueue new work, and the
-  publish worker checks the same barrier before claiming a job.
-- Cancels any queued or scheduled publish jobs for the user's posts.
+- Marks the owner as deleting before cleanup starts, including in legacy upload
+  mode. Whenever Prisma is active, the existing `ManagedUploadOwner` table
+  persists this marker; otherwise the marker is process-local. Later mutation
+  admission is rejected and the publish worker checks it before claiming a job.
+- User creation, post creation/quota/rescheduling, subscription activation and
+  RevenueCat event writes lock an ACTIVE owner marker inside the same
+  Serializable database transaction as their final write. Memory stores use a
+  shared owner FIFO. These operations reject a deleting/deleted owner with
+  `409 ACCOUNT_DELETION_IN_PROGRESS` even if admitted before deletion.
+- Drains same-process publish queue admission, then cancels owned queued jobs,
+  including jobs whose post row has already been rolled back or deleted.
+  An unfinished admission returns `503 ACCOUNT_WRITE_DRAIN_FAILED`; a queue
+  cleanup failure returns `503 ACCOUNT_PUBLISH_CLEANUP_FAILED`. Retry deletion.
+  SQL and Redis are not atomic: cross-instance late adds, process crashes and
+  already-admitted provider calls still need reconciliation/draining. Templates,
+  device tokens and social data do not yet have these final-write fences.
 - Lists every paginated integration in the user's PostPeer profile and
   disconnects each one through the provider before deleting local records.
   This includes integration ids for platforms PostDee does not yet recognize.
@@ -584,6 +724,10 @@ Behavior:
 - Late active RevenueCat webhooks are acknowledged and ignored when the
   PostDee user row no longer exists, so a renewal cannot recreate a deleted
   account.
+- Mobile deletion consent is bound to the session that opened the confirmation.
+  Readiness, token refresh, Apple revocation and deletion stop if that session
+  changes. Native login/logout and Apple deletion revocation share a queue;
+  a late response cannot log out or show deletion feedback to the next account.
 
 Success response:
 
@@ -594,6 +738,36 @@ Success response:
 ```
 
 ## Captions
+
+### `GET /captions/quota`
+
+Reads the authenticated user's current plan and monthly AI caption quota.
+This is read-only: it does not generate captions, reserve quota, or upload media.
+
+- The plan comes from the subscription store and usage is scoped to the
+  authenticated user, not a user or plan supplied in the query/body.
+- Counts the current UTC calendar month in the shared caption usage ledger
+  used by both `/captions/generate` and `/captions/generate-from-clip`.
+- Returns `200` for Basic, Starter, and Pro. Limits are `0`, `50`, and `120`
+  respectively. Basic has no AI generation entitlement; this read endpoint
+  does not unlock generation.
+- `usedThisMonth` retains recorded usage, including after a downgrade.
+  `remainingThisMonth` is `max(limit - usedThisMonth, 0)`.
+- Missing authentication returns `401`.
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "plan": "STARTER",
+  "quota": {
+    "limit": 50,
+    "usedThisMonth": 12,
+    "remainingThisMonth": 38
+  }
+}
+```
 
 ### `POST /captions/generate`
 
@@ -661,18 +835,30 @@ Requires Starter or Pro.
 - Local development can keep quota usage in memory with
   `CAPTION_USAGE_STORE=memory`. Production should use
   `CAPTION_USAGE_STORE=prisma` so monthly usage survives API restarts.
-- It uses `videoS3Key`, optional `guidance`, optional `selectedFrameKeys`, and
-  optional `deleteAfterUse`.
-- `videoS3Key` and any `selectedFrameKeys` must be upload keys owned by the
-  authenticated user, using the `uploads/<user-id>/<upload-id>/<file>` shape
-  returned by `POST /uploads`.
+- It uses exactly one of `audioS3Key` or `videoS3Key`, optional `guidance`,
+  optional `selectedFrameKeys`, and optional `deleteAfterUse`. Sending both, or
+  neither, returns `400`.
+- `audioS3Key` is the current mobile path: the app extracts the clip's audio
+  on device (M4A, `audio/mp4`, 64 kbps mono) and uploads it with
+  `"purpose": "ai-edit-audio"`. The key must end in `.m4a` (`400` otherwise)
+  and the stored object must be `audio/mp4` (`415
+  AI_CAPTION_MEDIA_TYPE_INVALID` otherwise). `videoS3Key` remains for older
+  app versions that upload the full clip. The response `source.videoS3Key`
+  echoes whichever clip key was used.
+- `audioS3Key`/`videoS3Key` and any `selectedFrameKeys` must be upload keys
+  owned by the authenticated user, using the
+  `uploads/<user-id>/<upload-id>/<file>` shape returned by `POST /uploads`.
 - When the mobile app uploads media only for AI captioning, it sends
   `"deleteAfterUse": true`; the backend then attempts to delete the clip and
   selected frames after the request. Cleanup failures are logged but do not
   block a successful caption response.
 - Usage is reserved before the AI provider is called so simultaneous requests
   cannot exceed the monthly quota within the configured usage store.
-- Media downloaded for AI processing is capped to protect API memory.
+- Gemini rejects inline requests over 20 MB, so caption media is capped before
+  the body is read: the clip (audio or legacy video) at 10 MiB, returning
+  `413 AI_MEDIA_TOO_LARGE` above it, and each frame at 1 MiB. Frames that are
+  oversized or not `image/jpeg`/`image/png` are skipped rather than failing the
+  caption. The caps also bound how much memory one request holds.
 - When `CAPTION_PROVIDER=gemini`, this endpoint sends the clip to Gemini to
   listen and write the caption directly (Starter = audio only; Pro =
   `AUDIO_WITH_FRAMES`, also sending the `selectedFrameKeys` images). Gemini
@@ -695,7 +881,7 @@ Request:
 
 ```json
 {
-  "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+  "audioS3Key": "uploads/local-dev-user/upload-id/postdee-ai-edit-audio.m4a",
   "guidance": "focus on the opening hook",
   "selectedFrameKeys": [
     "uploads/local-dev-user/frame-upload-1/demo-1.jpg",
@@ -796,18 +982,32 @@ frames where useful.
 
 All `/ai-edits/*` endpoints require auth. `POST /ai-edits/transcribe`,
 `POST /ai-edits/prepare`, and `POST /ai-edits/plan` require the `PRO` plan
-(otherwise `402` with `code: "PRO_REQUIRED"`); `GET /ai-edits/quota` is
-available to any authenticated user.
+(otherwise `402` with `code: "PRO_REQUIRED"`). `GET /ai-edits/quota` and the
+idempotent temporary-audio cleanup endpoint are available to any authenticated
+user.
 
 ### `POST /ai-edits/transcribe`
 
 Transcribes an uploaded clip (Thai). Meters usage against a monthly minute quota
 (`200` min); returns `402` `AI_EDIT_QUOTA_EXCEEDED` when exhausted. The client
-`durationSeconds` is only a pre-check estimate; the backend reserves the actual
-transcribed minutes before returning success so concurrent requests cannot push
-usage past the configured store limit. Request:
-`{ "videoS3Key": "uploads/<user-id>/<upload-id>/clip.mp4", "durationSeconds": 18 }`. Response includes
-`transcript` (text, language, durationSeconds, segments[], words[]) and `quota`.
+`durationSeconds` estimate is reserved atomically **before** the paid
+transcription call, so parallel requests near the limit are rejected without
+reaching the provider. After transcription the reservation is re-priced to the
+real transcribed minutes; if those do not fit the remaining quota the request
+returns `402` and the estimate stays charged (the provider call already
+happened), so under-reporting duration gains nothing. A failed transcription
+releases the reservation. New clients send exactly one owned M4A
+audio key:
+`{ "audioS3Key": "uploads/<user-id>/<upload-id>/clip.m4a", "durationSeconds": 18 }`.
+Existing deployed clients may temporarily send `videoS3Key` instead. Sending
+both keys returns `400 AI_EDIT_MEDIA_AMBIGUOUS`; sending neither returns
+`400 AI_EDIT_MEDIA_REQUIRED`. Response includes `transcript` (text, language,
+durationSeconds, segments[], words[]) and `quota`.
+
+Audio downloads require `audio/mp4` and are capped at 25 MiB. Legacy video
+downloads retain the 200 MiB ceiling. Owned temporary audio is deleted after
+every accepted attempt, including plan/quota rejection and provider failure;
+legacy video is never automatically deleted by these endpoints.
 The Groq adapter sends `language=th` and requests both `word` and `segment`
 timestamp granularities. It also sends the concise Thai spelling context
 `PostDee` → `โพสต์ดี` through Groq's transcription prompt; the OpenAI adapter
@@ -818,6 +1018,14 @@ or Groq returns Thai character-level tokens that are not readable subtitle words
 Whitespace-only/punctuation-only timing tokens are ignored, while invalid tokens
 that contain transcript text invalidate word-level timing and trigger fallback.
 
+### `POST /ai-edits/audio/cleanup`
+
+Best-effort recovery cleanup for an uploaded temporary M4A when the edit request
+or response is interrupted. Request:
+`{ "audioS3Key": "uploads/<user-id>/<upload-id>/clip.m4a" }`. The key must be an
+owned `.m4a`; cross-user keys return `403 MEDIA_KEY_FORBIDDEN`. Deletion is
+idempotent, so retrying the same request returns `{ "status": "ok" }`.
+
 ### `GET /ai-edits/quota`
 
 Reports `{ limitMinutes, usedMinutes, remainingMinutes }` for the current month.
@@ -826,21 +1034,27 @@ Reports `{ limitMinutes, usedMinutes, remainingMinutes }` for the current month.
 
 Builds the UI-facing mobile render recipe for the AI editing screen. This is the
 backend contract for the Claude Design flow: the app sends the selected clip,
-chosen style/prompt, and capability toggles such as `subtitle`, `silence`,
+the requested result length in `targetDurationSeconds`, optional style/prompt,
+and capability toggles such as `subtitle`, `silence`,
 `filler`, `hook`, `zoom`, `color`, `cta`, `pricetag`, and `watermark`.
 
 This endpoint is Pro-gated and minute-metered like `/ai-edits/transcribe`: the
-client `durationSeconds` is a pre-check estimate, the backend transcribes the
-stored clip, then reserves the actual transcribed minutes before returning the
-recipe. It does **not** render video on the server; mobile still renders/export
-with FFmpeg.
+client `durationSeconds` estimate is reserved before transcription, re-priced to
+the real transcribed minutes, and only then is the edit plan and recipe built.
+If transcription or a configured live edit planner fails (`502` with
+`code: "AI_EDIT_PLAN_PROVIDER_FAILED"`), the reservation is released, so that
+failed prepare attempt does not consume the user's minute quota. A `prompt`
+longer than 500 characters returns `400 AI_EDIT_PROMPT_TOO_LONG` before any
+minutes are reserved. It does **not** render
+video on the server; mobile still renders/exports with FFmpeg.
 
 Request:
 
 ```json
 {
-  "videoS3Key": "uploads/local-dev-user/upload-id/demo-video.mp4",
+  "audioS3Key": "uploads/local-dev-user/upload-id/analysis.m4a",
   "durationSeconds": 65,
+  "targetDurationSeconds": 30,
   "styleId": "flash_sale",
   "prompt": "เหลือ 45 วิ เน้นตอนพูดราคา",
   "capabilities": {
@@ -886,6 +1100,12 @@ Response includes:
 - `recipe.transcript` with text, language, duration, segments, words, and model
 - `recipe.subtitles` for mobile subtitle burn-in
 - `recipe.cutRanges`, `silenceRanges`, and `fillerRanges`
+- `recipe.plan`, whose cuts select the strongest transcript moments within
+  `targetDurationSeconds` while preserving chronological order. The first
+  production version scores spoken hooks, benefits, proof, offers, and calls to
+  action. LLM cut ranges are clamped, sorted, and merged before duration math or
+  mobile rendering; visual highlight selection still requires a future visual
+  proxy.
 - `recipe.overlays` for future CTA, price tag, and watermark processors; the
   current production mobile renderer does not apply these hints.
 - `recipe.renderHints` for tone and future zoom settings. Hook removal is not
@@ -899,8 +1119,9 @@ Response includes:
 
 Production mobile enables only `subtitle`, `silence`, `filler`, and `color`,
 because those four have a real local renderer. The setup UI locks auto-reframe,
-zoom, audio cleanup, subtitle translation, price tag, CTA, and the AI-page
-watermark as `เร็ว ๆ นี้` and sends them as `false`.
+zoom, and audio cleanup as `เร็ว ๆ นี้`. Subtitle translation, price tag, CTA,
+and the AI-page watermark are hidden from the customer UI while deferred and
+are still sent as `false` for compatibility.
 
 Capabilities that need future analysis or rendering, including beat sync, the
 opening hook/highlight, auto-reframe, zoom, SFX/music choice, audio cleanup,
@@ -952,6 +1173,12 @@ successful recipe instead of calling this minute-metered endpoint again.
 Capabilities marked `planned`, `hinted`, or `skipped` must not be presented as
 already applied to the preview.
 
+After result review, mobile may pass the accepted local render to Upload/Post.
+PostDee has no built-in manual timeline editor. Users may separately choose an
+external editor such as CapCut, but the API exposes no CapCut integration,
+export target, or share-handoff endpoint. This product-scope decision does not
+change the AI edit request/response schema or any backend endpoint.
+
 Mobile derives the review's detected counts from `silenceRanges.length` and
 `fillerRanges.length`, then merges overlapping/clamped ranges before displaying
 the detected time.
@@ -961,10 +1188,18 @@ exact duration removed from the exported clip.
 ### `POST /ai-edits/plan`
 
 Returns a structured cut plan for an auto-edit style or a free-form prompt,
-computed from an already-transcribed clip. Pro-gated but **not** minute-metered.
+computed from an already-transcribed clip. Pro-gated but **not** minute-metered,
+so its client input is capped: `prompt` up to 500 characters
+(`400 AI_EDIT_PROMPT_TOO_LONG`) and at most 600 `segments` of up to 300
+characters each (`400 AI_EDIT_SEGMENTS_TOO_LARGE`). Live planner calls time out
+after 45 seconds and return the `502` provider error below.
 
-Currently backed by a rule-based mock (`model: "mock-rule"`); the contract is
-designed so an LLM planner can replace the brain without changing callers.
+`EDIT_PLAN_PROVIDER=mock` explicitly selects the rule-based test planner and
+returns `model: "mock-rule"`; mobile must label that result as test mode. The
+`openai` and `groq` values call their configured live LLM. A live provider
+network error, non-success response, empty response, or invalid JSON returns
+`502` with `code: "AI_EDIT_PLAN_PROVIDER_FAILED"`; it never silently falls
+back to `mock-rule`.
 
 Request (one of `styleId` or `prompt` is required):
 
@@ -1016,7 +1251,17 @@ Response:
 
 ### `POST /templates`
 
-Creates a saved text template for the authenticated user.
+Creates a saved text template for the authenticated user. `title` may be at
+most 80 and `body` at most 2,200 Unicode code points (`400 TEMPLATE_TOO_LONG`);
+the body shares the post caption limit because templates are inserted into
+captions. Each account can save up to 30 templates (`409
+TEMPLATE_LIMIT_REACHED`); deleting one frees its slot.
+
+### `DELETE /templates/:id`
+
+Deletes one of the authenticated user's templates. Returns `{ "status": "ok" }`,
+or `404` when the template does not exist or belongs to another user. The mobile
+Templates screen asks for confirmation before calling it.
 
 Request:
 
@@ -1101,6 +1346,9 @@ An unsupported range returns `400 INVALID_ANALYTICS_RANGE`.
 ### `GET /billing/subscription`
 
 Returns the current user's plan and feature flags.
+This endpoint is read-only and does not create or recreate a `User` row.
+RevenueCat clients must prepare the authenticated account before opening a
+purchase, using the endpoint below.
 
 Basic response example:
 
@@ -1176,6 +1424,41 @@ Pro response sets:
 for older clients, but the active API keeps them false. Package copy should use
 "AI caption from real clip" instead.
 
+### `POST /billing/purchase-readiness`
+
+Authenticated purchase preparation. Send `{}` before calling the RevenueCat
+purchase SDK. The account-aware mutation middleware rejects deleting/deleted
+owners and ensures the canonical user for the authenticated principal; body
+user selectors cannot choose another user. Success returns
+`200 { "status": "ok", "purchaseReady": true, "preparationProtocol": 1 }`.
+Missing authentication returns `401`; a deletion barrier returns
+`409 ACCOUNT_DELETION_IN_PROGRESS`. No payment, entitlement activation or
+provider read occurs. A failed preparation must prevent the SDK purchase.
+The mobile app also stops before buy if its session changes while awaiting SDK
+availability or preparation. RevenueCat configuration, product lookup and the
+SDK buy/restore callback share a queue across gateway instances and retain the
+original UID/session. Default readiness, resync and entitlement-poll requests
+use bound auth headers; changed sessions and mismatched response owners cannot
+produce subscription success. Already-dispatched native payment/configuration
+cannot be canceled by these checks and still needs device validation.
+
+Coordinate API/mobile rollout: older clients that depended on GET creating the
+user need this preparation step before the read-only GET change is deployed.
+The existing webhook missing-user protection remains required.
+Current mobile clients require that explicit protocol-1 acknowledgement.
+`404`, `501`, a status-only response or an unsupported acknowledgement shows
+"ระบบสมาชิกยังไม่พร้อมสำหรับแอปเวอร์ชันนี้ กรุณาลองใหม่ภายหลัง" and prevents SDK
+purchase and subsequent subscription polling. Authentication, deletion and
+service errors retain their normal error handling. Older clients that already
+await this POST can ignore the additive response fields.
+
+Release sequence: introduce the additive preparation endpoint, release mobile
+clients that await it, retire or independently disable purchase on builds that
+never call it, then deploy read-only GET. This branch contains the GET cutover
+already; do not deploy it while those legacy builds can still buy. They can buy
+after a failed GET, so a new endpoint/server error cannot remotely disable their
+purchase flow. Keep webhook missing-user protection; do not restore GET writes.
+
 ### `POST /billing/revenuecat/webhooks`
 
 Receives RevenueCat subscription lifecycle events when
@@ -1186,6 +1469,10 @@ This endpoint requires:
 ```http
 Authorization: Bearer <REVENUECAT_WEBHOOK_AUTH_TOKEN>
 ```
+
+The token (and the Google Play notification token) is compared in constant
+time over SHA-256 digests, so response timing reveals neither its length nor a
+matching prefix.
 
 RevenueCat `app_user_id` must match the PostDee user id. In production this
 should be the Firebase uid used by the mobile app. The backend maps RevenueCat
@@ -1198,14 +1485,23 @@ Example request:
 ```json
 {
   "event": {
+    "id": "revenuecat-event-id",
     "type": "INITIAL_PURCHASE",
     "app_user_id": "firebase-user-id",
     "product_id": "postdee_pro_monthly",
     "entitlement_ids": ["pro"],
+    "event_timestamp_ms": 1780444800000,
     "expiration_at_ms": 1780531200000
   }
 }
 ```
+
+Every event that activates or expires an entitlement must include a non-empty
+`event.id` and a positive integer `event_timestamp_ms`; missing or invalid
+ordering metadata returns `400 REVENUECAT_WEBHOOK_INVALID` without changing the
+subscription. The server persists the latest cursor per user. A retry with the
+same event id, or an event whose timestamp is not newer, returns `200` with
+`ignored: true` so delayed webhooks cannot overwrite newer entitlement state.
 
 Success response:
 
@@ -1229,6 +1525,16 @@ cancels the existing RevenueCat-bound subscription and removes paid access.
 without revoking access immediately because the subscription can still be active
 until the paid period actually expires. Unknown product or entitlement ids return
 `202` with `ignored: true`.
+
+`TRANSFER` (a purchase moved to another App User ID, e.g. a restore while signed
+in to a different account) carries no `app_user_id` or product. It requires
+`id`, `event_timestamp_ms`, and a non-empty `transferred_from` list (`400`
+otherwise). Each existing PostDee user in `transferred_from` (and not in
+`transferred_to`) has their RevenueCat-bound subscription set to `CANCELED`,
+using the same per-user event ordering as other events; anonymous or unknown ids
+are skipped. The response lists `revokedUserIds`. The receiving account gains
+access through `POST /billing/revenuecat/resync` after restore, or its next
+RevenueCat event.
 
 ### `POST /billing/revenuecat/resync`
 
@@ -1456,7 +1762,8 @@ Current notification mapping highlights:
 
 Returns queued publish jobs for the authenticated user in local memory mode.
 Canceling or rescheduling a queued post also removes or replaces the matching
-publish queue job.
+publish queue job. Once the in-process scheduler publishes or fails a post, its
+job is removed, so the list only shows posts still waiting to publish.
 
 Response:
 
@@ -1467,7 +1774,14 @@ Response:
 }
 ```
 
-Production direction:
+The checked-in Render deployment currently uses `PUBLISH_QUEUE=memory`,
+`POST_STORE=prisma`, and one API instance. Starting the API also starts its
+in-process scheduler, which reads due posts from PostgreSQL. Queue entries
+remain in memory; persisted posts and the scheduler are separate from the
+`GET /queue/jobs` diagnostic listing. This is a description of source
+configuration, not a new live-deployment check.
+
+Optional Redis/BullMQ deployment for scaling:
 
 ```env
 PUBLISH_QUEUE="bullmq"
@@ -1478,7 +1792,8 @@ REDIS_URL="redis://localhost:6379"
 
 `PUBLISH_QUEUE=bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` because
 the API and worker run in separate processes and must share post state through
-PostgreSQL.
+PostgreSQL. It also needs `REDIS_URL` and a separately running publish worker.
+Migrate and verify that path before increasing the API instance count.
 
 ## Environment Variables
 
@@ -1500,7 +1815,7 @@ PostgreSQL.
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | `...` | R2 S3-compatible secret access key |
 | `CLOUDFLARE_R2_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` | Optional custom R2 endpoint |
 | `CLOUDFLARE_R2_UPLOAD_EXPIRES_SECONDS` | `300` | Signed upload URL lifetime; legacy retries request one fresh URL after explicit expiry, while multipart retries refresh only the affected part URL |
-| `UPLOAD_PROTOCOL_MODE` | `legacy`, `dual`, `multipart` | Upload rollout mode; defaults to `legacy`, production uses `dual` during client migration, and strict `multipart` rejects old clients without the opt-in |
+| `UPLOAD_PROTOCOL_MODE` | `legacy`, `dual`, `multipart` | Upload rollout mode; `dual`/`multipart` require `DATABASE_URL`; defaults to `legacy`, production uses `dual` during client migration, and strict `multipart` rejects old clients without the opt-in |
 | `MULTIPART_UPLOAD_PART_SIZE_BYTES` | `16777216` | Server-selected managed multipart part size in bytes (16 MiB default) |
 | `MULTIPART_UPLOAD_SESSION_EXPIRES_SECONDS` | `3600` | Managed multipart session lifetime in seconds |
 | `UPLOAD_MAX_SIZE_BYTES` | `524288000` | Maximum declared upload size accepted by `POST /uploads` |
@@ -1518,7 +1833,7 @@ PostgreSQL.
 | `GROQ_API_KEY` | `...` | Groq API key for AI caption detection and AI edit transcription |
 | `GROQ_TRANSCRIPTION_MODEL` | `whisper-large-v3` | Groq transcription model |
 | `WHISPER_MODEL` | `whisper-1` | Legacy OpenAI transcription model |
-| `EDIT_PLAN_PROVIDER` | `mock`, `openai`, `groq` | Brain for `POST /ai-edits/plan`; `mock` is rule-based, the others call an LLM and fall back to mock on failure |
+| `EDIT_PLAN_PROVIDER` | `mock`, `openai`, `groq` | Brain for AI edit planning; `mock` is explicit rule-based test mode, while live OpenAI/Groq failures return `502 AI_EDIT_PLAN_PROVIDER_FAILED` without a mock fallback |
 | `OPENAI_EDIT_PLAN_MODEL` | `gpt-4o-mini` | OpenAI chat model for edit planning |
 | `GROQ_EDIT_PLAN_MODEL` | `llama-3.3-70b-versatile` | Groq chat model for edit planning |
 | `BILLING_PROVIDER` | `mock`, `store`, `revenuecat` | Billing verifier adapter |
@@ -1544,10 +1859,10 @@ PostgreSQL.
 | `TEMPLATE_STORE` | `memory`, `prisma` | Template persistence |
 | `POST_STORE` | `memory`, `prisma` | Post persistence |
 | `SUBSCRIPTION_STORE` | `memory`, `prisma` | Subscription persistence |
-| `ANALYTICS_STORE` | `memory`, `prisma` | Analytics persistence |
+| `ANALYTICS_STORE` | `memory`, `prisma` | Analytics persistence; `prisma` requires `POST_STORE=prisma` |
 | `CAPTION_USAGE_STORE` | `memory`, `prisma` | Real-clip AI caption monthly usage persistence |
 | `AI_EDIT_USAGE_STORE` | `memory`, `prisma` | AI editing monthly minute usage persistence |
-| `PUBLISH_QUEUE` | `memory`, `bullmq` | Publish queue adapter; `bullmq` requires `POST_STORE=prisma` and `DATABASE_URL` |
+| `PUBLISH_QUEUE` | `memory`, `bullmq` | Current Render config uses `memory` with an in-process scheduler, Prisma posts, and one API instance. Optional `bullmq` requires `POST_STORE=prisma`, `DATABASE_URL`, `REDIS_URL`, and a separate worker. |
 | `SOCIAL_PUBLISHER` | `mock`, `disabled`, `postpeer` | Local fake success, explicit fail-closed staging/maintenance mode, or real PostPeer publishing |
 | `POSTPEER_API_KEY` | `...` | PostPeer API key for real social publishing |
 | `POSTPEER_API_BASE_URL` | `https://api.postpeer.dev` | Optional PostPeer API host override |
@@ -1556,7 +1871,7 @@ PostgreSQL.
 | `POSTPEER_TIKTOK_ACCOUNT_ID` | `abc123` | Operator PostPeer TikTok integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_YOUTUBE_ACCOUNT_ID` | `abc123` | Operator PostPeer YouTube Shorts integration id used only when no per-user connection resolver is wired; forbidden in production |
 | `POSTPEER_INSTAGRAM_ACCOUNT_ID` | `abc123` | Operator PostPeer Instagram Reels integration id used only when no per-user connection resolver is wired; forbidden in production |
-| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Page Video integration id (internal `FACEBOOK_REELS` compatibility value) used only when no per-user connection resolver is wired; forbidden in production |
+| `POSTPEER_FACEBOOK_ACCOUNT_ID` | `abc123` | Operator PostPeer Facebook Page integration id for `FACEBOOK_REELS` (Page Reels only via `contentType: 'reel'`) used only when no per-user connection resolver is wired; forbidden in production |
 | `MOCK_USER_ID` | `local-dev-user` | Default mock user id |
 
 ## Production Gaps
@@ -1570,7 +1885,9 @@ The following work is still required before production launch:
   publishing; add explicit user privacy controls before public rollout.
 - Store social access tokens securely only if direct platform APIs replace the
   PostPeer provider later.
-- Complete provider-level R2 upload and cleanup testing.
+- Complete full mobile-to-worker R2 upload/cleanup and slow-network testing.
+  Earlier disposable-account production API smoke results cover legacy and
+  managed multipart paths, not every device/provider flow.
 - Test real-clip caption transcription with real R2 videos and Groq before
   production launch. Mobile frame extraction/upload (up to 3 frames) is
   implemented and still needs real-device/provider verification.
@@ -1578,9 +1895,11 @@ The following work is still required before production launch:
   before selling paid AI caption quotas.
 - Keep legacy AI review compatibility flags false while building real-clip AI
   captioning and Pro Groq Whisper editing.
-- Design Pro AI auto editing jobs with Groq Whisper transcription, minute quotas,
-  top-up handling, mobile FFmpeg export, retries, and failure handling before
-  implementation.
+- Pro AI auto editing already has Groq Whisper transcription, minute-metered
+  prepare recipes, on-device FFmpeg render/review, and continuation to
+  Upload/Post. Remaining work includes persistent job/session recovery,
+  top-up handling, and real-device/provider verification. A built-in manual
+  timeline editor is outside the current app scope.
 - Complete Firebase Google Sign-In and Phone Auth device testing.
 - RevenueCat Test Store purchase and true Restore/resync E2E pass on the Android
   Emulator after the current backend was deployed and

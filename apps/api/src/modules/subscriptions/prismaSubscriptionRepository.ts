@@ -1,5 +1,8 @@
 import type { AuthUser } from '../auth/authTypes.js';
+import { runActiveOwnerTransaction, type PrismaOwnerLifecycleTransaction } from '../account/ownerLifecycle.js';
 import {
+  type ApplyRevenueCatEventInput,
+  type ApplyRevenueCatEventResult,
   isSubscriptionExpired,
   type PaidSubscriptionPlan,
   type SubscriptionPlan,
@@ -64,9 +67,49 @@ type SubscriptionDelegate = {
   }) => Promise<PrismaSubscriptionSelection>;
 };
 
-export type PrismaSubscriptionClient = {
-  subscription: SubscriptionDelegate;
+type PrismaRevenueCatUserState = {
+  lastRevenueCatEventTimestampMs: bigint | null;
+  lastRevenueCatEventId: string | null;
 };
+
+type RevenueCatUserDelegate = {
+  findUnique: (args: {
+    where: { id: string };
+    select: {
+      lastRevenueCatEventTimestampMs: true;
+      lastRevenueCatEventId: true;
+    };
+  }) => Promise<PrismaRevenueCatUserState | null>;
+  update: (args: {
+    where: { id: string };
+    data: {
+      lastRevenueCatEventTimestampMs: bigint;
+      lastRevenueCatEventId: string;
+    };
+    select: { id: true };
+  }) => Promise<{ id: string }>;
+};
+
+type PrismaSubscriptionTransaction = PrismaOwnerLifecycleTransaction & {
+  subscription: SubscriptionDelegate;
+  user: RevenueCatUserDelegate;
+};
+
+export type PrismaSubscriptionClient = PrismaSubscriptionTransaction & {
+  $transaction: <T>(
+    action: (transaction: PrismaSubscriptionTransaction) => Promise<T>,
+    options: {
+      isolationLevel: 'Serializable';
+      maxWait: number;
+      timeout: number;
+    }
+  ) => Promise<T>;
+};
+
+const readErrorCode = (error: unknown) =>
+  error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : undefined;
 
 export const createPrismaSubscriptionRepository = ({
   prisma
@@ -126,6 +169,98 @@ export const createPrismaSubscriptionRepository = ({
     return data;
   };
 
+  const applyRevenueCatEvent = (
+    input: ApplyRevenueCatEventInput
+  ): Promise<ApplyRevenueCatEventResult> =>
+    runActiveOwnerTransaction(prisma, input.authUser.id, async (transaction) => {
+      const storedCursor = await transaction.user.findUnique({
+        where: { id: input.authUser.id },
+        select: {
+          lastRevenueCatEventTimestampMs: true,
+          lastRevenueCatEventId: true
+        }
+      });
+
+      if (!storedCursor) {
+        return {
+          applied: false,
+          subscription: null
+        };
+      }
+
+      const eventTimestampMs = BigInt(input.eventTimestampMs);
+
+      if (
+        storedCursor.lastRevenueCatEventId === input.eventId ||
+        (storedCursor.lastRevenueCatEventTimestampMs !== null &&
+          eventTimestampMs <= storedCursor.lastRevenueCatEventTimestampMs)
+      ) {
+        return {
+          applied: false,
+          subscription: null
+        };
+      }
+
+      await transaction.user.update({
+        where: { id: input.authUser.id },
+        data: {
+          lastRevenueCatEventTimestampMs: eventTimestampMs,
+          lastRevenueCatEventId: input.eventId
+        },
+        select: { id: true }
+      });
+
+      if (input.status === 'ACTIVE') {
+        const activationData = buildActivationData({
+          plan: input.plan,
+          billingSubscriptionId: input.billingSubscriptionId,
+          ...(Object.prototype.hasOwnProperty.call(input, 'currentPeriodEnd')
+            ? { currentPeriodEnd: input.currentPeriodEnd }
+            : {})
+        });
+        const subscription = await transaction.subscription.upsert({
+          where: { userId: input.authUser.id },
+          update: activationData,
+          create: {
+            userId: input.authUser.id,
+            ...activationData
+          },
+          select: subscriptionSelect
+        });
+
+        return {
+          applied: true,
+          subscription: mapSubscription(subscription)
+        };
+      }
+
+      try {
+        const subscription = await transaction.subscription.update({
+          where: {
+            billingSubscriptionId: input.billingSubscriptionId
+          },
+          data: {
+            status: input.status
+          },
+          select: subscriptionSelect
+        });
+
+        return {
+          applied: true,
+          subscription: mapSubscription(subscription)
+        };
+      } catch (error) {
+        if (readErrorCode(error) === 'P2025') {
+          return {
+            applied: true,
+            subscription: null
+          };
+        }
+
+        throw error;
+      }
+    });
+
   return {
     getPlan: async (authUser: AuthUser) => {
       // Honor the dev subscription-plan override header (mock auth only; the
@@ -156,12 +291,12 @@ export const createPrismaSubscriptionRepository = ({
 
       return 'BASIC';
     },
-    activatePlan: async (authUser: AuthUser, plan, options = {}) => {
+    activatePlan: (authUser: AuthUser, plan, options = {}) => runActiveOwnerTransaction(prisma, authUser.id, async (transaction) => {
       const activationData = buildActivationData({
         plan,
         ...options
       });
-      const subscription = await prisma.subscription.upsert({
+      const subscription = await transaction.subscription.upsert({
         where: { userId: authUser.id },
         update: activationData,
         create: {
@@ -172,13 +307,13 @@ export const createPrismaSubscriptionRepository = ({
       });
 
       return mapSubscription(subscription);
-    },
-    activatePro: async (authUser: AuthUser, options = {}) => {
+    }),
+    activatePro: (authUser: AuthUser, options = {}) => runActiveOwnerTransaction(prisma, authUser.id, async (transaction) => {
       const activationData = buildActivationData({
         plan: 'PRO',
         ...options
       });
-      const subscription = await prisma.subscription.upsert({
+      const subscription = await transaction.subscription.upsert({
         where: { userId: authUser.id },
         update: activationData,
         create: {
@@ -189,7 +324,7 @@ export const createPrismaSubscriptionRepository = ({
       });
 
       return mapSubscription(subscription);
-    },
+    }),
     updateStatusByBillingSubscriptionId: async ({ billingSubscriptionId, status }) => {
       try {
         const subscription = await prisma.subscription.update({
@@ -210,6 +345,7 @@ export const createPrismaSubscriptionRepository = ({
 
         throw error;
       }
-    }
+    },
+    applyRevenueCatEvent
   };
 };

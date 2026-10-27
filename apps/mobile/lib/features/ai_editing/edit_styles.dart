@@ -220,7 +220,8 @@ const List<EditStyle> editStyles = [
     emoji: '✨',
     name: 'สั่ง AI ตัดเอง',
     group: EditStyleGroup.custom,
-    editingNote: 'พิมพ์สั่ง AI ได้ดั่งใจ เช่น "ตัดเฉพาะตอนใส่เสื้อแดง เหลือ 45 วิ"',
+    editingNote: 'สั่งจากคำพูดในคลิปได้ เช่น "เหลือ 45 วิ" '
+        'หรือ "ตัดคำหยาบ" (คำสั่งเลือกฉากจากภาพกำลังพัฒนา)',
     suitableFor: 'ไม้ตายของแพ็กเกจ Pro 299 ให้ตัดได้อิสระ',
     plan: EditStylePlan(isCustomPrompt: true),
   ),

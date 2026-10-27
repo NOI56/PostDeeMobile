@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/home/home_screen.dart';
+import 'package:postdee_mobile/features/platforms/social_platform.dart';
+import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
+import 'package:video_player/video_player.dart';
 
 Finder _homeScrollable() => find.byType(Scrollable).first;
 
@@ -84,6 +87,86 @@ Widget _homeTestApp(Widget child) {
     supportedLocales: PostDeeLocalizations.supportedLocales,
     home: Scaffold(body: child),
   );
+}
+
+HomeScreen _homePublishingTestScreen({
+  required HomeRecentPostsLoader loadRecentPosts,
+  bool isActive = true,
+}) {
+  return HomeScreen(
+    isActive: isActive,
+    loadAnalytics: () async => const AnalyticsSummaryResult(
+      totalViews: 0,
+      totalLikes: 0,
+      platforms: [],
+    ),
+    loadSubscription: () async => const SubscriptionStatusResult(
+      userId: 'seller-publishing-home',
+      plan: 'BASIC',
+      status: 'ACTIVE',
+      canSchedule: false,
+      canUseAiCaptions: false,
+      canUseAnalytics: false,
+    ),
+    loadRecentPosts: loadRecentPosts,
+  );
+}
+
+PostSummaryResult _homePublishingPost(
+  String status, {
+  String id = 'polling-post',
+  DateTime? scheduledAt,
+}) {
+  return PostSummaryResult(
+    id: id,
+    caption: 'Publishing home clip $id',
+    videoS3Key: 'uploads/$id.mp4',
+    platforms: const ['TIKTOK'],
+    status: status,
+    scheduledAt: scheduledAt,
+    createdAt: DateTime(2026, 10, 20),
+  );
+}
+
+void _prepareHomePublishingTest(WidgetTester tester) {
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+  });
+}
+
+class _FakeThumbnailVideoController extends VideoPlayerController {
+  _FakeThumbnailVideoController({this.failInitialize = false})
+      : super.asset('fake-thumbnail.mp4');
+
+  final bool failInitialize;
+  bool disposed = false;
+
+  @override
+  Future<void> initialize() async {
+    if (failInitialize) {
+      throw StateError('fake thumbnail initialization failed');
+    }
+    value = const VideoPlayerValue(
+      duration: Duration(seconds: 10),
+      size: Size(1080, 1920),
+      isInitialized: true,
+    );
+  }
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    value = value.copyWith(position: position);
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (disposed) return;
+    disposed = true;
+    await super.dispose();
+  }
 }
 
 void main() {
@@ -411,6 +494,67 @@ void main() {
     expect(find.text('ไลก์เดือนนี้'), findsOneWidget);
   });
 
+  testWidgets('latest posts show matching platform logos in post order',
+      (tester) async {
+    await tester.pumpWidget(
+      _homeTestApp(
+        _homePublishingTestScreen(
+          loadRecentPosts: () async => [
+            PostSummaryResult(
+              id: 'platform-logos',
+              caption: 'โพสต์ครบทุกแพลตฟอร์ม',
+              videoS3Key: 'clip.mp4',
+              platforms: const [
+                'INSTAGRAM_REELS',
+                'YOUTUBE_SHORTS',
+                'TIKTOK',
+                'FACEBOOK_REELS',
+              ],
+              status: 'PUBLISHED',
+              createdAt: DateTime(2026, 10, 25),
+            ),
+            PostSummaryResult(
+              id: 'single-platform-logo',
+              caption: 'โพสต์ TikTok',
+              videoS3Key: 'single-clip.mp4',
+              platforms: const ['TIKTOK'],
+              status: 'PUBLISHED',
+              createdAt: DateTime(2026, 10, 25),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final logos = find.byType(SocialPlatformLogo);
+    expect(
+      tester.widgetList<SocialPlatformLogo>(logos).map((logo) => logo.platform),
+      [
+        SocialPlatform.instagramReels,
+        SocialPlatform.youtubeShorts,
+        SocialPlatform.tiktok,
+        SocialPlatform.facebookReels,
+        SocialPlatform.tiktok,
+      ],
+    );
+    expect(
+      tester
+          .widgetList<Image>(
+            find.descendant(of: logos, matching: find.byType(Image)),
+          )
+          .map((image) => (image.image as AssetImage).assetName),
+      [
+        'assets/images/platforms/instagram_reels.png',
+        'assets/images/platforms/youtube_shorts.png',
+        'assets/images/platforms/tiktok.png',
+        'assets/images/platforms/facebook_reels.png',
+        'assets/images/platforms/tiktok.png',
+      ],
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows real latest posts on the home dashboard', (tester) async {
     final publishedAt = DateTime.now().subtract(const Duration(hours: 2));
 
@@ -435,6 +579,9 @@ void main() {
               id: 'p1',
               caption: 'โปรโมตสินค้าใหม่',
               videoS3Key: 'clip.mp4',
+              coverImageUrl: Uri.parse(
+                'https://media.test/clip-cover.jpg?signature=cover',
+              ),
               platforms: const ['TIKTOK', 'YOUTUBE_SHORTS'],
               status: 'PUBLISHED',
               createdAt: publishedAt,
@@ -449,10 +596,234 @@ void main() {
     expect(find.text('โปรโมตสินค้าใหม่'), findsOneWidget);
     expect(find.text('เผยแพร่'), findsOneWidget);
     expect(find.text('TikTok · YouTube Shorts'), findsOneWidget);
+    final cover = tester.widget<Image>(
+      find.byKey(const ValueKey('home-latest-post-cover-p1')),
+    );
+    expect(
+      cover.image,
+      isA<NetworkImage>().having(
+        (image) => image.url,
+        'url',
+        'https://media.test/clip-cover.jpg?signature=cover',
+      ),
+    );
+    expect(cover.fit, BoxFit.cover);
     expect(
       find.byKey(const ValueKey('home-latest-posts-empty')),
       findsNothing,
     );
+  });
+
+  testWidgets(
+      'keeps a play placeholder for an older post without preview media',
+      (tester) async {
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          loadAnalytics: () async => const AnalyticsSummaryResult(
+            totalViews: 0,
+            totalLikes: 0,
+            platforms: [],
+          ),
+          loadSubscription: () async => const SubscriptionStatusResult(
+            userId: 'seller',
+            plan: 'BASIC',
+            status: 'ACTIVE',
+            canSchedule: false,
+            canUseAiCaptions: false,
+            canUseAnalytics: false,
+          ),
+          loadRecentPosts: () async => [
+            PostSummaryResult(
+              id: 'legacy-post',
+              caption: 'โพสต์เก่า',
+              videoS3Key: 'legacy.mp4',
+              platforms: const ['YOUTUBE_SHORTS'],
+              status: 'PUBLISHED',
+              createdAt: DateTime(2026, 6),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(
+        const ValueKey('home-latest-post-placeholder-legacy-post'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+  });
+
+  testWidgets('shows a frame from the clip when a recent post has no cover',
+      (tester) async {
+    final controller = _FakeThumbnailVideoController();
+    Uri? requestedVideoUrl;
+    final signedVideoUrl =
+        Uri.parse('https://media.test/clip.mp4?signature=video');
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          createVideoThumbnailController: (videoUrl) {
+            requestedVideoUrl = videoUrl;
+            return controller;
+          },
+          loadAnalytics: () async => const AnalyticsSummaryResult(
+            totalViews: 0,
+            totalLikes: 0,
+            platforms: [],
+          ),
+          loadSubscription: () async => const SubscriptionStatusResult(
+            userId: 'seller',
+            plan: 'BASIC',
+            status: 'ACTIVE',
+            canSchedule: false,
+            canUseAiCaptions: false,
+            canUseAnalytics: false,
+          ),
+          loadRecentPosts: () async => [
+            PostSummaryResult(
+              id: 'video-post',
+              caption: 'คลิปที่ไม่มีภาพปก',
+              videoS3Key: 'clip.mp4',
+              videoUrl: signedVideoUrl,
+              coverFrameTimeMs: 1250,
+              platforms: const ['YOUTUBE_SHORTS'],
+              status: 'PUBLISHED',
+              createdAt: DateTime(2026, 6),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(requestedVideoUrl, signedVideoUrl);
+    expect(
+      find.byKey(const ValueKey('home-latest-post-video-video-post')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('home-latest-post-placeholder-video-post')),
+      findsNothing,
+    );
+    expect(controller.value.position, const Duration(milliseconds: 1250));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(controller.disposed, isTrue);
+  });
+
+  testWidgets('releases a clip preview when the home tab becomes inactive',
+      (tester) async {
+    final controller = _FakeThumbnailVideoController();
+    var homeIsActive = true;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return HomeScreen(
+              isActive: homeIsActive,
+              createVideoThumbnailController: (_) => controller,
+              loadAnalytics: () async => const AnalyticsSummaryResult(
+                totalViews: 0,
+                totalLikes: 0,
+                platforms: [],
+              ),
+              loadSubscription: () async => const SubscriptionStatusResult(
+                userId: 'seller',
+                plan: 'BASIC',
+                status: 'ACTIVE',
+                canSchedule: false,
+                canUseAiCaptions: false,
+                canUseAnalytics: false,
+              ),
+              loadRecentPosts: () async => [
+                PostSummaryResult(
+                  id: 'inactive-video-post',
+                  caption: 'คลิปหยุดเมื่อออกจากหน้าหลัก',
+                  videoS3Key: 'inactive.mp4',
+                  videoUrl: Uri.parse('https://media.test/inactive.mp4'),
+                  platforms: const ['YOUTUBE_SHORTS'],
+                  status: 'PUBLISHED',
+                  createdAt: DateTime(2026, 6),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(
+        const ValueKey('home-latest-post-video-inactive-video-post'),
+      ),
+      findsOneWidget,
+    );
+
+    setHostState(() => homeIsActive = false);
+    await tester.pumpAndSettle();
+
+    expect(controller.disposed, isTrue);
+    expect(
+      find.byKey(
+        const ValueKey('home-latest-post-placeholder-inactive-video-post'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('falls back to the play icon when a clip preview cannot load',
+      (tester) async {
+    final controller = _FakeThumbnailVideoController(failInitialize: true);
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        HomeScreen(
+          createVideoThumbnailController: (_) => controller,
+          loadAnalytics: () async => const AnalyticsSummaryResult(
+            totalViews: 0,
+            totalLikes: 0,
+            platforms: [],
+          ),
+          loadSubscription: () async => const SubscriptionStatusResult(
+            userId: 'seller',
+            plan: 'BASIC',
+            status: 'ACTIVE',
+            canSchedule: false,
+            canUseAiCaptions: false,
+            canUseAnalytics: false,
+          ),
+          loadRecentPosts: () async => [
+            PostSummaryResult(
+              id: 'broken-video-post',
+              caption: 'คลิปโหลดไม่ได้',
+              videoS3Key: 'broken.mp4',
+              videoUrl: Uri.parse('https://media.test/broken.mp4'),
+              platforms: const ['YOUTUBE_SHORTS'],
+              status: 'FAILED',
+              createdAt: DateTime(2026, 6),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(
+        const ValueKey('home-latest-post-placeholder-broken-video-post'),
+      ),
+      findsOneWidget,
+    );
+    expect(controller.disposed, isTrue);
   });
 
   testWidgets(
@@ -575,6 +946,252 @@ void main() {
 
     expect(loadCount, 2);
     expect(maxInFlight, 1);
+  });
+
+  testWidgets(
+      'home publishing status polls until published and removes its spinner',
+      (tester) async {
+    _prepareHomePublishingTest(tester);
+    var loadCount = 0;
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        _homePublishingTestScreen(
+          loadRecentPosts: () async {
+            loadCount += 1;
+            return [
+              _homePublishingPost(switch (loadCount) {
+                1 => 'QUEUED',
+                2 => 'PUBLISHING',
+                _ => 'PUBLISHED',
+              }),
+            ];
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final spinner =
+        find.byKey(const ValueKey('home-post-publishing-polling-post'));
+    expect(loadCount, 1);
+    expect(find.text('อยู่ในคิว'), findsOneWidget);
+    expect(spinner, findsOneWidget);
+    expect(tester.widget<CircularProgressIndicator>(spinner).value, isNull);
+
+    await tester.pump(const Duration(seconds: 29));
+    expect(loadCount, 1);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(loadCount, 2);
+    expect(find.text('กำลังโพสต์'), findsOneWidget);
+    expect(spinner, findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(loadCount, 3);
+    expect(find.text('เผยแพร่'), findsOneWidget);
+    expect(spinner, findsNothing);
+
+    await tester.pump(const Duration(seconds: 60));
+    expect(loadCount, 3);
+  });
+
+  testWidgets(
+      'home publishing status pauses polling off tab and cancels on disposal',
+      (tester) async {
+    _prepareHomePublishingTest(tester);
+    var loadCount = 0;
+    var homeIsActive = true;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return _homePublishingTestScreen(
+              isActive: homeIsActive,
+              loadRecentPosts: () async {
+                loadCount += 1;
+                return [_homePublishingPost('QUEUED')];
+              },
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(loadCount, 2);
+
+    setHostState(() => homeIsActive = false);
+    await tester.pump();
+    expect(
+      tester
+          .widget<CircularProgressIndicator>(find.byKey(
+            const ValueKey('home-post-publishing-polling-post'),
+          ))
+          .value,
+      0.65,
+    );
+    await tester.pump(const Duration(seconds: 60));
+    expect(loadCount, 2);
+
+    setHostState(() => homeIsActive = true);
+    await tester.pump();
+    await tester.pump();
+    expect(loadCount, 3);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(loadCount, 4);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 60));
+    expect(loadCount, 4);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home publishing status pauses polling while app is paused',
+      (tester) async {
+    _prepareHomePublishingTest(tester);
+    var loadCount = 0;
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        _homePublishingTestScreen(
+          loadRecentPosts: () async {
+            loadCount += 1;
+            return [_homePublishingPost('PUBLISHING')];
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(loadCount, 1);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(
+      tester
+          .widget<CircularProgressIndicator>(find.byKey(
+            const ValueKey('home-post-publishing-polling-post'),
+          ))
+          .value,
+      0.65,
+    );
+    await tester.pump(const Duration(seconds: 60));
+    expect(loadCount, 1);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+    expect(loadCount, 2);
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(loadCount, 3);
+  });
+
+  testWidgets(
+      'home publishing status keeps posts during failed polling and retries',
+      (tester) async {
+    _prepareHomePublishingTest(tester);
+    final failedRefresh = Completer<List<PostSummaryResult>>();
+    var loadCount = 0;
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        _homePublishingTestScreen(
+          loadRecentPosts: () async {
+            loadCount += 1;
+            if (loadCount == 2) return failedRefresh.future;
+            return [
+              _homePublishingPost(loadCount == 1 ? 'QUEUED' : 'PUBLISHED'),
+            ];
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(loadCount, 1);
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(loadCount, 2);
+    expect(find.text('Publishing home clip polling-post'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('home-post-publishing-polling-post')),
+      findsOneWidget,
+    );
+
+    failedRefresh.completeError(const ApiException('Temporary connection error'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Publishing home clip polling-post'), findsOneWidget);
+    expect(find.text('ยังไม่มีโพสต์'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(loadCount, 3);
+    expect(find.text('เผยแพร่'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('home-post-publishing-polling-post')),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+      'home publishing status keeps future schedules still and respects reduced motion',
+      (tester) async {
+    _prepareHomePublishingTest(tester);
+    var reduceMotion = false;
+    late StateSetter setHostState;
+
+    await tester.pumpWidget(
+      _homeTestApp(
+        StatefulBuilder(
+          builder: (context, setState) {
+            setHostState = setState;
+            return MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(disableAnimations: reduceMotion),
+              child: _homePublishingTestScreen(
+                loadRecentPosts: () async => [
+                  _homePublishingPost(
+                    'QUEUED',
+                    id: 'future-schedule',
+                    scheduledAt: DateTime.now().add(const Duration(days: 1)),
+                  ),
+                  _homePublishingPost('PUBLISHING'),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('ตั้งเวลา'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('home-post-publishing-future-schedule')),
+      findsNothing,
+    );
+    final spinner =
+        find.byKey(const ValueKey('home-post-publishing-polling-post'));
+    expect(spinner, findsOneWidget);
+    expect(tester.widget<CircularProgressIndicator>(spinner).value, isNull);
+
+    setHostState(() => reduceMotion = true);
+    await tester.pump();
+    expect(tester.widget<CircularProgressIndicator>(spinner).value, 0.65);
   });
 
   testWidgets('shows phase 2 growth tool previews on the home dashboard',

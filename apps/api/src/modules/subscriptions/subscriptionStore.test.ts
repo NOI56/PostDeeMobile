@@ -99,4 +99,41 @@ describe('createSubscriptionStore', () => {
     await expect(store.getPlan({ id: 'seller-store', provider: 'mock' })).resolves.toBe('BASIC');
   });
 
+  it('applies RevenueCat events once and rejects stale timestamps', async () => {
+    const store = createSubscriptionStore();
+    const authUser = { id: 'seller-revenuecat-order', provider: 'firebase' as const };
+    const billingSubscriptionId = 'revenuecat:seller-revenuecat-order';
+
+    await expect(
+      store.applyRevenueCatEvent({
+        authUser,
+        billingSubscriptionId,
+        plan: 'PRO',
+        status: 'ACTIVE',
+        eventId: 'event-revenuecat-newer',
+        eventTimestampMs: 1_784_044_800_000,
+        currentPeriodEnd: '2100-01-01T00:00:00.000Z'
+      })
+    ).resolves.toMatchObject({
+      applied: true,
+      subscription: { status: 'ACTIVE' }
+    });
+
+    await expect(
+      store.applyRevenueCatEvent({
+        authUser,
+        billingSubscriptionId,
+        plan: 'PRO',
+        status: 'CANCELED',
+        eventId: 'event-revenuecat-older',
+        eventTimestampMs: 1_784_044_799_000
+      })
+    ).resolves.toEqual({
+      applied: false,
+      subscription: null
+    });
+
+    await expect(store.getPlan(authUser)).resolves.toBe('PRO');
+  });
+
 });

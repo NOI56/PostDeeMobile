@@ -61,11 +61,15 @@ export const createPublishNotifier = ({
     }
 
     const { title, body } = messageForOutcome(outcome);
-    await pushSender.send({
+    const result = await pushSender.send({
       tokens,
       title,
       body,
-      data: { postId, type: 'publish_result' }
+      data: { postId, type: 'publish_result', userId }
     });
+
+    if (result && result.invalidTokens.length > 0) {
+      await deviceTokenStore.removeTokens({ userId, tokens: result.invalidTokens });
+    }
   }
 });

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,8 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
+import 'package:postdee_mobile/features/notifications/push_notification.dart';
+import 'package:postdee_mobile/features/profile/profile_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,7 +24,205 @@ Finder _referenceNavButton(String label) => find.descendant(
       of: _referenceNav(),
       matching: find.bySemanticsLabel(label),
     );
+
+Future<void> _pumpAccountDeletionShell(
+  WidgetTester tester,
+  PostDeeLanguageController languageController, {
+  required AccountDeletionReadinessChecker checkReady,
+  required AccountAccessRevoker revoker,
+  required AccountDeleter deleteAccount,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: AppTheme.dark,
+      locale: const Locale('en'),
+      localizationsDelegates: const [
+        PostDeeLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: PostDeeLocalizations.supportedLocales,
+      home: PostDeeShell(
+        languageController: languageController,
+        checkAccountDeletionReady: checkReady,
+        accountAccessRevoker: revoker,
+        deleteAccount: deleteAccount,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(_referenceNavButton('Profile'));
+  await tester.pumpAndSettle();
+  final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+  await tester.scrollUntilVisible(
+    deleteButton,
+    400,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(deleteButton);
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  for (final stage in [
+    'readiness',
+    'revocation',
+    'delete success',
+    'delete failure',
+  ]) {
+    testWidgets('account A deletion at $stage cannot affect a later account B',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+      final sessionStore = PostDeeAuthSessionStore.instance;
+      final languageController = PostDeeLanguageController(
+        initialLocale: const Locale('en'),
+      );
+      final readiness = Completer<bool>();
+      final revocation = Completer<void>();
+      final deletion = Completer<void>();
+      final calls = <String>[];
+      sessionStore.signIn(const AuthSession(idToken: 'account-a-token'));
+      addTearDown(sessionStore.clear);
+      addTearDown(languageController.dispose);
+
+      await _pumpAccountDeletionShell(
+        tester,
+        languageController,
+        checkReady: () {
+          calls.add('ready');
+          return stage == 'readiness'
+              ? readiness.future
+              : Future<bool>.value(false);
+        },
+        revoker: _CallbackAccountAccessRevoker(() {
+          calls.add('revoke');
+          return stage == 'revocation'
+              ? revocation.future
+              : Future<void>.value();
+        }),
+        deleteAccount: () {
+          calls.add('delete');
+          return deletion.future;
+        },
+      );
+      await tester.tap(find.text('ลบบัญชีถาวร'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      final profile = tester.widget<ProfileScreen>(find.byType(ProfileScreen));
+      profile.onDeleteAccount();
+      expect(calls.where((call) => call == 'ready'), hasLength(1));
+
+      // Use the regular logout callback while deletion is held, then sign in B.
+      profile.onSignOut!();
+      await tester.pump();
+      await tester.pump();
+      expect(sessionStore.session.isSignedIn, isFalse);
+      if (stage == 'revocation') {
+        // Native revocation occupies the auth queue. Release it so the pending
+        // native logout finishes before the fixture installs account B.
+        revocation.complete();
+        await tester.pumpAndSettle();
+        expect(calls, ['ready', 'revoke']);
+      }
+      sessionStore.signIn(const AuthSession(idToken: 'account-b-token'));
+      await tester.pump();
+      if (stage == 'readiness') {
+        readiness.complete(false);
+      } else if (stage == 'delete failure') {
+        deletion.completeError(const ApiException('account A delete failed'));
+      } else if (stage == 'delete success') {
+        deletion.complete();
+      }
+      await tester.pumpAndSettle();
+
+      expect(sessionStore.session.idToken, 'account-b-token');
+      expect(find.text('Sign in to PostDee'), findsNothing);
+      expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsNothing);
+      expect(find.text('account A delete failed'), findsNothing);
+      expect(
+        calls,
+        stage == 'readiness'
+            ? ['ready']
+            : stage == 'revocation'
+                ? ['ready', 'revoke']
+                : ['ready', 'revoke', 'delete'],
+      );
+    });
+  }
+
+  testWidgets('signing in again as account A invalidates pending deletion',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+    final readiness = Completer<bool>();
+    final calls = <String>[];
+    sessionStore.signIn(const AuthSession(
+      idToken: 'old-account-a-token',
+      email: 'account-a@example.com',
+    ));
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+    await _pumpAccountDeletionShell(
+      tester,
+      languageController,
+      checkReady: () {
+        calls.add('ready');
+        return readiness.future;
+      },
+      revoker: _RecordingAccountAccessRevoker(calls),
+      deleteAccount: () async => calls.add('delete'),
+    );
+    await tester.tap(find.text('ลบบัญชีถาวร'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    sessionStore.signIn(const AuthSession(
+      idToken: 'new-account-a-token',
+      email: 'account-a@example.com',
+    ));
+    readiness.complete(false);
+    await tester.pumpAndSettle();
+
+    expect(calls, ['ready']);
+    expect(sessionStore.session.idToken, 'new-account-a-token');
+  });
+
+  testWidgets('an account change while confirmation is open needs new consent',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+    final calls = <String>[];
+    sessionStore.signIn(const AuthSession(idToken: 'account-a-token'));
+    addTearDown(sessionStore.clear);
+    addTearDown(languageController.dispose);
+    await _pumpAccountDeletionShell(
+      tester,
+      languageController,
+      checkReady: () async {
+        calls.add('ready');
+        return false;
+      },
+      revoker: _RecordingAccountAccessRevoker(calls),
+      deleteAccount: () async => calls.add('delete'),
+    );
+
+    sessionStore.signOut();
+    sessionStore.signIn(const AuthSession(idToken: 'account-b-token'));
+    await tester.pump();
+    await tester.tap(find.text('ลบบัญชีถาวร'));
+    await tester.pumpAndSettle();
+
+    expect(calls, isEmpty);
+    expect(sessionStore.session.idToken, 'account-b-token');
+  });
+
   testWidgets('requests notification permission only after tapping the bell',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
@@ -65,6 +266,74 @@ void main() {
     expect(pushGateway.initializeCalls, 1);
     expect(find.text('การแจ้งเตือน'), findsOneWidget);
   });
+
+  testWidgets('notification history clears immediately on account changes',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+    final sessionStore = PostDeeAuthSessionStore.instance;
+    final center = PostDeeNotificationCenter.instance;
+    final languageController = PostDeeLanguageController(
+      initialLocale: const Locale('en'),
+    );
+    sessionStore.signIn(
+      const AuthSession(idToken: 'token-a', userId: 'account-a'),
+    );
+    addTearDown(sessionStore.clear);
+    addTearDown(center.clear);
+    addTearDown(languageController.dispose);
+    await _pumpNotificationShell(tester, languageController,
+        _FakePushMessagingGateway());
+    center.add(PostDeeNotification(
+      title: 'Account A result',
+      body: 'account-a',
+      receivedAt: DateTime.now(),
+    ));
+    sessionStore.updateDisplayName('Renamed account A');
+    expect(center.items, hasLength(1));
+    sessionStore.clear();
+    expect(center.items, isEmpty);
+    sessionStore.signIn(
+      const AuthSession(idToken: 'token-b', userId: 'account-b'),
+    );
+    expect(center.items, isEmpty);
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Notifications'));
+    await tester.pumpAndSettle();
+    expect(find.text('Account A result'), findsNothing);
+  });
+
+  for (final change in ['logout', 'replace account']) {
+    testWidgets('pending notification navigation is canceled after $change',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});
+      final sessionStore = PostDeeAuthSessionStore.instance;
+      final languageController = PostDeeLanguageController(
+        initialLocale: const Locale('en'),
+      );
+      final initialization = Completer<void>();
+      final gateway = _FakePushMessagingGateway()
+        ..initializeHandler = () => initialization.future;
+      sessionStore.signIn(
+        const AuthSession(idToken: 'token-a', userId: 'account-a'),
+      );
+      addTearDown(sessionStore.clear);
+      addTearDown(languageController.dispose);
+      await _pumpNotificationShell(tester, languageController, gateway);
+      await tester.tap(find.bySemanticsLabel('Notifications'));
+      await tester.pump();
+      if (change == 'logout') {
+        sessionStore.clear();
+      } else {
+        sessionStore.signIn(
+          const AuthSession(idToken: 'token-b', userId: 'account-b'),
+        );
+      }
+      initialization.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('การแจ้งเตือน'), findsNothing);
+      expect(gateway.initializeCalls, 1);
+    });
+  }
 
   testWidgets('opens the email sign-in form from the login gate',
       (tester) async {
@@ -996,12 +1265,48 @@ class _RecordingAccountAccessRevoker implements AccountAccessRevoker {
   }
 }
 
-class _FakePushMessagingGateway implements PushMessagingGateway {
-  int initializeCalls = 0;
+class _CallbackAccountAccessRevoker implements AccountAccessRevoker {
+  _CallbackAccountAccessRevoker(this.revoke);
+
+  final Future<void> Function() revoke;
 
   @override
-  Future<void> initialize() async => initializeCalls += 1;
+  Future<void> revokeBeforeAccountDeletion() => revoke();
+}
+
+class _FakePushMessagingGateway implements PushMessagingGateway {
+  int initializeCalls = 0;
+  Future<void> Function()? initializeHandler;
+
+  @override
+  Future<void> initialize() async {
+    initializeCalls += 1;
+    await initializeHandler?.call();
+  }
 
   @override
   Future<void> dispose() async {}
+}
+
+Future<void> _pumpNotificationShell(
+  WidgetTester tester,
+  PostDeeLanguageController languageController,
+  PushMessagingGateway gateway,
+) async {
+  await tester.pumpWidget(MaterialApp(
+    theme: AppTheme.dark,
+    locale: const Locale('en'),
+    localizationsDelegates: const [
+      PostDeeLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    supportedLocales: PostDeeLocalizations.supportedLocales,
+    home: PostDeeShell(
+      languageController: languageController,
+      pushMessagingGateway: gateway,
+    ),
+  ));
+  await tester.pumpAndSettle();
 }

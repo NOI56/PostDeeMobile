@@ -1,8 +1,47 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createBullMqPublishQueueFromClient } from './bullMqPublishQueue.js';
+import { createInMemoryPublishQueue } from './publishQueue.js';
 
 describe('createBullMqPublishQueueFromClient', () => {
+  it.each([undefined, '2026-10-19T00:00:00.000Z'])(
+    'preserves the YouTube title in immediate or delayed job payloads (%s)', async (scheduledAt) => {
+      const queueClient = {
+        add: vi.fn().mockResolvedValue({ id: 'youtube-job' }),
+        getJobs: vi.fn().mockResolvedValue([])
+      };
+      const queue = createBullMqPublishQueueFromClient({ queue: queueClient });
+      await queue.enqueue({
+        id: 'youtube-post', userId: 'seller-youtube', caption: 'Full description',
+        youtubeTitle: 'Short title', videoS3Key: 'uploads/clip.mp4',
+        platforms: ['YOUTUBE_SHORTS'], status: 'QUEUED', scheduledAt,
+        createdAt: '2026-10-18T00:00:00.000Z'
+      });
+
+      expect(queueClient.add).toHaveBeenCalledWith('publish-post', expect.objectContaining({
+        caption: 'Full description', youtubeTitle: 'Short title'
+      }), expect.any(Object));
+    }
+  );
+
+  it('preserves the YouTube title in rescheduled memory queue snapshots', async () => {
+    const queue = createInMemoryPublishQueue();
+    const post = {
+      id: 'youtube-post', userId: 'seller-youtube', caption: 'Full description',
+      youtubeTitle: 'Short title', videoS3Key: 'uploads/clip.mp4',
+      platforms: ['YOUTUBE_SHORTS'] as const, status: 'QUEUED' as const,
+      createdAt: '2026-10-18T00:00:00.000Z'
+    };
+    const original = await queue.enqueue({ ...post, platforms: [...post.platforms] });
+    const replacement = await queue.reschedule({
+      ...post, platforms: [...post.platforms], scheduledAt: '2026-10-19T00:00:00.000Z'
+    });
+
+    expect(original).toMatchObject({ youtubeTitle: 'Short title' });
+    expect(replacement).toMatchObject({ youtubeTitle: 'Short title' });
+    expect(await queue.list()).toEqual([replacement]);
+  });
+
   it('adds immediate posts to BullMQ with no delay', async () => {
     const queueClient = {
       add: vi.fn().mockResolvedValue({

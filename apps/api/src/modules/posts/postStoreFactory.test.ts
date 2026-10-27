@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createPostStoreFromConfig } from './postStoreFactory.js';
+import type { PrismaPostClient } from './prismaPostRepository.js';
 
 describe('createPostStoreFromConfig', () => {
   it('uses the in-memory post store by default', async () => {
@@ -22,9 +23,13 @@ describe('createPostStoreFromConfig', () => {
 
   it('uses the Prisma post repository when configured', async () => {
     const createdAt = new Date('2026-06-01T00:00:00.000Z');
-    const prisma = {
+    const transaction: Omit<PrismaPostClient, '$transaction'> = {
+      managedUploadOwner: {
+        upsert: vi.fn<PrismaPostClient['managedUploadOwner']['upsert']>(),
+        updateMany: vi.fn<PrismaPostClient['managedUploadOwner']['updateMany']>()
+      },
       post: {
-        findMany: vi.fn().mockResolvedValue([
+        findMany: vi.fn<PrismaPostClient['post']['findMany']>().mockResolvedValue([
           {
             id: 'post-1',
             userId: 'seller-1',
@@ -33,11 +38,20 @@ describe('createPostStoreFromConfig', () => {
             selectedPlatforms: ['FACEBOOK_REELS'],
             scheduledAt: null,
             status: 'QUEUED',
+            publishedAt: null,
             createdAt
           }
         ]),
-        create: vi.fn()
+        create: vi.fn<PrismaPostClient['post']['create']>(),
+        update: vi.fn<PrismaPostClient['post']['update']>(),
+        updateMany: vi.fn<PrismaPostClient['post']['updateMany']>(),
+        deleteMany: vi.fn<PrismaPostClient['post']['deleteMany']>(),
+        findFirst: vi.fn<PrismaPostClient['post']['findFirst']>()
       }
+    };
+    const prisma: PrismaPostClient = {
+      ...transaction,
+      $transaction: async (operation) => operation(transaction)
     };
     const store = createPostStoreFromConfig({
       config: {

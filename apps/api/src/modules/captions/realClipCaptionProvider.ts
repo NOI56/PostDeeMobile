@@ -14,6 +14,9 @@ export type RealClipMediaPart = {
   mimeType: string;
 };
 
+// 'audio' is an extracted M4A, 'video' a legacy full clip, 'frame' a Pro still.
+export type RealClipMediaKind = 'audio' | 'video' | 'frame';
+
 export type RealClipCaptionGenerateInput = {
   request: RealClipCaptionRequest;
   mode: RealClipCaptionMode;

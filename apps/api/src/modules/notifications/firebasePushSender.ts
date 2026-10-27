@@ -1,51 +1,60 @@
-import type { PushMessage, PushSender } from './pushSender.js';
+import type { Messaging } from 'firebase-admin/messaging';
+
+import type { PushMessage, PushSender, PushSendResult } from './pushSender.js';
 
 // The project ships with the mock sender by default. To enable real push
 // delivery, set PUSH_SENDER=firebase and provide FIREBASE_SERVICE_ACCOUNT_JSON
 // (a service account key, kept secret). The dynamic import keeps the sender
 // lazy so local mock-mode startup does not initialize Firebase Admin.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type FirebaseMessaging = any;
+const firebaseAdminAppName = 'postdee-backend';
+const fcmMulticastMaxTokens = 500;
+// Only errors meaning the token can never deliver again; transient failures
+// (quota, internal errors) keep the token for the next publish.
+const invalidTokenErrorCodes = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token'
+]);
 
-const firebaseAdminModuleName = 'firebase-admin';
-
-let cachedMessaging: FirebaseMessaging | undefined;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const loadMessaging = async (
   serviceAccountJson: string
-): Promise<FirebaseMessaging> => {
-  if (cachedMessaging) {
-    return cachedMessaging;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let adminModule: any;
-  try {
-    adminModule = await import(firebaseAdminModuleName);
-  } catch {
-    throw new Error(
-      'firebase-admin is not installed. Run `npm install firebase-admin` to enable real push delivery.'
-    );
-  }
-
-  const admin = adminModule.default ?? adminModule;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let credentials: any;
+): Promise<Messaging> => {
+  let credentials: unknown;
   try {
     credentials = JSON.parse(serviceAccountJson);
   } catch {
     throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON');
   }
 
-  const app =
-    admin.apps && admin.apps.length > 0
-      ? admin.app()
-      : admin.initializeApp({ credential: admin.credential.cert(credentials) });
+  if (!isRecord(credentials)) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON must be a JSON object');
+  }
 
-  cachedMessaging = admin.messaging(app);
-  return cachedMessaging;
+  let appModule: typeof import('firebase-admin/app');
+  let messagingModule: typeof import('firebase-admin/messaging');
+  try {
+    [appModule, messagingModule] = await Promise.all([
+      import('firebase-admin/app'),
+      import('firebase-admin/messaging')
+    ]);
+  } catch {
+    throw new Error(
+      'firebase-admin is not installed. Run `npm install firebase-admin` to enable real push delivery.'
+    );
+  }
+
+  const existingApp = appModule.getApps().find((app) => app.name === firebaseAdminAppName);
+  const app =
+    existingApp ??
+    appModule.initializeApp(
+      { credential: appModule.cert(credentials) },
+      firebaseAdminAppName
+    );
+
+  return messagingModule.getMessaging(app);
 };
 
 /**
@@ -57,17 +66,39 @@ export const createFirebasePushSender = ({
   serviceAccountJson
 }: {
   serviceAccountJson: string;
-}): PushSender => ({
-  send: async ({ tokens, title, body, data }: PushMessage) => {
-    if (tokens.length === 0) {
-      return;
-    }
+}): PushSender => {
+  let messagingPromise: Promise<Messaging> | undefined;
 
-    const messaging = await loadMessaging(serviceAccountJson);
-    await messaging.sendEachForMulticast({
-      tokens,
-      notification: { title, body },
-      data
-    });
-  }
-});
+  return {
+    send: async ({ tokens, title, body, data }: PushMessage): Promise<PushSendResult> => {
+      if (tokens.length === 0) {
+        return { invalidTokens: [] };
+      }
+
+      messagingPromise ??= loadMessaging(serviceAccountJson).catch((error) => {
+        messagingPromise = undefined;
+        throw error;
+      });
+      const messaging = await messagingPromise;
+      const invalidTokens: string[] = [];
+
+      // FCM multicast accepts at most 500 tokens per call.
+      for (let start = 0; start < tokens.length; start += fcmMulticastMaxTokens) {
+        const batch = tokens.slice(start, start + fcmMulticastMaxTokens);
+        const result = await messaging.sendEachForMulticast({
+          tokens: batch,
+          notification: { title, body },
+          data
+        });
+
+        result.responses.forEach((response, index) => {
+          if (!response.success && invalidTokenErrorCodes.has(response.error?.code ?? '')) {
+            invalidTokens.push(batch[index]);
+          }
+        });
+      }
+
+      return { invalidTokens };
+    }
+  };
+};

@@ -31,6 +31,7 @@ class FirebaseAppleAuthGateway implements AppleAuthGateway {
     final firebaseUser = await _firebaseAuthClient.signInWithApple();
 
     return AuthSession(
+      userId: firebaseUser.userId,
       idToken: firebaseUser.idToken,
       email: firebaseUser.email,
       displayName: firebaseUser.displayName,
@@ -74,6 +75,7 @@ class FirebaseAppleAuthPackageClient implements FirebaseAppleAuthClient {
     }
 
     return FirebaseUserSnapshot(
+      userId: user.uid,
       idToken: idToken,
       email: user.email,
       displayName: user.displayName,
@@ -93,6 +95,7 @@ class LocalMockAppleAuthGateway implements AppleAuthGateway {
   @override
   Future<AuthSession> signIn() async {
     return const AuthSession(
+      userId: AppConfig.mockUserId,
       idToken: 'local-mock-id-token',
       email: 'demo.apple@postdee.local',
       displayName: 'PostDee Demo',

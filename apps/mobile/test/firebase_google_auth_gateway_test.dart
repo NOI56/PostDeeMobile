@@ -60,6 +60,7 @@ void main() {
     );
     final firebaseClient = FakeFirebaseAuthClient(
       const FirebaseUserSnapshot(
+        userId: 'dummy-google-firebase-uid',
         idToken: 'firebase-id-token',
         email: 'firebase-seller@example.com',
         displayName: 'Firebase Seller',
@@ -75,6 +76,7 @@ void main() {
 
     expect(firebaseClient.signedInWithGoogleIdToken, 'google-id-token');
     expect(session.idToken, 'firebase-id-token');
+    expect(session.userId, 'dummy-google-firebase-uid');
     expect(session.email, 'firebase-seller@example.com');
     expect(session.displayName, 'Firebase Seller');
     expect(session.emailVerified, isTrue);

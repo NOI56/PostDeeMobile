@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/config/app_config.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 
@@ -31,6 +33,210 @@ void _writeJsonResponse(
 }
 
 void main() {
+  for (final path in ['readiness', 'delete']) {
+    test('bound account $path aborts when session changes during HTTP open',
+        () async {
+      final store = PostDeeAuthSessionStore(
+        initialSession: const AuthSession(idToken: 'account-a-token'),
+      );
+      final http = _HeldAccountHttpClient();
+      final client = PostDeeApiClient(
+        httpClient: http,
+        authHeaders: PostDeeApiAuthHeaders(sessionBinding: store.captureSession()),
+      );
+      final operation = path == 'delete'
+          ? client.deleteAccount()
+          : client.checkAccountDeletionReady();
+      final expectation = expectLater(
+        operation,
+        throwsA(isA<AuthSessionChangedException>()),
+      );
+      store.signOut();
+      store.signIn(const AuthSession(idToken: 'account-b-token'));
+      http.opened.complete(http.request);
+      await expectation;
+
+      expect(http.request.sent, isFalse);
+      expect(http.request.aborted, isTrue);
+      expect(http.request.headers.values, isEmpty);
+    });
+  }
+
+  test('bound account headers reject another session during token refresh',
+      () async {
+    final token = Completer<String?>();
+    final store = PostDeeAuthSessionStore(
+      initialSession: const AuthSession(idToken: 'account-a-token'),
+    )..setIdTokenRefresher(() => token.future);
+    final headers = PostDeeApiAuthHeaders(
+      authTokenProvider: () => token.future,
+      sessionBinding: store.captureSession(),
+      mockUserId: 'must-not-fall-back',
+    );
+    final expectation = expectLater(
+      headers.load(),
+      throwsA(isA<AuthSessionChangedException>()),
+    );
+
+    store.signOut();
+    store.signIn(const AuthSession(idToken: 'account-b-token'));
+    token.complete(null);
+    await expectation;
+  });
+
+  test('bound DELETE aborts if auth changes while HTTP headers await a token',
+      () async {
+    final token = Completer<String?>();
+    final refreshing = Completer<void>();
+    final store = PostDeeAuthSessionStore(
+      initialSession: const AuthSession(idToken: 'account-a-token'),
+    )..setIdTokenRefresher(() {
+        refreshing.complete();
+        return token.future;
+      });
+    final http = _HeldAccountHttpClient();
+    final client = PostDeeApiClient(
+      httpClient: http,
+      authHeaders: PostDeeApiAuthHeaders(sessionBinding: store.captureSession()),
+    );
+    final expectation = expectLater(
+      client.deleteAccount(),
+      throwsA(isA<AuthSessionChangedException>()),
+    );
+    http.opened.complete(http.request);
+    await refreshing.future;
+
+    store.signOut();
+    store.signIn(const AuthSession(idToken: 'account-b-token'));
+    token.complete(null);
+    await expectation;
+
+    expect(http.request.sent, isFalse);
+    expect(http.request.aborted, isTrue);
+    expect(http.request.headers.values, isEmpty);
+  });
+
+  test('bound DELETE sends a refreshed token for its unchanged account',
+      () async {
+    final store = PostDeeAuthSessionStore(
+      initialSession: const AuthSession(idToken: 'cached-account-a-token'),
+    )..setIdTokenRefresher(() async => 'fresh-account-a-token');
+    final http = _HeldAccountHttpClient();
+    final client = PostDeeApiClient(
+      httpClient: http,
+      authHeaders: PostDeeApiAuthHeaders(sessionBinding: store.captureSession()),
+    );
+    final deletion = client.deleteAccount();
+    store.updateDisplayName('New name');
+    http.opened.complete(http.request);
+
+    await deletion;
+
+    expect(http.request.sent, isTrue);
+    expect(http.request.aborted, isFalse);
+    expect(http.request.headers.values['Authorization'],
+        'Bearer fresh-account-a-token');
+  });
+
+  test('bound device POST aborts when the account changes during HTTP open',
+      () async {
+    final store = PostDeeAuthSessionStore(
+      initialSession: const AuthSession(idToken: 'account-a-token'),
+    );
+    final http = _HeldAccountHttpClient();
+    final client = PostDeeApiClient(
+      httpClient: http,
+      authHeaders: PostDeeApiAuthHeaders(sessionBinding: store.captureSession()),
+    );
+    final expectation = expectLater(
+      client.registerDeviceToken('dummy-device-token'),
+      throwsA(isA<AuthSessionChangedException>()),
+    );
+    store.signOut();
+    store.signIn(const AuthSession(idToken: 'account-b-token'));
+    http.opened.complete(http.request);
+    await expectation;
+    expect(http.request.sent, isFalse);
+    expect(http.request.aborted, isTrue);
+    expect(http.request.body, isEmpty);
+    expect(http.request.headers.values, isEmpty);
+  });
+
+  test('bound device POST aborts when token refresh outlives its account',
+      () async {
+    final token = Completer<String?>();
+    final refreshing = Completer<void>();
+    final store = PostDeeAuthSessionStore(
+      initialSession: const AuthSession(idToken: 'account-a-token'),
+    )..setIdTokenRefresher(() {
+        refreshing.complete();
+        return token.future;
+      });
+    final http = _HeldAccountHttpClient();
+    final client = PostDeeApiClient(
+      httpClient: http,
+      authHeaders: PostDeeApiAuthHeaders(sessionBinding: store.captureSession()),
+    );
+    final expectation = expectLater(
+      client.registerDeviceToken('dummy-device-token'),
+      throwsA(isA<AuthSessionChangedException>()),
+    );
+    http.opened.complete(http.request);
+    await refreshing.future;
+    store.signOut();
+    store.signIn(const AuthSession(idToken: 'account-b-token'));
+    token.complete(null);
+    await expectation;
+    expect(http.request.sent, isFalse);
+    expect(http.request.aborted, isTrue);
+    expect(http.request.body, isEmpty);
+    expect(http.request.headers.values, isEmpty);
+  });
+
+  test('bound device POST sends the unchanged account and token', () async {
+    final store = PostDeeAuthSessionStore(
+      initialSession: const AuthSession(idToken: 'account-a-token'),
+    );
+    final http = _HeldAccountHttpClient();
+    final client = PostDeeApiClient(
+      httpClient: http,
+      authHeaders: PostDeeApiAuthHeaders(sessionBinding: store.captureSession()),
+    );
+    final registration = client.registerDeviceToken('dummy-device-token');
+    http.opened.complete(http.request);
+    await registration;
+    expect(http.request.sent, isTrue);
+    expect(http.request.aborted, isFalse);
+    expect(http.request.headers.values['Authorization'], 'Bearer account-a-token');
+    expect(jsonDecode(http.request.body), {'token': 'dummy-device-token'});
+  });
+
+  test('CreatePostRequest serializes optional cover metadata', () {
+    final request = CreatePostRequest(
+      caption: 'สินค้าใหม่',
+      videoS3Key: 'uploads/seller/video.mp4',
+      platforms: const ['TIKTOK', 'INSTAGRAM_REELS'],
+      coverImageS3Key: 'uploads/seller/cover.png',
+      coverFrameTimeMs: 4250,
+    );
+
+    expect(request.toJson(), {
+      'caption': 'สินค้าใหม่',
+      'videoS3Key': 'uploads/seller/video.mp4',
+      'platforms': ['TIKTOK', 'INSTAGRAM_REELS'],
+      'coverImageS3Key': 'uploads/seller/cover.png',
+      'coverFrameTimeMs': 4250,
+    });
+    expect(
+      const CreatePostRequest(
+        caption: 'ไม่มีปก',
+        videoS3Key: 'uploads/seller/video.mp4',
+        platforms: ['YOUTUBE_SHORTS'],
+      ).toJson(),
+      isNot(containsPair('coverImageS3Key', anything)),
+    );
+  });
+
   test('ApiHealthResult parses backend health payload', () {
     final health = ApiHealthResult.fromJson({
       'status': 'ok',
@@ -525,6 +731,31 @@ void main() {
       await server.close(force: true);
       await serverTask;
       await directory.delete(recursive: true);
+    }
+  });
+
+  test('deleteTemplate sends DELETE for the encoded template id', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final baseUrl = 'http://${server.address.address}:${server.port}';
+    final requests = <String>[];
+    final serverTask = () async {
+      await for (final request in server) {
+        requests.add('${request.method} ${request.uri.path}');
+        await request.drain<void>();
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write('{"status":"ok"}');
+        await request.response.close();
+      }
+    }();
+
+    try {
+      await PostDeeApiClient(baseUrl: baseUrl).deleteTemplate('template/1');
+      expect(requests, ['DELETE /templates/template%2F1']);
+    } finally {
+      await server.close(force: true);
+      await serverTask;
     }
   });
 
@@ -1024,6 +1255,22 @@ void main() {
     );
   });
 
+  test('GenerateRealClipCaptionRequest sends extracted audio as audioS3Key',
+      () {
+    expect(
+      const GenerateRealClipCaptionRequest(
+        audioS3Key: 'uploads/u/audio/postdee-ai-edit-audio.m4a',
+        selectedFrameKeys: ['frames/one.jpg'],
+        deleteAfterUse: true,
+      ).toJson(),
+      {
+        'audioS3Key': 'uploads/u/audio/postdee-ai-edit-audio.m4a',
+        'selectedFrameKeys': ['frames/one.jpg'],
+        'deleteAfterUse': true,
+      },
+    );
+  });
+
   test('RealClipCaptionResult parses SEO, hook, source, and quota payloads',
       () {
     final result = RealClipCaptionResult.fromJson({
@@ -1074,20 +1321,53 @@ void main() {
   test('ScheduledPostResult parses calendar post payloads', () {
     final post = ScheduledPostResult.fromJson({
       'id': 'post-1',
+      'userId': 'seller-1',
       'caption': 'Launch clip',
       'videoS3Key': 'uploads/launch.mp4',
       'platforms': ['TIKTOK', 'YOUTUBE_SHORTS'],
+      'scheduledAt': '2026-06-07T11:30:00.000Z',
+      'status': 'PARTIAL_PUBLISHED',
+      'publishedAt': '2026-06-07T11:31:00.000Z',
+      'createdAt': '2026-06-01T00:00:00.000Z',
+      'platformResults': [
+        {
+          'postId': 'post-1',
+          'platform': 'TIKTOK',
+          'status': 'PUBLISHED',
+          'publishedAt': '2026-06-07T11:31:00.000Z',
+        },
+      ],
+    });
+
+    expect(post.id, 'post-1');
+    expect(post.userId, 'seller-1');
+    expect(post.caption, 'Launch clip');
+    expect(post.platforms, ['TIKTOK', 'YOUTUBE_SHORTS']);
+    expect(
+        post.scheduledAt.toUtc().toIso8601String(), '2026-06-07T11:30:00.000Z');
+    expect(post.status, 'PARTIAL_PUBLISHED');
+    expect(post.publishedAt?.isUtc, isTrue);
+    expect(post.publishedAt?.toIso8601String(), '2026-06-07T11:31:00.000Z');
+    expect(post.platformResults, hasLength(1));
+    expect(post.platformResults.single.platform, 'TIKTOK');
+    expect(post.platformResults.single.publishedAt?.isUtc, isTrue);
+  });
+
+  test('ScheduledPostResult keeps optional calendar fields backward compatible',
+      () {
+    final post = ScheduledPostResult.fromJson({
+      'id': 'post-legacy',
+      'caption': 'Legacy clip',
+      'videoS3Key': 'uploads/legacy.mp4',
+      'platforms': ['YOUTUBE_SHORTS'],
       'scheduledAt': '2026-06-07T11:30:00.000Z',
       'status': 'QUEUED',
       'createdAt': '2026-06-01T00:00:00.000Z',
     });
 
-    expect(post.id, 'post-1');
-    expect(post.caption, 'Launch clip');
-    expect(post.platforms, ['TIKTOK', 'YOUTUBE_SHORTS']);
-    expect(
-        post.scheduledAt.toUtc().toIso8601String(), '2026-06-07T11:30:00.000Z');
-    expect(post.status, 'QUEUED');
+    expect(post.userId, isNull);
+    expect(post.publishedAt, isNull);
+    expect(post.platformResults, isEmpty);
   });
 
   test('PostSummaryResult parses honest per-platform publish results', () {
@@ -1095,6 +1375,9 @@ void main() {
       'id': 'post-1',
       'caption': 'Launch clip',
       'videoS3Key': 'uploads/launch.mp4',
+      'videoUrl': 'https://media.test/launch.mp4?signature=video',
+      'coverImageUrl': 'https://media.test/launch.jpg?signature=cover',
+      'coverFrameTimeMs': 1250,
       'platforms': ['TIKTOK', 'YOUTUBE_SHORTS'],
       'status': 'PARTIAL_PUBLISHED',
       'createdAt': '2026-06-01T00:00:00.000Z',
@@ -1124,6 +1407,68 @@ void main() {
     expect(post.platformResults.last.status, 'FAILED');
     expect(
         post.platformResults.last.errorMessage, 'YouTube rejected the upload');
+    expect(post.videoUrl,
+        Uri.parse('https://media.test/launch.mp4?signature=video'));
+    expect(post.coverImageUrl,
+        Uri.parse('https://media.test/launch.jpg?signature=cover'));
+    expect(post.coverFrameTimeMs, 1250);
+  });
+
+  test('PostSummaryResult keeps preview media optional for older posts', () {
+    final post = PostSummaryResult.fromJson({
+      'id': 'post-legacy',
+      'caption': 'Legacy clip',
+      'videoS3Key': 'uploads/legacy.mp4',
+      'platforms': ['YOUTUBE_SHORTS'],
+      'status': 'PUBLISHED',
+      'createdAt': '2026-06-01T00:00:00.000Z',
+    });
+
+    expect(post.videoUrl, isNull);
+    expect(post.coverImageUrl, isNull);
+    expect(post.coverFrameTimeMs, isNull);
+  });
+
+  test('listRecentPosts opts in to signed preview media', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final baseUrl = 'http://${server.address.address}:${server.port}';
+    Uri? requestedUri;
+    final serverTask = () async {
+      final request = await server.first;
+      requestedUri = request.uri;
+      _writeJsonResponse(request.response, {
+        'status': 'ok',
+        'posts': [
+          {
+            'id': 'post-preview',
+            'caption': 'Preview clip',
+            'videoS3Key': 'uploads/seller/preview.mp4',
+            'videoUrl': 'https://media.test/preview.mp4?signature=video',
+            'platforms': ['YOUTUBE_SHORTS'],
+            'status': 'PUBLISHED',
+            'createdAt': '2026-06-01T00:00:00.000Z',
+          },
+        ],
+      });
+      await request.response.close();
+    }();
+
+    try {
+      final posts =
+          await PostDeeApiClient(baseUrl: baseUrl).listRecentPosts(limit: 2);
+
+      expect(requestedUri?.path, '/posts');
+      expect(requestedUri?.queryParameters['includeMedia'], 'true');
+      expect(requestedUri?.queryParameters['limit'], '2');
+      expect(posts, hasLength(1));
+      expect(
+        posts.single.videoUrl,
+        Uri.parse('https://media.test/preview.mp4?signature=video'),
+      );
+    } finally {
+      await server.close(force: true);
+      await serverTask;
+    }
   });
 
   test('SocialConnectionResult parses connected platform status', () {
@@ -1458,6 +1803,96 @@ void main() {
     }
   });
 
+  test('prepareSubscriptionPurchase posts to the authenticated readiness route',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+        authHeaders: PostDeeApiAuthHeaders(
+          authTokenProvider: () async => 'firebase-readiness-token',
+        ),
+      );
+      final resultFuture = apiClient.prepareSubscriptionPurchase();
+      final request = await server.first;
+
+      expect(request.method, 'POST');
+      expect(request.uri.path, '/billing/purchase-readiness');
+      expect(request.headers.value('authorization'),
+          'Bearer firebase-readiness-token');
+      expect(await _readJsonRequest(request), isEmpty);
+      _writeJsonResponse(request.response, {
+        'status': 'ok',
+        'purchaseReady': true,
+        'preparationProtocol': 1,
+      });
+      await request.response.close();
+      await expectLater(resultFuture, completes);
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
+  for (final readinessResponse in <Map<String, Object?>>[
+    {'status': 'ok'},
+    {'status': 'ok', 'purchaseReady': false, 'preparationProtocol': 1},
+    {'status': 'ok', 'purchaseReady': true, 'preparationProtocol': 2},
+    {'status': 'error', 'purchaseReady': true, 'preparationProtocol': 1},
+  ]) {
+    test('purchase preparation rejects an unsupported acknowledgement '
+        '$readinessResponse', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      try {
+        final apiClient = PostDeeApiClient(
+          baseUrl: 'http://${server.address.address}:${server.port}',
+        );
+        final expectation = expectLater(
+          apiClient.prepareSubscriptionPurchase(),
+          throwsA(isA<ApiException>().having(
+            (error) => error.code,
+            'code',
+            'PURCHASE_READINESS_UNSUPPORTED',
+          )),
+        );
+        final request = await server.first;
+        _writeJsonResponse(request.response, readinessResponse);
+        await request.response.close();
+        await expectation;
+      } finally {
+        await server.close(force: true);
+      }
+    });
+  }
+
+  test('prepareSubscriptionPurchase propagates a blocked account response',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+
+    try {
+      final apiClient = PostDeeApiClient(
+        baseUrl: 'http://${server.address.address}:${server.port}',
+      );
+      final expectation = expectLater(
+        apiClient.prepareSubscriptionPurchase(),
+        throwsA(isA<ApiException>()
+            .having((error) => error.statusCode, 'statusCode', 409)
+            .having((error) => error.code, 'code',
+                'ACCOUNT_DELETION_IN_PROGRESS')),
+      );
+      final request = await server.first;
+      _writeJsonResponse(request.response, {
+        'status': 'error',
+        'code': 'ACCOUNT_DELETION_IN_PROGRESS',
+        'message': 'Account deletion is in progress.',
+      }, statusCode: HttpStatus.conflict);
+      await request.response.close();
+      await expectation;
+    } finally {
+      await server.close(force: true);
+    }
+  });
+
   test('resyncRevenueCatSubscription posts to the authenticated backend route',
       () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -1489,4 +1924,82 @@ void main() {
       await server.close(force: true);
     }
   });
+}
+
+class _HeldAccountHttpClient implements HttpClient {
+  final opened = Completer<HttpClientRequest>();
+  final request = _AccountHttpRequest();
+
+  @override
+  Future<HttpClientRequest> deleteUrl(Uri url) => opened.future;
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) => opened.future;
+
+  @override
+  Future<HttpClientRequest> postUrl(Uri url) => opened.future;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _AccountHttpRequest implements HttpClientRequest {
+  @override
+  final _AccountHttpHeaders headers = _AccountHttpHeaders();
+  var aborted = false;
+  var sent = false;
+  var body = '';
+
+  @override
+  void write(Object? object) => body += object.toString();
+
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) => aborted = true;
+
+  @override
+  Future<HttpClientResponse> close() async {
+    sent = true;
+    return _AccountHttpResponse();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _AccountHttpHeaders implements HttpHeaders {
+  final values = <String, Object>{};
+
+  @override
+  set contentType(ContentType? value) {}
+
+  @override
+  void set(String name, Object value, {bool preserveHeaderCase = false}) {
+    values[name] = value;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _AccountHttpResponse extends Stream<List<int>>
+    implements HttpClientResponse {
+  @override
+  int get statusCode => HttpStatus.ok;
+
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int>)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) =>
+      Stream<List<int>>.value(utf8.encode('{"status":"ok"}')).listen(
+        onData,
+        onError: onError,
+        onDone: onDone,
+        cancelOnError: cancelOnError,
+      );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

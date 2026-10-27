@@ -18,17 +18,142 @@ const createRevenueCatApp = () =>
     })
   });
 
-const postRevenueCatWebhook = (app: ReturnType<typeof createRevenueCatApp>, body: unknown) =>
+const postRevenueCatWebhookRaw = (app: ReturnType<typeof createRevenueCatApp>, body: unknown) =>
   request(app)
     .post('/billing/revenuecat/webhooks')
     .set('Authorization', `Bearer ${revenueCatToken}`)
-    .send(body);
+    .send(JSON.stringify(body))
+    .set('Content-Type', 'application/json');
+
+let revenueCatEventSequence = 0;
+
+const postRevenueCatWebhook = (app: ReturnType<typeof createRevenueCatApp>, body: unknown) => {
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !('event' in body) ||
+    typeof body.event !== 'object' ||
+    body.event === null
+  ) {
+    return postRevenueCatWebhookRaw(app, body);
+  }
+
+  revenueCatEventSequence += 1;
+  return postRevenueCatWebhookRaw(app, {
+    ...body,
+    event: {
+      id: `test-revenuecat-event-${revenueCatEventSequence}`,
+      event_timestamp_ms: 1_784_044_800_000 + revenueCatEventSequence,
+      ...body.event
+    }
+  });
+};
 
 const createKnownUser = (app: ReturnType<typeof createRevenueCatApp>, userId: string) =>
   request(app)
+    .post('/billing/purchase-readiness')
+    .set('x-postdee-user-id', userId)
+    .expect(200);
+
+const readPlan = async (app: ReturnType<typeof createRevenueCatApp>, userId: string) => {
+  const response = await request(app)
     .get('/billing/subscription')
     .set('x-postdee-user-id', userId)
     .expect(200);
+  return response.body.subscription.plan as string;
+};
+
+describe('RevenueCat TRANSFER webhooks', () => {
+  it('revokes paid access from the account a purchase was transferred away from', async () => {
+    const app = createRevenueCatApp();
+    await createKnownUser(app, 'seller-transfer-from');
+    await createKnownUser(app, 'seller-transfer-to');
+    await postRevenueCatWebhook(app, {
+      event: {
+        type: 'INITIAL_PURCHASE',
+        app_user_id: 'seller-transfer-from',
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        expiration_at_ms: 4_102_444_800_000
+      }
+    }).expect(200);
+
+    const response = await postRevenueCatWebhook(app, {
+      event: {
+        type: 'TRANSFER',
+        transferred_from: ['seller-transfer-from'],
+        transferred_to: ['seller-transfer-to']
+      }
+    }).expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      eventType: 'TRANSFER',
+      revokedUserIds: ['seller-transfer-from']
+    });
+    expect(await readPlan(app, 'seller-transfer-from')).toBe('BASIC');
+  });
+
+  it('ignores anonymous or unknown transfer sources', async () => {
+    const app = createRevenueCatApp();
+    await createKnownUser(app, 'seller-transfer-anon-to');
+
+    const response = await postRevenueCatWebhook(app, {
+      event: {
+        type: 'TRANSFER',
+        transferred_from: ['$RCAnonymousID:abc123'],
+        transferred_to: ['seller-transfer-anon-to']
+      }
+    }).expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      eventType: 'TRANSFER',
+      ignored: true,
+      revokedUserIds: []
+    });
+  });
+
+  it('ignores a TRANSFER older than the source account latest event', async () => {
+    const app = createRevenueCatApp();
+    const userId = 'seller-transfer-stale';
+    await createKnownUser(app, userId);
+    await postRevenueCatWebhook(app, {
+      event: {
+        id: 'renewal-after-transfer',
+        type: 'RENEWAL',
+        app_user_id: userId,
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        event_timestamp_ms: 1_784_044_900_000,
+        expiration_at_ms: 4_102_444_800_000
+      }
+    }).expect(200);
+
+    await postRevenueCatWebhook(app, {
+      event: {
+        id: 'late-transfer',
+        type: 'TRANSFER',
+        event_timestamp_ms: 1_784_044_800_000,
+        transferred_from: [userId],
+        transferred_to: ['someone-else']
+      }
+    }).expect(200);
+
+    expect(await readPlan(app, userId)).toBe('PRO');
+  });
+
+  it('rejects TRANSFER events without a source list or ordering metadata', async () => {
+    const app = createRevenueCatApp();
+
+    await postRevenueCatWebhookRaw(app, {
+      event: { type: 'TRANSFER', id: 'transfer-no-from', event_timestamp_ms: 1_784_044_800_000 }
+    }).expect(400);
+    await postRevenueCatWebhookRaw(app, {
+      event: { type: 'TRANSFER', transferred_from: ['seller-a'], transferred_to: ['seller-b'] }
+    }).expect(400);
+  });
+});
 
 describe('RevenueCat webhooks', () => {
   it('rejects webhook requests without the configured bearer token', async () => {
@@ -182,6 +307,76 @@ describe('RevenueCat webhooks', () => {
     });
   });
 
+  it('ignores an older expiration that arrives after a newer renewal', async () => {
+    const app = createRevenueCatApp();
+    const userId = 'seller-revenuecat-out-of-order';
+    await createKnownUser(app, userId);
+
+    await postRevenueCatWebhook(app, {
+      event: {
+        id: 'event-renewal-newer',
+        type: 'RENEWAL',
+        app_user_id: userId,
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        event_timestamp_ms: 1_784_044_800_000,
+        expiration_at_ms: 4_102_444_800_000
+      }
+    }).expect(200);
+
+    const staleExpirationResponse = await postRevenueCatWebhook(app, {
+      event: {
+        id: 'event-expiration-older',
+        type: 'EXPIRATION',
+        app_user_id: userId,
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        event_timestamp_ms: 1_784_044_799_000
+      }
+    }).expect(200);
+
+    expect(staleExpirationResponse.body).toMatchObject({
+      status: 'ok',
+      ignored: true,
+      eventType: 'EXPIRATION'
+    });
+
+    const subscriptionResponse = await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+
+    expect(subscriptionResponse.body.subscription).toMatchObject({
+      userId,
+      plan: 'PRO',
+      status: 'ACTIVE'
+    });
+  });
+
+  it('idempotently ignores a repeated RevenueCat event timestamp', async () => {
+    const app = createRevenueCatApp();
+    const userId = 'seller-revenuecat-duplicate';
+    await createKnownUser(app, userId);
+    const event = {
+      id: 'event-renewal-duplicate',
+      type: 'RENEWAL',
+      app_user_id: userId,
+      entitlement_ids: ['pro'],
+      product_id: 'postdee_pro_monthly',
+      event_timestamp_ms: 1_784_044_800_000,
+      expiration_at_ms: 4_102_444_800_000
+    };
+
+    await postRevenueCatWebhook(app, { event }).expect(200);
+    const duplicateResponse = await postRevenueCatWebhook(app, { event }).expect(200);
+
+    expect(duplicateResponse.body).toMatchObject({
+      status: 'ok',
+      ignored: true,
+      eventType: 'RENEWAL'
+    });
+  });
+
   it('does not revoke entitlements for non-expiring RevenueCat lifecycle events', async () => {
     const app = createRevenueCatApp();
 
@@ -284,6 +479,36 @@ describe('RevenueCat webhooks', () => {
       ignored: true,
       code: 'REVENUECAT_USER_NOT_FOUND'
     });
+  });
+
+  it('rejects actionable RevenueCat events without valid ordering metadata', async () => {
+    const app = createRevenueCatApp();
+
+    const missingTimestampResponse = await postRevenueCatWebhookRaw(app, {
+      event: {
+        id: 'event-missing-timestamp',
+        type: 'RENEWAL',
+        app_user_id: 'seller-revenuecat-missing-timestamp',
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly'
+      }
+    }).expect(400);
+
+    expect(missingTimestampResponse.body).toMatchObject({
+      status: 'error',
+      code: 'REVENUECAT_WEBHOOK_INVALID'
+    });
+
+    await postRevenueCatWebhookRaw(app, {
+      event: {
+        id: 'event-invalid-timestamp',
+        type: 'EXPIRATION',
+        app_user_id: 'seller-revenuecat-invalid-timestamp',
+        entitlement_ids: ['pro'],
+        product_id: 'postdee_pro_monthly',
+        event_timestamp_ms: 'not-a-timestamp'
+      }
+    }).expect(400);
   });
 
   it('rejects malformed RevenueCat webhook payloads', async () => {

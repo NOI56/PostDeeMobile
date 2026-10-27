@@ -55,6 +55,8 @@ class PhoneVerificationScreen extends StatefulWidget {
     this.enableFirebaseAuth = AppConfig.enableFirebaseAuth,
     this.allowLocalMockVerification = AppConfig.allowLocalMockAuth,
     this.firebasePhoneVerificationGateway,
+    this.sessionStore,
+    this.runNativeAuthOperation,
     this.onVerified,
   });
 
@@ -63,6 +65,8 @@ class PhoneVerificationScreen extends StatefulWidget {
   final bool enableFirebaseAuth;
   final bool allowLocalMockVerification;
   final FirebasePhoneVerificationGateway? firebasePhoneVerificationGateway;
+  final PostDeeAuthSessionStore? sessionStore;
+  final BoundPhoneAuthOperation? runNativeAuthOperation;
   final ValueChanged<AuthSession>? onVerified;
 
   @override
@@ -79,9 +83,22 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   FirebasePhoneVerificationGateway? _firebasePhoneVerificationGateway;
+  late final PostDeeAuthSessionStore _sessionStore;
+  late final AuthSessionBinding _screenSession;
+  var _operationGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionStore = widget.sessionStore ?? PostDeeAuthSessionStore.instance;
+    _screenSession = _sessionStore.captureSession();
+    _sessionStore.addListener(_handleSessionChanged);
+  }
 
   @override
   void dispose() {
+    _sessionStore.removeListener(_handleSessionChanged);
+    _cancelVerification();
     _phoneController.dispose();
     _codeController.dispose();
     super.dispose();
@@ -90,7 +107,36 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   FirebasePhoneVerificationGateway get _activeFirebaseGateway =>
       widget.firebasePhoneVerificationGateway ??
       (_firebasePhoneVerificationGateway ??=
-          FirebasePhoneVerificationGateway());
+          FirebasePhoneVerificationGateway(
+            sessionStore: _sessionStore,
+            runNativeAuthOperation: widget.runNativeAuthOperation,
+          ));
+
+  void _cancelVerification() {
+    _operationGeneration += 1;
+    (widget.firebasePhoneVerificationGateway ??
+            _firebasePhoneVerificationGateway)
+        ?.cancelVerification();
+  }
+
+  void _handleSessionChanged() {
+    if (_screenSession.isCurrent) return;
+    _cancelVerification();
+    if (!mounted) return;
+    setState(() {
+      _verificationId = '';
+      _phoneController.clear();
+      _codeController.clear();
+      _step = _PhoneStep.enterPhone;
+      _isLoading = false;
+      _errorMessage = 'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้ายืนยันเบอร์อีกครั้ง';
+    });
+  }
+
+  bool _isCurrentOperation(int generation) =>
+      mounted &&
+      _screenSession.isCurrent &&
+      _operationGeneration == generation;
 
   PhoneVerificationCodeSender get _sender {
     final sender = widget.sendCode;
@@ -140,12 +186,20 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   }
 
   Future<void> _sendCode() async {
+    if (_isLoading) return;
+    if (!_screenSession.isCurrent) {
+      _handleSessionChanged();
+      return;
+    }
     final phone = _phoneController.text.trim();
 
     if (phone.length < 9) {
       setState(() => _errorMessage = 'กรอกเบอร์โทรให้ถูกต้อง');
       return;
     }
+
+    _cancelVerification();
+    final generation = _operationGeneration;
 
     setState(() {
       _isLoading = true;
@@ -155,7 +209,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     try {
       final result = await _sender(phone);
 
-      if (!mounted) {
+      if (!_isCurrentOperation(generation)) {
         return;
       }
 
@@ -168,18 +222,28 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
         _verificationId = result.verificationId;
         _step = _PhoneStep.enterCode;
       });
+    } on AuthSessionChangedException {
+      if (_isCurrentOperation(generation)) {
+        _showError('คำขอยืนยันหมดอายุ กรุณาส่งรหัสอีกครั้ง');
+      }
     } on AuthUnavailableException catch (error) {
-      _showError(error.message);
+      if (_isCurrentOperation(generation)) _showError(error.message);
     } catch (_) {
-      _showError('ส่งรหัส OTP ไม่สำเร็จ');
+      if (_isCurrentOperation(generation)) _showError('ส่งรหัส OTP ไม่สำเร็จ');
     } finally {
-      if (mounted) {
+      if (_isCurrentOperation(generation)) {
         setState(() => _isLoading = false);
       }
     }
   }
 
   Future<void> _confirmCode() async {
+    if (_isLoading) return;
+    if (!_screenSession.isCurrent) {
+      _handleSessionChanged();
+      return;
+    }
+    final generation = _operationGeneration;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -191,25 +255,40 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
         smsCode: _codeController.text.trim(),
       );
 
-      if (!mounted) {
+      if (!_isCurrentOperation(generation)) {
         return;
       }
 
       _finish(session);
+    } on AuthSessionChangedException {
+      if (_isCurrentOperation(generation)) {
+        _showError('คำขอยืนยันหมดอายุ กรุณาส่งรหัสอีกครั้ง');
+      }
     } on AuthUnavailableException catch (error) {
-      _showError(error.message);
+      if (_isCurrentOperation(generation)) _showError(error.message);
     } catch (_) {
-      _showError('ยืนยันรหัสไม่สำเร็จ');
+      if (_isCurrentOperation(generation)) _showError('ยืนยันรหัสไม่สำเร็จ');
     } finally {
-      if (mounted) {
+      if (_isCurrentOperation(generation)) {
         setState(() => _isLoading = false);
       }
     }
   }
 
   void _finish(AuthSession session) {
-    widget.onVerified?.call(session);
-    setState(() => _step = _PhoneStep.done);
+    _screenSession.ensureCurrent();
+    final uid = _sessionStore.session.userId;
+    if (uid != null && session.userId != null && uid != session.userId) {
+      throw const AuthSessionChangedException();
+    }
+    _cancelVerification();
+    if (mounted && _screenSession.isCurrent) {
+      setState(() {
+        _isLoading = false;
+        _step = _PhoneStep.done;
+      });
+      widget.onVerified?.call(session);
+    }
   }
 
   void _showError(String message) {
@@ -414,7 +493,15 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
           TextButton(
             onPressed: _isLoading
                 ? null
-                : () => setState(() => _step = _PhoneStep.enterPhone),
+                : () {
+                    _cancelVerification();
+                    setState(() {
+                      _verificationId = '';
+                      _codeController.clear();
+                      _errorMessage = null;
+                      _step = _PhoneStep.enterPhone;
+                    });
+                  },
             style: TextButton.styleFrom(
               foregroundColor: AppTheme.accentCyanInk,
               textStyle: const TextStyle(

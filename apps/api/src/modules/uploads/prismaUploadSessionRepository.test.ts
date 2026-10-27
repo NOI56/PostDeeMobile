@@ -7,7 +7,7 @@ import {
 
 const timestamp = new Date('2026-07-13T10:00:00.000Z');
 
-const persistedSession = {
+const persistedSession: Awaited<ReturnType<PrismaUploadSessionClient['managedUploadSession']['create']>> = {
   id: 'session-1',
   ownerId: 'seller-1',
   storageUploadId: 'r2-upload-1',
@@ -28,9 +28,15 @@ const persistedSession = {
 const createPrismaDouble = () => {
   const transaction = {
     managedUploadOwner: {
-      upsert: vi.fn(async () => ({ ownerId: 'seller-1', status: 'ACTIVE' as const })),
-      findUnique: vi.fn(async () => ({ ownerId: 'seller-1', status: 'ACTIVE' as const })),
-      update: vi.fn(async () => ({ ownerId: 'seller-1', status: 'DELETING' as const }))
+      upsert: vi.fn<PrismaUploadSessionClient['managedUploadOwner']['upsert']>(
+        async () => ({ ownerId: 'seller-1', status: 'ACTIVE' })
+      ),
+      findUnique: vi.fn<PrismaUploadSessionClient['managedUploadOwner']['findUnique']>(
+        async () => ({ ownerId: 'seller-1', status: 'ACTIVE' })
+      ),
+      update: vi.fn<PrismaUploadSessionClient['managedUploadOwner']['update']>(
+        async () => ({ ownerId: 'seller-1', status: 'DELETING' })
+      )
     },
     managedUploadSession: {
       create: vi.fn(async () => persistedSession),
@@ -43,10 +49,10 @@ const createPrismaDouble = () => {
   };
   const prisma = {
     ...transaction,
-    $transaction: vi.fn(async (action: (client: typeof transaction) => Promise<unknown>) =>
+    $transaction: async <Result>(action: (client: typeof transaction) => Promise<Result>) =>
       action(transaction)
-    )
-  } as unknown as PrismaUploadSessionClient;
+  } satisfies PrismaUploadSessionClient;
+  vi.spyOn(prisma, '$transaction');
 
   return { prisma, transaction };
 };

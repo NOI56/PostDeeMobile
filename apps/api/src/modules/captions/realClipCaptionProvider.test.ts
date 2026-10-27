@@ -25,7 +25,7 @@ const audio = { data: new Uint8Array([1, 2, 3]), mimeType: 'video/mp4' };
 
 describe('createGeminiRealClipCaptionProvider', () => {
   it('listens to the clip and maps a structured caption (Starter audio-only)', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(sampleCaption));
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse(sampleCaption));
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
@@ -34,7 +34,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
     });
 
     const result = await provider.generate({
-      request: { videoS3Key: 'uploads/u/clip.mp4', selectedFrameKeys: [] },
+      request: { videoS3Key: 'uploads/u/clip.mp4', mediaKind: 'video', selectedFrameKeys: [], deleteAfterUse: false },
       mode: 'AUDIO_ONLY',
       audio
     });
@@ -53,7 +53,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
   });
 
   it('sends selected frames for Pro audio-with-frames mode', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(sampleCaption));
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse(sampleCaption));
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
@@ -64,7 +64,9 @@ describe('createGeminiRealClipCaptionProvider', () => {
     const result = await provider.generate({
       request: {
         videoS3Key: 'uploads/u/clip.mp4',
-        selectedFrameKeys: ['f1.jpg', 'f2.jpg']
+        mediaKind: 'video',
+        selectedFrameKeys: ['f1.jpg', 'f2.jpg'],
+        deleteAfterUse: false
       },
       mode: 'AUDIO_WITH_FRAMES',
       audio,
@@ -103,7 +105,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
     });
 
     const result = await provider.generate({
-      request: { videoS3Key: 'uploads/u/clip.mp4', selectedFrameKeys: [] },
+      request: { videoS3Key: 'uploads/u/clip.mp4', mediaKind: 'video', selectedFrameKeys: [], deleteAfterUse: false },
       mode: 'AUDIO_ONLY',
       audio
     });
@@ -129,7 +131,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
     });
 
     const result = await provider.generate({
-      request: { videoS3Key: 'uploads/u/clip.mp4', selectedFrameKeys: [] },
+      request: { videoS3Key: 'uploads/u/clip.mp4', mediaKind: 'video', selectedFrameKeys: [], deleteAfterUse: false },
       mode: 'AUDIO_ONLY',
       audio
     });
@@ -153,7 +155,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
 
     await expect(
       provider.generate({
-        request: { videoS3Key: 'uploads/u/clip.mp4', selectedFrameKeys: [] },
+        request: { videoS3Key: 'uploads/u/clip.mp4', mediaKind: 'video', selectedFrameKeys: [], deleteAfterUse: false },
         mode: 'AUDIO_ONLY',
         audio
       })
@@ -177,7 +179,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
 
     await expect(
       provider.generate({
-        request: { videoS3Key: 'uploads/u/clip.mp4', selectedFrameKeys: [] },
+        request: { videoS3Key: 'uploads/u/clip.mp4', mediaKind: 'video', selectedFrameKeys: [], deleteAfterUse: false },
         mode: 'AUDIO_ONLY',
         audio
       })

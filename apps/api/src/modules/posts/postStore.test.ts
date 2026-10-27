@@ -3,6 +3,75 @@ import { describe, expect, it } from 'vitest';
 import { createPostStore } from './postStore.js';
 
 describe('createPostStore', () => {
+  it('fails posts stuck in PUBLISHING since before the cutoff', async () => {
+    let currentTime = new Date('2026-10-26T01:00:00.000Z');
+    const store = createPostStore({ now: () => currentTime });
+    const stuck = await store.create({
+      userId: 'seller-stuck', caption: 'stuck', videoS3Key: 'uploads/seller-stuck/a.mp4',
+      platforms: ['TIKTOK']
+    });
+    const queued = await store.create({
+      userId: 'seller-stuck', caption: 'queued', videoS3Key: 'uploads/seller-stuck/b.mp4',
+      platforms: ['TIKTOK'], scheduledAt: '2026-10-27T01:00:00.000Z'
+    });
+    await store.claimForPublish({ postId: stuck.id, expectedRunAt: currentTime.toISOString() });
+    currentTime = new Date('2026-10-26T01:20:00.000Z');
+    const fresh = await store.create({
+      userId: 'seller-stuck', caption: 'fresh', videoS3Key: 'uploads/seller-stuck/c.mp4',
+      platforms: ['TIKTOK']
+    });
+    await store.claimForPublish({ postId: fresh.id, expectedRunAt: currentTime.toISOString() });
+
+    const recovered = await store.recoverStalePublishing?.({
+      startedBefore: '2026-10-26T01:10:00.000Z'
+    });
+
+    expect(recovered).toEqual([expect.objectContaining({ id: stuck.id, status: 'FAILED' })]);
+    const statuses = Object.fromEntries(
+      (await store.list({ userId: 'seller-stuck' })).map((post) => [post.id, post.status])
+    );
+    expect(statuses).toEqual({
+      [stuck.id]: 'FAILED',
+      [queued.id]: 'QUEUED',
+      [fresh.id]: 'PUBLISHING'
+    });
+  });
+
+  it('keeps a separate YouTube title when a post is rescheduled', async () => {
+    const store = createPostStore();
+    const post = await store.create({
+      userId: 'seller-youtube', caption: 'Full description', youtubeTitle: 'Short title',
+      videoS3Key: 'uploads/seller-youtube/clip.mp4', platforms: ['YOUTUBE_SHORTS'],
+      scheduledAt: '2026-10-19T01:00:00.000Z'
+    });
+
+    const rescheduled = await store.reschedule({
+      postId: post.id, userId: post.userId, scheduledAt: '2026-10-19T02:00:00.000Z'
+    });
+
+    expect(rescheduled).toMatchObject({ caption: 'Full description', youtubeTitle: 'Short title' });
+    expect((await store.list())[0]).toMatchObject({ youtubeTitle: 'Short title' });
+  });
+
+  it('checks monthly units and creates atomically for concurrent requests', async () => {
+    const store = createPostStore();
+    const createPost = (suffix: string) =>
+      store.createWithinMonthlyLimit({
+        userId: 'seller-concurrent',
+        caption: `Concurrent ${suffix}`,
+        videoS3Key: `uploads/seller-concurrent/${suffix}.mp4`,
+        platforms: ['TIKTOK', 'YOUTUBE_SHORTS'],
+        monthlyPostUnitLimit: 3,
+        now: '2026-06-15T10:00:00.000Z'
+      });
+
+    const results = await Promise.all([createPost('a'), createPost('b')]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toHaveLength(1);
+    await expect(store.list({ userId: 'seller-concurrent' })).resolves.toHaveLength(1);
+  });
+
   it('keeps optional cover metadata with a queued post', async () => {
     const store = createPostStore();
 

@@ -1,10 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+
+import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'social_platform.dart';
 import 'social_platform_logo.dart';
+import 'social_connection_url_launcher.dart';
 
 typedef ConnectUrlLauncher = Future<bool> Function(Uri uri);
 
@@ -68,30 +71,88 @@ class ConnectedPlatformsCard extends StatefulWidget {
   final ValueChanged<int>? onConnectionsChanged;
 
   @override
-  State<ConnectedPlatformsCard> createState() =>
-      _ConnectedPlatformsCardState();
+  State<ConnectedPlatformsCard> createState() => _ConnectedPlatformsCardState();
 }
 
-class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
-  late final PostDeeApiClient _apiClient =
-      widget.apiClient ?? PostDeeApiClient();
-  late final ConnectUrlLauncher _launch = widget.launchConnectUrl ??
-      ((uri) => launchUrl(uri, mode: LaunchMode.externalApplication));
+class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
+    with WidgetsBindingObserver {
+  final _sessionStore = PostDeeAuthSessionStore.instance;
+  late final AuthSessionBinding _sessionBinding;
+  late final PostDeeApiClient _apiClient;
+  late final ConnectUrlLauncher _launch =
+      widget.launchConnectUrl ?? launchSocialConnectionUrl;
 
   Map<String, SocialConnectionResult> _statuses = {};
   bool _loading = true;
+  bool _refreshing = false;
   String? _busyPlatform;
+  _PendingConnectionAttempt? _pendingAttempt;
+
+  bool get _isCurrent => mounted && _sessionBinding.isCurrent;
 
   @override
   void initState() {
     super.initState();
+    _sessionBinding = _sessionStore.captureSession();
+    _apiClient = widget.apiClient ??
+        PostDeeApiClient(
+          authHeaders: PostDeeApiAuthHeaders(sessionBinding: _sessionBinding),
+        );
+    _sessionStore.addListener(_onSessionChanged);
+    WidgetsBinding.instance.addObserver(this);
     _loadConnections();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final attempt = _pendingAttempt;
+    if (!_isCurrent || attempt == null) return;
+
+    // Focus loss alone can be a permission dialog or notification shade.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      attempt.leftApp = true;
+    } else if (state == AppLifecycleState.resumed && attempt.leftApp) {
+      attempt.returned = true;
+      _refreshAfterReturn(attempt);
+    }
+  }
+
+  void _refreshAfterReturn(_PendingConnectionAttempt attempt) {
+    if (!_isCurrent ||
+        !identical(_pendingAttempt, attempt) ||
+        !attempt.opened ||
+        !attempt.returned) {
+      return;
+    }
+
+    _pendingAttempt = null;
+    unawaited(_refresh());
+  }
+
+  void _onSessionChanged() {
+    if (_sessionBinding.isCurrent || !mounted) return;
+    _pendingAttempt = null;
+    setState(() {
+      _statuses = {};
+      _loading = false;
+      _busyPlatform = null;
+    });
+  }
+
+  @override
+  void dispose() {
+    _pendingAttempt = null;
+    WidgetsBinding.instance.removeObserver(this);
+    _sessionStore.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
   Future<void> _loadConnections() async {
+    if (!_isCurrent) return;
     try {
       final results = await _apiClient.listSocialConnections();
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() {
         _statuses = {for (final result in results) result.platform: result};
         _loading = false;
@@ -99,7 +160,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
       widget.onConnectionsChanged?.call(_connectedCount);
     } catch (_) {
       // Keep platforms shown as disconnected if the status call fails.
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() => _loading = false);
     }
   }
@@ -112,51 +173,74 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
       .length;
 
   void _showMessage(String message) {
-    if (!mounted) return;
+    if (!_isCurrent) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _connect(SocialPlatform platform) async {
+    if (!_isCurrent || _loading || _busyPlatform != null) return;
     setState(() => _busyPlatform = platform.apiValue);
     try {
       final link =
           await _apiClient.createSocialConnectionLink(platform.apiValue);
-      await _launch(link.connectUrl);
-      // PostPeer OAuth happens in an external browser, so prompt the user to
-      // refresh once they return instead of polling immediately.
-      _showMessage('เปิดหน้าเชื่อมบัญชีแล้ว — เมื่อเสร็จในเบราว์เซอร์ กดปุ่มรีเฟรช');
+      if (!_isCurrent) return;
+      final attempt = _PendingConnectionAttempt();
+      _pendingAttempt = attempt;
+      final opened = await _launch(link.connectUrl);
+      if (!_isCurrent || !identical(_pendingAttempt, attempt)) return;
+      if (!opened) {
+        _pendingAttempt = null;
+        _showMessage('เปิดหน้าเชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
+        return;
+      }
+
+      attempt.opened = true;
+      _showMessage(
+        'เชื่อมบัญชีในหน้าที่เปิด แล้วกลับมา PostDee เพื่อตรวจสถานะอัตโนมัติ',
+      );
+      // Launch completion confirms only that a browser opened. Provider status
+      // is checked after a real background/foreground round trip.
+      _refreshAfterReturn(attempt);
     } on ApiException catch (error) {
+      _pendingAttempt = null;
       _showMessage(error.message);
     } catch (_) {
+      _pendingAttempt = null;
       _showMessage('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
-      if (mounted) setState(() => _busyPlatform = null);
+      if (_isCurrent) setState(() => _busyPlatform = null);
     }
   }
 
   Future<void> _refresh() async {
+    if (!_isCurrent || _refreshing) return;
+    _refreshing = true;
+    _pendingAttempt = null;
     setState(() => _loading = true);
     try {
       final results = await _apiClient.refreshSocialConnections();
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() {
         _statuses = {for (final result in results) result.platform: result};
         _loading = false;
       });
       widget.onConnectionsChanged?.call(_connectedCount);
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() => _loading = false);
       _showMessage(error.message);
     } catch (_) {
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() => _loading = false);
       _showMessage('รีเฟรชสถานะไม่สำเร็จ ลองใหม่อีกครั้ง');
+    } finally {
+      _refreshing = false;
     }
   }
 
   Future<void> _disconnect(SocialPlatform platform) async {
+    if (!_isCurrent || _loading || _busyPlatform != null) return;
     setState(() => _busyPlatform = platform.apiValue);
     try {
       await _apiClient.disconnectSocialConnection(platform.apiValue);
@@ -164,7 +248,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
     } catch (_) {
       _showMessage('ยกเลิกการเชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
-      if (mounted) setState(() => _busyPlatform = null);
+      if (_isCurrent) setState(() => _busyPlatform = null);
     }
   }
 
@@ -184,7 +268,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
       );
     }
 
-    if (_busyPlatform == platform.apiValue) {
+    final connected = _statusFor(platform)?.connected ?? false;
+    final busy = _busyPlatform == platform.apiValue;
+    if (busy && connected) {
       return const SizedBox(
         width: 18,
         height: 18,
@@ -192,26 +278,55 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
       );
     }
 
-    if (_statusFor(platform)?.connected ?? false) {
+    if (connected) {
       return OutlinedButton(
         key: ValueKey('profile-platform-disconnect-${platform.apiValue}'),
-        onPressed: () => _disconnect(platform),
+        onPressed: !_isCurrent || _loading || _busyPlatform != null
+            ? null
+            : () => _disconnect(platform),
         style: _actionStyle,
         child: const Text('ยกเลิก'),
       );
     }
 
-    return FilledButton(
+    final foreground =
+        AppTheme.isLightMode ? const Color(0xFF087A55) : AppTheme.accentCyan;
+    return FilledButton.icon(
       key: ValueKey('profile-platform-connect-${platform.apiValue}'),
-      onPressed: () => _connect(platform),
+      onPressed: !_isCurrent || _loading || _busyPlatform != null
+          ? null
+          : () => _connect(platform),
       style: FilledButton.styleFrom(
-        backgroundColor: AppTheme.accent,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        minimumSize: Size.zero,
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        backgroundColor: AppTheme.sel,
+        foregroundColor: foreground,
+        disabledBackgroundColor: AppTheme.glassDeep,
+        disabledForegroundColor: AppTheme.textMuted,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        minimumSize: const Size(104, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        side: BorderSide(color: foreground.withValues(alpha: 0.22)),
+        textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
       ),
-      child: const Text('เชื่อม'),
+      icon: busy
+          ? SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: foreground,
+              ),
+            )
+          : const Icon(Icons.link_rounded, size: 16),
+      label: Text(
+        'เชื่อมต่อ',
+        semanticsLabel:
+            '${busy ? 'กำลังเชื่อมต่อ' : 'เชื่อมต่อ'} ${platform.label}',
+      ),
     );
   }
 
@@ -219,6 +334,46 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
     final status = _statusFor(platform);
     final connected = status?.connected ?? false;
     final displayName = connected ? status?.displayName : null;
+    final identity = Row(
+      children: [
+        SocialPlatformLogo(platform: platform, size: 30),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      platform.label,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (connected) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.check_circle,
+                        size: 16, color: AppTheme.accent),
+                  ],
+                ],
+              ),
+              if (displayName != null && displayName.isNotEmpty)
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
 
     return Container(
       padding: const EdgeInsets.all(13),
@@ -235,47 +390,32 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          SocialPlatformLogo(platform: platform, size: 30),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Give larger accessibility text the full row before the action.
+          final stackAction = constraints.maxWidth < 260 ||
+              MediaQuery.textScalerOf(context).scale(13) > 18;
+          if (stackAction) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        platform.label,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (connected) ...[
-                      const SizedBox(width: 6),
-                      const Icon(Icons.check_circle,
-                          size: 16, color: AppTheme.accent),
-                    ],
-                  ],
+                identity,
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildAction(platform),
                 ),
-                if (displayName != null && displayName.isNotEmpty)
-                  Text(
-                    displayName,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
               ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          _buildAction(platform),
-        ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: identity),
+              const SizedBox(width: 10),
+              _buildAction(platform),
+            ],
+          );
+        },
       ),
     );
   }
@@ -374,7 +514,8 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
               const SizedBox(width: 4),
               IconButton(
                 key: const ValueKey('profile-platforms-refresh'),
-                onPressed: _refresh,
+                onPressed:
+                    !_isCurrent || _busyPlatform != null ? null : _refresh,
                 icon: const Icon(Icons.refresh, size: 20),
                 visualDensity: VisualDensity.compact,
                 tooltip: 'รีเฟรชสถานะการเชื่อม',
@@ -397,4 +538,10 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard> {
       ],
     );
   }
+}
+
+class _PendingConnectionAttempt {
+  bool opened = false;
+  bool leftApp = false;
+  bool returned = false;
 }

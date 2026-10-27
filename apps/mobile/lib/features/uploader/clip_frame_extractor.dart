@@ -13,11 +13,17 @@ typedef UploaderClipFrameExtractor = Future<List<File>> Function(
   int maxFrames,
 });
 
+typedef ClipFrameFfmpegRunner = Future<bool> Function(List<String> arguments);
+
 class FfmpegClipFrameExtractor {
-  FfmpegClipFrameExtractor({VideoDurationProbe? probeDuration})
-      : probeDuration = probeDuration ?? const FfprobeVideoDurationProbe().call;
+  FfmpegClipFrameExtractor({
+    VideoDurationProbe? probeDuration,
+    ClipFrameFfmpegRunner? runFfmpeg,
+  })  : probeDuration = probeDuration ?? const FfprobeVideoDurationProbe().call,
+        runFfmpeg = runFfmpeg ?? _runNativeFfmpeg;
 
   final VideoDurationProbe probeDuration;
+  final ClipFrameFfmpegRunner runFfmpeg;
 
   Future<List<File>> call(File videoFile, {int maxFrames = 3}) async {
     if (maxFrames < 1 || !await videoFile.exists()) {
@@ -33,13 +39,25 @@ class FfmpegClipFrameExtractor {
       final output = File(
         '${directory.path}${Platform.pathSeparator}frame_${index + 1}.jpg',
       );
-      // Fast-seek before input, grab a single frame as a JPEG.
-      final command = "-y -ss ${timestamps[index].toStringAsFixed(2)} "
-          "-i '${videoFile.path}' -frames:v 1 -q:v 3 '${output.path}'";
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
+      // Fast-seek before input, grab a single frame as a JPEG. 720 px wide
+      // keeps each frame well under the API's 1 MiB AI caption frame limit.
+      // Separate arguments keep paths with quotes or spaces intact.
+      final succeeded = await runFfmpeg([
+        '-y',
+        '-ss',
+        timestamps[index].toStringAsFixed(2),
+        '-i',
+        videoFile.path,
+        '-frames:v',
+        '1',
+        '-vf',
+        'scale=720:-2',
+        '-q:v',
+        '3',
+        output.path,
+      ]);
 
-      if (ReturnCode.isSuccess(returnCode) && await output.exists()) {
+      if (succeeded && await output.exists()) {
         frames.add(output);
       }
     }
@@ -59,4 +77,9 @@ class FfmpegClipFrameExtractor {
         duration * index / (maxFrames + 1),
     ];
   }
+}
+
+Future<bool> _runNativeFfmpeg(List<String> arguments) async {
+  final session = await FFmpegKit.executeWithArguments(arguments);
+  return ReturnCode.isSuccess(await session.getReturnCode());
 }

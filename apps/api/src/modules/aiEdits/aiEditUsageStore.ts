@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto';
+
 export type AiEditUsageRecord = {
+  id: string;
   userId: string;
   monthKey: string;
   minutes: number;
@@ -32,6 +35,17 @@ export type AiEditUsageStore = {
     minutes: number;
     limit: number;
   }) => Promise<AiEditUsageReservation>;
+  // Re-prices a reservation to the real billed minutes when the month still has
+  // room; otherwise leaves it unchanged and returns ok: false.
+  settle: (input: {
+    id: string;
+    userId: string;
+    monthKey: string;
+    minutes: number;
+    limit: number;
+  }) => Promise<AiEditUsageReservation>;
+  // Deletes a reservation whose AI call failed, so it costs no minutes.
+  release: (input: { id: string; userId: string }) => Promise<void>;
   // Hard-deletes every usage record owned by userId. Used by account deletion.
   // Optional because the Prisma store relies on the User cascade instead.
   deleteAllForUser?: (userId: string) => Promise<void>;
@@ -63,6 +77,7 @@ export const createInMemoryAiEditUsageStore = ({
     minutes: number;
   }) => {
     const record: AiEditUsageRecord = {
+      id: randomUUID(),
       userId,
       monthKey,
       minutes,
@@ -91,6 +106,29 @@ export const createInMemoryAiEditUsageStore = ({
         usedMinutes: usedMinutes + minutes,
         record: createRecord({ userId, monthKey, minutes })
       };
+    },
+    settle: async ({ id, userId, monthKey, minutes, limit }) => {
+      const usedMinutes = sumMinutes({ userId, monthKey });
+      const record = records.find(
+        (candidate) =>
+          candidate.id === id && candidate.userId === userId && candidate.monthKey === monthKey
+      );
+
+      if (!record || usedMinutes - record.minutes + minutes > limit) {
+        return { ok: false, usedMinutes };
+      }
+
+      record.minutes = minutes;
+      return { ok: true, usedMinutes: sumMinutes({ userId, monthKey }), record };
+    },
+    release: async ({ id, userId }) => {
+      const index = records.findIndex(
+        (candidate) => candidate.id === id && candidate.userId === userId
+      );
+
+      if (index !== -1) {
+        records.splice(index, 1);
+      }
     },
     deleteAllForUser: async (userId) => {
       for (let index = records.length - 1; index >= 0; index -= 1) {

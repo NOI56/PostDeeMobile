@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
+import 'package:postdee_mobile/features/link_in_bio/link_in_bio_draft_store.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,6 +38,91 @@ Future<void> _addCustomLink(
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(userId: 'link-test-user', idToken: 'dummy-link-token'),
+    );
+  });
+  tearDown(PostDeeAuthSessionStore.instance.clear);
+
+  testWidgets('clears the visible draft when the account changes',
+      (tester) async {
+    await tester.pumpWidget(_linkInBioTestApp(const LinkInBioScreen()));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(0), 'Private shop A');
+
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(userId: 'user-b', idToken: 'token-b'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Private shop A'), findsNothing);
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      LinkInBioDraft.defaults().storeName,
+    );
+  });
+
+  testWidgets('discards an old account draft load that finishes after sign-in',
+      (tester) async {
+    final pendingDraft = Completer<LinkInBioDraft?>();
+    final store = _DeferredDraftStore(pendingDraft);
+    await tester.pumpWidget(
+      _linkInBioTestApp(LinkInBioScreen(draftStore: store)),
+    );
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(userId: 'user-b', idToken: 'token-b'),
+    );
+    await tester.pumpAndSettle();
+    pendingDraft.complete(
+      const LinkInBioDraft(
+        storeName: 'Private loaded shop A',
+        slug: 'private-a',
+        autoUpdateFromScheduledPosts: false,
+        enabledLinkIds: {},
+        customLinks: [],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Private loaded shop A'), findsNothing);
+    expect(store.loadCount, 2);
+  });
+
+  testWidgets('dismisses the owned link editor on an account change',
+      (tester) async {
+    await tester.pumpWidget(_linkInBioTestApp(const LinkInBioScreen()));
+    await _addCustomLink(
+      tester,
+      title: 'Private link A',
+      url: 'https://example.invalid/private-a',
+    );
+    await tester.tap(find.byTooltip('แก้ไขลิงก์'));
+    await tester.pumpAndSettle();
+
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(userId: 'user-b', idToken: 'token-b'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('บันทึกลิงก์'), findsNothing);
+    expect(find.text('Private link A'), findsNothing);
+    expect(find.text('https://example.invalid/private-a'), findsNothing);
+  });
+
+  testWidgets('admits only one link editor when add is tapped twice',
+      (tester) async {
+    await tester.pumpWidget(_linkInBioTestApp(const LinkInBioScreen()));
+    await _scrollToLinkSection(tester);
+    await tester.tap(find.text('เพิ่มลิงก์'));
+    await tester.tap(find.text('เพิ่มลิงก์'));
+    await tester.pumpAndSettle();
+    expect(find.text('บันทึกลิงก์'), findsOneWidget);
+
+    PostDeeAuthSessionStore.instance.signIn(
+      const AuthSession(userId: 'user-b', idToken: 'token-b'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('บันทึกลิงก์'), findsNothing);
   });
 
   testWidgets('clearly labels Link in Bio as a local unpublished prototype',
@@ -177,4 +266,20 @@ void main() {
     expect(find.text('คูปอง Shopee'), findsNothing);
     expect(find.text('https://shopee.co.th/postdee-demo'), findsNothing);
   });
+}
+
+class _DeferredDraftStore implements LinkInBioDraftStore {
+  _DeferredDraftStore(this.firstLoad);
+
+  final Completer<LinkInBioDraft?> firstLoad;
+  int loadCount = 0;
+
+  @override
+  Future<LinkInBioDraft?> loadDraft() {
+    loadCount += 1;
+    return loadCount == 1 ? firstLoad.future : Future.value(null);
+  }
+
+  @override
+  Future<void> saveDraft(LinkInBioDraft draft) async {}
 }

@@ -700,7 +700,7 @@ class CoverPlatformCapabilityNotice extends StatelessWidget {
       if (visiblePlatforms.contains(SocialPlatform.instagramReels))
         'Instagram Reels: ใช้ภาพปกที่แต่งได้',
       if (visiblePlatforms.contains(SocialPlatform.facebookReels))
-        'Facebook Video: ส่งภาพปกแบบพยายามให้ดีที่สุด',
+        'Facebook Reels: การแสดงหน้าปกขึ้นอยู่กับ Facebook',
       if (visiblePlatforms.contains(SocialPlatform.tiktok))
         'TikTok: ใช้เฉพาะเฟรมที่เลือก ไม่ส่งข้อความแต่งปก',
       if (visiblePlatforms.contains(SocialPlatform.youtubeShorts))

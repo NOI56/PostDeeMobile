@@ -263,7 +263,7 @@ describe('social connection routes', () => {
     });
     await store.setProfileId({ userId: 'seller-social', profileId: 'profile-1' });
     const connectClient = createFakeConnectClient({
-      listIntegrations: vi.fn(async () => [
+      listIntegrations: vi.fn<PostPeerConnectClient['listIntegrations']>(async () => [
         {
           id: 'acct-tiktok-1',
           platform: 'TIKTOK',
@@ -311,7 +311,7 @@ describe('social connection routes', () => {
       postPeerAccountId: 'acct-youtube-stale'
     });
     const connectClient = createFakeConnectClient({
-      listIntegrations: vi.fn(async () => [
+      listIntegrations: vi.fn<PostPeerConnectClient['listIntegrations']>(async () => [
         {
           id: 'acct-tiktok-1',
           platform: 'TIKTOK'

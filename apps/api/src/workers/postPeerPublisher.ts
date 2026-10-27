@@ -1,4 +1,5 @@
 import type { Platform } from '../modules/posts/postStore.js';
+import { deriveYoutubeTitle } from '../modules/posts/youtubeTitle.js';
 import {
   PublishOutcomeUnknownError,
   type PlatformPublisher
@@ -63,7 +64,7 @@ const failedPostStatuses = new Set(['failed']);
 // Poll for up to roughly two minutes before declaring the outcome unknown.
 const defaultMaxPollAttempts = 60;
 const defaultPollIntervalMs = 2_000;
-const youtubeTitleMaxLength = 100;
+const defaultRequestTimeoutMs = 60_000;
 
 const sleepWithTimer: Sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -229,21 +230,18 @@ const evaluatePostPeerPayload = (
   };
 };
 
-const deriveYoutubeTitle = (caption?: string) => {
-  const normalized = caption?.replace(/\s+/g, ' ').trim() || 'PostDee video';
-  return [...normalized].slice(0, youtubeTitleMaxLength).join('').trim() || 'PostDee video';
-};
-
 const buildPlatformTarget = ({
   platform,
   accountId,
   caption,
+  youtubeTitle,
   coverUrl,
   coverFrameTimeMs
 }: {
   platform: Platform;
   accountId: string;
   caption?: string;
+  youtubeTitle?: string;
   coverUrl?: string;
   coverFrameTimeMs?: number;
 }) => {
@@ -260,7 +258,7 @@ const buildPlatformTarget = ({
     // Controlled-first safety default. Public rollout needs an explicit
     // user-selected visibility passed through the publish input.
     target.platformSpecificData = {
-      title: deriveYoutubeTitle(caption),
+      title: youtubeTitle?.trim() || deriveYoutubeTitle(caption),
       visibility: 'private'
     };
   } else if (platform === 'TIKTOK') {
@@ -281,8 +279,12 @@ const buildPlatformTarget = ({
       : coverFrameTimeMs !== undefined
         ? { thumbOffset: coverFrameTimeMs }
         : undefined;
-  } else if (platform === 'FACEBOOK_REELS' && coverUrl) {
-    target.platformSpecificData = { videoThumbnailUrl: coverUrl };
+  } else if (platform === 'FACEBOOK_REELS') {
+    target.platformSpecificData = {
+      // Omitting this option makes PostPeer publish a Page feed video.
+      contentType: 'reel',
+      ...(coverUrl ? { videoThumbnailUrl: coverUrl } : {})
+    };
   }
 
   return target;
@@ -306,6 +308,7 @@ export const createPostPeerPublisher = ({
   now = () => new Date().toISOString(),
   maxPollAttempts = defaultMaxPollAttempts,
   pollIntervalMs = defaultPollIntervalMs,
+  requestTimeoutMs = defaultRequestTimeoutMs,
   sleep = sleepWithTimer,
   fetchImpl = fetch as unknown as FetchImpl
 }: {
@@ -317,12 +320,15 @@ export const createPostPeerPublisher = ({
   now?: () => string;
   maxPollAttempts?: number;
   pollIntervalMs?: number;
+  // A stalled connection would otherwise hold a scheduler slot forever.
+  requestTimeoutMs?: number;
   sleep?: Sleep;
   fetchImpl?: FetchImpl;
 }): PlatformPublisher => ({
   publish: async ({
     userId,
     caption,
+    youtubeTitle,
     videoS3Key,
     coverImageS3Key,
     coverFrameTimeMs,
@@ -339,6 +345,9 @@ export const createPostPeerPublisher = ({
         ? await resolveVideoUrl(videoS3Key)
         : videoS3Key
       : undefined;
+    if (platform === 'FACEBOOK_REELS' && !videoUrl?.trim()) {
+      throw new Error('A video is required to publish Facebook Reels');
+    }
     // PostPeer accepts custom cover image URLs only for Instagram and
     // Facebook. TikTok selects a frame timestamp, while YouTube thumbnails
     // require a separate authenticated API flow and must not be sent here.
@@ -356,6 +365,7 @@ export const createPostPeerPublisher = ({
     try {
       response = await fetchImpl(`${baseUrl}/v1/posts`, {
         method: 'POST',
+        signal: AbortSignal.timeout(requestTimeoutMs),
         headers: {
           'x-access-key': apiKey,
           'Content-Type': 'application/json'
@@ -367,6 +377,7 @@ export const createPostPeerPublisher = ({
               platform,
               accountId,
               caption,
+              youtubeTitle,
               coverUrl,
               coverFrameTimeMs
             })
@@ -448,7 +459,8 @@ export const createPostPeerPublisher = ({
             method: 'GET',
             headers: {
               'x-access-key': apiKey
-            }
+            },
+            signal: AbortSignal.timeout(requestTimeoutMs)
           }
         );
 

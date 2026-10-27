@@ -68,6 +68,31 @@ void main() {
     expect(joined, contains('-c:a aac')); // re-encode because of audio filters
   });
 
+  test('applies trim to the main input before sticker inputs', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/in.mp4',
+      outputPath: '/out.mp4',
+      trimStartSec: 4,
+      trimEndSec: 10,
+      stickerImagePaths: const ['/sticker.png'],
+    );
+
+    expect(
+      args,
+      containsAllInOrder([
+        '-ss',
+        '4.000',
+        '-to',
+        '10.000',
+        '-i',
+        '/in.mp4',
+        '-i',
+        '/sticker.png',
+      ]),
+    );
+    expect(args.join(' '), contains('[0:v][1:v]overlay='));
+  });
+
   test('copies audio when there are no audio edits', () {
     final args = buildEditFfmpegArguments(
       inputPath: '/in.mp4',
@@ -117,6 +142,52 @@ void main() {
     expect(joined, contains('-map 0:v:0? -map [aout]'));
     expect(joined, isNot(contains('aselect=')));
     expect(joined, contains('-c:a aac'));
+  });
+
+  test('cuts video-only input without referencing a missing audio stream', () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/silent.mp4',
+      outputPath: '/out.mp4',
+      inputHasAudio: false,
+      silenceRanges: const [SilenceCutRange(start: 1, end: 2)],
+    );
+    final joined = args.join(' ');
+
+    expect(joined, contains("select='not(between(t,1.000,2.000))'"));
+    expect(joined, isNot(contains('[0:a]')));
+    expect(joined, isNot(contains('[aout]')));
+    expect(joined, isNot(contains('-map [aout]')));
+    expect(joined, isNot(contains('-c:a')));
+  });
+
+  test('probes audio for cuts speed and volume edits', () {
+    expect(editNeedsInputAudioProbe(), isFalse);
+    expect(editNeedsInputAudioProbe(speed: 1.5), isTrue);
+    expect(editNeedsInputAudioProbe(volume: 0.5), isTrue);
+    expect(
+      editNeedsInputAudioProbe(
+        silenceRanges: const [SilenceCutRange(start: 1, end: 2)],
+      ),
+      isTrue,
+    );
+  });
+
+  test('applies speed and volume to video-only input without audio filters',
+      () {
+    final args = buildEditFfmpegArguments(
+      inputPath: '/silent.mp4',
+      outputPath: '/out.mp4',
+      inputHasAudio: false,
+      speed: 1.5,
+      volume: 0.5,
+    );
+    final joined = args.join(' ');
+
+    expect(joined, contains('setpts=0.6667*PTS'));
+    expect(joined, isNot(contains('atempo=')));
+    expect(joined, isNot(contains('volume=')));
+    expect(joined, isNot(contains('-af')));
+    expect(joined, isNot(contains('-c:a')));
   });
 
   test('gives libass the bundled subtitle font directory and family', () {
@@ -437,6 +508,12 @@ void main() {
 
     expect(vf, contains('Fontsize=24'));
     expect(vf, contains('Alignment=8'));
+  });
+
+  test('detects video-only input while keeping audio on probe failure', () {
+    expect(probedInputHasAudio(null), isTrue);
+    expect(probedInputHasAudio(const ['video']), isFalse);
+    expect(probedInputHasAudio(const ['video', 'audio']), isTrue);
   });
 
   test('accepts a rendered output only when it has a video stream', () {

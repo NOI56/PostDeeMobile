@@ -1,4 +1,5 @@
 import type { ServerConfig } from '../../config/env.js';
+import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 import {
   type PrismaPostClient,
   createPrismaPostRepository
@@ -9,10 +10,12 @@ type PostStoreConfig = Pick<ServerConfig, 'postStore'>;
 
 export const createPostStoreFromConfig = ({
   config,
-  prisma
+  prisma,
+  runWithActiveOwner
 }: {
   config: PostStoreConfig;
   prisma?: PrismaPostClient;
+  runWithActiveOwner?: RunWithActiveOwner;
 }): PostStore => {
   if (config.postStore === 'prisma') {
     if (!prisma) {
@@ -22,5 +25,5 @@ export const createPostStoreFromConfig = ({
     return createPrismaPostRepository({ prisma });
   }
 
-  return createPostStore();
+  return createPostStore({ runWithActiveOwner });
 };

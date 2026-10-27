@@ -50,11 +50,12 @@ import type { RealClipCaptionUsageStore } from './modules/captions/captionUsageS
 import { registerCaptionRoutes } from './modules/captions/captionRoutes.js';
 import {
   type RealClipCaptionProvider,
+  type RealClipMediaKind,
   type RealClipMediaPart,
   createRealClipCaptionProviderFromConfig
 } from './modules/captions/realClipCaptionProvider.js';
 import type { PrismaRealClipCaptionUsageClient } from './modules/captions/prismaRealClipCaptionUsageRepository.js';
-import { registerPostRoutes } from './modules/posts/postRoutes.js';
+import { postCoverUploadPolicy, registerPostRoutes } from './modules/posts/postRoutes.js';
 import type { PrismaPostClient } from './modules/posts/prismaPostRepository.js';
 import {
   createInMemoryPlatformPublishStore,
@@ -78,6 +79,9 @@ import {
 } from './modules/aiEdits/transcriptionProvider.js';
 import { createPostStoreFromConfig } from './modules/posts/postStoreFactory.js';
 import { createPublishQueueFromConfig } from './modules/queue/publishQueueFactory.js';
+import type { PublishQueue } from './modules/queue/publishQueue.js';
+import { createOwnerAwarePublishQueue } from './modules/queue/ownerAwarePublishQueue.js';
+import { OwnerOperationBusyError } from './modules/account/ownerOperationQueue.js';
 import { createPlatformPublisherFromConfig } from './workers/platformPublisherFactory.js';
 import { createPublishScheduler } from './workers/publishScheduler.js';
 import { registerPublishQueueRoutes } from './modules/queue/publishQueueRoutes.js';
@@ -85,7 +89,9 @@ import {
   MediaDownloadError,
   aiEditAudioDownloadMaxBytes,
   aiMediaDownloadMaxBytes,
-  readAiMediaResponseBytes
+  readAiMediaResponseBytes,
+  realClipCaptionClipMaxBytes,
+  realClipCaptionFrameMaxBytes
 } from './modules/storage/mediaDownload.js';
 import type { S3VideoStorageClient, VideoStorage } from './modules/storage/videoStorage.js';
 import { createVideoStorageFromConfig } from './modules/storage/videoStorageFactory.js';
@@ -102,6 +108,7 @@ import {
 } from './modules/uploads/managedUploadService.js';
 import {
   createInMemoryUploadSessionStore,
+  UploadSessionConflictError,
   type UploadSessionStore
 } from './modules/uploads/uploadSessionStore.js';
 import {
@@ -109,6 +116,7 @@ import {
   type PrismaUploadSessionClient
 } from './modules/uploads/prismaUploadSessionRepository.js';
 import type { PrismaUserClient } from './modules/users/prismaUserRepository.js';
+import type { UserStore } from './modules/users/userStore.js';
 import { createUserStoreForPostStore } from './modules/users/userStoreFactory.js';
 import { registerDeviceRoutes } from './modules/devices/deviceRoutes.js';
 import { createDeviceTokenStore } from './modules/devices/deviceTokenStoreFactory.js';
@@ -149,7 +157,10 @@ type AppOptions = {
   captionGenerator?: CaptionGenerator;
   realClipCaptionUsageStore?: RealClipCaptionUsageStore;
   realClipCaptionProvider?: RealClipCaptionProvider;
-  fetchClipMedia?: (videoS3Key: string) => Promise<RealClipMediaPart>;
+  fetchClipMedia?: (
+    mediaS3Key: string,
+    kind: RealClipMediaKind
+  ) => Promise<RealClipMediaPart>;
   transcriptionProvider?: TranscriptionProvider;
   editPlanProvider?: EditPlanProvider;
   storePurchaseVerifier?: StorePurchaseVerifier;
@@ -163,19 +174,25 @@ type AppOptions = {
   platformPublishStore?: PlatformPublishStore;
   uploadSessionStore?: UploadSessionStore;
   managedUploadService?: ManagedUploadService;
+  publishQueue?: PublishQueue;
+  now?: () => Date;
 };
 
 const readFileNameFromStorageKey = (videoS3Key: string) =>
   videoS3Key.split('/').filter(Boolean).at(-1) ?? 'clip.mp4';
 
-const createAccountAwareAuthMiddleware = ({
+export const createAccountAwareAuthMiddleware = ({
   authMiddleware,
-  managedUploadService
+  managedUploadService,
+  userStore,
+  ownerStore
 }: {
   authMiddleware: RequestHandler;
   managedUploadService?: ManagedUploadService;
+  userStore?: UserStore;
+  ownerStore?: Pick<UploadSessionStore, 'assertOwnerActive'>;
 }): RequestHandler => {
-  if (!managedUploadService) {
+  if (!managedUploadService && !userStore && !ownerStore) {
     return authMiddleware;
   }
 
@@ -198,21 +215,23 @@ const createAccountAwareAuthMiddleware = ({
         return;
       }
 
-      void managedUploadService.assertOwnerActive(authUser.id).then(
-        () => next(),
-        (error: unknown) => {
-          if (error instanceof ManagedUploadServiceError) {
-            response.status(error.statusCode).json({
-              status: 'error',
-              code: error.code,
-              message: error.message
-            });
-            return;
-          }
-
-          next(error);
+      void (async () => {
+        await ownerStore?.assertOwnerActive(authUser.id);
+        await managedUploadService?.assertOwnerActive(authUser.id);
+        await userStore?.ensure(authUser);
+        next();
+      })().catch((error: unknown) => {
+        if (error instanceof ManagedUploadServiceError || error instanceof UploadSessionConflictError || error instanceof OwnerOperationBusyError) {
+          response.status(error instanceof ManagedUploadServiceError ? error.statusCode : error instanceof OwnerOperationBusyError ? 503 : 409).json({
+            status: 'error',
+            code: error.code,
+            message: error.message
+          });
+          return;
         }
-      );
+
+        next(error);
+      });
     });
   };
 };
@@ -253,12 +272,22 @@ const createFetchAudioFromVideoStorage =
     };
   };
 
+const realClipMediaPolicy: Record<
+  RealClipMediaKind,
+  { maxBytes: number; contentTypes?: readonly string[] }
+> = {
+  audio: { maxBytes: realClipCaptionClipMaxBytes, contentTypes: ['audio/mp4'] },
+  video: { maxBytes: realClipCaptionClipMaxBytes },
+  frame: { maxBytes: realClipCaptionFrameMaxBytes, contentTypes: ['image/jpeg', 'image/png'] }
+};
+
 // Downloads a stored object (clip or frame) as bytes + mime, for sending to a
-// multimodal caption provider (Gemini).
+// multimodal caption provider (Gemini). Size and type are checked before the
+// body is read so one request cannot hold an oversized clip in memory.
 const createFetchMediaFromVideoStorage =
   (videoStorage: VideoStorage) =>
-  async (videoS3Key: string): Promise<RealClipMediaPart> => {
-    const access = await videoStorage.createDownloadAccess(videoS3Key);
+  async (mediaS3Key: string, kind: RealClipMediaKind): Promise<RealClipMediaPart> => {
+    const access = await videoStorage.createDownloadAccess(mediaS3Key);
 
     if (access.accessType !== 'signed-url' || !access.downloadUrl) {
       throw new Error('Signed download access is required for real-clip captioning');
@@ -270,9 +299,24 @@ const createFetchMediaFromVideoStorage =
       throw new Error(`Media download failed with status ${response.status}`);
     }
 
+    const policy = realClipMediaPolicy[kind];
+    const responseContentType = response.headers.get('content-type');
+    const normalizedContentType = responseContentType?.split(';', 1)[0]?.trim().toLowerCase();
+
+    if (
+      policy.contentTypes &&
+      !policy.contentTypes.includes(normalizedContentType ?? '')
+    ) {
+      throw new MediaDownloadError(
+        'Selected media type cannot be used for AI captions',
+        415,
+        'AI_CAPTION_MEDIA_TYPE_INVALID'
+      );
+    }
+
     return {
-      data: await readAiMediaResponseBytes(response),
-      mimeType: response.headers.get('content-type') ?? 'video/mp4'
+      data: await readAiMediaResponseBytes(response, policy.maxBytes),
+      mimeType: normalizedContentType ?? 'video/mp4'
     };
   };
 
@@ -343,9 +387,12 @@ export const createApp = (options: AppOptions = {}) => {
     windowMs: 10 * 60 * 1000,
     maxRequests: 10
   });
+  // Whenever an Admin key is available, verify tokens through Firebase Admin so
+  // revoked or disabled accounts are rejected, not only when deletion is on.
   const shouldCreateFirebaseAdminAuth =
-    config.firebaseAuthDeleteEnabled &&
-    (!options.firebaseVerifier || !options.accountIdentityDeleter);
+    config.authProvider === 'firebase' &&
+    (!options.firebaseVerifier ||
+      (config.firebaseAuthDeleteEnabled && !options.accountIdentityDeleter));
   const firebaseAdminAuth =
     options.firebaseAdminAuth ??
     (shouldCreateFirebaseAdminAuth && config.firebaseServiceAccountJson
@@ -376,33 +423,47 @@ export const createApp = (options: AppOptions = {}) => {
     config,
     firebaseVerifier: accountDeletionFirebaseVerifier
   });
-  const prismaClient =
-    options.prisma ??
-    (config.templateStore === 'prisma' ||
+  const requiresPrismaClient =
+    config.templateStore === 'prisma' ||
     config.postStore === 'prisma' ||
     config.subscriptionStore === 'prisma' ||
     config.analyticsStore === 'prisma' ||
     config.captionUsageStore === 'prisma' ||
     config.aiEditUsageStore === 'prisma' ||
-    config.uploadProtocolMode !== 'legacy'
-      ? createPrismaClient()
-      : undefined);
+    (config.uploadProtocolMode !== 'legacy' &&
+      !options.managedUploadService &&
+      !options.uploadSessionStore);
+  const prismaClient =
+    options.prisma ??
+    (requiresPrismaClient ? createPrismaClient() : undefined);
+  const uploadSessionStore =
+    options.uploadSessionStore ??
+    (prismaClient
+      ? createPrismaUploadSessionRepository({
+          prisma: prismaClient as unknown as PrismaUploadSessionClient
+        })
+      : createInMemoryUploadSessionStore());
   const postStore = createPostStoreFromConfig({
     config,
-    prisma: prismaClient as unknown as PrismaPostClient | undefined
+    prisma: prismaClient as unknown as PrismaPostClient | undefined,
+    runWithActiveOwner: uploadSessionStore.runWithActiveOwner
   });
   const userStore = createUserStoreForPostStore({
     config,
-    prisma: prismaClient
+    prisma: prismaClient,
+    runWithActiveOwner: uploadSessionStore.runWithActiveOwner
   });
   const subscriptionStore = createSubscriptionStoreFromConfig({
     config,
-    prisma: prismaClient
+    prisma: prismaClient,
+    runWithActiveOwner: uploadSessionStore.runWithActiveOwner
   });
-  const publishQueue = createPublishQueueFromConfig({ config });
+  const publishQueue = createOwnerAwarePublishQueue(
+    options.publishQueue ?? createPublishQueueFromConfig({ config }), uploadSessionStore.runWithActiveOwner
+  );
   const platformPublishStore =
     options.platformPublishStore ??
-    (prismaClient
+    (config.postStore === 'prisma' && prismaClient
       ? createPrismaPlatformPublishRepository({
           prisma: prismaClient as unknown as PrismaPlatformPublishClient
         })
@@ -422,13 +483,6 @@ export const createApp = (options: AppOptions = {}) => {
       s3Client: options.s3Client,
       r2Client: options.r2Client
     });
-  const uploadSessionStore =
-    options.uploadSessionStore ??
-    (prismaClient
-      ? createPrismaUploadSessionRepository({
-          prisma: prismaClient as unknown as PrismaUploadSessionClient
-        })
-      : createInMemoryUploadSessionStore());
   const managedUploadService =
     options.managedUploadService ??
     (videoStorage.multipart
@@ -447,7 +501,9 @@ export const createApp = (options: AppOptions = {}) => {
   }
   const accountAwareAuthMiddleware = createAccountAwareAuthMiddleware({
     authMiddleware,
-    managedUploadService
+    managedUploadService,
+    ownerStore: uploadSessionStore,
+    userStore: prismaClient ? userStore : undefined
   });
   const transcriptionProvider =
     options.transcriptionProvider ??
@@ -521,7 +577,20 @@ export const createApp = (options: AppOptions = {}) => {
             managedUploadService.assertReadyForUse(ownerId, videoS3Key, {
               allowLegacy: config.uploadProtocolMode !== 'multipart'
             })
-        : undefined
+        : undefined,
+      assertCoverUploadReady: managedUploadService
+        ? (ownerId, coverImageS3Key) =>
+            managedUploadService.assertReadyForUse(ownerId, coverImageS3Key, {
+              allowLegacy: config.uploadProtocolMode === 'legacy',
+              acceptedContentTypes: postCoverUploadPolicy.acceptedContentTypes,
+              maxSizeBytes: postCoverUploadPolicy.maxSizeBytes
+            })
+        : undefined,
+      createMediaDownloadUrl: async (storageKey) => {
+        const access = await videoStorage.createDownloadAccess(storageKey);
+        return access.accessType === 'signed-url' ? access.downloadUrl : undefined;
+      },
+      now: options.now
     }
   );
   registerPublishQueueRoutes(router, accountAwareAuthMiddleware, publishQueue);
@@ -588,7 +657,12 @@ export const createApp = (options: AppOptions = {}) => {
             }
           : undefined
     });
-  registerDeviceRoutes(router, accountAwareAuthMiddleware, deviceTokenStore);
+  registerDeviceRoutes(
+    router,
+    accountAwareAuthMiddleware,
+    deviceTokenStore,
+    userStore
+  );
   registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore,
     connectClient: postPeerConnectClient,
@@ -609,6 +683,7 @@ export const createApp = (options: AppOptions = {}) => {
     platformPublishStore,
     videoStorage,
     managedUploadService,
+    ownerStore: uploadSessionStore,
     accountIdentityDeleter:
       options.accountIdentityDeleter ??
       createFirebaseIdentityDeleterFromConfig({
@@ -621,6 +696,16 @@ export const createApp = (options: AppOptions = {}) => {
   });
   registerPlannedRoutes(router);
   app.use(router);
+
+  app.use(((error, _request, response, next) => {
+    if (!(error instanceof UploadSessionConflictError || error instanceof OwnerOperationBusyError)) {
+      next(error);
+      return;
+    }
+    response.status(error instanceof OwnerOperationBusyError ? 503 : error.code === 'UPLOAD_SESSION_EXPIRED' ? 410 : 409).json({
+      status: 'error', code: error.code, message: error.message
+    });
+  }) as express.ErrorRequestHandler);
 
   // In-memory queue has no external worker, so attach an in-process scheduler.
   // It is created but NOT started here; server.ts starts it so tests that only
@@ -641,7 +726,8 @@ export const createApp = (options: AppOptions = {}) => {
         deviceTokenStore,
         pushSender: createPushSenderFromConfig({ config })
       }),
-      assertOwnerActive: managedUploadService?.assertOwnerActive
+      assertOwnerActive: uploadSessionStore.assertOwnerActive,
+      onPostSettled: (postId) => publishQueue.remove(postId)
     });
   }
 

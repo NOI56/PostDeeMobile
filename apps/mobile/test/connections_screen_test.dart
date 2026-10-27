@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
+import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/platforms/social_platform_logo.dart';
@@ -361,6 +362,87 @@ void main() {
     }
   });
 
+  testWidgets('pending connection keeps its button size and blocks repeat attempts',
+      (tester) async {
+    _signIn('owner-a');
+    final link = Completer<SocialConnectLinkResult>();
+    var attempts = 0;
+    var launches = 0;
+    await tester.pumpWidget(MaterialApp(home: ConnectionsScreen(
+      apiClient: _StatusApiClient(
+        list: () async => const [],
+        connect: (_) {
+          attempts++;
+          return link.future;
+        },
+      ),
+      launchConnectUrl: (_) async {
+        launches++;
+        return true;
+      },
+    )));
+    await tester.pumpAndSettle();
+    final action = find.byKey(const ValueKey('profile-platform-connect-TIKTOK'));
+    final originalSize = tester.getSize(action);
+    await tester.tap(action);
+    await tester.pump();
+
+    expect(tester.getSize(action), originalSize);
+    expect(tester.widget<ButtonStyleButton>(action).onPressed, isNull);
+    expect(find.descendant(of: action, matching: find.byType(CircularProgressIndicator)),
+        findsOneWidget);
+    final otherAction = find.byKey(
+        const ValueKey('profile-platform-connect-YOUTUBE_SHORTS'));
+    expect(tester.widget<ButtonStyleButton>(otherAction).onPressed, isNull);
+    await tester.tap(action);
+    await tester.tap(otherAction);
+    await tester.pump();
+    expect(attempts, 1);
+    expect(launches, 0);
+
+    link.complete(_connectLink());
+    await tester.pumpAndSettle();
+    expect(launches, 1);
+    expect(tester.widget<ButtonStyleButton>(action).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('connect buttons fit 320dp at 2x text in ${mode.name} mode',
+        (tester) async {
+      _signIn('owner-a');
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      AppTheme.applyThemeMode(mode);
+      addTearDown(() => AppTheme.applyThemeMode(ThemeMode.dark));
+      await tester.pumpWidget(MaterialApp(
+        theme: mode == ThemeMode.light ? AppTheme.light : AppTheme.dark,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!),
+        home: ConnectionsScreen(apiClient: _StatusApiClient(list: () async => const [])),
+      ));
+      await tester.pumpAndSettle();
+      for (final platform in connectablePlatforms) {
+        final action = find.byKey(
+            ValueKey('profile-platform-connect-${platform.apiValue}'));
+        await tester.ensureVisible(action);
+        await tester.pumpAndSettle();
+        expect(tester.widget<ButtonStyleButton>(action).onPressed, isNotNull);
+        final bounds = tester.getRect(action);
+        expect(bounds.width, greaterThanOrEqualTo(48));
+        expect(bounds.height, greaterThanOrEqualTo(48));
+        expect(bounds.left, greaterThanOrEqualTo(0));
+        expect(bounds.right, lessThanOrEqualTo(320));
+        expect(find.descendant(of: action, matching: find.text('เชื่อมต่อ')),
+            findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
+
   testWidgets('connected account and disconnect action fit 320dp at 2x text',
       (tester) async {
     _signIn('owner-a');
@@ -637,7 +719,7 @@ void main() {
         find.byKey(const ValueKey('profile-platform-disconnect-YOUTUBE_SHORTS')),
         findsOneWidget,
       );
-      expect(find.text('เชื่อม'), findsNWidgets(3));
+      expect(find.text('เชื่อมต่อ'), findsNWidgets(3));
       expect(changes, [1]);
     });
   }
@@ -654,7 +736,7 @@ void main() {
 
     expect(find.text('เชื่อมต่อแล้ว 0/4 ช่องทาง'), findsNothing);
     expect(find.text('กำลังตรวจสอบช่องทาง...'), findsOneWidget);
-    expect(find.text('เชื่อม'), findsNothing);
+    expect(find.text('เชื่อมต่อ'), findsNothing);
 
     result.complete(const []);
     await tester.pumpAndSettle();
@@ -688,7 +770,7 @@ void main() {
     expect(find.text('เชื่อมต่อแล้ว 0/4 ช่องทาง'), findsNothing);
     expect(find.text('0/4'), findsNothing);
     expect(find.text('ตรวจสอบช่องทางไม่ได้'), findsOneWidget);
-    expect(find.text('เชื่อม'), findsNothing);
+    expect(find.text('เชื่อมต่อ'), findsNothing);
     expect(changes, isEmpty);
     expect(find.textContaining('Request failed'), findsNothing);
 
@@ -730,7 +812,7 @@ void main() {
     expect(find.text('@seller'), findsNothing);
     expect(find.byKey(const ValueKey('profile-platform-disconnect-TIKTOK')),
         findsNothing);
-    expect(find.text('เชื่อม'), findsNothing);
+    expect(find.text('เชื่อมต่อ'), findsNothing);
     expect(changes, [1]);
 
     await tester.tap(find.byKey(const ValueKey('profile-platforms-retry')));

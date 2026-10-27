@@ -541,7 +541,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       );
     }
 
-    if (_busyPlatform == platform.apiValue && !_isDisconnectConfirmationOpen) {
+    final connected = _statusFor(platform)?.connected ?? false;
+    final busy = _busyPlatform == platform.apiValue;
+    if (busy && connected && !_isDisconnectConfirmationOpen) {
       return const SizedBox(
         width: 18,
         height: 18,
@@ -558,7 +560,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       );
     }
 
-    if (_statusFor(platform)?.connected ?? false) {
+    if (connected) {
       return OutlinedButton(
         key: ValueKey('profile-platform-disconnect-${platform.apiValue}'),
         onPressed: _actionsLocked ? null : () => _disconnect(platform),
@@ -568,17 +570,43 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       );
     }
 
-    return FilledButton(
+    final foreground = AppTheme.isLightMode
+        ? const Color(0xFF087A55)
+        : AppTheme.accentCyan;
+    return FilledButton.icon(
       key: ValueKey('profile-platform-connect-${platform.apiValue}'),
       onPressed: _actionsLocked ? null : () => _connect(platform),
       style: FilledButton.styleFrom(
-        backgroundColor: AppTheme.actionBackground,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        minimumSize: const Size(48, 48),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        backgroundColor: AppTheme.sel,
+        foregroundColor: foreground,
+        disabledBackgroundColor: AppTheme.glassDeep,
+        disabledForegroundColor: AppTheme.textMuted,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        minimumSize: const Size(104, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        side: BorderSide(color: foreground.withValues(alpha: 0.22)),
+        textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
       ),
-      child: Text('เชื่อม', semanticsLabel: 'เชื่อมต่อ ${platform.label}'),
+      icon: busy
+          ? SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: foreground,
+              ),
+            )
+          : const Icon(Icons.link_rounded, size: 16),
+      label: Text(
+        'เชื่อมต่อ',
+        semanticsLabel:
+            '${busy ? 'กำลังเชื่อมต่อ' : 'เชื่อมต่อ'} ${platform.label}',
+      ),
     );
   }
 

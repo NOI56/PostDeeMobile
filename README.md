@@ -37,6 +37,19 @@ passwords, OTP codes or card details in chat. Deploying needs migration
 `20261028020000_support_chat`; the chat entry needs a new Mobile build. Phase 2
 of the support chat plan in `ROADMAP.md`.
 
+The 2026-10-29 admin alert candidate adds a **รอทีมงานตอบ** count beside
+**แชทช่วยเหลือ**, refreshed every 30 seconds while the admin tab is visible.
+It counts conversations in `WAITING_TEAM`, independently of the inbox filter;
+opening a chat does not clear it. Newly stored member messages also send a
+generic push to configured owners and viewers through the existing Firebase
+sender, including when the admin web page is closed. An administrator must
+have signed into Mobile with the same Firebase identity and registered an
+opted-in device; `PUSH_SENDER=firebase` and working messaging credentials are
+required. Push delivery is best effort, and tapping it opens Mobile rather
+than the admin console. No new environment key, migration or Mobile build is
+needed for these alerts. See the [admin guide](docs/ADMIN_CONSOLE.md) for
+setup and acceptance checks; live delivery is not implied by local tests.
+
 ## Service status notices (2026-10-28, local candidate)
 
 When the app has a problem, an owner opens the admin console's "สถานะระบบ"

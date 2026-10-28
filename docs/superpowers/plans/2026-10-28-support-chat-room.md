@@ -5,6 +5,49 @@ Status: review candidate on branch `claude/support-chat`, stacked on
 was cut). Not merged or deployed. Phase 2 of the support chat plan
 (`ROADMAP.md`, "Support chat with an AI helper").
 
+## 2026-10-29 admin alert follow-up (local candidate)
+
+The earlier status and verification entries below describe the phase 2
+snapshot. This follow-up adds administrator alerts without changing the
+member message API, Dot switches or team-reply notification behavior.
+
+- `GET /admin/api/support/pending-count` returns `{count, checkedAt}` only to
+  authenticated owners/viewers, private/no-store. It counts `WAITING_TEAM`
+  conversations across all pages/filters, not unread messages. Opening a
+  thread does not clear it; existing status changes determine the count.
+- The admin navigation badge polls independently every 30 seconds while
+  visible, on login/resume and after reply/close. It displays `99+`, marks
+  stale reads and preserves open conversations, filters and drafts. Reads
+  stop while hidden/logged out; late responses cannot cross sessions.
+- Only actually created member messages trigger a best-effort generic Firebase
+  push to deduplicated configured owner/viewer UIDs with registered Mobile
+  devices. Same-id retries do not retrigger. Payload data uses the recipient
+  administrator's `userId` and `type: support_new_message`; no member identity
+  or message body appears. Handoff-only requests update the count without
+  another push.
+- Reuses `PUSH_SENDER=firebase`, existing messaging credentials and Mobile
+  device registration. Administrators must sign into Mobile in the same
+  Firebase project and opt in to notifications. No new environment key,
+  schema migration, Mobile build or browser notification permission.
+- Tapping an administrator push opens Mobile, not the admin web inbox.
+  Delivery is best effort; the pending count is the outstanding-work source.
+
+Acceptance still needs recorded evidence for member send -> administrator
+device alert and web count -> reply/close -> count update, including same-id
+retry and an administrator who has no registered device. Local unit/route
+checks alone do not establish real Firebase delivery or production readiness.
+
+Local candidate validation on 2026-10-29 used the verified `db353719` baseline
+and Node 22.23.3, matching the Render runtime. The full API suite passed 2,952
+tests (66 skipped); typecheck, build, Prisma validation and Prisma helper
+typechecking passed. A fresh isolated PostgreSQL 18.1 fixture applied all 28
+migrations and passed all 34 tests in the five administrator/support/status
+database suites. The fixture was stopped after verification; application
+databases were not used. Browser fixture checks verified the waiting count at
+desktop size and 390px width without horizontal page overflow or application
+console errors. Real staging workflows and Firebase device delivery remain
+pending and must be recorded separately.
+
 ## Goal
 
 A member can ask the PostDee team for help from inside the app, and the team
@@ -70,7 +113,8 @@ from the phase 1 service notices; this phase is human-only.
 - Tapping the reply push opens the app but not the chat yet.
 - The privacy policy should mention that support messages are stored and
   deleted with the account (and, in phase 3, processed by the AI provider).
-- Administrators get no alert for new chats yet (phase 4).
+- Administrator alerts are covered by the 2026-10-29 candidate above; real
+  device delivery and staging acceptance must be recorded separately.
 
 ## Not verified yet
 

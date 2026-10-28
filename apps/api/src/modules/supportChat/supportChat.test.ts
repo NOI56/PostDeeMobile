@@ -15,6 +15,30 @@ describe('support message input', () => {
 });
 
 describe('memory support chat store', () => {
+  it('reports only the first member write as created without changing the compatibility message', async () => {
+    const store = createMemorySupportChatStore();
+    const input = { userId: 'member', id: id(901), body: 'A new support message' };
+    const writes = await Promise.all([1, 2, 3].map(() => store.postFromMemberWithReceipt(input)));
+    expect(writes.filter(write => write.created)).toHaveLength(1);
+    expect(writes.map(write => write.message.id)).toEqual([input.id, input.id, input.id]);
+    expect(await store.postFromMember(input)).toEqual(writes[0].message);
+    await expect(store.postFromMemberWithReceipt({ ...input, body: 'Changed retry' })).rejects.toThrow('SUPPORT_MESSAGE_CONFLICT');
+  });
+  it('counts all threads waiting for the team through Dot, handoff, reply, close, and account cleanup', async () => {
+    const store = createMemorySupportChatStore();
+    expect(await store.countWaitingForTeam()).toBe(0);
+    for (let n = 1; n <= 52; n++) await store.postFromMember({ userId: `member-${n}`, id: id(1000 + n), body: 'Help' });
+    expect((await store.listThreads({})).rows).toHaveLength(50);
+    expect(await store.countWaitingForTeam()).toBe(52);
+    await store.replyAsBot({ userId: 'member-1', id: id(2001), body: 'Dot answer', handoff: false, triggerMessageId: id(1001) });
+    expect(await store.countWaitingForTeam()).toBe(51);
+    await store.requestTeam('member-1');
+    expect(await store.countWaitingForTeam()).toBe(52);
+    await store.replyAsTeam({ userId: 'member-1', id: id(2002), actorId: 'admin', body: 'Team answer' });
+    await store.close({ userId: 'member-2', lastMessageId: id(1002) });
+    await store.deleteAllForUser!('member-3');
+    expect(await store.countWaitingForTeam()).toBe(49);
+  });
   it('opens a thread on the first member message and replays retried sends', async () => {
     const store = createMemorySupportChatStore({ now: () => new Date('2026-10-28T03:00:00Z') });
     expect(await store.readForMember('member', {})).toEqual({ thread: null, messages: [] });

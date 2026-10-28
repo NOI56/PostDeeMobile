@@ -87,6 +87,17 @@ export const registerAdminConsole = (app: Express, options: Options) => {
     const user = readAuthUser(res.locals)!;
     res.json({ role: res.locals.adminRole, email: user.email ?? '', environment: config.environment });
   });
+  api.get('/support/pending-count', async (_req, res) => {
+    try {
+      if (!options.support) throw new AdminError('ADMIN_SUPPORT_UNAVAILABLE', 503);
+      const count = await options.support.countWaitingForTeam();
+      if (!Number.isSafeInteger(count) || count < 0) throw new AdminError('ADMIN_SUPPORT_UNAVAILABLE', 503);
+      res.json({ count, checkedAt: now().toISOString() });
+    } catch (error) {
+      const safe = supportFailure(error);
+      res.status(safe.status).json({ code: safe.code });
+    }
+  });
   api.post('/view', async (req, res) => {
     try {
       const b = req.body as Record<string, unknown>;

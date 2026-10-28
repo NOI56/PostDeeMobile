@@ -37,6 +37,23 @@ describe.skipIf(!databaseUrl)('support chat in PostgreSQL', () => {
     expect(await prisma.supportThread.findUnique({ where: { userId } })).toMatchObject({ status: 'WAITING_TEAM', lastMessageId: id });
     await expect(store.postFromMember({ userId, id, body: 'ข้อความอื่น' })).rejects.toThrow('SUPPORT_MESSAGE_CONFLICT');
   });
+  it('returns one created receipt for concurrent member retries and counts pending threads without pagination', async () => {
+    const userId = await member(); const id = randomUUID();
+    const before = await store.countWaitingForTeam();
+    const results = await Promise.all([1, 2, 3].map(() => store.postFromMemberWithReceipt({ userId, id, body: 'Help' })));
+    expect(results.filter(result => result.created)).toHaveLength(1);
+    expect(results.every(result => result.message.id === id)).toBe(true);
+    expect(await store.postFromMember({ userId, id, body: 'Help' })).toEqual(results[0].message);
+    expect(await store.countWaitingForTeam()).toBe(before + 1);
+    await store.replyAsBot({ userId, id: randomUUID(), body: 'Dot answer', handoff: false, triggerMessageId: id });
+    expect(await store.countWaitingForTeam()).toBe(before);
+    await store.requestTeam(userId);
+    expect(await store.countWaitingForTeam()).toBe(before + 1);
+    const reply = await store.replyAsTeam({ userId, id: randomUUID(), actorId: 'fixture-admin', body: 'Team answer' });
+    expect(await store.countWaitingForTeam()).toBe(before);
+    await store.close({ userId, lastMessageId: reply.message.id });
+    expect(await store.countWaitingForTeam()).toBe(before);
+  });
   it('polls in order, answers, closes only what was seen, and lists with member email', async () => {
     const userId = await member();
     time = new Date('2026-10-28T04:00:00Z');

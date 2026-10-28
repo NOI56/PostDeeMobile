@@ -182,6 +182,7 @@ import { createMemorySupportChatStore, type SupportChatStore } from './modules/s
 import { createPrismaSupportChatStore } from './modules/supportChat/prismaSupportChatStore.js';
 import { registerSupportChatRoutes } from './modules/supportChat/supportChatRoutes.js';
 import { createSupportReplyNotifier } from './modules/notifications/supportReplyNotifier.js';
+import { createSupportTeamNotifier } from './modules/notifications/supportTeamNotifier.js';
 import type { PushSender } from './modules/notifications/pushSender.js';
 import {
   cacheSupportBotSettings, createMemorySupportBotSettingsStore, createPrismaSupportBotSettingsStore, createSupportBot,
@@ -980,21 +981,25 @@ export const createApp = (options: AppOptions = {}) => {
     { onError: (error) => console.warn('Support bot reply failed', error instanceof Error ? error.name : 'unknown') }
   );
   app.locals.supportBotScheduler = supportBotScheduler;
+  // Created on the first support push, so a misconfigured sender cannot stop boot.
+  let supportPushSender = options.supportPushSender;
+  const lazySupportPushSender: PushSender = {
+    send: message => (supportPushSender ??= createPushSenderFromConfig({ config })).send(message)
+  };
+  const notifySupportReply = createSupportReplyNotifier({ deviceTokenStore, pushSender: lazySupportPushSender });
+  const notifySupportTeam = config.adminConsole ? createSupportTeamNotifier({
+    deviceTokenStore, pushSender: lazySupportPushSender,
+    adminUserIds: [...config.adminConsole.ownerUids, ...config.adminConsole.viewerUids]
+  }) : undefined;
   registerSupportChatRoutes(router, accountAwareAuthMiddleware, {
     store: supportChatStore,
     userStore,
+    notifySupportTeam,
     sendRateLimit: createRateLimitMiddleware({ bucket: 'support-chat', windowMs: 60_000, maxRequests: 20 }),
     bot: {
       available: async () => Boolean(supportBotProvider) && (await supportBotSettings.read()).enabled,
       onMemberMessage: supportBotScheduler.schedule
     }
-  });
-  // Created on the first reply, so a misconfigured push sender cannot stop the
-  // API from booting; the notifier is best-effort either way.
-  let supportPushSender = options.supportPushSender;
-  const notifySupportReply = createSupportReplyNotifier({
-    deviceTokenStore,
-    pushSender: { send: (message) => (supportPushSender ??= createPushSenderFromConfig({ config })).send(message) }
   });
   registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore,

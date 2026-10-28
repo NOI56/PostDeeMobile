@@ -54,6 +54,27 @@ best-effort `createSupportReplyNotifier` (generic push with `userId` and
 the app is foreground, merges by id, never advances the cursor from its own
 sends, and reuses `HomeServiceStatusBanner` for known issues.
 
+The 2026-10-29 admin alert candidate adds a created-message receipt to member
+writes while keeping `postFromMember` and the public message response
+compatible. Only the request that actually creates a member message invokes
+the best-effort administrator notifier after the response. Duplicate-id
+replays do not invoke it again. The notifier deduplicates owner/viewer UIDs,
+uses their registered devices and the existing Firebase push sender, and sends
+generic text with `type: support_new_message` and the recipient administrator
+as `data.userId`. A handoff without a new member message sends no extra push.
+Delivery is not a durable queue; the pending count remains the team's source
+of outstanding conversations. The existing Mobile tap behavior opens the app.
+
+`GET /admin/api/support/pending-count` uses the existing admin authentication,
+owner/viewer role gate and rate limit. The store counts all `WAITING_TEAM`
+threads independently of inbox pagination or search; the response contains
+only `{count, checkedAt}` and is private/no-store. The web navigation polls
+it every 30 seconds while visible and on login/resume, separately from view
+and open-thread refreshes, so a badge update preserves reply drafts and
+filters. Hidden/logout sessions abort reads; stale responses cannot update a
+later session. Failed reads keep the prior count with a stale indicator.
+No schema migration or new environment setting is required.
+
 ## Service status notices (2026-10-28, local candidate)
 
 `apps/api/src/modules/serviceStatus` owns customer-facing outage notices.

@@ -54,7 +54,7 @@ privacy policy before an owner turns Dot on. See the [Dot plan](docs/superpowers
 ## Support chat (2026-10-28, phase 2 local candidate)
 
 One continuous conversation per member, answered by administrators in the
-admin console. Phase 3 will add an AI helper; there is no bot yet.
+admin console. The optional Dot helper is described above.
 
 ### `GET /support/chat`
 
@@ -90,6 +90,32 @@ SUPPORT_MESSAGE_CONFLICT` (id reused with other content), `429
 SUPPORT_MESSAGE_LIMIT` (100 member messages per rolling 24 hours), the global
 and a per-client limit of 20 sends per minute, and the usual account-deletion
 `409 ACCOUNT_DELETION_IN_PROGRESS`.
+
+The 2026-10-29 admin alert candidate preserves this response contract. Only
+a newly stored member message triggers a best-effort administrator push after
+the response; retries with the same message id do not trigger another push.
+Recipients are the deduplicated configured owner and viewer UIDs with
+registered Mobile devices. The generic payload has
+`{ userId: "<recipient administrator UID>", type: "support_new_message" }`
+and contains no member identity or message text. It uses the existing
+`PUSH_SENDER=firebase` configuration. A handoff request without a new member
+message updates the pending count but sends no additional push.
+
+### `GET /admin/api/support/pending-count` (2026-10-29 candidate)
+
+Owners and viewers only, with the existing Firebase admin authentication and
+rate limit. Returns `{ "count": 3, "checkedAt": "2026-10-29T00:00:00.000Z" }`
+with `Cache-Control: private, no-store` and no member data. `count` is the
+number of conversations whose status is `WAITING_TEAM`, across all pages and
+inbox filters. It is not an unread-message count: opening a conversation does
+not clear it; replies, closes and Dot's existing status transitions determine
+whether the conversation remains counted. This read-only GET does not need
+the write-only Origin/header checks.
+
+The admin navigation badge reads this endpoint on login/resume and every 30
+seconds while visible, pauses when hidden and retains the last count with a
+stale indicator if a read fails. It displays `99+` above 99 and does not reload
+the open conversation or a reply draft. No new environment key or migration.
 
 ### Administrator commands (owners and viewers)
 
@@ -553,6 +579,7 @@ All responses use private/no-store. Every POST requires exact configured `Origin
 | Route | Contract |
 | --- | --- |
 | `GET /admin/api/session` | Role, email, environment; owner lists are never exposed |
+| `GET /admin/api/support/pending-count` | Owners and viewers; `{count, checkedAt}` for all `WAITING_TEAM` conversations, independent of inbox filters/pages (2026-10-29 candidate) |
 | `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit/deletions, and since 2026-10-28 incidents and support (`deletions` searches by exact Firebase UID); optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
 | `POST /admin/api/member` | `userId`; existing member details, purchased plan, separate trial, current UTC-month usage |
 | `POST /admin/api/trials` | Owner only, auth_time within 15 minutes; command below |

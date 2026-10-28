@@ -8,6 +8,7 @@ class TestNode {
   children: TestNode[] = [];
   text = '';
   get textContent(): string { return this.text + this.children.map(child => child.textContent).join(''); }
+  set textContent(value: string) { this.text = value; this.children = []; }
   append(...children: (TestNode | string)[]) {
     this.children.push(...children.map(child => typeof child === 'string' ? Object.assign(new TestNode(), { text: child }) : child));
   }
@@ -103,6 +104,7 @@ async function browser(fixtureMember: Record<string, unknown> = member, role = '
   let viewReply = async (_body: Record<string, unknown>): Promise<Reply> => reply(page());
   let trialReply = async (): Promise<Reply> => reply({ status: 'ok' });
   let deletionReply = async (): Promise<Reply> => reply({ status: 'ok', deletion: { status: 'COMPLETED' } });
+  let pendingReply = async (): Promise<Reply> => reply({ count: 0, checkedAt: new Date().toISOString() });
   const fetch = vi.fn(async (url: string, options: { body?: string; signal: AbortSignal }) => {
     if (url === '/admin/config') return reply({ previewToken: 'fixture-owner', environment: 'LOCAL' });
     const path = url.replace('/admin/api/', ''); const body = JSON.parse(options?.body ?? '{}');
@@ -111,6 +113,12 @@ async function browser(fixtureMember: Record<string, unknown> = member, role = '
     if (path === 'member') return reply({ member: fixtureMember });
     if (path === 'trials') return trialReply();
     if (path === 'account-deletions') return deletionReply();
+    if (path === 'support/pending-count') return pendingReply();
+    if (path === 'support/thread') return reply({ thread: { userId: 'fixture-member', status: 'WAITING_TEAM',
+      botEnabled: true, teamRequested: false, lastMessageId: 'member-message', lastMessageAt: new Date().toISOString(), lastSender: 'MEMBER' },
+      member: fixtureMember, messages: [], hasEarlier: false });
+    if (path === 'support/reply') return reply({ message: { id: body.id, body: body.body, sender: 'TEAM', createdAt: new Date().toISOString() } });
+    if (path === 'support/close') return reply({ thread: { status: 'CLOSED', lastMessageId: body.lastMessageId } });
     if (path === 'view') return viewReply(body);
     throw new Error(`Unexpected fixture request ${path}`);
   });
@@ -118,14 +126,109 @@ async function browser(fixtureMember: Record<string, unknown> = member, role = '
   const context: Record<string, unknown> = { document, Node: TestNode, fetch, AbortController, Date, Intl, Blob,
     URL: { createObjectURL: vi.fn(() => 'blob:fixture'), revokeObjectURL: vi.fn() }, crypto: { randomUUID: () => 'fixture-request' },
     setTimeout, clearTimeout, setInterval, clearInterval, console };
-  await runInNewContext(`(async () => { ${source}\n globalThis.controls = { login, load, navigate, openMember, startTrial, submitTrial, startDeletion, submitDeletion, downloadCsv, logout }; })()`, context);
+  await runInNewContext(`(async () => { ${source}\n globalThis.controls = { login, load, navigate, openMember, startTrial, submitTrial, startDeletion, submitDeletion, downloadCsv, logout, openChat, submitReply, closeThread, refreshSupportCount }; })()`, context);
   const controls = context.controls as Record<string, (...args: unknown[]) => Promise<void>>;
   await controls.login(); await flush();
   return { document, controls, requests, views: () => requests.filter(request => request.path === 'view'),
     setViewReply: (handler: typeof viewReply) => { viewReply = handler; }, setTrialReply: (handler: typeof trialReply) => { trialReply = handler; },
     setDeletionReply: (handler: typeof deletionReply) => { deletionReply = handler; },
+    setPendingReply: (handler: typeof pendingReply) => { pendingReply = handler; },
+    pendingReads: () => requests.filter(request => request.path === 'support/pending-count'),
     button: (text: string) => { const button = document.app.querySelectorAll('button').find(item => item.textContent === text); if (!button) throw new Error(`Missing button: ${text}`); return button; } };
 }
+
+describe('administrator pending support badge', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-29T00:00:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('polls the pending thread count independently without replacing the current view', async () => {
+    const ui = await browser(); const content = ui.document.app.querySelector('.content');
+    expect(ui.pendingReads()).toHaveLength(1);
+    expect(ui.document.app.querySelector('.support-badge')!.getAttribute('hidden')).not.toBeNull();
+    ui.setPendingReply(async () => reply({ count: 3, checkedAt: new Date().toISOString() }));
+    await vi.advanceTimersByTimeAsync(30000);
+    const badge = ui.document.app.querySelector('.support-badge')!;
+    expect(badge.textContent).toBe('3'); expect(badge.getAttribute('aria-label')).toContain('รอทีมงานตอบ');
+    expect(ui.document.app.querySelector('.content')).toBe(content); expect(ui.views()).toHaveLength(1);
+    ui.setPendingReply(async () => reply({ count: 0, checkedAt: new Date().toISOString() }));
+    await ui.controls.refreshSupportCount();
+    expect(badge.getAttribute('hidden')).not.toBeNull();
+  });
+
+  it('keeps the search, filters and a chat reply draft while the badge changes', async () => {
+    const ui = await browser(); await ui.controls.navigate('posts');
+    const search = ui.document.app.querySelector('[data-focus=search]')!;
+    search.value = 'member search'; search.focus(); await search.emit('input');
+    ui.setPendingReply(async () => reply({ count: 4 })); await ui.controls.refreshSupportCount();
+    expect(ui.document.app.querySelector('[data-focus=search]')).toBe(search); expect(search.value).toBe('member search');
+    await ui.controls.openChat('fixture-member');
+    const drawer = ui.document.app.querySelector('.chat-drawer')!;
+    const replyInput = drawer.querySelector('textarea')!;
+    replyInput.value = 'คำตอบที่ยังไม่ส่ง'; await replyInput.emit('input');
+    ui.setPendingReply(async () => reply({ count: 7 })); await ui.controls.refreshSupportCount();
+    expect(ui.document.app.querySelector('.chat-drawer')).toBe(drawer);
+    expect(drawer.querySelector('textarea')).toBe(replyInput); expect(replyInput.value).toBe('คำตอบที่ยังไม่ส่ง');
+    expect(ui.document.app.querySelector('.support-badge')!.textContent).toBe('7');
+    expect(ui.requests.some(request => request.path === 'support/reply')).toBe(false);
+  });
+
+  it('coalesces a slow count read and quietly preserves the last count after errors', async () => {
+    const ui = await browser(); ui.setPendingReply(async () => reply({ count: 2 })); await ui.controls.refreshSupportCount();
+    const waiting = deferred<Reply>(); ui.setPendingReply(() => waiting.promise);
+    const read = ui.controls.refreshSupportCount(); await flush();
+    const reads = ui.pendingReads().length;
+    await ui.controls.refreshSupportCount(); expect(ui.pendingReads()).toHaveLength(reads);
+    waiting.resolve(reply({ count: 9 })); await read;
+    ui.setPendingReply(async () => reply({ code: 'ADMIN_SUPPORT_UNAVAILABLE' }, 503)); await ui.controls.refreshSupportCount();
+    const badge = ui.document.app.querySelector('.support-badge')!;
+    expect(badge.textContent).toBe('9'); expect(badge.classList.contains('stale')).toBe(true);
+    expect(badge.getAttribute('title')).toContain('ยังอัปเดต');
+    expect(ui.document.app.querySelector('.error')).toBeNull();
+  });
+
+  it('does not present an invalid or failed first response as zero pending chats', async () => {
+    const ui = await browser(); ui.setPendingReply(async () => reply({ count: -1 })); await ui.controls.refreshSupportCount();
+    const badge = ui.document.app.querySelector('.support-badge')!;
+    expect(badge.textContent).toBe('!'); expect(badge.getAttribute('hidden')).toBeNull();
+    expect(badge.getAttribute('aria-label')).toContain('ยังอัปเดต');
+    ui.setPendingReply(async () => reply({ count: 105 })); await ui.controls.refreshSupportCount();
+    expect(badge.textContent).toBe('99+'); expect(badge.getAttribute('aria-label')).toContain('105');
+    expect(badge.classList.contains('stale')).toBe(false);
+  });
+
+  it('pauses hidden tabs, aborts an old read, and refreshes immediately when visible', async () => {
+    const ui = await browser(); const waiting = deferred<Reply>(); ui.setPendingReply(() => waiting.promise);
+    const oldRead = ui.controls.refreshSupportCount(); await flush(); const pending = ui.pendingReads().at(-1)!;
+    await ui.document.visibility('hidden'); expect(pending.signal.aborted).toBe(true);
+    const reads = ui.pendingReads().length; await vi.advanceTimersByTimeAsync(90000); expect(ui.pendingReads()).toHaveLength(reads);
+    ui.setPendingReply(async () => reply({ count: 4 })); await ui.document.visibility('visible'); await flush();
+    waiting.resolve(reply({ count: 80 })); await oldRead;
+    expect(ui.document.app.querySelector('.support-badge')!.textContent).toBe('4');
+  });
+
+  it('discards a late JSON response after logout and a new sign-in', async () => {
+    const ui = await browser(); const body = deferred<unknown>();
+    ui.setPendingReply(async () => ({ ...reply({}), json: () => body.promise }));
+    const oldRead = ui.controls.refreshSupportCount(); await flush(); await ui.controls.logout();
+    const reads = ui.pendingReads().length; await vi.advanceTimersByTimeAsync(90000); expect(ui.pendingReads()).toHaveLength(reads);
+    expect(ui.document.app.querySelector('.support-badge')).toBeNull();
+    ui.setPendingReply(async () => reply({ count: 5 })); await ui.controls.login(); await flush();
+    body.resolve({ count: 99 }); await oldRead;
+    expect(ui.document.app.querySelector('.support-badge')!.textContent).toBe('5');
+  });
+
+  it('refreshes the count after a confirmed reply or close without discarding a draft', async () => {
+    const ui = await browser(); await ui.controls.openChat('fixture-member');
+    const replyInput = ui.document.app.querySelector('.chat-drawer')!.querySelector('textarea')!;
+    replyInput.value = 'ตอบลูกค้า'; await replyInput.emit('input');
+    ui.setPendingReply(async () => reply({ count: 1 })); const beforeReply = ui.pendingReads().length;
+    await ui.controls.submitReply(); await flush(); expect(ui.pendingReads().length).toBeGreaterThan(beforeReply);
+    expect(ui.document.app.querySelector('.support-badge')!.textContent).toBe('1');
+    ui.setPendingReply(async () => reply({ count: 0 })); const beforeClose = ui.pendingReads().length;
+    await ui.controls.closeThread(); await flush(); expect(ui.pendingReads().length).toBeGreaterThan(beforeClose);
+    expect(ui.document.app.querySelector('.support-badge')!.getAttribute('hidden')).not.toBeNull();
+  });
+});
 
 describe('administrator refresh and report presentation', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-18T08:00:00Z')); });

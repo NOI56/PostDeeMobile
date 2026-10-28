@@ -125,6 +125,7 @@ function table() {
    if(key==='supportMember')return h('span',{},h('span',{class:'member-name'},row.displayName||row.email||'บัญชีที่ไม่มีอีเมล'),h('div',{class:'member-email'},row.email||row.userId));
    if(key==='lastPreview')return h('span',{class:'pre-line'},row.lastPreview);
    if(key==='supportAction')return button('เปิดแชท',()=>openChat(row.userId),row.status==='WAITING_TEAM'?'primary':'');
+   if(view==='support'&&key==='status')return h('span',{},translate(row.status),row.teamRequested?h('div',{class:'team-flag'},'ลูกค้าขอคุยกับทีมงาน'):null);
    if(view==='incidents'&&(key==='title'||key==='message'))return h('span',{class:'pre-line'},row[key]);
    if(key==='platforms')return platformsText(row.platforms); if(key==='resolvedAt'&&!row.resolvedAt)return 'ยังเปิดอยู่';
    if(key==='incidentAction')return row.resolvedAt?'—':button('อัปเดต / ปิดประกาศ',()=>openIncident(row));
@@ -150,6 +151,7 @@ function render() { if(!session)return renderLogin();const focusedSearch=documen
  if(refreshReset)content.append(h('p',{class:'notice',role:'status'},'อัปเดตข้อมูลแล้ว · แสดงหน้าแรกเพื่อไม่รวมรายการจากคนละรอบข้อมูล'));
  if(pending&&!selected)content.append(h('p',{class:'notice'},pending.kind==='DELETE'?'มีคำขอลบบัญชีที่ยังยืนยันผลไม่ได้ ตรวจคำขอเดิมก่อนทำรายการใหม่':'มีคำขอเปลี่ยนสิทธิ์ที่ยังยืนยันผลไม่ได้ ตรวจคำขอเดิมก่อนทำรายการใหม่'),button('ตรวจผลคำขอเดิม',retryPending,'primary',{disabled:busy}));
  if(!['overview','incidents'].includes(view))content.append(form);
+ if(view==='incidents'&&page.signals)content.append(signalsPanel(page.signals));
  if(view==='incidents')content.append(h('p',{class:'notice'},'ประกาศที่ยังเปิดอยู่จะแสดงเป็นแถบแจ้งบนหน้าแรกของแอปให้ลูกค้าทุกคนเห็น เมื่อเปิดหรือรีเฟรชหน้าแรก · ห้ามใส่อีเมล ชื่อ หรือข้อมูลของลูกค้าในประกาศ'),
    session.role==='OWNER'?button('สร้างประกาศใหม่',()=>openIncident(),'primary',{disabled:busy||!!pending}):h('p',{class:'notice'},'บัญชีผู้ดูแลนี้ดูประกาศได้อย่างเดียว'));
  if(view==='support'&&page.bot){const bot=page.bot;const configured=bot.provider!=='off';
@@ -236,9 +238,22 @@ function renderDrawer() { const active=trialActive(selected.trial); const viewer
  drawer.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();if(e.key==='Tab'){const focusable=[...drawer.querySelectorAll('button,input,select,textarea')].filter(n=>!n.disabled);const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
 }
 // A create keeps one browser-made id until the server confirms, so pressing save again replays instead of posting twice.
-function openIncident(row) { if(busy||csvBusy||pending||editing||session.role!=='OWNER')return;
+// Sentry areas with errors in the last window. Dot sees only the area label;
+// the issue titles and links here are for administrators.
+function signalsPanel(snapshot) {
+ if(!snapshot.configured)return h('section',{class:'signals'},h('h2',{},'สัญญาณอัตโนมัติจาก Sentry'),
+   h('p',{class:'notice'},'ยังไม่ได้ตั้งค่า SENTRY_SIGNALS_TOKEN บนเซิร์ฟเวอร์ Dot จึงยังไม่รู้ข้อผิดพลาดของระบบโดยอัตโนมัติ'));
+ const rows=snapshot.signals.map(s=>h('div',{class:'signal'},h('div',{},h('strong',{},s.label),h('div',{class:'muted'},`พบล่าสุด ${when(s.lastSeen)} · ${s.issues.length} ปัญหาใน Sentry`),
+   h('ul',{},s.issues.map(i=>h('li',{},i.permalink?h('a',{href:i.permalink,target:'_blank',rel:'noopener noreferrer'},`${i.shortId} · ${i.title}`):`${i.shortId} · ${i.title}`)))),
+   session.role==='OWNER'?button('สร้างประกาศจากสัญญาณนี้',()=>openIncident(null,{title:`${s.label} มีปัญหาชั่วคราว`.slice(0,80),platforms:s.platform?[s.platform]:[]}),'',{disabled:busy||!!pending}):null));
+ return h('section',{class:'signals'},h('h2',{},'สัญญาณอัตโนมัติจาก Sentry'),
+   h('p',{class:'notice'},snapshot.failed?'อ่านข้อมูลจาก Sentry ไม่สำเร็จ ตรวจ token และสิทธิ์ event:read':
+     rows.length?'Dot ใช้ชื่อส่วนที่มีปัญหาเพื่อแจ้งลูกค้าว่าระบบตรวจพบข้อผิดพลาด (ไม่ส่งรายละเอียด error) ยืนยันกับลูกค้าด้วยการสร้างประกาศ':
+     'ไม่พบข้อผิดพลาดใหม่ในช่วงล่าสุด'),...rows);
+}
+function openIncident(row, draft) { if(busy||csvBusy||pending||editing||session.role!=='OWNER')return;
  editing=row?{action:'UPDATE',id:row.id,expectedVersion:row.version,title:row.title,message:row.message,platforms:[...row.platforms],stage:row.stage}
-   :{action:'CREATE',id:crypto.randomUUID(),title:'',message:'',platforms:[],stage:'INVESTIGATING'};
+   :{action:'CREATE',id:crypto.randomUUID(),title:draft?.title??'',message:'',platforms:draft?.platforms??[],stage:'INVESTIGATING'};
  reviewing=false;error='';success='';render(); }
 function closeIncident() { if(busy)return; editing=null;reviewing=false;error='';render(); }
 const incidentReady = () => { const t=editing.title.trim(),m=editing.message.trim(); return t.length>=3&&t.length<=80&&!/[\r\n]/.test(t)&&m.length>=3&&m.length<=500; };
@@ -294,7 +309,7 @@ function paintChat() { if(!chat||!chatNodes)return;const {log,status:statusNode,
  log.replaceChildren(...(chat.hasEarlier?[h('p',{class:'muted'},'แสดง 200 ข้อความล่าสุด')]:[]),...chat.messages.map(m=>h('div',{class:`bubble ${m.sender==='TEAM'?'team':m.sender==='BOT'?'bot':'member'}`},
    h('div',{class:'pre-line'},m.body),h('div',{class:'bubble-meta'},`${m.sender==='TEAM'?(m.byYou?'คุณ':'ทีมงาน'):m.sender==='BOT'?'Dot (AI)':'ลูกค้า'} · ${when(m.createdAt)}`))));
  if(atBottom)log.scrollTop=log.scrollHeight;
- statusNode.textContent=`สถานะ: ${translate(chat.thread.status)}${chat.member?` · แพ็กเกจที่ซื้อ ${translate(chat.member.paidPlan)}`:''} · อัปเดตทุก 10 วินาทีขณะเปิดแชท`;
+ statusNode.textContent=`สถานะ: ${translate(chat.thread.status)}${chat.thread.teamRequested?' · ลูกค้าขอคุยกับทีมงาน':''}${chat.member?` · แพ็กเกจที่ซื้อ ${translate(chat.member.paidPlan)}`:''} · อัปเดตทุก 10 วินาทีขณะเปิดแชท`;
  errorNode.replaceChildren(...(chat.error?[h('p',{class:'error',role:'alert'},chat.error)]:[]));
  reply.disabled=chat.sending;send.disabled=chat.sending||!chat.draft.trim();
  send.textContent=chat.sending?'กำลังส่ง…':chat.outgoing?'ส่งอีกครั้ง':'ส่งคำตอบ';
@@ -314,7 +329,7 @@ function renderChatDrawer() { const member=chat.member;const name=member?.displa
  chatNodes={log,status:statusNode,error:errorNode,send,close,reply,botToggle};
  drawer.append(h('span',{class:'label'},'สมาชิก'),h('div',{class:'identity'},name,member?.email&&member.email!==name?h('div',{class:'member-email'},member.email):null),statusNode,
    log,h('label',{class:'chat-reply'},h('span',{class:'label'},'ตอบลูกค้า'),reply),errorNode,
-   h('p',{class:'notice'},'ปิดเรื่องเมื่อแก้ปัญหาแล้ว ถ้าลูกค้าส่งข้อความใหม่ แชทจะกลับมารอทีมงานตอบเอง · เมื่อทีมงานตอบ Dot จะหยุดตอบแชทนี้จนกว่าจะปิดเรื่อง'),
+   h('p',{class:'notice'},'ปิดเรื่องเมื่อแก้ปัญหาแล้ว ถ้าลูกค้าส่งข้อความใหม่ แชทจะกลับมาเอง · Dot ยังช่วยตอบต่อหลังทีมงานตอบ ถ้าต้องการคุยเองให้ปิด Dot ในแชทนี้'),
    botToggle,h('div',{class:'drawer-actions'},close,send));
  const backdrop=h('div',{class:'drawer-backdrop',onclick:closeChat}); app.append(backdrop,drawer);
  paintChat();log.scrollTop=log.scrollHeight;reply.focus();
@@ -326,7 +341,7 @@ async function submitReply(){ if(!chat||chat.sending)return;const body=chat.draf
  try{const r=await api('support/reply',{userId:current.userId,id:current.outgoing.id,body});if(generation!==epoch||chat!==current)return;
    current.outgoing=null;current.draft='';chatNodes.reply.value='';
    if(!current.messages.some(m=>m.id===r.message.id))current.messages=[...current.messages,r.message];
-   current.thread={...current.thread,status:'WAITING_MEMBER',lastSender:'TEAM',lastMessageId:r.message.id,lastMessageAt:r.message.createdAt,botEnabled:false};
+   current.thread={...current.thread,status:'WAITING_MEMBER',lastSender:'TEAM',lastMessageId:r.message.id,lastMessageAt:r.message.createdAt,teamRequested:false};
  }catch(e){if(generation===epoch&&chat===current)current.error=e.message;}
  finally{if(chat===current){current.sending=false;paintChat();if(!current.error){chatNodes.log.scrollTop=chatNodes.log.scrollHeight;chatNodes.reply.focus();}}} }
 async function closeThread(){ if(!chat||chat.sending)return;const current=chat;const generation=epoch;let changed=false;current.sending=true;current.error='';paintChat();

@@ -90,14 +90,20 @@ describe.skipIf(!databaseUrl)('support chat in PostgreSQL', () => {
     const reply = await store.replyAsBot({ userId, id: randomUUID(), body: 'ตอบข้อสอง', handoff: false, triggerMessageId: second.id });
     expect(reply).toMatchObject({ sender: 'BOT', authorId: null });
     expect(await store.countSince({ userId, sender: 'BOT', since: new Date(time.getTime() - 86400000) })).toBe(1);
-    expect((await store.readThread(userId))!.thread).toMatchObject({ status: 'WAITING_MEMBER', lastSender: 'BOT', botEnabled: true });
+    expect((await store.readThread(userId))!.thread).toMatchObject({ status: 'WAITING_MEMBER', lastSender: 'BOT', botEnabled: true, teamRequested: false });
     const third = await store.postFromMember({ userId, id: randomUUID(), body: 'ขอคนจริง' });
-    expect(await store.requestTeam(userId)).toMatchObject({ status: 'WAITING_TEAM', botEnabled: false });
-    expect(await store.replyAsBot({ userId, id: randomUUID(), body: 'ไม่ควรตอบ', handoff: false, triggerMessageId: third.id })).toBeNull();
-    expect((await store.setBotEnabled({ userId, enabled: true })).botEnabled).toBe(true);
+    expect(await store.requestTeam(userId)).toMatchObject({ status: 'WAITING_TEAM', botEnabled: true, teamRequested: true });
+    // Dot keeps helping, and the chat keeps waiting for a person.
+    expect(await store.replyAsBot({ userId, id: randomUUID(), body: 'ระหว่างรอทีมงาน', handoff: false, triggerMessageId: third.id }))
+      .toMatchObject({ sender: 'BOT' });
+    expect((await store.readThread(userId))!.thread).toMatchObject({ status: 'WAITING_TEAM', teamRequested: true });
     const team = await store.replyAsTeam({ userId, id: randomUUID(), actorId: 'fixture-owner', body: 'ทีมงานตอบค่ะ' });
-    expect((await store.readThread(userId))!.thread.botEnabled).toBe(false);
-    expect(await store.close({ userId, lastMessageId: team.message.id })).toMatchObject({ status: 'CLOSED', botEnabled: true });
+    expect((await store.readThread(userId))!.thread).toMatchObject({ status: 'WAITING_MEMBER', teamRequested: false, botEnabled: true });
+    expect((await store.setBotEnabled({ userId, enabled: false })).botEnabled).toBe(false);
+    const fourth = await store.postFromMember({ userId, id: randomUUID(), body: 'คุยกับคนต่อ' });
+    expect(await store.replyAsBot({ userId, id: randomUUID(), body: 'ไม่ควรตอบ', handoff: false, triggerMessageId: fourth.id })).toBeNull();
+    expect(await store.close({ userId, lastMessageId: fourth.id })).toMatchObject({ status: 'CLOSED', botEnabled: true, teamRequested: false });
+    void team;
     await expect(store.requestTeam(`missing-${randomUUID()}`)).rejects.toThrow('SUPPORT_THREAD_NOT_FOUND');
   });
   it('keeps Dot off until an owner saves the global switch', async () => {

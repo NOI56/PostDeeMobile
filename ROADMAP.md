@@ -37,15 +37,18 @@ grounded answer, with an administrator able to step in.
    [phase 2 plan](docs/superpowers/plans/2026-10-28-support-chat-room.md).
    Follow-ups: tapping the reply push should open the chat (today it opens the
    app), and the privacy policy should mention stored support messages.
-3. **Dot, the AI support helper (built, local candidate).** Answers first from
-   open notices, plan facts and the member's own recent publish results;
-   hands off when unsure, on money topics or on request; never acts on the
-   account; labeled as AI; 20 replies per member per day; switched per
-   thread and globally (off by default). Before launch: update the privacy
+3. **Dot, the AI support helper (built, local candidate).** Answers most
+   chats from open notices, recent Sentry errors by area, plan facts and the
+   member's own recent publish results; flags the chat for a person on money
+   topics, unexplained account problems or on request, and keeps helping;
+   never acts on the account; labeled as AI; 20 replies per member per day;
+   switched per thread and globally (off by default). The admin status tab
+   shows Sentry signals and can draft a notice from one. Before launch: update the privacy
    policy (chat text goes to OpenAI) and test answer quality on Staging. See
    the [Dot plan](docs/superpowers/plans/2026-10-28-support-bot-dot.md).
-4. **Automatic signals (later).** Publish-failure spikes suggest a draft notice
-   for an owner to confirm; administrators get alerted to new chats.
+4. **Automatic signals (partly done).** Sentry signals and draft-a-notice are
+   built with phase 3. Still later: publish-failure-rate signals from the
+   database, and alerting administrators to new or team-requested chats.
 
 ## Shop-link limits by plan (2026-10-26, API on Staging)
 

@@ -7,10 +7,13 @@ import { scrubSupportText, type SupportBotContext } from './supportBotKnowledge.
 import type { SupportBotAnswer, SupportBotProvider } from './supportBotProvider.js';
 
 // Dot replies allowed per member per rolling 24 hours; after that the thread
-// goes to the team without calling the model, which also caps cost.
+// goes to the team once, without calling the model, which also caps cost.
 export const maxBotRepliesPerDay = 20;
 export const botConversationTurns = 20;
-export const botHandoffMessage = 'ส่งเรื่องต่อให้ทีมงาน PostDee แล้วค่ะ ทีมงานจะตอบในแชทนี้ และแจ้งเตือนเมื่อมีคำตอบ';
+export const botHandoffMessage = 'ขออภัยค่ะ ตอนนี้ Dot ตอบเรื่องนี้ไม่ได้ ส่งเรื่องให้ทีมงาน PostDee แล้ว '
+  + 'ทีมงานจะตอบในแชทนี้โดยเร็วที่สุด และแจ้งเตือนเมื่อมีคำตอบค่ะ';
+export const botLimitMessage = 'วันนี้ Dot ตอบครบจำนวนแล้วค่ะ ส่งเรื่องให้ทีมงาน PostDee แล้ว '
+  + 'ทีมงานจะตอบในแชทนี้โดยเร็วที่สุด และแจ้งเตือนเมื่อมีคำตอบค่ะ';
 
 export type SupportBotSettings = { enabled: boolean; updatedBy: string | null; updatedAt: string | null };
 export type SupportBotSettingsStore = {
@@ -72,7 +75,7 @@ export type SupportBot = { respond: (member: AuthUser) => Promise<void> };
 export const createSupportBot = ({ store, settings, provider, loadContext, runWithOwner, now = () => new Date(),
   newId = randomUUID }: {
   store: SupportChatStore; settings: SupportBotSettingsStore; provider?: SupportBotProvider;
-  loadContext: (member: AuthUser) => Promise<SupportBotContext>;
+  loadContext: (member: AuthUser) => Promise<Omit<SupportBotContext, 'teamAlreadyNotified'>>;
   runWithOwner?: RunWithActiveOwner; now?: () => Date; newId?: () => string;
 }): SupportBot => ({
   respond: async member => {
@@ -83,12 +86,15 @@ export const createSupportBot = ({ store, settings, provider, loadContext, runWi
     let answer: SupportBotAnswer;
     const since = new Date(now().getTime() - 86400000);
     if (await store.countSince({ userId: member.id, sender: 'BOT', since }) >= maxBotRepliesPerDay) {
-      answer = { reply: botHandoffMessage, handoff: true };
+      // Tell the member once; later messages simply wait for the team.
+      if (thread.teamRequested) return;
+      answer = { reply: botLimitMessage, handoff: true };
     } else {
       try {
         const conversation = read.messages.slice(-botConversationTurns)
           .map(message => ({ sender: message.sender, body: scrubSupportText(message.body) }));
-        answer = normalizeBotAnswer(await provider.answer({ conversation, context: await loadContext(member) }));
+        const context = { ...await loadContext(member), teamAlreadyNotified: thread.teamRequested };
+        answer = normalizeBotAnswer(await provider.answer({ conversation, context }));
       } catch {
         answer = { reply: botHandoffMessage, handoff: true };
       }

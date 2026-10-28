@@ -8,9 +8,10 @@ was merged when this was cut. Not merged or deployed. Phase 3 of the support cha
 
 ## Goal
 
-Members get an immediate, grounded first answer in the support chat, and a
-person takes over whenever Dot is unsure, the topic is money, or the member
-asks for one.
+Members get an immediate, grounded answer in the support chat. The team is
+currently one person, so Dot answers most chats itself, including what is
+broken right now (service notices and Sentry signals), and flags a chat for
+a person only when someone has to act.
 
 ## Safety and security plan
 
@@ -27,10 +28,20 @@ asks for one.
   sent.
 - **Scrubbing.** Emails, phone numbers and long digit runs in the conversation
   are replaced before the request; only the last 20 messages are sent.
-- **Handoff.** Dot sets `handoff` for payments/refunds, unexplained problems,
-  upset members, explicit requests for a person, or uncertainty. A handoff, a
-  team reply, or the member's "ขอคุยกับทีมงาน" turns Dot off for that thread
-  until an administrator closes it (or switches it back on).
+- **Handoff.** Dot sets `handoff` only when a person must act: an explicit
+  request, a payment/refund/billing problem that needs the account checked,
+  or an account problem nothing in its data explains. It still gives general
+  steps. A handoff or the member's "ขอคุยกับทีมงาน" sets `teamRequested`
+  (thread stays `WAITING_TEAM`); Dot keeps answering and is told the team
+  already knows. A team reply clears the flag; only the admin per-thread
+  switch silences Dot.
+- **Sentry signals.** With `SENTRY_SIGNALS_TOKEN` (read-only, `event:read`),
+  one issue search per area over the safe Sentry tags, cached 2 minutes,
+  5-second timeout. Dot sees only a fixed Thai area label and last-seen time
+  and must say errors were detected, without naming a cause, a fix time or
+  that someone is working on it unless a notice says so. Issue titles and
+  links are shown only to administrators. The token never leaves the server
+  and is never logged.
 - **Failure and cost bounds.** A model error, timeout (20 s) or malformed reply
   becomes a fixed handoff message. At most 20 Dot replies per member per
   rolling 24 hours; after that the thread goes straight to the team without a
@@ -55,12 +66,15 @@ asks for one.
   conditional bot replies, member handoff, member route
   `POST /support/chat/handoff`, admin `support/bot-settings` (owner) and
   `support/thread-bot`, config `SUPPORT_BOT_PROVIDER` and
-  `OPENAI_SUPPORT_BOT_MODEL` (default `gpt-4o-mini`).
+  `OPENAI_SUPPORT_BOT_MODEL` (default `gpt-4o-mini`), Sentry signal source
+  (`SENTRY_SIGNALS_TOKEN`, optional `SENTRY_SIGNALS_PROJECT_IDS`,
+  `SENTRY_SIGNALS_WINDOW_MINUTES`).
 - Database: migration `20261028030000_support_bot` (additive: `botEnabled`
-  column, `SupportBotSetting` single-row table, `BOT` allowed in the sender
+  and `teamRequested` columns, `SupportBotSetting` single-row table, `BOT` allowed in the sender
   checks).
 - Admin console: Dot card with on/off in the chat tab, Dot bubbles, per-chat
-  switch.
+  switch, team-requested marker; Sentry signals with draft-a-notice in the
+  status tab.
 - Mobile: Dot bubbles, intro note while Dot is on, "Dot กำลังพิมพ์…",
   "ขอคุยกับทีมงาน" button.
 
@@ -78,5 +92,6 @@ asks for one.
 
 ## Not verified yet
 
-- A real OpenAI call (only mocked HTTP responses were tested), answer quality
-  in Thai, Staging, and the app on a device.
+- A real OpenAI call and a real Sentry search (only mocked HTTP responses were
+  tested; the Sentry tag-filter queries follow Sentry's documented search
+  syntax), answer quality in Thai, Staging, and the app on a device.

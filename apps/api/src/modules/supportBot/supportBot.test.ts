@@ -2,7 +2,7 @@ import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { AuthUser } from '../auth/authTypes.js';
 import { createMemorySupportChatStore } from '../supportChat/supportChat.js';
 import {
-  botHandoffMessage, cacheSupportBotSettings, createMemorySupportBotSettingsStore, createSupportBot,
+  botHandoffMessage, botLimitMessage, cacheSupportBotSettings, createMemorySupportBotSettingsStore, createSupportBot,
   createSupportBotScheduler, maxBotRepliesPerDay, normalizeBotAnswer
 } from './supportBot.js';
 import { scrubSupportText, supportBotFaq, supportBotSystemPrompt, type SupportBotContext } from './supportBotKnowledge.js';
@@ -11,7 +11,8 @@ import { createOpenAiSupportBotProvider, type SupportBotProvider } from './suppo
 const member: AuthUser = { id: 'member', provider: 'mock' };
 const id = (n: number) => `7d1f9c3a-2b4e-4c8a-9f10-${String(n).padStart(12, '0')}`;
 const context: SupportBotContext = { plan: 'STARTER', incidents: [{ title: 'TikTok ส่งช้า', message: 'โพสต์ที่ตั้งเวลาไว้จะส่งต่ออัตโนมัติ',
-  platforms: ['TIKTOK'], stage: 'IDENTIFIED' }], recentPosts: [] };
+  platforms: ['TIKTOK'], stage: 'IDENTIFIED' }], automaticSignals: [{ area: 'การส่งโพสต์ไป TikTok', lastSeen: '2026-10-28T02:55:00.000Z' }],
+  recentPosts: [] };
 const setup = async ({ enabled = true, answer = vi.fn<SupportBotProvider['answer']>(async () => ({ reply: 'ตอนนี้ TikTok ส่งช้าค่ะ', handoff: false })) }:
   { enabled?: boolean; answer?: Mock<SupportBotProvider['answer']> } = {}) => {
   let second = 0;
@@ -39,6 +40,9 @@ describe('Dot data protection', () => {
     const prompt = supportBotSystemPrompt(context);
     expect(prompt).toContain('TikTok ส่งช้า');
     expect(prompt).toContain('"memberPlan":"STARTER"');
+    expect(prompt).toContain('"automaticSignals":[{"area":"การส่งโพสต์ไป TikTok"');
+    expect(prompt).toContain('"teamAlreadyNotified":false');
+    expect(prompt).not.toMatch(/sentry/i);
   });
   it('fits replies to the chat limit and turns an empty reply into a handoff', () => {
     expect(normalizeBotAnswer({ reply: '  ok\u0000\n\n\n\nok  ', handoff: false })).toEqual({ reply: 'ok\n\nok', handoff: false });
@@ -59,35 +63,43 @@ describe('Dot replies', () => {
     const { store, bot, answer } = await setup();
     await store.postFromMember({ userId: 'member', id: id(1), body: 'โพสต์ไม่ขึ้น โทร 0812345678 ได้' });
     await bot.respond(member);
-    expect(answer).toHaveBeenCalledWith({ context, conversation: [{ sender: 'MEMBER', body: 'โพสต์ไม่ขึ้น โทร [เบอร์โทร] ได้' }] });
+    expect(answer).toHaveBeenCalledWith({ context: { ...context, teamAlreadyNotified: false },
+      conversation: [{ sender: 'MEMBER', body: 'โพสต์ไม่ขึ้น โทร [เบอร์โทร] ได้' }] });
     const read = (await store.readThread('member'))!;
     expect(read.messages.map(m => [m.sender, m.body])).toEqual([['MEMBER', 'โพสต์ไม่ขึ้น โทร 0812345678 ได้'], ['BOT', 'ตอนนี้ TikTok ส่งช้าค่ะ']]);
-    expect(read.thread).toMatchObject({ status: 'WAITING_MEMBER', lastSender: 'BOT', botEnabled: true });
+    expect(read.thread).toMatchObject({ status: 'WAITING_MEMBER', lastSender: 'BOT', botEnabled: true, teamRequested: false });
     await bot.respond(member);
     expect(answer).toHaveBeenCalledTimes(1);
   });
-  it('hands off to the team, then stays quiet until the thread is closed', async () => {
-    const { store, bot, answer } = await setup({ answer: vi.fn<SupportBotProvider['answer']>(async () => ({ reply: 'ส่งต่อให้ทีมงานแล้วค่ะ', handoff: true })) });
+  it('flags the team on a handoff and keeps helping while the chat waits for a person', async () => {
+    const answer = vi.fn<SupportBotProvider['answer']>(async () => ({ reply: 'ส่งต่อให้ทีมงานแล้วค่ะ', handoff: true }));
+    const { store, bot } = await setup({ answer });
     await store.postFromMember({ userId: 'member', id: id(1), body: 'ขอคืนเงิน' });
     await bot.respond(member);
-    expect((await store.readThread('member'))!.thread).toMatchObject({ status: 'WAITING_TEAM', botEnabled: false });
-    await store.postFromMember({ userId: 'member', id: id(2), body: 'ยังรออยู่' });
+    expect((await store.readThread('member'))!.thread).toMatchObject({ status: 'WAITING_TEAM', botEnabled: true, teamRequested: true });
+    answer.mockResolvedValueOnce({ reply: 'ระหว่างรอ ตรวจในแอปได้ค่ะ', handoff: false });
+    await store.postFromMember({ userId: 'member', id: id(2), body: 'ระหว่างรอทำอะไรได้บ้าง' });
     await bot.respond(member);
-    expect(answer).toHaveBeenCalledTimes(1);
-    const closed = await store.close({ userId: 'member', lastMessageId: id(2) });
-    expect(closed.botEnabled).toBe(true);
+    expect(answer).toHaveBeenCalledTimes(2);
+    expect(answer.mock.calls[1][0].context.teamAlreadyNotified).toBe(true);
+    // Dot answered, but the chat still waits for a person.
+    expect((await store.readThread('member'))!.thread).toMatchObject({ status: 'WAITING_TEAM', lastSender: 'BOT', teamRequested: true });
+    const closed = await store.close({ userId: 'member', lastMessageId: (await store.readThread('member'))!.thread.lastMessageId });
+    expect(closed).toMatchObject({ botEnabled: true, teamRequested: false });
   });
-  it('stops after a team reply and when the member asks for a person', async () => {
+  it('keeps helping after a team reply; only the per-chat switch silences Dot', async () => {
     const { store, bot, answer } = await setup();
     await store.postFromMember({ userId: 'member', id: id(1), body: 'สวัสดี' });
+    expect(await store.requestTeam('member')).toMatchObject({ status: 'WAITING_TEAM', botEnabled: true, teamRequested: true });
     await store.replyAsTeam({ userId: 'member', id: id(2), actorId: 'owner', body: 'ทีมงานดูให้ค่ะ' });
-    await store.postFromMember({ userId: 'member', id: id(3), body: 'ขอบคุณ' });
-    await bot.respond(member);
-    expect(answer).not.toHaveBeenCalled();
-    await store.setBotEnabled({ userId: 'member', enabled: true });
+    expect((await store.readThread('member'))!.thread).toMatchObject({ status: 'WAITING_MEMBER', teamRequested: false, botEnabled: true });
+    await store.postFromMember({ userId: 'member', id: id(3), body: 'อีกเรื่องค่ะ' });
     await bot.respond(member);
     expect(answer).toHaveBeenCalledTimes(1);
-    expect(await store.requestTeam('member')).toMatchObject({ status: 'WAITING_TEAM', botEnabled: false });
+    await store.setBotEnabled({ userId: 'member', enabled: false });
+    await store.postFromMember({ userId: 'member', id: id(4), body: 'อีกครั้ง' });
+    await bot.respond(member);
+    expect(answer).toHaveBeenCalledTimes(1);
   });
   it('hands off with a fixed message when the model fails or the daily cap is reached', async () => {
     const failing = await setup({ answer: vi.fn<SupportBotProvider['answer']>(async () => { throw new Error('timeout'); }) });
@@ -103,7 +115,12 @@ describe('Dot replies', () => {
     await capped.store.postFromMember({ userId: 'member', id: id(999), body: 'อีกคำถาม' });
     await capped.bot.respond(member);
     expect(capped.answer).toHaveBeenCalledTimes(maxBotRepliesPerDay);
-    expect((await capped.store.readThread('member'))!.thread).toMatchObject({ status: 'WAITING_TEAM', botEnabled: false });
+    expect((await capped.store.readThread('member'))!.messages.at(-1)).toMatchObject({ sender: 'BOT', body: botLimitMessage });
+    expect((await capped.store.readThread('member'))!.thread).toMatchObject({ status: 'WAITING_TEAM', teamRequested: true });
+    // The limit message is sent once; later messages just wait for the team.
+    await capped.store.postFromMember({ userId: 'member', id: id(1000), body: 'ยังอยู่ไหม' });
+    await capped.bot.respond(member);
+    expect((await capped.store.readThread('member'))!.messages.at(-1)).toMatchObject({ sender: 'MEMBER' });
   });
   it('drops a reply when the member wrote again meanwhile, and the scheduler answers the newest message', async () => {
     let release!: () => void;

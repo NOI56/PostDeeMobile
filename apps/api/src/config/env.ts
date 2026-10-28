@@ -1,5 +1,6 @@
 import { readAdminConsoleConfig, type AdminConsoleConfig } from '../modules/admin/adminConfig.js';
 import { readSentryConfig, type SentryMonitoringConfig } from '../monitoring/sentryConfig.js';
+import { readSentrySignalsConfig, type SentrySignalsConfig } from '../monitoring/sentrySignals.js';
 type EnvSource = Record<string, string | undefined>;
 export type TemplateStoreKind = 'memory' | 'prisma';
 export type PostStoreKind = 'memory' | 'prisma';
@@ -25,6 +26,8 @@ export type AppleAppStoreEnvironmentKind = 'sandbox' | 'production';
 
 export type ServerConfig = {
   sentry?: SentryMonitoringConfig;
+  // Read access to recent Sentry issues for Dot and the admin console.
+  sentrySignals?: SentrySignalsConfig;
   adminConsole?: AdminConsoleConfig;
   trialAccessEnabled?: boolean;
   port: number;
@@ -517,8 +520,10 @@ const assertPostPeerLegacyRecoveryConfig = (config: ServerConfig) => {
 
 export const readServerConfig = (env: EnvSource = process.env): ServerConfig => {
   const sentry = readSentryConfig(env);
+  const sentrySignals = readSentrySignalsConfig(env);
   const config: ServerConfig = {
     ...(sentry ? { sentry } : {}),
+    ...(sentrySignals ? { sentrySignals } : {}),
     adminConsole: readAdminConsoleConfig(env),
     trialAccessEnabled: env.TRIAL_ACCESS_ENABLED === 'true',
     port: readPort(env),

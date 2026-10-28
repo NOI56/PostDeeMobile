@@ -15,9 +15,12 @@ Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
 ## Dot, the AI support helper (2026-10-28, local candidate)
 
-Dot answers support chat questions first, from open service notices, plan
-facts and the member's recent post results, and hands the chat to the team
-when it is unsure, the topic is money, or the member taps "ขอคุยกับทีมงาน".
+Dot answers most support chat questions, from open service notices, errors
+Sentry saw in the last 30 minutes (by area, never error text), plan facts and
+the member's recent post results. When a person is needed (money, an account
+problem it cannot explain, or the member taps "ขอคุยกับทีมงาน") it flags the
+chat for the team and keeps helping. Set `SENTRY_SIGNALS_TOKEN` (Sentry auth
+token with `event:read`) so Dot and the admin status tab can see Sentry.
 It is off until the server sets `SUPPORT_BOT_PROVIDER=openai` and an owner
 turns it on in **แชทช่วยเหลือ** in the admin console. Update the privacy
 policy first: chat text is sent to OpenAI (never email, phone or name).

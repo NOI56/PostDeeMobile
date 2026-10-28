@@ -1381,6 +1381,7 @@ class SupportChatResult {
     this.cursor,
     this.botAvailable = false,
     this.botEnabled = true,
+    this.teamRequested = false,
   });
 
   /// `WAITING_TEAM`, `WAITING_MEMBER` or `CLOSED`; null before the first message.
@@ -1393,8 +1394,11 @@ class SupportChatResult {
   /// Dot is switched on for the app right now.
   final bool botAvailable;
 
-  /// Dot may answer this conversation; false after a handoff or a team reply.
+  /// Dot may answer this conversation; only an administrator switches it off.
   final bool botEnabled;
+
+  /// The member or Dot asked the team to look at this chat.
+  final bool teamRequested;
 
   bool get botActive => botAvailable && botEnabled;
 }
@@ -3506,6 +3510,7 @@ class PostDeeApiClient {
           : null,
       botAvailable: bot is Map<String, Object?> && bot['available'] == true,
       botEnabled: !(thread is Map<String, Object?> && thread['botEnabled'] == false),
+      teamRequested: thread is Map<String, Object?> && thread['teamRequested'] == true,
       messages: messages
           .map(SupportMessageResult.tryParse)
           .whereType<SupportMessageResult>()
@@ -3514,7 +3519,8 @@ class PostDeeApiClient {
     );
   }
 
-  /// Asks for a person instead of Dot; the team answers in the same chat.
+  /// Asks the team to look at the chat; they answer in the same chat and Dot
+  /// keeps helping meanwhile.
   Future<void> requestSupportTeam() async {
     final response = await _postJson('/support/chat/handoff', const {});
     if (response['status'] != 'ok') {

@@ -17,11 +17,13 @@ import {
 import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 import type { SupportBotProviderKind } from '../../config/env.js';
 import type { SupportBotSettingsStore } from '../supportBot/supportBot.js';
+import type { SentrySignalSource } from '../../monitoring/sentrySignals.js';
 
 type Options = { config?: AdminConsoleConfig; authenticate: RequestHandler; trials?: TrialAccessStore;
   data?: AdminDataSource; now?: () => Date; runWithTarget?: RunWithActiveOwner; incidents?: ServiceIncidentStore;
   support?: SupportChatStore; notifySupportReply?: (userId: string) => Promise<void>;
   supportBot?: { provider: SupportBotProviderKind; settings: SupportBotSettingsStore };
+  signals?: SentrySignalSource;
   accountDeletions?: AdminAccountDeletionStore; deleteAccount?: (userId: string) => Promise<AccountDeletionOutcome>;
   testPreviewToken?: string; testOnly?: boolean };
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -94,8 +96,10 @@ export const registerAdminConsole = (app: Express, options: Options) => {
           throw new AdminError('ADMIN_FILTER_INVALID', 400);
         }
         if (!options.incidents) throw new AdminError('ADMIN_DATA_UNAVAILABLE', 503);
-        const result = await options.incidents.list({ cursor: b.cursor as string | undefined });
-        res.json({ ...result, asOf: now().toISOString(), checkedAt: now().toISOString() });
+        const [result, signals] = await Promise.all([options.incidents.list({ cursor: b.cursor as string | undefined }),
+          options.signals?.read().catch(() => ({ configured: true, checkedAt: null, failed: true, signals: [] }))]);
+        res.json({ ...result, signals: signals ?? { configured: false, checkedAt: null, failed: false, signals: [] },
+          asOf: now().toISOString(), checkedAt: now().toISOString() });
         return;
       }
       if (b?.view === 'support') {

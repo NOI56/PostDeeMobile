@@ -4,30 +4,47 @@ PostDee backend API reference.
 
 ## Dot, the AI support helper (2026-10-28, phase 3 local candidate)
 
-Dot answers support chat messages first when both switches are on: the
+Dot answers most support chat messages (the team may be one person) when
+both switches are on: the
 server's `SUPPORT_BOT_PROVIDER` (`off` default, `mock` for local only and
 refused in production, or `openai`, which reuses `OPENAI_API_KEY` and
 `OPENAI_SUPPORT_BOT_MODEL`, default `gpt-4o-mini`) and an owner's global
 switch in the admin console (no saved setting = off).
 
-- `GET /support/chat` adds `bot: { available }` and `thread.botEnabled`.
-  Messages may now have `sender: "BOT"`; clients must accept it.
+- `GET /support/chat` adds `bot: { available }`, `thread.botEnabled` and
+  `thread.teamRequested`. Messages may now have `sender: "BOT"`; clients
+  must accept it.
 - `POST /support/chat/messages` is unchanged; Dot's reply is written after
   the response and arrives through polling. Dot answers only the newest
-  member message, sets `WAITING_MEMBER`, or on handoff `WAITING_TEAM` with
-  `botEnabled: false`.
-- `POST /support/chat/handoff` (signed-in member, no body) asks for a person:
-  `200 { status, thread: { status: "WAITING_TEAM", botEnabled: false } }`,
-  `404 SUPPORT_THREAD_NOT_FOUND` before the first message.
-- A team reply turns Dot off for that thread; closing turns it back on.
+  member message and sets `WAITING_MEMBER`. When Dot needs a person it sets
+  `teamRequested`, and the thread then stays `WAITING_TEAM` through Dot's
+  later replies; Dot keeps answering.
+- `POST /support/chat/handoff` (signed-in member, no body) asks the team to
+  look: `200 { status, thread: { status: "WAITING_TEAM", botEnabled: true,
+  teamRequested: true } }`, `404 SUPPORT_THREAD_NOT_FOUND` before the first
+  message. Dot keeps helping meanwhile.
+- A team reply clears `teamRequested` and leaves Dot on; only the admin
+  per-thread switch turns Dot off. Closing clears the flag and turns Dot on.
+- Sentry signals (optional): with `SENTRY_SIGNALS_TOKEN` (a Sentry auth token
+  with `event:read`) next to the existing `SENTRY_DSN`/`SENTRY_ENVIRONMENT`,
+  the API runs one `GET /api/0/organizations/{org}/issues/` search per area
+  (TikTok/YouTube/Instagram/Facebook publishing, scheduler, uploads, AI
+  captions, general 5xx) for unresolved issues seen in the last
+  `SENTRY_SIGNALS_WINDOW_MINUTES` (default 30), cached for 2 minutes. The
+  organization, region and project come from the DSN;
+  `SENTRY_SIGNALS_PROJECT_IDS` can add projects. Dot gets only the fixed
+  Thai area label and last-seen time, never issue titles. `view:
+  "incidents"` adds `signals: { configured, checkedAt, failed, signals[] }`
+  with titles and links for administrators.
 - Admin: `view: "support"` adds `bot: { provider, enabled, updatedAt }`;
   `POST /admin/api/support/bot-settings {enabled}` is owner-only (`409
   ADMIN_SUPPORT_BOT_UNCONFIGURED` when the provider is `off`);
   `POST /admin/api/support/thread-bot {userId, enabled}` is for owners and
   viewers.
 - Limits: 20 Dot replies per member per 24 hours, 500 output tokens, 20 s
-  timeout; any failure becomes a fixed handoff message. Dot receives only
-  open notices, plan facts, the plan and the last five posts' statuses with
+  timeout; any failure becomes a fixed handoff message, and reaching the
+  daily limit posts one fixed message. Dot receives only open notices,
+  Sentry area labels, plan facts, the plan and the last five posts' statuses with
   translated failure reasons, plus the last 20 messages with emails, phone
   numbers and long digit runs removed.
 

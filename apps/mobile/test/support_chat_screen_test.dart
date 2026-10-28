@@ -17,6 +17,7 @@ class _FakeChat {
   var botAvailable = false;
   var botEnabled = true;
   var teamRequests = 0;
+  var teamRequested = false;
 
   SupportMessageResult message(String sender, String body, {String? id}) {
     final result = SupportMessageResult(
@@ -39,12 +40,13 @@ class _FakeChat {
       threadStatus: messages.isEmpty ? null : 'WAITING_TEAM',
       botAvailable: botAvailable,
       botEnabled: botEnabled,
+      teamRequested: teamRequested,
     );
   }
 
   Future<void> requestTeam() async {
     teamRequests++;
-    botEnabled = false;
+    teamRequested = true;
   }
 
   Future<SupportMessageResult> send(
@@ -227,7 +229,7 @@ void main() {
 
     expect(find.text('Dot · ผู้ช่วย AI'), findsOneWidget);
     expect(find.text('ตอบโดย AI · 14:01 น.'), findsOneWidget);
-    expect(find.textContaining('Dot ผู้ช่วย AI จะตอบก่อน'), findsOneWidget);
+    expect(find.textContaining('Dot ผู้ช่วย AI ตอบให้ทันที'), findsOneWidget);
     expect(find.byKey(const ValueKey('support-bot-typing')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('support-chat-handoff')));
@@ -235,7 +237,9 @@ void main() {
     expect(chat.teamRequests, 1);
     expect(find.byKey(const ValueKey('support-chat-handoff')), findsNothing);
     expect(find.byKey(const ValueKey('support-chat-handed-off')), findsOneWidget);
-    expect(find.textContaining('ทีมงาน PostDee จะตอบกลับในแชทนี้'), findsOneWidget);
+    // Dot stays available while the chat waits for the team.
+    expect(find.textContaining('Dot ผู้ช่วย AI ตอบให้ทันที'), findsOneWidget);
+    expect(find.textContaining('ระหว่างนี้ถาม Dot ต่อได้'), findsOneWidget);
   });
 
   testWidgets('shows Dot typing until its reply arrives by polling',
@@ -266,6 +270,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Dot · ผู้ช่วย AI'), findsOneWidget);
     expect(find.byKey(const ValueKey('support-chat-handoff')), findsNothing);
-    expect(find.textContaining('Dot ผู้ช่วย AI จะตอบก่อน'), findsNothing);
+    expect(find.textContaining('Dot ผู้ช่วย AI ตอบให้ทันที'), findsNothing);
   });
 }

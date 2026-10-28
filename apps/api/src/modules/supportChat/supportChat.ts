@@ -2,7 +2,8 @@ import { AdminError } from '../admin/trialAccess.js';
 
 // One continuous support conversation per member, like a shop chat. A member
 // message reopens a closed thread; replies come from the PostDee team or from
-// Dot, the AI helper, which answers first while the thread's bot is enabled.
+// Dot, the AI helper. Dot answers most messages; asking for a person flags the
+// thread for the team without silencing Dot, since the team may be one person.
 export const supportThreadStatuses = ['WAITING_TEAM', 'WAITING_MEMBER', 'CLOSED'] as const;
 export type SupportThreadStatus = typeof supportThreadStatuses[number];
 export type SupportSender = 'MEMBER' | 'TEAM' | 'BOT';
@@ -18,8 +19,11 @@ export type SupportMessage = { id: string; userId: string; sender: SupportSender
   authorId: string | null; body: string; createdAt: string };
 export type SupportThread = { userId: string; status: SupportThreadStatus; lastSender: SupportSender;
   lastMessageId: string; lastPreview: string; lastMessageAt: string; createdAt: string; updatedAt: string;
-  // Dot may answer this thread. A team reply or a handoff turns it off; closing turns it back on.
+  // Dot may answer this thread. Only an administrator's switch turns it off; closing turns it back on.
   botEnabled: boolean;
+  // Someone asked for a person. The thread stays WAITING_TEAM through Dot's
+  // replies until the team answers or closes it.
+  teamRequested: boolean;
   email?: string; displayName?: string | null };
 export type SupportMemberRead = { thread: SupportThread | null; messages: SupportMessage[]; cursor?: string };
 export type SupportThreadPage = { rows: SupportThread[]; nextCursor?: string };
@@ -34,7 +38,7 @@ export type SupportChatStore = {
   // Stores Dot's reply only if `triggerMessageId` is still the newest message
   // and the thread's bot is on; returns null when the conversation moved on.
   replyAsBot: (input: { userId: string; id: string; body: string; handoff: boolean; triggerMessageId: string }) => Promise<SupportMessage | null>;
-  // The member asked for a person: Dot stops and the thread waits for the team.
+  // The member asked for a person: the thread waits for the team; Dot keeps helping.
   requestTeam: (userId: string) => Promise<SupportThread>;
   setBotEnabled: (input: { userId: string; enabled: boolean }) => Promise<SupportThread>;
   countSince: (input: { userId: string; sender: SupportSender; since: Date }) => Promise<number>;
@@ -94,13 +98,13 @@ export const createMemorySupportChatStore = ({ now = () => new Date() }: { now?:
   const threads = new Map<string, SupportThread>();
   const messages = new Map<string, SupportMessage>();
   const threadMessages = (userId: string) => [...messages.values()].filter(m => m.userId === userId).sort(oldestFirst);
-  const append = (message: SupportMessage, status: SupportThreadStatus, botEnabled?: boolean) => {
+  const append = (message: SupportMessage, status: SupportThreadStatus, teamRequested?: boolean) => {
     const previous = threads.get(message.userId);
     messages.set(message.id, message);
     threads.set(message.userId, { userId: message.userId, status, lastSender: message.sender, lastMessageId: message.id,
       lastPreview: supportPreview(message.body), lastMessageAt: message.createdAt,
       createdAt: previous?.createdAt ?? message.createdAt, updatedAt: message.createdAt,
-      botEnabled: botEnabled ?? previous?.botEnabled ?? true });
+      botEnabled: previous?.botEnabled ?? true, teamRequested: teamRequested ?? previous?.teamRequested ?? false });
     return structuredClone(message);
   };
   const update = (userId: string, change: Partial<SupportThread>) => {
@@ -157,15 +161,16 @@ export const createMemorySupportChatStore = ({ now = () => new Date() }: { now?:
       const thread = threads.get(userId);
       if (!thread) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
       if (thread.lastMessageId !== lastMessageId) throw new AdminError('ADMIN_SUPPORT_THREAD_CHANGED');
-      return update(userId, { status: 'CLOSED', botEnabled: true });
+      return update(userId, { status: 'CLOSED', botEnabled: true, teamRequested: false });
     },
     replyAsBot: async ({ userId, id, body, handoff, triggerMessageId }) => {
       const thread = threads.get(userId);
       if (!thread || !thread.botEnabled || thread.lastMessageId !== triggerMessageId || messages.has(id)) return null;
+      const teamRequested = handoff || thread.teamRequested;
       return append({ id, userId, sender: 'BOT', authorId: null, body, createdAt: now().toISOString() },
-        handoff ? 'WAITING_TEAM' : 'WAITING_MEMBER', !handoff);
+        teamRequested ? 'WAITING_TEAM' : 'WAITING_MEMBER', teamRequested);
     },
-    requestTeam: async userId => update(userId, { status: 'WAITING_TEAM', botEnabled: false }),
+    requestTeam: async userId => update(userId, { status: 'WAITING_TEAM', teamRequested: true }),
     setBotEnabled: async ({ userId, enabled }) => {
       if (!threads.has(userId)) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
       return update(userId, { botEnabled: enabled });

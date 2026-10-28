@@ -39,7 +39,8 @@ export const registerSupportChatRoutes = (router: Router, authMiddleware: Reques
       const [read, available] = await Promise.all([store.readForMember(authUser.id, { after }), botAvailable()]);
       response.set('Cache-Control', 'private, no-store');
       response.json({ status: 'ok',
-        thread: read.thread ? { status: read.thread.status, lastMessageAt: read.thread.lastMessageAt, botEnabled: read.thread.botEnabled } : null,
+        thread: read.thread ? { status: read.thread.status, lastMessageAt: read.thread.lastMessageAt,
+          botEnabled: read.thread.botEnabled, teamRequested: read.thread.teamRequested } : null,
         bot: { available },
         messages: read.messages.map(memberMessageView), ...(read.cursor ? { cursor: read.cursor } : {}) });
     } catch (error) { sendError(response, error); }
@@ -64,7 +65,8 @@ export const registerSupportChatRoutes = (router: Router, authMiddleware: Reques
     if (!authUser) { response.status(401).json({ status: 'error', message: 'Authenticated user is required' }); return; }
     try {
       const thread = await store.requestTeam(authUser.id);
-      response.json({ status: 'ok', thread: { status: thread.status, lastMessageAt: thread.lastMessageAt, botEnabled: thread.botEnabled } });
+      response.json({ status: 'ok', thread: { status: thread.status, lastMessageAt: thread.lastMessageAt,
+        botEnabled: thread.botEnabled, teamRequested: thread.teamRequested } });
     } catch (error) { sendError(response, error); }
   });
 };

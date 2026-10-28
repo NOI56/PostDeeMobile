@@ -15,27 +15,28 @@ const mapMessage = (r: MessageRow): SupportMessage => ({ id: r.id, userId: r.use
 const mapThread = (r: ThreadRow): SupportThread => ({ userId: r.userId, status: r.status as SupportThreadStatus,
   lastSender: r.lastSender as SupportSender, lastMessageId: r.lastMessageId, lastPreview: r.lastPreview,
   lastMessageAt: r.lastMessageAt.toISOString(), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
-  botEnabled: r.botEnabled,
+  botEnabled: r.botEnabled, teamRequested: r.teamRequested,
   ...(r.user ? { email: r.user.email, displayName: r.user.displayName } : {}) });
 const afterCursor = (cursor: { time: Date; id: string }): Prisma.SupportMessageWhereInput =>
   ({ OR: [{ createdAt: { gt: cursor.time } }, { createdAt: cursor.time, id: { gt: cursor.id } }] });
+type ThreadChange = { status?: SupportThreadStatus; teamRequested?: boolean };
 const isDuplicateId = (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 
 export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Date = () => new Date()): SupportChatStore => {
   // Writes take the member's active-owner lock, so no chat row lands while the
   // account is being deleted; a racing duplicate id replays the stored message.
   const append = async (message: Omit<SupportMessage, 'createdAt'>, status: SupportThreadStatus,
-    guard: (tx: Prisma.TransactionClient, time: Date) => Promise<void>, botEnabled?: boolean) => {
+    guard: (tx: Prisma.TransactionClient, time: Date) => Promise<ThreadChange | void>, change: ThreadChange = {}) => {
     const expected = { userId: message.userId, sender: message.sender, body: message.body };
     try {
       return await runActiveOwnerTransaction(prisma, message.userId, async tx => {
         const existing = await tx.supportMessage.findUnique({ where: { id: message.id } });
         if (existing) return { message: replaySupportMessage(mapMessage(existing), expected), created: false };
         const time = now();
-        await guard(tx, time);
-        const last = { status, lastSender: message.sender, lastMessageId: message.id,
-          lastPreview: supportPreview(message.body), lastMessageAt: time, updatedAt: time,
-          ...(botEnabled === undefined ? {} : { botEnabled }) };
+        // A guard may decide the final thread state from the locked row.
+        const { status: finalStatus = status, ...flags } = { ...change, ...await guard(tx, time) };
+        const last = { status: finalStatus, lastSender: message.sender, lastMessageId: message.id,
+          lastPreview: supportPreview(message.body), lastMessageAt: time, updatedAt: time, ...flags };
         await tx.supportThread.upsert({ where: { userId: message.userId }, update: last,
           create: { userId: message.userId, ...last, createdAt: time } });
         return { message: mapMessage(await tx.supportMessage.create({ data: { ...message, createdAt: time } })), created: true };
@@ -71,16 +72,20 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
         if (!await tx.supportThread.findUnique({ where: { userId }, select: { userId: true } })) {
           throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
         }
-      }, false),
+      }, { teamRequested: false }),
     replyAsBot: async ({ userId, id, body, handoff, triggerMessageId }) => {
       try {
         // The guard runs in the same owner-locked transaction as the insert, so
         // a member message that lands first makes this reply a no-op.
-        const result = await append({ id, userId, sender: 'BOT', authorId: null, body }, handoff ? 'WAITING_TEAM' : 'WAITING_MEMBER',
+        const result = await append({ id, userId, sender: 'BOT', authorId: null, body }, 'WAITING_MEMBER',
           async tx => {
-            const thread = await tx.supportThread.findUnique({ where: { userId }, select: { botEnabled: true, lastMessageId: true } });
+            const thread = await tx.supportThread.findUnique({ where: { userId },
+              select: { botEnabled: true, lastMessageId: true, teamRequested: true } });
             if (!thread?.botEnabled || thread.lastMessageId !== triggerMessageId) throw new SupportChatError('SUPPORT_BOT_SKIPPED');
-          }, !handoff);
+            // A thread already waiting for a person keeps waiting through Dot's answers.
+            const teamRequested = handoff || thread.teamRequested;
+            return { status: teamRequested ? 'WAITING_TEAM' : 'WAITING_MEMBER', teamRequested };
+          });
         return result.created ? result.message : null;
       } catch (error) {
         if (error instanceof SupportChatError && error.code === 'SUPPORT_BOT_SKIPPED') return null;
@@ -89,7 +94,7 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
     },
     requestTeam: async userId => {
       const { count } = await prisma.supportThread.updateMany({ where: { userId },
-        data: { status: 'WAITING_TEAM', botEnabled: false, updatedAt: now() } });
+        data: { status: 'WAITING_TEAM', teamRequested: true, updatedAt: now() } });
       const thread = count === 1 ? await prisma.supportThread.findUnique({ where: { userId } }) : null;
       if (!thread) throw new SupportChatError('SUPPORT_THREAD_NOT_FOUND', 404);
       return mapThread(thread);
@@ -125,7 +130,7 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
     },
     close: async ({ userId, lastMessageId }) => {
       const { count } = await prisma.supportThread.updateMany({ where: { userId, lastMessageId },
-        data: { status: 'CLOSED', botEnabled: true, updatedAt: now() } });
+        data: { status: 'CLOSED', botEnabled: true, teamRequested: false, updatedAt: now() } });
       const thread = await prisma.supportThread.findUnique({ where: { userId } });
       if (!thread) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
       if (count !== 1) throw new AdminError('ADMIN_SUPPORT_THREAD_CHANGED');

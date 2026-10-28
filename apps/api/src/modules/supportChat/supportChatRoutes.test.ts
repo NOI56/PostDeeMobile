@@ -40,7 +40,7 @@ describe('member support chat routes', () => {
     await store.replyAsTeam({ userId: 'member', id: '7d1f9c3a-2b4e-4c8a-9f10-000000000002', actorId: 'owner-uid', body: 'ทีมงานกำลังดูให้' });
     const read = await request(app).get('/support/chat').set('x-test-user', 'member').expect(200);
     expect(read.headers['cache-control']).toBe('private, no-store');
-    expect(read.body.thread).toEqual({ status: 'WAITING_MEMBER', lastMessageAt: '2026-10-28T03:00:00.000Z', botEnabled: false });
+    expect(read.body.thread).toEqual({ status: 'WAITING_MEMBER', lastMessageAt: '2026-10-28T03:00:00.000Z', botEnabled: true, teamRequested: false });
     expect(read.body.bot).toEqual({ available: false });
     expect(read.body.messages.map((m: { sender: string }) => m.sender)).toEqual(['MEMBER', 'TEAM']);
     expect(JSON.stringify(read.body)).not.toContain('owner-uid');
@@ -66,6 +66,6 @@ describe('member support chat routes', () => {
     expect(read.body).toMatchObject({ bot: { available: true }, thread: { status: 'WAITING_MEMBER', botEnabled: true } });
     expect(read.body.messages.map((m: { sender: string }) => m.sender)).toEqual(['MEMBER', 'BOT']);
     const handoff = await request(app).post('/support/chat/handoff').set('x-test-user', 'member').expect(200);
-    expect(handoff.body.thread).toMatchObject({ status: 'WAITING_TEAM', botEnabled: false });
+    expect(handoff.body.thread).toMatchObject({ status: 'WAITING_TEAM', botEnabled: true, teamRequested: true });
   });
 });

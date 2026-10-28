@@ -25,8 +25,16 @@ completions, JSON reply `{reply, handoff}`, no tools). The write goes
 through `SupportChatStore.replyAsBot`, which stores only if the answered
 message is still the newest and the bot is on, inside the owner-locked
 transaction, and runs under `runWithOwnerLifetime`. Failures become a fixed
-handoff. Mobile shows Dot bubbles, a typing hint and a handoff button; the
-admin console shows the global and per-thread switches.
+handoff. A handoff only sets `teamRequested` (the thread stays `WAITING_TEAM`
+through later Dot replies); Dot stays on until an administrator switches it
+off, because the team may be one person. `src/monitoring/sentrySignals.ts`
+derives the Sentry organization/region/project from `SENTRY_DSN` and, with
+`SENTRY_SIGNALS_TOKEN`, searches recent unresolved issues per area using the
+safe tags `sentryMonitoring.ts` attaches (operation, platform, route). The
+cached snapshot feeds Dot's context (fixed Thai labels only) and the admin
+status tab (titles and links, plus a button to draft a notice). Mobile shows
+Dot bubbles, a typing hint and a "talk to the team" button; the admin console
+shows the global and per-thread switches and a team-requested marker.
 
 ## Support chat (2026-10-28, phase 2 local candidate)
 

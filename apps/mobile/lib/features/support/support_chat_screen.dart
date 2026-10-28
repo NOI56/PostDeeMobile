@@ -31,7 +31,8 @@ String newSupportMessageId([Random? random]) {
 
 /// The member's chat with the PostDee team. Known service problems show at
 /// the top, and new replies are polled while the screen is open. While Dot,
-/// the AI helper, is on it answers first and the member can ask for a person.
+/// the AI helper, is on it answers most questions; the member can also ask
+/// the team to look, and Dot keeps helping until they reply.
 class SupportChatScreen extends StatefulWidget {
   const SupportChatScreen({
     super.key,
@@ -78,7 +79,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
   var _botAvailable = false;
   var _botEnabled = true;
   var _handingOff = false;
-  var _handedOff = false;
+  var _teamRequested = false;
   Timer? _timer;
   var _polling = false;
   var _appResumed = true;
@@ -147,6 +148,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
         _cursor = result.cursor;
         _botAvailable = result.botAvailable;
         _botEnabled = result.botEnabled;
+        _teamRequested = result.teamRequested;
         _loading = false;
       });
       _scrollToEnd();
@@ -169,10 +171,12 @@ class _SupportChatScreenState extends State<SupportChatScreen>
       final result = await _load(after: _cursor);
       if (!mounted || generation != _generation) return;
       if (result.botAvailable != _botAvailable ||
-          result.botEnabled != _botEnabled) {
+          result.botEnabled != _botEnabled ||
+          result.teamRequested != _teamRequested) {
         setState(() {
           _botAvailable = result.botAvailable;
           _botEnabled = result.botEnabled;
+          _teamRequested = result.teamRequested;
         });
       }
       _merge(result.messages, cursor: result.cursor);
@@ -243,10 +247,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
     try {
       await _requestTeam();
       if (!mounted) return;
-      setState(() {
-        _botEnabled = false;
-        _handedOff = true;
-      });
+      setState(() => _teamRequested = true);
     } catch (error) {
       if (!mounted) return;
       setState(() => _sendError = apiErrorMessage(error,
@@ -345,10 +346,10 @@ class _SupportChatScreenState extends State<SupportChatScreen>
           key: const ValueKey('support-chat-intro'),
           _botActive
               ? (isThai
-                  ? 'Dot ผู้ช่วย AI จะตอบก่อนจากข้อมูลของ PostDee (AI อาจตอบผิดได้) · '
-                      'กด "ขอคุยกับทีมงาน" ได้ทุกเมื่อ · ห้ามส่งรหัสผ่าน รหัส OTP หรือข้อมูลบัตร'
-                  : 'Dot, the AI helper, answers first from PostDee information (AI can be wrong). '
-                      'Tap "Talk to the team" any time. Never send passwords, OTP codes or card details.')
+                  ? 'Dot ผู้ช่วย AI ตอบให้ทันทีจากข้อมูลของ PostDee และสถานะระบบล่าสุด (AI อาจตอบผิดได้) · '
+                      'ถ้าต้องการให้ทีมงานช่วยดู กด "ขอคุยกับทีมงาน" · ห้ามส่งรหัสผ่าน รหัส OTP หรือข้อมูลบัตร'
+                  : 'Dot, the AI helper, answers right away from PostDee information and the latest system status (AI can be wrong). '
+                      'Tap "Talk to the team" to have a person look. Never send passwords, OTP codes or card details.')
               : (isThai
                   ? 'ทีมงาน PostDee จะตอบกลับในแชทนี้ และแจ้งเตือนเมื่อมีคำตอบ · '
                       'ห้ามส่งรหัสผ่าน รหัส OTP หรือข้อมูลบัตร'
@@ -411,13 +412,13 @@ class _SupportChatScreenState extends State<SupportChatScreen>
               style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
           ),
-        if (_handedOff)
+        if (_teamRequested && _botActive)
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: Text(
               isThai
-                  ? 'ส่งต่อให้ทีมงานแล้ว ทีมงานจะตอบในแชทนี้ และแจ้งเตือนเมื่อมีคำตอบ'
-                  : 'Passed to the team. They will reply here and notify you.',
+                  ? 'แจ้งทีมงานแล้ว ทีมงานจะตอบในแชทนี้โดยเร็วที่สุด ระหว่างนี้ถาม Dot ต่อได้ค่ะ'
+                  : 'The team has been told and will reply here. Meanwhile you can keep asking Dot.',
               key: const ValueKey('support-chat-handed-off'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, color: AppTheme.accentCyanInk),

@@ -26,6 +26,9 @@ const setup = (enabled = true, botProvider: 'off' | 'mock' | 'openai' = 'openai'
       failedPostUnits: 0, pendingPostUnits: 0, estimatedUsd: null } }));
   registerAdminConsole(app, { config: enabled ? config : undefined, trials, now, incidents, support, notifySupportReply,
     supportBot: { provider: botProvider, settings: botSettings },
+    signals: { read: async () => ({ configured: true, checkedAt: now().toISOString(), failed: false,
+      signals: [{ key: 'uploads' as const, label: 'การอัปโหลดวิดีโอ', lastSeen: now().toISOString(),
+        issues: [{ shortId: 'API-3', title: 'Error: upload', permalink: 'https://postdee.sentry.io/issues/3/', lastSeen: now().toISOString(), count: 4 }] }] }) },
     data: { member: async id => id === member.id ? member : null, view },
     authenticate: (req, res, next) => { const id = req.get('authorization')?.replace('Bearer ', '');
       if (!id) { res.sendStatus(401); return; }
@@ -149,7 +152,8 @@ describe('private administrator console', () => {
     const read = await request(app).post('/admin/api/view').set('Authorization', 'Bearer viewer')
       .set('Origin', config.origin).set('X-PostDee-Admin', '1').send({ view: 'incidents' });
     expect(read.status).toBe(200);
-    expect(read.body).toMatchObject({ rows: [{ id: incident.id, stage: 'RESOLVED' }], checkedAt: now().toISOString() });
+    expect(read.body).toMatchObject({ rows: [{ id: incident.id, stage: 'RESOLVED' }], checkedAt: now().toISOString(),
+      signals: { configured: true, signals: [{ key: 'uploads', issues: [{ shortId: 'API-3' }] }] } });
     expect(view).not.toHaveBeenCalled();
   });
   it('validates service notice commands before writing', async () => {

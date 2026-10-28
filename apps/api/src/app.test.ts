@@ -38,8 +38,27 @@ describe('PostDee API scaffold', () => {
     const read = await request(botApp).get('/support/chat').set('x-postdee-user-id', 'bot-member').expect(200);
     expect(read.body.bot).toEqual({ available: true });
     expect(read.body.messages.map((m: { sender: string }) => m.sender)).toEqual(['MEMBER', 'BOT']);
-    // No open notice, so the mock hands the question to the team.
-    expect(read.body.thread).toMatchObject({ status: 'WAITING_TEAM', botEnabled: false });
+    // No open notice or signal, so the mock flags the team but Dot stays on.
+    expect(read.body.thread).toMatchObject({ status: 'WAITING_TEAM', botEnabled: true, teamRequested: true });
+  });
+
+  it('lets Dot tell a member about an area Sentry flagged, without error text', async () => {
+    const supportBotSettingsStore = createMemorySupportBotSettingsStore();
+    await supportBotSettingsStore.set({ enabled: true, actorId: 'owner' });
+    const sentrySignalSource = { read: async () => ({ configured: true, checkedAt: '2026-10-28T03:00:00.000Z', failed: false,
+      signals: [{ key: 'publish-tiktok' as const, label: 'การส่งโพสต์ไป TikTok', platform: 'TIKTOK', lastSeen: '2026-10-28T02:58:00.000Z',
+        issues: [{ shortId: 'API-1', title: 'TypeError: secret detail', permalink: '', lastSeen: '2026-10-28T02:58:00.000Z', count: 3 }] }] }) };
+    const botApp = createApp({ supportBotProvider: createMockSupportBotProvider(), supportBotSettingsStore, sentrySignalSource });
+    const { supportBotScheduler } = botApp.locals as { supportBotScheduler: { drain: () => Promise<void> } };
+    await request(botApp).post('/support/chat/messages').set('x-postdee-user-id', 'signal-member')
+      .send({ id: '7d1f9c3a-2b4e-4c8a-9f10-000000000301', body: 'ส่ง TikTok ไม่ได้' }).expect(201);
+    await supportBotScheduler.drain();
+    const read = await request(botApp).get('/support/chat').set('x-postdee-user-id', 'signal-member').expect(200);
+    const reply = read.body.messages.at(-1);
+    expect(reply).toMatchObject({ sender: 'BOT' });
+    expect(reply.body).toContain('การส่งโพสต์ไป TikTok');
+    expect(reply.body).not.toContain('secret detail');
+    expect(read.body.thread).toMatchObject({ status: 'WAITING_MEMBER', teamRequested: false });
   });
 
   it('does not expose the removed legacy clip review endpoint', async () => {

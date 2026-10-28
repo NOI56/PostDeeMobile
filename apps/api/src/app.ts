@@ -192,6 +192,7 @@ import {
 } from './modules/supportBot/supportBotProvider.js';
 import type { SupportBotContext } from './modules/supportBot/supportBotKnowledge.js';
 import { adminPublishFailure } from './modules/admin/adminPublishFailure.js';
+import { createSentrySignalSource, type SentrySignalSource } from './monitoring/sentrySignals.js';
 import { createRateLimitMiddleware } from './modules/security/rateLimit.js';
 import { createReadinessHandler } from './readiness.js';
 
@@ -254,6 +255,7 @@ type AppOptions = {
   supportPushSender?: PushSender;
   supportBotProvider?: SupportBotProvider;
   supportBotSettingsStore?: SupportBotSettingsStore;
+  sentrySignalSource?: SentrySignalSource;
   now?: () => Date;
 };
 
@@ -937,11 +939,14 @@ export const createApp = (options: AppOptions = {}) => {
         ? createPrismaSupportBotSettingsStore(prismaClient as unknown as PrismaClient, options.now)
         : createMemorySupportBotSettingsStore({ now: options.now }))
   );
-  // Only what Dot needs: open notices, the plan, and the last five posts'
-  // statuses with translated failure reasons. No captions or contact details.
-  const loadSupportBotContext = async (member: AuthUser): Promise<SupportBotContext> => {
-    const [incidents, posts, plan] = await Promise.all([
+  const sentrySignalSource = options.sentrySignalSource ?? createSentrySignalSource({ config: config.sentrySignals, now: options.now });
+  // Only what Dot needs: open notices, Sentry areas with recent errors (fixed
+  // labels, never error text), the plan, and the last five posts' statuses with
+  // translated failure reasons. No captions or contact details.
+  const loadSupportBotContext = async (member: AuthUser): Promise<Omit<SupportBotContext, 'teamAlreadyNotified'>> => {
+    const [incidents, signals, posts, plan] = await Promise.all([
       serviceIncidentStore.active(),
+      sentrySignalSource.read().catch(() => undefined),
       postStore.list({ userId: member.id, limit: 5 }),
       subscriptionStore.getPlan(member).catch(() => undefined)
     ]);
@@ -951,6 +956,7 @@ export const createApp = (options: AppOptions = {}) => {
     return {
       plan,
       incidents: incidents.map(({ title, message, platforms, stage }) => ({ title, message, platforms, stage })),
+      automaticSignals: (signals?.signals ?? []).map(({ label, lastSeen }) => ({ area: label, lastSeen })),
       recentPosts: posts.map((post) => ({
         createdAt: post.createdAt,
         ...(post.scheduledAt ? { scheduledAt: post.scheduledAt } : {}),
@@ -1044,7 +1050,7 @@ export const createApp = (options: AppOptions = {}) => {
       trials: trialAccessStore,
       data: options.adminDataSource ?? createPrismaAdminDataSource(prismaClient as unknown as PrismaClient, config.adminConsole, options.now),
       now: options.now, runWithTarget: runWithOwnerLifetime, incidents: serviceIncidentStore,
-      support: supportChatStore, notifySupportReply,
+      support: supportChatStore, notifySupportReply, signals: sentrySignalSource,
       supportBot: { provider: supportBotProvider?.kind ?? 'off', settings: supportBotSettings },
       accountDeletions: options.adminAccountDeletionStore ??
         (prismaClient ? createPrismaAdminAccountDeletionStore(prismaClient as unknown as PrismaClient, options.now) : undefined),

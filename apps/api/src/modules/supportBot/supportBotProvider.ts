@@ -45,11 +45,14 @@ export const createOpenAiSupportBotProvider = ({ apiKey, model, fetchImpl = fetc
 });
 
 // Local and test helper only (refused in production): answers from open
-// service notices and hands everything else to the team.
+// service notices, then automatic signals, and hands everything else to the team.
 export const createMockSupportBotProvider = (): SupportBotProvider => ({
   kind: 'mock',
   answer: async ({ context }) => context.incidents.length
     ? { reply: `ตอนนี้ทีมงานทราบปัญหานี้แล้วค่ะ: ${context.incidents.map(i => i.title).join(', ')}\n${context.incidents[0].message}`,
       handoff: false }
-    : { reply: 'ขอส่งเรื่องนี้ให้ทีมงาน PostDee ช่วยดูนะคะ ทีมงานจะตอบในแชทนี้ค่ะ', handoff: true }
+    : context.automaticSignals.length
+      ? { reply: `ช่วงนี้ระบบตรวจพบข้อผิดพลาดใน${context.automaticSignals.map(s => s.area).join(', ')}ค่ะ `
+        + 'ลองรอสักครู่ และตรวจโพสต์บนช่องทางก่อนส่งซ้ำนะคะ', handoff: false }
+      : { reply: 'ขอส่งเรื่องนี้ให้ทีมงาน PostDee ช่วยดูนะคะ ทีมงานจะตอบในแชทนี้โดยเร็วที่สุดค่ะ', handoff: true }
 });

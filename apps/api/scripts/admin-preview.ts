@@ -29,6 +29,7 @@ await support.replyAsBot({ userId:'fixture-mali', id:randomUUID(), handoff:false
 const supportBotSettings = createMemorySupportBotSettingsStore();
 await supportBotSettings.set({ enabled:true, actorId:'fixture-owner' });
 await support.postFromMember({ userId:'fixture-narin', id:randomUUID(), body:'ขอสอบถามเรื่องแพ็กเกจ Pro ครับ' });
+await support.requestTeam('fixture-narin');
 const time = new Date().toISOString();
 const members: AdminMember[] = [
   { id:'fixture-mali',email:'mali@example.com',displayName:'Mali S.',paidPlan:'BASIC',createdAt:time,updatedAt:time,postCount:12,channelCount:2 },
@@ -74,6 +75,11 @@ registerAdminConsole(app,{config:{origin:`http://127.0.0.1:${port}`,environment:
   firebaseWeb:{apiKey:'fixture',authDomain:'fixture.firebaseapp.com',projectId:'fixture',appId:'fixture'}},data,trials,testOnly:true,testPreviewToken:previewToken,
   incidents:createMemoryServiceIncidentStore(),support,notifySupportReply:async()=>undefined,
   supportBot:{ provider:'mock', settings:supportBotSettings },
+  // Fixture Sentry signal; no Sentry request is made.
+  signals:{ read: async () => ({ configured:true, checkedAt:new Date().toISOString(), failed:false,
+    signals:[{ key:'publish-tiktok', label:'การส่งโพสต์ไป TikTok', platform:'TIKTOK', lastSeen:new Date().toISOString(),
+      issues:[{ shortId:'POSTDEE-API-12', title:'Error: TikTok publish request timed out', permalink:'https://example.sentry.io/issues/12/',
+        lastSeen:new Date().toISOString(), count:7 }] }] }) },
   // Fixture deletion only removes the in-memory sample member.
   accountDeletions,deleteAccount:async userId=>{const index=members.findIndex(r=>r.id===userId);if(index>=0)members.splice(index,1);return {status:200,body:{status:'ok'}};},
   authenticate:(req,res,next)=>{const id=req.get('authorization')?.replace('Bearer ','');

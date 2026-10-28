@@ -196,6 +196,8 @@ model SupportThread {
   createdAt     DateTime
   updatedAt     DateTime
   botEnabled    Boolean          @default(true)
+  // The member or Dot asked for a person; cleared by a team reply or close.
+  teamRequested Boolean          @default(false)
   messages      SupportMessage[]
 
   @@index([lastMessageAt, userId])

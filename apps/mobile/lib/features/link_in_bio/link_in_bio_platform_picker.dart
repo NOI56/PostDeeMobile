@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/profile_platform_catalog.generated.dart';
 import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_color_picker.dart' show BioOwnedModalScope;
+import 'link_in_bio_localizations.dart';
 
 const _genericNames = {
   'auto': 'เลือกจากลิงก์อัตโนมัติ',
@@ -11,9 +12,19 @@ const _genericNames = {
   'email': 'อีเมล',
   'phone': 'โทรศัพท์',
 };
+const _genericEnglishNames = {
+  'auto': 'Auto-detect from link',
+  'link': 'Link',
+  'website': 'Website',
+  'email': 'Email',
+  'phone': 'Phone',
+};
 
-String bioPlatformLabel(String id) =>
-    profilePlatformNames[id] ?? _genericNames[id] ?? _genericNames['auto']!;
+String bioPlatformLabel(String id, {BuildContext? context}) {
+  final name = profilePlatformNames[id] ?? _genericNames[id] ?? _genericNames['auto']!;
+  if (context == null || linkInBioUsesThai(context)) return name;
+  return profilePlatformNames[id] ?? _genericEnglishNames[id] ?? _genericEnglishNames['auto']!;
+}
 
 Future<String?> showBioPlatformPicker(BuildContext context, String selected) {
   final ownership = BioOwnedModalScope.maybeOf(context);
@@ -72,7 +83,7 @@ class _BioPlatformPickerState extends State<BioPlatformPicker> {
     bool matches(String value) =>
         words.every((word) => value.toLowerCase().contains(word));
     final generic = _genericNames.entries
-        .where((entry) => matches('${entry.key} ${entry.value}'))
+        .where((entry) => matches('${entry.key} ${entry.value} ${_genericEnglishNames[entry.key]}'))
         .toList();
     final brands = profilePlatformCatalog
         .where((platform) => matches([
@@ -102,12 +113,12 @@ class _BioPlatformPickerState extends State<BioPlatformPicker> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 6, 0),
           child: Row(children: [
-            const Expanded(
-                child: Text('เลือกโลโก้',
+            Expanded(
+                child: Text(linkInBioText(context, 'เลือกโลโก้', 'Choose a logo'),
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
             IconButton(
-                tooltip: 'ปิด',
+                tooltip: linkInBioText(context, 'ปิด', 'Close'),
                 onPressed: () => Navigator.maybePop(context),
                 icon: const Icon(Icons.close)),
           ]),
@@ -120,13 +131,16 @@ class _BioPlatformPickerState extends State<BioPlatformPicker> {
             onChanged: (_) => setState(() {}),
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'ค้นหาชื่อแอปหรือประเทศ',
+              hintText: MediaQuery.textScalerOf(context).scale(14) > 18
+                  ? null : linkInBioText(context, 'ค้นหาชื่อแอปหรือประเทศ', 'Search app or country'),
+              hint: MediaQuery.textScalerOf(context).scale(14) > 18
+                  ? Text(linkInBioText(context, 'ค้นหาชื่อแอปหรือประเทศ', 'Search app or country'), softWrap: true) : null,
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _search.text.isEmpty
                   ? null
                   : IconButton(
                       key: const ValueKey('bio-platform-search-clear'),
-                      tooltip: 'ล้างคำค้น',
+                      tooltip: linkInBioText(context, 'ล้างคำค้น', 'Clear search'),
                       onPressed: () => setState(_search.clear),
                       icon: const Icon(Icons.close)),
             ),
@@ -134,7 +148,8 @@ class _BioPlatformPickerState extends State<BioPlatformPicker> {
         ),
         Expanded(
           child: generic.isEmpty && brands.isEmpty
-              ? const Center(child: Text('ไม่พบโลโก้ที่ตรงกับคำค้น'))
+              ? Center(child: Text(linkInBioText(context,
+                  'ไม่พบโลโก้ที่ตรงกับคำค้น', 'No matching logos')))
               : ListView.builder(
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
@@ -142,7 +157,7 @@ class _BioPlatformPickerState extends State<BioPlatformPicker> {
                   itemBuilder: (context, index) {
                     if (index < generic.length) {
                       final item = generic[index];
-                      return option(item.key, item.value);
+                      return option(item.key, bioPlatformLabel(item.key, context: context));
                     }
                     final item = brands[index - generic.length];
                     return option(item.id, item.name);

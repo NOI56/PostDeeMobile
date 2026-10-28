@@ -8,6 +8,7 @@ import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_link_defaults.dart';
+import 'link_in_bio_localizations.dart';
 import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_decorated_preview.dart';
 import 'link_in_bio_motion.dart';
@@ -107,7 +108,9 @@ class _BioPreviewViewportState extends State<BioPreviewViewport> {
       child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Semantics(
-              label: 'ตัวอย่างหน้าเว็บ เลื่อนเพื่อดูส่วนอื่น',
+              label: linkInBioText(context,
+                  'ตัวอย่างหน้าเว็บ เลื่อนเพื่อดูส่วนอื่น',
+                  'Page preview. Scroll to see more.'),
               child: Scrollbar(
                   controller: _controller,
                   thumbVisibility: true,
@@ -169,10 +172,11 @@ class LinkInBioPreview extends StatelessWidget {
     return BioMotionSurface(
         effects: appearance.effects,
         builder: (phase, entrance, reduced) =>
-            _legacyPreview(phase, entrance, reduced));
+            _legacyPreview(context, phase, entrance, reduced));
   }
 
-  Widget _legacyPreview(double phase, double entrance, bool reduced) {
+  Widget _legacyPreview(
+      BuildContext context, double phase, double entrance, bool reduced) {
     final background = appearance.background;
     final drift = appearance.effects.background && !reduced
         ? math.sin(phase * math.pi * 2) * .15
@@ -304,7 +308,8 @@ class LinkInBioPreview extends StatelessWidget {
                                             const SizedBox(height: 16),
                                             Text(
                                                 storeName.trim().isEmpty
-                                                    ? 'ร้านของคุณ'
+                                                    ? linkInBioText(context,
+                                                        'ร้านของคุณ', 'Your store')
                                                     : storeName,
                                                 style: bioTextStyle(
                                                         appearance.nameStyle,
@@ -314,14 +319,18 @@ class LinkInBioPreview extends StatelessWidget {
                                             const SizedBox(height: 8),
                                             Text(
                                                 appearance.description.isEmpty
-                                                    ? 'เลือกช่องทางที่ต้องการได้เลย'
+                                                    ? linkInBioText(context,
+                                                        'เลือกช่องทางที่ต้องการได้เลย',
+                                                        'Choose a channel below')
                                                     : appearance.description,
                                                 style: bioTextStyle(appearance
                                                     .descriptionStyle)),
                                             const SizedBox(height: 16),
                                             if (links.isEmpty)
                                               Text(
-                                                  'เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
+                                                  linkInBioText(context,
+                                                      'เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
+                                                      'Add a link to see a preview'),
                                                   style: bioTextStyle(appearance
                                                       .descriptionStyle)),
                                             for (final (index, link)
@@ -351,7 +360,9 @@ class LinkInBioPreview extends StatelessWidget {
                                             const SizedBox(height: 28),
                                             Center(
                                                 child: Text(
-                                                    'สร้างหน้าเว็บร้านค้าด้วย PostDee',
+                                                    linkInBioText(context,
+                                                        'สร้างหน้าเว็บร้านค้าด้วย PostDee',
+                                                        'Create a store page with PostDee'),
                                                     textAlign: TextAlign.center,
                                                     style: bioTextStyle(
                                                         appearance.brandStyle,

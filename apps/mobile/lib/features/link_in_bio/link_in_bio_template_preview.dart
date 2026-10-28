@@ -8,6 +8,7 @@ import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_composition_art.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_link_defaults.dart';
+import 'link_in_bio_localizations.dart';
 import 'link_in_bio_motion.dart';
 import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_preview_styles.dart';
@@ -37,8 +38,9 @@ class BioTemplatePreview extends StatelessWidget {
       appearance.background.color == template.palette.background &&
       appearance.background.gradientColor == template.palette.gradient;
 
-  String get _name =>
-      storeName.trim().isEmpty ? 'ร้านของคุณ' : storeName.trim();
+  String _name(BuildContext context) => storeName.trim().isEmpty
+      ? linkInBioText(context, 'ร้านของคุณ', 'Your store')
+      : storeName.trim();
   Color get _avatarColor => const {'seal', 'tag'}.contains(_composition)
       ? Colors.transparent
       : _composition == 'portrait' ||
@@ -65,8 +67,8 @@ class BioTemplatePreview extends StatelessWidget {
             : _avatarColor)
         .computeLuminance();
     final readable = (math.max(a, b) + .05) / (math.min(a, b) + .05) >= 4.5;
-    return Center(
-        child: Text(String.fromCharCode(_name.runes.first),
+    return Builder(builder: (context) => Center(
+        child: Text(String.fromCharCode(_name(context).runes.first),
             style: bioTextStyle(appearance.nameStyle,
                     size: const <String, double>{
                           'editorial': 24,
@@ -98,7 +100,7 @@ class BioTemplatePreview extends StatelessWidget {
                         ? selected
                         : b > .18
                             ? Colors.black
-                            : Colors.white)));
+                            : Colors.white))));
   }
 
   Widget _avatar(double size, {double? height, bool arch = false}) {
@@ -173,7 +175,7 @@ class BioTemplatePreview extends StatelessWidget {
                         textScaler: scaler);
                     double widthAt(double value) {
                       painter.text = TextSpan(
-                          text: _name, style: style.copyWith(fontSize: value));
+                          text: _name(context), style: style.copyWith(fontSize: value));
                       painter.layout();
                       return painter.width;
                     }
@@ -197,7 +199,7 @@ class BioTemplatePreview extends StatelessWidget {
                     }
                     painter.dispose();
                   }
-                  return Text(_name,
+                  return Text(_name(context),
                       key: const ValueKey('link-in-bio-template-store-name'),
                       textAlign: centered ? TextAlign.center : TextAlign.start,
                       style: style.copyWith(fontSize: size));
@@ -210,16 +212,17 @@ class BioTemplatePreview extends StatelessWidget {
                       .withValues(alpha: .45)),
               const SizedBox(height: 8),
             ],
-            Text(
+            Builder(builder: (context) => Text(
                 appearance.description.isEmpty
-                    ? 'เลือกช่องทางที่ต้องการได้เลย'
+                    ? linkInBioText(context, 'เลือกช่องทางที่ต้องการได้เลย',
+                        'Choose a channel below')
                     : appearance.description,
                 textAlign: centered ? TextAlign.center : TextAlign.start,
                 style: bioTextStyle(appearance.descriptionStyle,
                     size: _composition == 'poster' ? 16 : 15,
                     weight: _composition == 'poster'
                         ? FontWeight.w600
-                        : FontWeight.w400)),
+                        : FontWeight.w400))),
           ]);
 
   Widget _header(double headingSize, double editorialSize) {
@@ -657,8 +660,9 @@ class BioTemplatePreview extends StatelessWidget {
 
   Widget _linkGroups(double phase, double entrance, bool reduced, bool narrow) {
     if (links.isEmpty) {
-      return Text('เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
-          style: bioTextStyle(appearance.descriptionStyle));
+      return Builder(builder: (context) => Text(linkInBioText(context,
+          'เพิ่มลิงก์เพื่อแสดงตัวอย่าง', 'Add a link to see a preview'),
+          style: bioTextStyle(appearance.descriptionStyle)));
     }
     final groups = <List<(int, LinkInBioCustomLink)>>[];
     var currentCategory = '';

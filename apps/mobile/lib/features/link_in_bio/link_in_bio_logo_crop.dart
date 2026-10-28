@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'link_in_bio_image_picker.dart';
+import 'link_in_bio_localizations.dart';
 
 /// The same source rectangle drives the circular preview and saved PNG.
 Rect linkInBioLogoCropRect(Size imageSize, {double zoom = 1, Offset? center}) {
@@ -135,7 +136,8 @@ class _LinkInBioLogoCropDialogState extends State<LinkInBioLogoCropDialog> {
   }
 
   Widget _preview(double diameter) => Semantics(
-      label: 'ลากรูปเพื่อเลือกตำแหน่งโลโก้ในวงกลม',
+      label: linkInBioText(context, 'ลากรูปเพื่อเลือกตำแหน่งโลโก้ในวงกลม',
+          'Drag the image to position your logo in the circle'),
       child: GestureDetector(
           key: const ValueKey('link-in-bio-logo-crop-preview'),
           behavior: HitTestBehavior.opaque,
@@ -176,12 +178,13 @@ class _LinkInBioLogoCropDialogState extends State<LinkInBioLogoCropDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-          title: const Text('ปรับตำแหน่งโลโก้'),
+          title: Text(linkInBioText(context, 'ปรับตำแหน่งโลโก้', 'Adjust logo')),
           content: SizedBox(
               width: 320,
               child: SingleChildScrollView(
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Text('ลากรูปเพื่อจัดตำแหน่ง จีบหรือเลื่อนแถบเพื่อซูม',
+                Text(linkInBioText(context, 'ลากรูปเพื่อจัดตำแหน่ง จีบหรือเลื่อนแถบเพื่อซูม',
+                    'Drag to reposition. Pinch or use the slider to zoom.'),
                     textAlign: TextAlign.center),
                 const SizedBox(height: 20),
                 if (_loading) const CircularProgressIndicator(),
@@ -191,13 +194,15 @@ class _LinkInBioLogoCropDialogState extends State<LinkInBioLogoCropDialog> {
                           child:
                               _preview(math.min(260, constraints.maxWidth)))),
                   const SizedBox(height: 16),
-                  Text('ซูม ${_zoom.toStringAsFixed(1)} เท่า'),
+                  Text(linkInBioText(context, 'ซูม ${_zoom.toStringAsFixed(1)} เท่า',
+                      'Zoom ${_zoom.toStringAsFixed(1)}×')),
                   Slider(
                       key: const ValueKey('link-in-bio-logo-crop-zoom'),
                       min: 1,
                       max: 4,
                       value: _zoom,
-                      label: '${_zoom.toStringAsFixed(1)} เท่า',
+                      label: linkInBioText(context, '${_zoom.toStringAsFixed(1)} เท่า',
+                          '${_zoom.toStringAsFixed(1)}×'),
                       onChanged: _saving
                           ? null
                           : (value) => _updateCrop(value, _center)),
@@ -208,10 +213,10 @@ class _LinkInBioLogoCropDialogState extends State<LinkInBioLogoCropDialog> {
                           : () =>
                               _updateCrop(1, _imageSize.center(Offset.zero)),
                       icon: const Icon(Icons.center_focus_strong),
-                      label: const Text('กลับตรงกลาง')),
+                      label: Text(linkInBioText(context, 'กลับตรงกลาง', 'Center'))),
                 ],
                 if (_error != null)
-                  Text(_error!,
+                  Text(localizeLinkInBioMessage(context, _error!),
                       style: TextStyle(
                           color: Theme.of(context).colorScheme.error)),
               ]))),
@@ -219,11 +224,13 @@ class _LinkInBioLogoCropDialogState extends State<LinkInBioLogoCropDialog> {
             TextButton(
                 key: const ValueKey('link-in-bio-logo-crop-cancel'),
                 onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                child: const Text('ยกเลิก')),
+                child: Text(linkInBioText(context, 'ยกเลิก', 'Cancel'))),
             FilledButton(
                 key: const ValueKey('link-in-bio-logo-crop-confirm'),
                 onPressed: _image == null || _saving ? null : _confirm,
-                child: Text(_saving ? 'กำลังบันทึก…' : 'ใช้โลโก้นี้')),
+                child: Text(_saving
+                    ? linkInBioText(context, 'กำลังบันทึก…', 'Saving…')
+                    : linkInBioText(context, 'ใช้โลโก้นี้', 'Use this logo'))),
           ]);
 }
 

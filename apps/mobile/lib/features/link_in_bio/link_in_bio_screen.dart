@@ -16,6 +16,7 @@ import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_image_picker.dart';
 import 'link_in_bio_link_defaults.dart';
 import 'link_in_bio_logo_crop.dart';
+import 'link_in_bio_localizations.dart';
 import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_platform_picker.dart';
 import 'link_in_bio_preview.dart';
@@ -114,6 +115,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   LinkInBioProfileResult? _profile;
   bool _hasLoadedDraft = false;
   bool _hasLocalDraft = false;
+  bool _hasLoadedStoreContent = false;
   bool _hasConfirmedProfile = false;
   bool _profileLoadFailed = false;
   bool _isLoading = false;
@@ -309,6 +311,26 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _synchronizeFreshStoreName();
+  }
+
+  void _synchronizeFreshStoreName() {
+    if (!_ownerMatchesSession || !_hasLoadedDraft || !_hasConfirmedProfile ||
+        _hasLoadedStoreContent || _hasLocalDraft || _profile != null ||
+        _editVersion != 0 || _savedDraftSignature != null ||
+        _pendingDraftSaves > 0 || _draftSaveFailed) {
+      return;
+    }
+    final name = linkInBioText(
+        context, LinkInBioDraft.defaults().storeName, 'Your store');
+    if (_storeNameController.text != name) {
+      _storeNameController.text = name;
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant LinkInBioScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!oldWidget.isActive && widget.isActive) _loadProfile();
@@ -396,6 +418,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   void _applyDraft(LinkInBioDraft draft) {
+    _hasLoadedStoreContent = true;
     _storeNameController.text = draft.storeName;
     _slugController.text = draft.slug;
     _urlExpanded = !isValidLinkInBioSlug(draft.slug);
@@ -586,6 +609,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   .toList(),
               appearance: profile.appearance));
         }
+        _synchronizeFreshStoreName();
       });
       unawaited(_loadDraftImages());
     } catch (error) {
@@ -858,17 +882,17 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => _ownedModal(context, AlertDialog(
-              title: const Text('หยุดเผยแพร่หน้าโปรไฟล์?'),
-              content: const Text(
+              title: const LinkInBioText('หยุดเผยแพร่หน้าโปรไฟล์?'),
+              content: const LinkInBioText(
                   'ลูกค้าจะเปิดลิงก์หน้านี้ไม่ได้จนกว่าจะเผยแพร่อีกครั้ง แบบร่างของคุณยังอยู่'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child: const Text('ยกเลิก')),
+                    child: const LinkInBioText('ยกเลิก')),
                 FilledButton(
                     key: const ValueKey('link-in-bio-confirm-unpublish'),
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('หยุดเผยแพร่')),
+                    child: const LinkInBioText('หยุดเผยแพร่')),
               ],
             )));
     if (confirmed != true ||
@@ -946,7 +970,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 backgroundColor: bioColor(_appearance.background.color),
                 child: Semantics(
                     namesRoute: true,
-                    label: 'ตัวอย่างก่อนเผยแพร่',
+                    label: localizeLinkInBioMessage(context, 'ตัวอย่างก่อนเผยแพร่'),
                     child: LayoutBuilder(
                         builder: (context, viewport) => Stack(
                                 fit: StackFit.expand,
@@ -969,7 +993,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                           child: IconButton.filled(
                                               key: const ValueKey(
                                                   'link-in-bio-full-preview-close'),
-                                              tooltip: 'ปิดตัวอย่าง',
+                                              tooltip: localizeLinkInBioMessage(context, 'ปิดตัวอย่าง'),
                                               onPressed: () =>
                                                   Navigator.pop(context),
                                               icon: const Icon(Icons.close)))),
@@ -1065,10 +1089,12 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       _markEdited();
     });
     final toast = ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('ลบ “${link.title}” จากแบบร่างแล้ว'),
+      content: Builder(builder: (context) => Text(linkInBioText(context,
+          'ลบ “${link.title}” จากแบบร่างแล้ว',
+          'Removed “${link.title}” from the draft.'))),
       behavior: SnackBarBehavior.floating,
       duration: const Duration(milliseconds: 4500),
-      action: SnackBarAction(label: 'เลิกทำ', onPressed: () {
+      action: SnackBarAction(label: localizeLinkInBioMessage(context, 'เลิกทำ'), onPressed: () {
         if (generation != _deleteUndoGeneration) return;
         _deleteUndoToast = null;
         if (!_canEdit || _customLinks.any((current) => current.id == id)) return;
@@ -1187,7 +1213,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   Widget _heading(String title) => Padding(
       padding: const EdgeInsets.only(bottom: 20),
-      child: Text(title,
+      child: LinkInBioText(title,
           style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w700,
@@ -1220,7 +1246,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
               _storeNameController.text.trim().isEmpty
-                  ? 'ร้านของคุณ'
+                  ? linkInBioText(context, 'ร้านของคุณ', 'Your store')
                   : _storeNameController.text.trim(),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -1236,7 +1262,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
           else
             Text(
                 _slugController.text.trim().isEmpty
-                    ? 'ตั้งชื่อและ URL ในข้อมูลร้าน'
+                    ? localizeLinkInBioMessage(context, 'ตั้งชื่อและ URL ในข้อมูลร้าน')
                     : _slugController.text.trim(),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -1252,14 +1278,14 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   key: const ValueKey('link-in-bio-copy'),
                   onPressed: _canEdit ? _copyPublicUrl : null,
                   icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('คัดลอกลิงก์'))),
+                  label: const LinkInBioText('คัดลอกลิงก์'))),
           BioUiPress(
               enabled: _canEdit,
               child: TextButton.icon(
                   key: const ValueKey('link-in-bio-open'),
                   onPressed: _canEdit ? _openPublicUrl : null,
                   icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('เปิดเว็บไซต์'))),
+                  label: const LinkInBioText('เปิดเว็บไซต์'))),
         ]),
       ],
       const SizedBox(height: 16),
@@ -1281,36 +1307,41 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   backgroundColor: AppTheme.actionBackground,
                   foregroundColor: Colors.white),
               icon: const Icon(Icons.add),
-              label: const Text('เพิ่มลิงก์'))),
+              label: const LinkInBioText('เพิ่มลิงก์'))),
       const SizedBox(height: 24),
       Row(children: [
         Expanded(
-            child: Text('ลิงก์ของร้าน',
+            child: LinkInBioText('ลิงก์ของร้าน',
                 style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary))),
         Text(_subscription == null
-                ? '${_customLinks.length} ลิงก์'
+                ? linkInBioText(context, '${_customLinks.length} ลิงก์',
+                    _customLinks.length == 1 ? '1 link' : '${_customLinks.length} links')
                 : '${_customLinks.length}/${_subscription!.maxProfileLinks}',
             key: const ValueKey('link-in-bio-link-count'),
             style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
       ]),
       if (_subscriptionLoading)
         const Padding(padding: EdgeInsets.only(top: 8),
-            child: Text('กำลังตรวจสอบสิทธิ์ลิงก์...')),
+            child: LinkInBioText('กำลังตรวจสอบสิทธิ์ลิงก์...')),
       if (_subscriptionFailed) ...[
         const SizedBox(height: 8),
-        const Text(_subscriptionUnavailable),
+        const LinkInBioText(_subscriptionUnavailable),
         Align(alignment: Alignment.centerLeft, child: TextButton.icon(
             key: const ValueKey('link-in-bio-retry-subscription'),
             onPressed: _canEdit && !_subscriptionLoading ? _refreshSubscription : null,
-            icon: const Icon(Icons.refresh), label: const Text('ลองตรวจสอบสิทธิ์อีกครั้ง'))),
+            icon: const Icon(Icons.refresh), label: const LinkInBioText('ลองตรวจสอบสิทธิ์อีกครั้ง'))),
       ] else if (_subscription != null) ...[
         const SizedBox(height: 8),
-        Text('เปิดใช้ ${_activeLinks.length}/${_subscription!.maxProfileLinks} ลิงก์ • รวมลิงก์ที่ปิดไว้เมื่อนับสิทธิ์เพิ่ม'),
+        Text(linkInBioText(context,
+            'เปิดใช้ ${_activeLinks.length}/${_subscription!.maxProfileLinks} ลิงก์ • รวมลิงก์ที่ปิดไว้เมื่อนับสิทธิ์เพิ่ม',
+            '${_activeLinks.length}/${_subscription!.maxProfileLinks} active links • Hidden links count toward your allowance when adding links.')),
         if (_customLinks.length > _subscription!.maxProfileLinks)
-          Text('เก็บลิงก์เดิมทั้งหมดไว้แล้ว ครั้งถัดไปเปิดใช้ได้สูงสุด ${_subscription!.maxProfileLinks} ลิงก์ก่อนเผยแพร่ใหม่ หน้าเว็บเดิมยังคงอยู่'),
+          Text(linkInBioText(context,
+              'เก็บลิงก์เดิมทั้งหมดไว้แล้ว ครั้งถัดไปเปิดใช้ได้สูงสุด ${_subscription!.maxProfileLinks} ลิงก์ก่อนเผยแพร่ใหม่ หน้าเว็บเดิมยังคงอยู่',
+              'All existing links have been kept. Enable up to ${_subscription!.maxProfileLinks} links before publishing again. Your existing website is unchanged.')),
       ],
       const SizedBox(height: 12),
       if (_customLinks.isEmpty)
@@ -1319,13 +1350,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             child: Column(children: [
               Icon(Icons.link, size: 40, color: AppTheme.textMuted),
               const SizedBox(height: 12),
-              Text('เพิ่มลิงก์แรกของร้าน',
+              LinkInBioText('เพิ่มลิงก์แรกของร้าน',
                   style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textPrimary)),
               const SizedBox(height: 6),
-              Text('เช่น ร้านค้า สินค้า หรือช่องทางติดต่อ',
+              LinkInBioText('เช่น ร้านค้า สินค้า หรือช่องทางติดต่อ',
                   textAlign: TextAlign.center,
                   style:
                       TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
@@ -1351,7 +1382,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   child: Column(children: [
                     Icon(icon, size: 21),
                     const SizedBox(height: 6),
-                    Text(label,
+                    LinkInBioText(label,
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 13)),
                   ]))));
@@ -1362,7 +1393,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       borderRadius: BorderRadius.circular(AppTheme.cardRadius));
 
   InputDecoration _infoInputDecoration(String hint) => InputDecoration(
-      hintText: hint,
+      hintText: localizeLinkInBioMessage(context, hint),
       fillColor: AppTheme.midnight,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -1398,13 +1429,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 : _draftSaveFailed ? Icons.error_outline : Icons.edit_note,
                 size: 16, color: color),
             const SizedBox(width: 6),
-            Flexible(child: Text(_draftStatusText,
+            Flexible(child: LinkInBioText(_draftStatusText,
                 key: const ValueKey('link-in-bio-draft-status'),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: color))),
           ]),
           const SizedBox(height: 4),
-          Text('เผยแพร่อีกครั้งเพื่ออัปเดตหน้าเว็บจริง',
+          LinkInBioText('เผยแพร่อีกครั้งเพื่ออัปเดตหน้าเว็บจริง',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         ]));
@@ -1436,10 +1467,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
               const SizedBox(width: 12),
               Expanded(child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('โลโก้ร้าน', style: TextStyle(fontSize: 14,
+                LinkInBioText('โลโก้ร้าน', style: TextStyle(fontSize: 14,
                     fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
                 const SizedBox(height: 2),
-                Text('รูปที่ลูกค้าเห็นบนหน้าเว็บ', style: TextStyle(
+                LinkInBioText('รูปที่ลูกค้าเห็นบนหน้าเว็บ', style: TextStyle(
                     fontSize: 12, color: AppTheme.textSecondary)),
                 Wrap(spacing: 8, children: [
                   TextButton.icon(
@@ -1449,10 +1480,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                           foregroundColor: AppTheme.accentCyanInk,
                           padding: const EdgeInsets.symmetric(horizontal: 4)),
                       icon: const Icon(Icons.photo_camera_outlined, size: 16),
-                      label: Text(_appearance.logoKey == null
+                      label: LinkInBioText(_appearance.logoKey == null
                           ? 'เพิ่มโลโก้' : 'เปลี่ยนโลโก้')),
                   if (_appearance.logoKey != null)
-                    Tooltip(message: 'ลบโลโก้', child: TextButton(
+                    Tooltip(message: localizeLinkInBioMessage(context, 'ลบโลโก้'), child: TextButton(
                         key: const ValueKey('link-in-bio-remove-logo'),
                         onPressed: _canEdit ? () => setState(() {
                           _appearance = _appearance.copyWith(logoKey: null);
@@ -1461,7 +1492,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                         style: TextButton.styleFrom(
                             foregroundColor: AppTheme.textSecondary,
                             padding: const EdgeInsets.symmetric(horizontal: 4)),
-                        child: const Text('ลบรูป'))),
+                        child: const LinkInBioText('ลบรูป'))),
                 ]),
               ])),
             ])),
@@ -1470,10 +1501,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             padding: const EdgeInsets.all(16),
             decoration: _infoPanelDecoration,
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text('ชื่อร้าน', style: TextStyle(fontSize: 14,
+              LinkInBioText('ชื่อร้าน', style: TextStyle(fontSize: 14,
                   fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
               const SizedBox(height: 8),
-              Semantics(label: 'ชื่อร้าน', child: TextField(
+              Semantics(label: localizeLinkInBioMessage(context, 'ชื่อร้าน'), child: TextField(
                   key: const ValueKey('link-in-bio-store-name'),
                   controller: _storeNameController,
                   enabled: _canEdit,
@@ -1486,15 +1517,15 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   decoration: _infoInputDecoration('เช่น ร้านมินาขายดี'))),
               const SizedBox(height: 16),
               Row(children: [
-                Expanded(child: Text('แนะนำร้านสั้น ๆ', style: TextStyle(
+                Expanded(child: LinkInBioText('แนะนำร้านสั้น ๆ', style: TextStyle(
                     fontSize: 14, fontWeight: FontWeight.w600,
                     color: AppTheme.textPrimary))),
                 const SizedBox(width: 8),
-                Text('ไม่บังคับ', textAlign: TextAlign.end,
+                LinkInBioText('ไม่บังคับ', textAlign: TextAlign.end,
                     style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
               ]),
               const SizedBox(height: 8),
-              Semantics(label: 'แนะนำร้านสั้น ๆ', child: TextFormField(
+              Semantics(label: localizeLinkInBioMessage(context, 'แนะนำร้านสั้น ๆ'), child: TextFormField(
                   key: const ValueKey('link-in-bio-description'),
                   controller: _descriptionController,
                   enabled: _canEdit,
@@ -1508,6 +1539,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                   autovalidateMode: AutovalidateMode.onUserInteraction,
                   validator: (value) => (value ?? '').length > 280
                       ? 'คำแนะนำร้านยาวเกิน 280 ตัวอักษร' : null,
+                  errorBuilder: (context, error) => LinkInBioText(error,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.error)),
                   onChanged: (value) {
                     if (value.length <= 280) {
                       setState(() {
@@ -1539,14 +1573,14 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                         color: AppTheme.glassDeep,
                         borderRadius: BorderRadius.circular(10)),
                     child: Icon(Icons.link, size: 18, color: AppTheme.accentCyanInk)),
-                trailing: Text(_urlExpanded ? 'ย่อ' : 'แก้ไข',
+                trailing: LinkInBioText(_urlExpanded ? 'ย่อ' : 'แก้ไข',
                     style: TextStyle(fontSize: 13, color: AppTheme.accentCyanInk)),
-                title: Text('ลิงก์ร้านของคุณ',
+                title: LinkInBioText('ลิงก์ร้านของคุณ',
                     key: const ValueKey('link-in-bio-url-settings'),
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary)),
                 subtitle: Text(_slugController.text.trim().isEmpty
-                        ? 'ตั้งชื่อ URL ร้าน' : _slugController.text.trim(),
+                        ? localizeLinkInBioMessage(context, 'ตั้งชื่อ URL ร้าน') : _slugController.text.trim(),
                     maxLines: 2, overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                 children: [
@@ -1558,10 +1592,12 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                       maxLength: 40,
                       autocorrect: false,
                       textCapitalization: TextCapitalization.none,
-                      decoration: const InputDecoration(
-                          labelText: 'ชื่อ URL', hintText: 'mina-shop',
-                          helperText: 'a-z, 0-9 และขีดกลาง ความยาว 3–40 ตัวอักษร',
-                          helperMaxLines: 3)),
+                      decoration: InputDecoration(
+                          label: const LinkInBioText('ชื่อ URL'), hintText: 'mina-shop',
+                          helper: LinkInBioText('a-z, 0-9 และขีดกลาง ความยาว 3–40 ตัวอักษร',
+                              style: Theme.of(context).inputDecorationTheme.helperStyle ??
+                                  Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant)))),
                 ])),
         _infoDraftStatus(),
       ]));
@@ -1569,7 +1605,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   Widget _linkMenu(int index, LinkInBioCustomLink link) =>
       PopupMenuButton<String>(
           key: ValueKey('link-in-bio-link-menu-${link.id}'),
-          tooltip: 'ตัวเลือกลิงก์',
+          tooltip: localizeLinkInBioMessage(context, 'ตัวเลือกลิงก์'),
           enabled: _canEdit,
           onSelected: (value) {
             switch (value) {
@@ -1588,24 +1624,25 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                     key: ValueKey('link-in-bio-feature-${link.id}'),
                     value: 'feature',
                     enabled: _enabledLinkIds.contains(link.id),
-                    child: Text(_appearance.featuredLinkId == link.id
+                    child: LinkInBioText(_appearance.featuredLinkId == link.id
                         ? 'ยกเลิกโปรโมชันเด่น'
                         : 'เลือกเป็นโปรโมชันเด่น')),
                 PopupMenuItem(
                     key: ValueKey('link-in-bio-move-up-${link.id}'),
                     value: 'up',
                     enabled: index > 0,
-                    child: const Text('เลื่อนขึ้น')),
+                    child: const LinkInBioText('เลื่อนขึ้น')),
                 PopupMenuItem(
                     key: ValueKey('link-in-bio-move-down-${link.id}'),
                     value: 'down',
                     enabled: index < _customLinks.length - 1,
-                    child: const Text('เลื่อนลง')),
+                    child: const LinkInBioText('เลื่อนลง')),
                 PopupMenuItem(
                     key: ValueKey('link-in-bio-delete-${link.id}'),
                     value: 'delete',
-                    child: const Tooltip(
-                        message: 'ลบลิงก์', child: Text('ลบลิงก์'))),
+                    child: Tooltip(
+                        message: localizeLinkInBioMessage(context, 'ลบลิงก์'),
+                        child: const LinkInBioText('ลบลิงก์'))),
               ]);
 
   Widget _links() => SliverLayoutBuilder(
@@ -1653,9 +1690,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                         index: index,
                         enabled: _canEdit,
                         child: Semantics(
-                            label: 'จัดลำดับ ${link.title}',
-                            hint:
-                                'ลากเพื่อย้าย หรือใช้เมนูเลื่อนขึ้นและเลื่อนลง',
+                            label: linkInBioText(context, 'จัดลำดับ ${link.title}', 'Reorder ${link.title}'),
+                            hint: localizeLinkInBioMessage(context,
+                                'ลากเพื่อย้าย หรือใช้เมนูเลื่อนขึ้นและเลื่อนลง'),
                             child: SizedBox(
                                 width: 44,
                                 height: 48,
@@ -1672,7 +1709,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 key: const ValueKey('link-in-bio-decorate'),
                 onPressed: _canEdit && !_isLoading ? _decorate : null,
                 icon: const Icon(Icons.tune),
-                label: const Text('ปรับสี รูป และตัวอักษร'))),
+                label: const LinkInBioText('ปรับสี รูป และตัวอักษร'))),
         const SizedBox(height: 16),
         BioPreviewViewport(
             height: (MediaQuery.sizeOf(context).height * .17)
@@ -1706,24 +1743,24 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 borderRadius: BorderRadius.circular(18),
                 child: SingleChildScrollView(child: _draftPreview()))),
         const SizedBox(height: 16),
-        const Text('ตรวจแบบร่างก่อนเผยแพร่ เมื่อพร้อมกดเผยแพร่ให้ลูกค้าเห็น'),
+        const LinkInBioText('ตรวจแบบร่างก่อนเผยแพร่ เมื่อพร้อมกดเผยแพร่ให้ลูกค้าเห็น'),
         BioUiPress(
             child: TextButton(
                 key: const ValueKey('link-in-bio-preview'),
                 onPressed: _preview,
-                child: const Text('ดูตัวอย่างเต็มหน้า'))),
+                child: const LinkInBioText('ดูตัวอย่างเต็มหน้า'))),
         BioUiPress(
             enabled: _canEdit && !_isLoading,
             child: TextButton.icon(
                 key: const ValueKey('link-in-bio-review-info'),
                 onPressed: _canEdit && !_isLoading ? () => _setStep(0) : null,
                 icon: const Icon(Icons.edit_outlined, size: 18),
-                label: const Text('แก้ไขข้อมูลร้านและ URL'))),
+                label: const LinkInBioText('แก้ไขข้อมูลร้านและ URL'))),
       ]);
 
   Widget _more() => PopupMenuButton<String>(
       key: const ValueKey('link-in-bio-more'),
-      tooltip: 'ตัวเลือกเพิ่มเติม',
+      tooltip: localizeLinkInBioMessage(context, 'ตัวเลือกเพิ่มเติม'),
       onSelected: (value) {
         switch (value) {
           case 'save':
@@ -1739,22 +1776,27 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 key: const ValueKey('link-in-bio-save-draft'),
                 value: 'save',
                 enabled: _canEdit,
-                child: const Text('บันทึกแบบร่าง')),
+                child: const LinkInBioText('บันทึกแบบร่าง')),
             PopupMenuItem(
                 key: const ValueKey('link-in-bio-refresh'),
                 value: 'refresh',
                 enabled: !_isLoading && !_isBusy,
-                child: const Text('ตรวจสถานะเว็บไซต์')),
+                child: const LinkInBioText('ตรวจสถานะเว็บไซต์')),
             if (_profile?.isPublished == true && !_publicationUncertain)
               PopupMenuItem(
                   key: const ValueKey('link-in-bio-unpublish'),
                   value: 'unpublish',
                   enabled: _canEdit && !_isLoading,
-                  child: const Text('หยุดเผยแพร่')),
+                  child: const LinkInBioText('หยุดเผยแพร่')),
           ]);
 
   Widget _footer() {
     final ready = _canEdit && !_isLoading;
+    final stacked = MediaQuery.sizeOf(context).width < 560 &&
+        MediaQuery.textScalerOf(context).scale(14) > 14 * 1.3;
+    Widget fitAction(Widget child) => stacked
+        ? SizedBox(width: double.infinity, child: child)
+        : Expanded(child: child);
     final buttonStyle = ButtonStyle(
         minimumSize: const WidgetStatePropertyAll(Size(0, 52)),
         padding: const WidgetStatePropertyAll(
@@ -1775,7 +1817,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (_step == 2) ...[
-                    Text('บันทึกเป็นแบบร่าง ต้องเผยแพร่เพื่ออัปเดตเว็บจริง',
+                    LinkInBioText('บันทึกเป็นแบบร่าง ต้องเผยแพร่เพื่ออัปเดตเว็บจริง',
                         key: const ValueKey('link-in-bio-decoration-publish-hint'),
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -1788,12 +1830,16 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                           key: const ValueKey('link-in-bio-done'),
                           onPressed: ready ? _finishSection : null,
                           style: buttonStyle,
-                          child: Text(
+                          child: LinkInBioText(
                               _step == 2 ? 'บันทึกแล้วกลับ' : 'เสร็จสิ้น'))),
                 ])
-            : Row(children: [
-                Expanded(
-                    child: BioUiPress(
+            : Flex(
+                direction: stacked ? Axis.vertical : Axis.horizontal,
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: stacked
+                    ? CrossAxisAlignment.stretch : CrossAxisAlignment.center,
+                children: [
+                fitAction(BioUiPress(
                         enabled: _canEdit,
                         child: OutlinedButton(
                             key: ValueKey(_step == 1
@@ -1805,12 +1851,11 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                     : () => _setStep(1)
                                 : null,
                             style: buttonStyle,
-                            child: Text(
+                            child: LinkInBioText(
                                 _step == 1 ? 'บันทึกแบบร่าง' : 'กลับไปที่ลิงก์',
                                 textAlign: TextAlign.center)))),
-                const SizedBox(width: 10),
-                Expanded(
-                    child: BioUiPress(
+                SizedBox(width: stacked ? 0 : 10, height: stacked ? 10 : 0),
+                fitAction(BioUiPress(
                         enabled:
                             ready && (_step == 1 || !_publicationUncertain),
                         child: FilledButton(
@@ -1825,7 +1870,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                         : _publish
                                 : null,
                             style: buttonStyle,
-                            child: Text(
+                            child: LinkInBioText(
                                 _isBusy
                                     ? 'กำลังดำเนินการ...'
                                     : _step == 1
@@ -1854,6 +1899,43 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                 : publication == false
                     ? 'ยังไม่ได้เผยแพร่'
                     : 'ยังตรวจสถานะเว็บไซต์ไม่ได้';
+    final scrollDetails = MediaQuery.sizeOf(context).width < 560 &&
+        MediaQuery.textScalerOf(context).scale(14) > 14 * 1.3;
+    final details = <Widget>[
+      Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 16, vertical: 4),
+          child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                LinkInBioPublicationDot(published: publication),
+                const SizedBox(width: 6),
+                Flexible(
+                    child: LinkInBioText(status,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textSecondary))),
+              ])),
+      if (_step != 0) Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 16, vertical: 2),
+          child: LinkInBioText(_draftStatusText,
+              key: const ValueKey('link-in-bio-draft-status'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 12, color: AppTheme.textSecondary))),
+      if (_noticeMessage != null)
+        Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Semantics(
+                liveRegion: true,
+                child: LinkInBioText(_noticeMessage!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.accentCyanInk)))),
+    ];
     final body = Material(
         color: AppTheme.pitchBlack,
         child: SafeArea(
@@ -1871,11 +1953,11 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                 key: ValueKey(_step != 1
                                     ? 'link-in-bio-close-editor'
                                     : 'link-in-bio-back'),
-                                tooltip: 'กลับ',
+                                tooltip: localizeLinkInBioMessage(context, 'กลับ'),
                                 onPressed: !_canEdit ? null : _leave,
                                 icon: const Icon(Icons.arrow_back))),
                         Expanded(
-                            child: Text(
+                            child: LinkInBioText(
                                 switch (_step) {
                                   0 => 'ข้อมูลร้าน',
                                   2 => 'ตกแต่งหน้าเว็บ',
@@ -1889,39 +1971,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                     color: AppTheme.textPrimary))),
                         _more(),
                       ])),
-                  Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 4),
-                      child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            LinkInBioPublicationDot(published: publication),
-                            const SizedBox(width: 6),
-                            Flexible(
-                                child: Text(status,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        fontSize: 13,
-                                        color: AppTheme.textSecondary))),
-                          ])),
-                  if (_step != 0) Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 2),
-                      child: Text(_draftStatusText,
-                          key: const ValueKey('link-in-bio-draft-status'),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 12, color: AppTheme.textSecondary))),
-                  if (_noticeMessage != null)
-                    Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                        child: Semantics(
-                            liveRegion: true,
-                            child: Text(_noticeMessage!,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    color: AppTheme.accentCyanInk)))),
+                  if (!scrollDetails) ...details,
                   Expanded(
                       child: BioUiEntrance(
                           key: ValueKey('link-in-bio-section-motion-$_step'),
@@ -1929,6 +1979,10 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                               key: const ValueKey('link-in-bio-content'),
                               controller: _scrollController,
                               slivers: [
+                                if (scrollDetails)
+                                  SliverToBoxAdapter(child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: details)),
                                 SliverPadding(
                                     padding: const EdgeInsets.fromLTRB(
                                         16, 16, 16, 0),
@@ -1941,7 +1995,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                             Padding(
                                                 padding: const EdgeInsets.only(
                                                     bottom: 16),
-                                                child: Text(_errorMessage!,
+                                                child: LinkInBioText(_errorMessage!,
                                                     style: TextStyle(
                                                         color: Theme.of(context)
                                                             .colorScheme
@@ -1960,13 +2014,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                                             : null,
                                                     icon: const Icon(
                                                         Icons.refresh),
-                                                    label: const Text(
+                                                    label: const LinkInBioText(
                                                         'ตรวจสถานะอีกครั้ง'))),
                                           if (_hasUnpublishedChanges)
                                             const Padding(
                                                 padding:
                                                     EdgeInsets.only(bottom: 12),
-                                                child: Text(
+                                                child: LinkInBioText(
                                                     'มีการแก้ไขที่ยังไม่ได้เผยแพร่ เว็บไซต์ยังใช้ข้อมูลที่เผยแพร่ครั้งล่าสุด')),
                                           if (_profile?.isPublished == true &&
                                               _slugController.text.trim() !=
@@ -1974,7 +2028,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                             const Padding(
                                                 padding:
                                                     EdgeInsets.only(bottom: 12),
-                                                child: Text(
+                                                child: LinkInBioText(
                                                     'เมื่อเผยแพร่ชื่อ URL ใหม่ ลิงก์เดิมจะเปิดไม่ได้ ต้องส่งลิงก์ใหม่ให้ลูกค้า')),
                                           switch (_step) {
                                             0 => _info(),
@@ -2084,7 +2138,7 @@ class _BioLinkTile extends StatelessWidget {
                                               color: AppTheme.textSecondary)),
                                     ]))))),
                 Semantics(
-                    label: 'แสดงลิงก์ $title',
+                    label: linkInBioText(context, 'แสดงลิงก์ $title', 'Show link $title'),
                     child: Switch.adaptive(
                         key: ValueKey('link-in-bio-toggle-$id'),
                         value: enabled,
@@ -2094,7 +2148,7 @@ class _BioLinkTile extends StatelessWidget {
               Divider(height: 1, color: AppTheme.borderSoft),
               Row(children: [
                 Tooltip(
-                    message: 'แก้ไขลิงก์',
+                    message: localizeLinkInBioMessage(context, 'แก้ไขลิงก์'),
                     child: BioUiPress(
                         enabled: canEdit && onEdit != null,
                         child: TextButton.icon(
@@ -2106,12 +2160,12 @@ class _BioLinkTile extends StatelessWidget {
                                     const EdgeInsets.symmetric(horizontal: 4),
                                 minimumSize: const Size(0, 44)),
                             icon: const Icon(Icons.edit_outlined, size: 17),
-                            label: const Text('แก้ไข',
+                            label: const LinkInBioText('แก้ไข',
                                 style: TextStyle(fontSize: 13))))),
                 Expanded(
                     child: enabled
                         ? const SizedBox.shrink()
-                        : Text('ซ่อนอยู่',
+                        : LinkInBioText('ซ่อนอยู่',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.end,
@@ -2138,6 +2192,7 @@ class _AddLinkSheet extends StatefulWidget {
 
 class _AddLinkSheetState extends State<_AddLinkSheet> {
   final _form = GlobalKey<FormState>();
+  final _errorKey = GlobalKey();
   late final TextEditingController _titleController;
   late final TextEditingController _urlController;
   late final TextEditingController _categoryController;
@@ -2150,6 +2205,9 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
   bool _advancedOpen = false;
   bool _hasCustomTitle = false;
   bool _isSubmitting = false;
+  bool _canLocalizeAutomaticTitle = false;
+  String? _automaticTitleSource;
+  String? _automaticTitleValue;
 
   @override
   void initState() {
@@ -2167,6 +2225,12 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _canLocalizeAutomaticTitle = true;
+  }
+
+  @override
   void dispose() {
     _titleController.dispose();
     _urlController.dispose();
@@ -2177,11 +2241,43 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
 
   void _updateTitleFromUrl() {
     if (_hasCustomTitle) return;
-    final title = suggestedBioLinkTitle(_urlController.text) ?? '';
+    final input = _urlController.text;
+    // A locale change must not rewrite a label that was already generated.
+    if (_automaticTitleSource == input &&
+        _automaticTitleValue == _titleController.text) {
+      return;
+    }
+    final suggested = suggestedBioLinkTitle(input) ?? '';
+    final title = _canLocalizeAutomaticTitle
+        ? localizeLinkInBioMessage(context, suggested)
+        : suggested;
+    _automaticTitleSource = input;
+    _automaticTitleValue = title;
     if (_titleController.text == title) return;
     _titleController.value = TextEditingValue(
         text: title, selection: TextSelection.collapsed(offset: title.length));
   }
+
+  bool get _scrollErrorWithContent => MediaQuery.sizeOf(context).width < 560 &&
+      MediaQuery.textScalerOf(context).scale(14) > 14 * 1.3;
+
+  void _showError(String message) {
+    setState(() => _errorMessage = message);
+    if (!_scrollErrorWithContent) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = _errorKey.currentContext;
+      if (target != null) unawaited(Scrollable.ensureVisible(target));
+    });
+  }
+
+  Widget _validationError() => Padding(
+      key: _errorKey,
+      padding: const EdgeInsets.only(top: 8),
+      child: Semantics(
+          liveRegion: true,
+          child: LinkInBioText(_errorMessage!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error))));
 
   Future<void> _submit() async {
     if (_isSubmitting) return;
@@ -2194,7 +2290,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
     final url = normalizeBioLinkInput(_urlController.text);
     final error = linkInBioLinkError(title, url);
     if (error != null) {
-      setState(() => _errorMessage = error);
+      _showError(error);
       return;
     }
     final link = LinkInBioCustomLink(
@@ -2217,7 +2313,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
       if (error != null) {
-        setState(() => _errorMessage = error);
+        _showError(error);
         return;
       }
     }
@@ -2251,7 +2347,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                               const Icon(Icons.add_link_outlined),
                               const SizedBox(width: 10),
                               Expanded(
-                                  child: Text(
+                                  child: LinkInBioText(
                                       widget.initialLink == null
                                           ? 'เพิ่มลิงก์ใหม่'
                                           : 'แก้ไขลิงก์',
@@ -2260,7 +2356,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                           fontWeight: FontWeight.w700))),
                               BioUiPress(
                                   child: IconButton(
-                                      tooltip: 'ปิด',
+                                      tooltip: localizeLinkInBioMessage(context, 'ปิด'),
                                       onPressed: () => Navigator.pop(context),
                                       icon: const Icon(Icons.close))),
                             ]),
@@ -2271,6 +2367,8 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                     key: _form,
                                     child: SingleChildScrollView(
                                         child: Column(children: [
+                                      if (_errorMessage != null && _scrollErrorWithContent)
+                                        _validationError(),
                                       TextField(
                                           key: const ValueKey(
                                               'link-in-bio-link-title'),
@@ -2280,10 +2378,10 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                                   value.trim().isNotEmpty,
                                           maxLength: 80,
                                           textInputAction: TextInputAction.next,
-                                          decoration: const InputDecoration(
-                                              labelText: 'ชื่อปุ่ม',
-                                              hintText:
-                                                  'เว้นว่างเพื่อใช้ชื่อจากลิงก์')),
+                                          decoration: InputDecoration(
+                                              label: const LinkInBioText('ชื่อปุ่ม'),
+                                              hintText: localizeLinkInBioMessage(context,
+                                                  'เว้นว่างเพื่อใช้ชื่อจากลิงก์'))),
                                       TextField(
                                           key: const ValueKey(
                                               'link-in-bio-link-url'),
@@ -2292,13 +2390,13 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                               _updateTitleFromUrl(),
                                           maxLength: 2048,
                                           keyboardType: TextInputType.url,
-                                          decoration: const InputDecoration(
-                                              labelText:
-                                                  'ลิงก์หรือช่องทางติดต่อ',
+                                          decoration: InputDecoration(
+                                              label: const LinkInBioText('ลิงก์หรือช่องทางติดต่อ'),
                                               hintText: 'https://...',
-                                              helperText:
-                                                  'วางลิงก์เว็บไซต์ อีเมล หรือเบอร์โทร',
-                                              helperMaxLines: 2)),
+                                              helper: LinkInBioText('วางลิงก์เว็บไซต์ อีเมล หรือเบอร์โทร',
+                                                  style: Theme.of(context).inputDecorationTheme.helperStyle ??
+                                                      Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                          color: Theme.of(context).colorScheme.onSurfaceVariant)))),
                                       ExpansionTile(
                                         key: const ValueKey(
                                             'link-in-bio-link-advanced-disclosure'),
@@ -2307,7 +2405,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                         onExpansionChanged: (value) => setState(
                                             () => _advancedOpen = value),
                                         tilePadding: EdgeInsets.zero,
-                                        title: const Text('ตัวเลือกเพิ่มเติม',
+                                        title: const LinkInBioText('ตัวเลือกเพิ่มเติม',
                                             key: ValueKey(
                                                 'link-in-bio-link-advanced')),
                                         children: [
@@ -2323,10 +2421,16 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                                       60
                                                   ? 'หมวดหมู่ยาวเกิน 60 ตัวอักษร'
                                                   : null,
-                                              decoration: const InputDecoration(
-                                                  labelText: 'หมวดหมู่',
-                                                  hintText:
-                                                      'เช่น ช้อปสินค้า หรือ ติดต่อ')),
+                                              errorBuilder: (context, error) =>
+                                                  LinkInBioText(error,
+                                                      style: Theme.of(context)
+                                                          .textTheme.bodySmall
+                                                          ?.copyWith(color: Theme.of(context)
+                                                              .colorScheme.error)),
+                                              decoration: InputDecoration(
+                                                  label: const LinkInBioText('หมวดหมู่'),
+                                                  hintText: localizeLinkInBioMessage(context,
+                                                      'เช่น ช้อปสินค้า หรือ ติดต่อ'))),
                                           const SizedBox(height: 10),
                                           InkWell(
                                               key: const ValueKey(
@@ -2342,7 +2446,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                               child: InputDecorator(
                                                   decoration:
                                                       const InputDecoration(
-                                                          labelText: 'โลโก้',
+                                                          label: LinkInBioText('โลโก้'),
                                                           suffixIcon: Icon(Icons
                                                               .expand_more)),
                                                   child: Row(children: [
@@ -2354,10 +2458,10 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                                     Expanded(
                                                         child: Text(
                                                             bioPlatformLabel(
-                                                                _icon))),
+                                                                _icon, context: context))),
                                                   ]))),
                                           const SizedBox(height: 16),
-                                          const Text(
+                                          const LinkInBioText(
                                               'ปรับปุ่มนี้แยกจากธีมได้ หรือเว้นว่างเพื่อใช้ค่าของธีม'),
                                           const SizedBox(height: 10),
                                           BioFontField(
@@ -2389,14 +2493,8 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                         ],
                                       ),
                                     ]))))),
-                            if (_errorMessage != null)
-                              Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Text(_errorMessage!,
-                                      style: TextStyle(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .error))),
+                            if (_errorMessage != null && !_scrollErrorWithContent)
+                              _validationError(),
                             const SizedBox(height: 10),
                             SizedBox(
                                 width: double.infinity,
@@ -2406,7 +2504,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
                                             'link-in-bio-link-save'),
                                         onPressed: _isSubmitting ? null : _submit,
                                         icon: const Icon(Icons.check),
-                                        label: const Text('บันทึกลิงก์')))),
+                                        label: const LinkInBioText('บันทึกลิงก์')))),
                           ])),
                     )))));
   }

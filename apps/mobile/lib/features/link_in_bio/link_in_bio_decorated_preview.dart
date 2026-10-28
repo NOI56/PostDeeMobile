@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/link_in_bio_appearance.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_link_defaults.dart';
+import 'link_in_bio_localizations.dart';
 import 'link_in_bio_motion.dart';
 import 'link_in_bio_platform_logo.dart';
 import 'link_in_bio_preview_styles.dart';
@@ -41,7 +42,9 @@ class BioDecoratedPreview extends StatelessWidget {
       builder: (phase, entrance, reduced) {
         final cards = appearance.themeId == 'cards';
         final garden = appearance.themeId == 'garden';
-        final name = storeName.trim().isEmpty ? 'ร้านของคุณ' : storeName.trim();
+        final name = storeName.trim().isEmpty
+            ? linkInBioText(context, 'ร้านของคุณ', 'Your store')
+            : storeName.trim();
         final background = appearance.background;
         final drift = appearance.effects.background && !reduced
             ? math.sin(phase * math.pi * 2) * .15
@@ -121,7 +124,7 @@ class BioDecoratedPreview extends StatelessWidget {
                                 style: bioTextStyle(style,
                                     weight: FontWeight.w600)),
                             if (cards)
-                              Text('เปิดลิงก์',
+                              Text(linkInBioText(context, 'เปิดลิงก์', 'Open link'),
                                   style: bioTextStyle(style, size: 13).copyWith(
                                       color: const Color(0xff8b67b5))),
                           ])),
@@ -219,7 +222,9 @@ class BioDecoratedPreview extends StatelessWidget {
                                         const SizedBox(height: 8),
                                         Text(
                                             appearance.description.isEmpty
-                                                ? 'เลือกช่องทางที่ต้องการได้เลย'
+                                                ? linkInBioText(context,
+                                                    'เลือกช่องทางที่ต้องการได้เลย',
+                                                    'Choose a channel below')
                                                 : appearance.description,
                                             textAlign: TextAlign.center,
                                             style: bioTextStyle(
@@ -236,7 +241,9 @@ class BioDecoratedPreview extends StatelessWidget {
                                                           .buttonColor)
                                                       .withValues(alpha: .33))),
                                         if (links.isEmpty)
-                                          Text('เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
+                                          Text(linkInBioText(context,
+                                              'เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
+                                              'Add a link to see a preview'),
                                               style: bioTextStyle(
                                                   appearance.descriptionStyle)),
                                         for (final (index, link)
@@ -261,7 +268,9 @@ class BioDecoratedPreview extends StatelessWidget {
                                           linkButton(link, index),
                                         ],
                                         const SizedBox(height: 72),
-                                        Text('สร้างหน้าเว็บร้านค้าด้วย PostDee',
+                                        Text(linkInBioText(context,
+                                            'สร้างหน้าเว็บร้านค้าด้วย PostDee',
+                                            'Create a store page with PostDee'),
                                             textAlign: TextAlign.center,
                                             style: bioTextStyle(
                                                 appearance.brandStyle,

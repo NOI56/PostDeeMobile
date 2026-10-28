@@ -788,7 +788,8 @@ void main() {
       tester.widget<UploaderScreen>(find.byType(UploaderScreen)).initialDraftId,
       draft.id,
     );
-    expect(find.textContaining('ไม่พบวิดีโอของฉบับร่าง'), findsWidgets);
+    expect(find.text("This draft's video could not be found on this device."),
+        findsWidgets);
     await tester.tap(find.byKey(const ValueKey('uploader-close')));
     await tester.pumpAndSettle();
     await resume;

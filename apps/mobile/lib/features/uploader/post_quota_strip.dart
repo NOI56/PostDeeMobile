@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import 'uploader_localizations.dart';
 
 class PostQuotaStrip extends StatelessWidget {
   const PostQuotaStrip({
@@ -66,7 +67,7 @@ class PostQuotaStrip extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: UploaderText(
                     'โพสต์คงเหลือ',
                     style: secondaryStyle?.copyWith(
                       fontSize: 12,
@@ -113,12 +114,17 @@ class PostQuotaStrip extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      TextSpan(text: ' / $limit หน่วย'),
+                      TextSpan(
+                          text: uploaderText(context, ' / $limit หน่วย',
+                              ' / $limit ${limit == 1 ? 'unit' : 'units'}')),
                     ],
                   ),
                   style: secondaryStyle,
                 ),
-                Text('ใช้ไป $used หน่วย', style: secondaryStyle),
+                Text(
+                    uploaderText(context, 'ใช้ไป $used หน่วย',
+                        '$used ${used == 1 ? 'unit' : 'units'} used'),
+                    style: secondaryStyle),
               ],
             ),
             const SizedBox(height: 6),
@@ -131,17 +137,25 @@ class PostQuotaStrip extends StatelessWidget {
                 backgroundColor:
                     Color.lerp(AppTheme.border, AppTheme.accentCyanInk, 0.18),
                 color: AppTheme.accentCyanInk,
-                semanticsLabel: 'โพสต์เหลือ $remaining จาก $limit หน่วย',
+                semanticsLabel: uploaderText(
+                    context,
+                    'โพสต์เหลือ $remaining จาก $limit หน่วย',
+                    '$remaining of $limit post ${limit == 1 ? 'unit' : 'units'} remaining'),
               ),
             ),
             if (canSpendAddon && subscription.addonPostUnits > 0) ...[
               const SizedBox(height: 4),
-              Text('+ เครดิตเติม ${subscription.addonPostUnits} หน่วย',
+              Text(
+                  uploaderText(
+                      context,
+                      '+ เครดิตเติม ${subscription.addonPostUnits} หน่วย',
+                      '+ ${subscription.addonPostUnits} add-on ${subscription.addonPostUnits == 1 ? 'unit' : 'units'}'),
                   style: secondaryStyle),
             ],
             if (subscription.requiresPhoneVerification) ...[
               const SizedBox(height: 4),
-              Text('ยืนยันเบอร์เพื่อใช้โควตาฟรี', style: secondaryStyle),
+              UploaderText('ยืนยันเบอร์เพื่อใช้โควตาฟรี',
+                  style: secondaryStyle),
             ],
           ],
         ),

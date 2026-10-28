@@ -48,6 +48,7 @@ import 'publish_post_preview.dart';
 import 'post_video_preview_screen.dart';
 import 'tiktok_video_preparer.dart';
 import 'tiktok_publishing_settings_sheet.dart';
+import 'uploader_localizations.dart';
 import 'video_picker_service.dart';
 import 'watermark_video_processor.dart';
 
@@ -624,7 +625,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         children: [
           if (_videoDurationSeconds == null &&
               _localFilePathController.text.isNotEmpty)
-            Text(
+            UploaderText(
               _isReadingVideoDuration
                   ? 'กำลังอ่านความยาวคลิป...'
                   : 'ยังอ่านความยาวคลิปไม่ได้ จะตรวจซ้ำก่อนส่ง',
@@ -638,7 +639,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                 liveRegion: true,
                 child: PostDeeNotice(
                   key: ValueKey('uploader-duration-warning-${entry.key.apiValue}'),
-                  message: entry.value,
+                  message: localizeUploaderMessage(context, entry.value),
                   icon: Icons.timer_outlined,
                   color: Theme.of(context).colorScheme.error,
                 ),
@@ -1013,13 +1014,14 @@ class _UploaderScreenState extends State<UploaderScreen>
         : null;
   }
 
-  String? get _videoMetadataLabel {
+  String? _videoMetadataLabel(BuildContext context) {
     final width = _readPositiveInt(_widthController);
     final height = _readPositiveInt(_heightController);
     final size = _readPositiveInt(_sizeBytesController);
     final parts = <String>[
       if (_videoDurationSeconds case final seconds?)
-        '${_durationClock(seconds)} นาที',
+        uploaderText(context, '${_durationClock(seconds)} นาที',
+            '${_durationClock(seconds)} min'),
       if (width != null && height != null) '$width × $height px',
       if (_videoAspectLabel != null) '9:16',
       if (size != null)
@@ -1027,13 +1029,14 @@ class _UploaderScreenState extends State<UploaderScreen>
             ? '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'
             : size >= 1024
                 ? '${(size / 1024).toStringAsFixed(1)} KB'
-                : '$size ไบต์',
+                : uploaderText(context, '$size ไบต์',
+                    '$size ${size == 1 ? 'byte' : 'bytes'}'),
     ];
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
   Widget _buildVideoMetadata({TextAlign textAlign = TextAlign.left}) {
-    final metadata = _videoMetadataLabel;
+    final metadata = _videoMetadataLabel(context);
     return metadata == null
         ? const SizedBox.shrink()
         : Text(metadata,
@@ -1190,24 +1193,25 @@ class _UploaderScreenState extends State<UploaderScreen>
             context: context,
             builder: (dialogContext) => AlertDialog(
                   key: const ValueKey('uploader-exit-dialog'),
-                  title: const Text('เก็บโพสต์นี้ไว้ไหม?'),
-                  content: const Text(
+                  scrollable: MediaQuery.textScalerOf(dialogContext).scale(14) > 20,
+                  title: const UploaderText('เก็บโพสต์นี้ไว้ไหม?'),
+                  content: const UploaderText(
                       'มีข้อมูลที่ยังไม่ได้บันทึก กลับมาแก้ต่อได้จากฉบับร่าง'),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(dialogContext, 'cancel'),
-                        child: const Text('แก้ไขต่อ')),
+                        child: const UploaderText('แก้ไขต่อ')),
                     TextButton(
                         onPressed: () =>
                             Navigator.pop(dialogContext, 'discard'),
-                        child: const Text('ออกโดยไม่บันทึก')),
+                        child: const UploaderText('ออกโดยไม่บันทึก')),
                     FilledButton(
                         onPressed: !_draftStoreAvailable ||
                                 _localFilePathController.text.trim().isEmpty ||
                                 _isGeneratingCaption
                             ? null
                             : () => Navigator.pop(dialogContext, 'save'),
-                        child: const Text('บันทึกแล้วออก')),
+                        child: const UploaderText('บันทึกแล้วออก')),
                   ],
                 ));
         if (!mounted || action == null || action == 'cancel') return;
@@ -3234,20 +3238,20 @@ class _UploaderScreenState extends State<UploaderScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('เริ่มรายการโพสต์ใหม่?'),
-        content: const Text(
+        title: const UploaderText('เริ่มรายการโพสต์ใหม่?'),
+        content: const UploaderText(
           'กรุณาตรวจหน้ารายการโพสต์และแพลตฟอร์มปลายทางก่อน '
           'เพราะรายการเดิมอาจถูกส่งไปแล้ว การเริ่มรายการใหม่อาจโพสต์ซ้ำได้',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('ยกเลิก'),
+            child: const UploaderText('ยกเลิก'),
           ),
           FilledButton(
             key: const ValueKey('publish-new-attempt-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('ตรวจแล้ว เริ่มรายการใหม่'),
+            child: const UploaderText('ตรวจแล้ว เริ่มรายการใหม่'),
           ),
         ],
       ),
@@ -3665,19 +3669,20 @@ class _UploaderScreenState extends State<UploaderScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ลบฉบับร่างนี้?'),
-        content: const Text(
+        scrollable: MediaQuery.textScalerOf(context).scale(14) > 20,
+        title: const UploaderText('ลบฉบับร่างนี้?'),
+        content: const UploaderText(
           'วิดีโอและหน้าปกที่เก็บไว้กับฉบับร่างนี้จะถูกลบจากพื้นที่ของแอป',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('ยกเลิก'),
+            child: const UploaderText('ยกเลิก'),
           ),
           FilledButton(
             key: const ValueKey('publish-draft-delete-confirm'),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('ลบร่าง'),
+            child: const UploaderText('ลบร่าง'),
           ),
         ],
       ),
@@ -3743,6 +3748,14 @@ class _UploaderScreenState extends State<UploaderScreen>
     }
   }
 
+  Widget _draftSheetContent(BuildContext context, Widget child) {
+    if (MediaQuery.textScalerOf(context).scale(14) <= 20) return child;
+    return SingleChildScrollView(
+      key: const ValueKey('uploader-drafts-scroll'),
+      child: child,
+    );
+  }
+
   Future<void> _openDrafts() async {
     if (_isLoadingDrafts) return;
     try {
@@ -3755,22 +3768,22 @@ class _UploaderScreenState extends State<UploaderScreen>
             builder: (context, setSheetState) => SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Column(
+                child: _draftSheetContent(context, Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
+                    UploaderText(
                       'ฉบับร่างในเครื่อง',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    const UploaderText(
                       'ยังไม่อัปโหลด ไม่ส่งไปแพลตฟอร์ม และไม่ใช้โควตา',
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    const UploaderText(
                       'แอปคัดลอกวิดีโอและหน้าปกไว้ในพื้นที่แอปของเครื่องนี้ '
                       'ร่างไม่ซิงก์ข้ามอุปกรณ์ และอาจรวมอยู่ในข้อมูลสำรองของระบบ',
                       style: TextStyle(fontSize: 11.5),
@@ -3779,12 +3792,18 @@ class _UploaderScreenState extends State<UploaderScreen>
                     if (_drafts.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 28),
-                        child: Center(child: Text('ยังไม่มีฉบับร่างในเครื่อง')),
+                        child: Center(child: UploaderText('ยังไม่มีฉบับร่างในเครื่อง')),
                       )
                     else
                       Flexible(
                         child: ListView.separated(
                           shrinkWrap: true,
+                          primary: MediaQuery.textScalerOf(context).scale(14) > 20
+                              ? false
+                              : null,
+                          physics: MediaQuery.textScalerOf(context).scale(14) > 20
+                              ? const NeverScrollableScrollPhysics()
+                              : null,
                           itemCount: _drafts.length,
                           separatorBuilder: (_, __) => const Divider(),
                           itemBuilder: (context, index) {
@@ -3800,14 +3819,14 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: Text(
+                              subtitle: UploaderText(
                                 '${draft.platformApiValues.length} ช่องทาง · เก็บในเครื่อง',
                               ),
                               trailing: IconButton(
                                 key: ValueKey(
                                   'publish-draft-delete-${draft.id}',
                                 ),
-                                tooltip: 'ลบฉบับร่าง',
+                                tooltip: localizeUploaderMessage(context, 'ลบฉบับร่าง'),
                                 onPressed: () async {
                                   await _deleteDraft(draft);
                                   if (mounted) setSheetState(() {});
@@ -3823,7 +3842,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                         ),
                       ),
                   ],
-                ),
+                )),
               ),
             ),
           );
@@ -5331,9 +5350,10 @@ class _UploaderScreenState extends State<UploaderScreen>
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                           children: [
                             if (_activeDraftUploadedMedia != null) ...[
-                              const PostDeeNotice(
-                                  message: 'มีข้อมูลอัปโหลดของคำขอเดิม '
-                                      'ตรวจผลการส่งได้โดยไม่อัปโหลดหรือส่งโพสต์ซ้ำ',
+                              PostDeeNotice(
+                                  message: localizeUploaderMessage(context,
+                                      'มีข้อมูลอัปโหลดของคำขอเดิม '
+                                      'ตรวจผลการส่งได้โดยไม่อัปโหลดหรือส่งโพสต์ซ้ำ'),
                                   icon: Icons.history_rounded),
                               Align(
                                   alignment: Alignment.centerLeft,
@@ -5345,7 +5365,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                           : _recoverUploadedSubmission,
                                       icon: const Icon(
                                           Icons.manage_search_rounded),
-                                      label: Text(_isRecoveringSubmission
+                                      label: UploaderText(_isRecoveringSubmission
                                           ? 'กำลังตรวจผลการส่งเดิม...'
                                           : 'ตรวจผลการส่งเดิม'))),
                               const SizedBox(height: 8),
@@ -5357,7 +5377,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: Semantics(liveRegion: true,
                                       child: PostDeeNotice(
-                                      message: _errorMessage!,
+                                      message: localizeUploaderMessage(context, _errorMessage!),
                                       color:
                                           Theme.of(context).colorScheme.error,
                                       icon: Icons.error_outline))),
@@ -5365,7 +5385,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                               Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: PostDeeNotice(
-                                      message: _successMessage!,
+                                      message: localizeUploaderMessage(context, _successMessage!),
                                       color: AppTheme.successInk,
                                       icon: Icons.check_circle_outline)),
                             if (_recoveredPostId case final postId?)
@@ -5379,7 +5399,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                     }
                                   },
                                   icon: const Icon(Icons.receipt_long_outlined),
-                                  label: const Text('ดูโพสต์นี้'),
+                                  label: const UploaderText('ดูโพสต์นี้'),
                                 ),
                               ),
                             _UploadStepHeader(
@@ -5389,10 +5409,11 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 'uploader-step-platforms',
                                 'uploader-step-review'
                               ][_currentStep]),
-                              title: _wizardStepLabel(_currentStep),
+                              title: localizeUploaderMessage(context,
+                                  _wizardStepLabel(_currentStep)),
                             ),
                             const SizedBox(height: 6),
-                            Text(
+                            UploaderText(
                                 [
                                   'เริ่มจากคลิปแนวตั้งที่อยากโพสต์',
                                   'เขียนเอง หรือกดให้ AI ช่วยเมื่อพร้อม',
@@ -5435,20 +5456,21 @@ class _UploaderScreenState extends State<UploaderScreen>
                                           icon: const Icon(
                                               Icons.swap_horiz_rounded,
                                               size: 18),
-                                          label: const Text('เปลี่ยนคลิป')),
+                                          label: const UploaderText('เปลี่ยนคลิป')),
                                       OutlinedButton.icon(
                                           key: const ValueKey(
                                               'uploader-cover-edit-button'),
                                           onPressed: _openCoverEditor,
                                           icon: const Icon(Icons.image_outlined,
                                               size: 18),
-                                          label: Text(_coverResult == null
+                                          label: UploaderText(_coverResult == null
                                               ? 'แต่งหน้าปก'
                                               : 'แก้หน้าปก')),
                                     ]),
                                 if (_coverResult != null)
-                                  Text(
+                                  Text(uploaderText(context,
                                       'เลือกเฟรมที่ ${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}',
+                                      'Selected frame at ${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}'),
                                       key:
                                           const ValueKey('uploader-cover-time'),
                                       textAlign: TextAlign.center,
@@ -5671,7 +5693,7 @@ class _UploaderScreenState extends State<UploaderScreen>
             if (widget.fullScreen)
               IconButton(
                   key: const ValueKey('uploader-close'),
-                  tooltip: 'ปิดหน้าสร้างโพสต์',
+                  tooltip: localizeUploaderMessage(context, 'ปิดหน้าสร้างโพสต์'),
                   onPressed: _formBusy ? null : _requestExit,
                   icon: const Icon(Icons.close_rounded)),
           ]),
@@ -5686,7 +5708,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                         ? null
                         : _openDrafts,
                 icon: const Icon(Icons.folder_open_outlined, size: 17),
-                label: Text('ฉบับร่าง (${_drafts.length})')),
+                label: UploaderText('ฉบับร่าง (${_drafts.length})')),
             OutlinedButton.icon(
                 key: const ValueKey('uploader-save-draft-button'),
                 style: OutlinedButton.styleFrom(
@@ -5701,7 +5723,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                         color: AppTheme.successInk,
                         size: 17)
                     : const Icon(Icons.save_outlined, size: 17),
-                label: Text(_isSavingDraft
+                label: UploaderText(_isSavingDraft
                     ? 'กำลังบันทึก...'
                     : _draftSavedFeedback
                         ? 'บันทึกแล้ว'
@@ -5709,7 +5731,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           ]),
           if (_isRestoringInitialDraft) ...[
             const SizedBox(height: 8),
-            Text('กำลังเปิดฉบับร่าง...',
+            UploaderText('กำลังเปิดฉบับร่าง...',
                 key: const ValueKey('uploader-opening-draft'),
                 style: TextStyle(color: AppTheme.textSecondary)),
           ],
@@ -5759,8 +5781,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           ),
           child: Semantics(
             selected: isCurrent,
-            label:
-                '${_wizardStepLabel(index)}${isComplete ? ' เสร็จแล้ว' : ''}',
+            label: localizeUploaderMessage(context,
+                '${_wizardStepLabel(index)}${isComplete ? ' เสร็จแล้ว' : ''}'),
             child: ExcludeSemantics(
               child: Column(children: [
                 _UploaderDecorationTransition(
@@ -5800,9 +5822,13 @@ class _UploaderScreenState extends State<UploaderScreen>
                   ),
                 ),
                 const SizedBox(height: 5),
-                Text(['คลิป', 'แคปชัน', 'ช่องทาง', 'ตรวจทาน'][index],
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                UploaderText(['คลิป', 'แคปชัน', 'ช่องทาง', 'ตรวจทาน'][index],
+                    maxLines: MediaQuery.textScalerOf(context).scale(11) > 15
+                        ? null
+                        : 2,
+                    overflow: MediaQuery.textScalerOf(context).scale(11) > 15
+                        ? null
+                        : TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 11, fontWeight: FontWeight.w600)),
@@ -6007,7 +6033,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Widget _buildPostQuota() {
     if (_isLoadingPostQuota) {
-      return Text('กำลังโหลดโควตาโพสต์...',
+      return UploaderText('กำลังโหลดโควตาโพสต์...',
           key: const ValueKey('uploader-post-quota-loading'),
           style: Theme.of(context)
               .textTheme
@@ -6017,7 +6043,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (_postQuotaLoadFailed) {
       return Row(children: [
         Expanded(
-          child: Text('โหลดโควตาโพสต์ไม่สำเร็จ',
+          child: UploaderText('โหลดโควตาโพสต์ไม่สำเร็จ',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -6025,7 +6051,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         ),
         IconButton(
           key: const ValueKey('uploader-post-quota-retry'),
-          tooltip: 'โหลดโควตาโพสต์ใหม่',
+          tooltip: localizeUploaderMessage(context, 'โหลดโควตาโพสต์ใหม่'),
           onPressed: _loadPostQuota,
           icon: const Icon(Icons.refresh_rounded),
         ),
@@ -6073,7 +6099,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         OutlinedButton(
           key: const ValueKey('uploader-wizard-back'),
           onPressed: _formBusy ? null : () => _goToStep(_currentStep - 1),
-          child: const Text('ย้อนกลับ', textAlign: TextAlign.center),
+          child: const UploaderText('ย้อนกลับ', textAlign: TextAlign.center),
         ),
         enabled: !_formBusy);
     final primaryAction = SizedBox(
@@ -6095,7 +6121,7 @@ class _UploaderScreenState extends State<UploaderScreen>
             style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.actionBackground,
                 minimumSize: const Size.fromHeight(52)),
-            child: Text(
+            child: UploaderText(
               _formBusy
                   ? 'กำลังดำเนินการ...'
                   : _currentStep == 3
@@ -6130,7 +6156,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                   color: AppTheme.accentCyanInk),
               const SizedBox(width: 7),
               Expanded(
-                child: Text(
+                child: UploaderText(
                     _formBusy
                         ? 'กำลังดำเนินการ...'
                         : _currentStep == 0
@@ -6163,7 +6189,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                 key: const ValueKey('uploader-start-new-publish-attempt'),
                 onPressed: _formBusy ? null : _startNewSubmissionAttempt,
                 icon: const Icon(Icons.add_circle_outline_rounded),
-                label: const Text('เริ่มรายการโพสต์ใหม่')),
+                label: const UploaderText('เริ่มรายการโพสต์ใหม่')),
           LayoutBuilder(builder: (context, constraints) {
             final stackActions = _currentStep > 0 &&
                 constraints.maxWidth < 400 &&
@@ -6358,7 +6384,7 @@ class _UploadPageHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                UploaderText(
                   'สร้างโพสต์ใหม่',
                   style: TextStyle(
                     fontSize: 21,
@@ -6368,7 +6394,7 @@ class _UploadPageHeader extends StatelessWidget {
                 ),
                 if (!compact) ...[
                   const SizedBox(height: 2),
-                  Text(
+                  UploaderText(
                     'อัปโหลดครั้งเดียว แล้วเลือกช่องทางที่ต้องการ',
                     style: TextStyle(
                       fontSize: 12.5,
@@ -6430,9 +6456,13 @@ class _VideoPreviewCard extends StatelessWidget {
     final hasVideo = videoName != null;
 
     return Center(
-      child: SizedBox(
-        width: compact ? 72 : 174,
-        height: compact ? 108 : 260,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: compact ? 72 : 174,
+          maxWidth: compact ? 72 : 174,
+          minHeight: compact ? 108 : 260,
+          maxHeight: compact ? 108 : hasVideo ? 260 : double.infinity,
+        ),
         child: InkWell(
           key: ValueKey(hasVideo
               ? 'uploader-video-preview-open'
@@ -6463,6 +6493,7 @@ class _VideoPreviewCard extends StatelessWidget {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 54,
@@ -6478,8 +6509,9 @@ class _VideoPreviewCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
+            UploaderText(
               'เลือกวิดีโอ 9:16',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -6582,7 +6614,7 @@ class _VideoPreviewCard extends StatelessWidget {
                   children: [
                     Icon(Icons.check, size: 13, color: Colors.white),
                     SizedBox(width: 4),
-                    Text(
+                    UploaderText(
                       'ดูคลิป',
                       style: TextStyle(
                         fontSize: 10,

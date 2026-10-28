@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/config/app_config.dart';
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/theme/app_theme.dart';
 import '../shared/postdee_card.dart';
 import 'auth_controller.dart';
@@ -93,6 +94,9 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   late final PostDeeAuthSessionStore _sessionStore;
   late final AuthSessionBinding _screenSession;
   var _operationGeneration = 0;
+
+  String get _resendWaitInEnglish =>
+      'wait $_resendSecondsRemaining ${_resendSecondsRemaining == 1 ? 'second' : 'seconds'}';
 
   @override
   void initState() {
@@ -349,10 +353,14 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final titleScale = MediaQuery.textScalerOf(context).scale(16) / 16;
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        toolbarHeight: kToolbarHeight * (titleScale < 1 ? 1 : titleScale),
+        title: const _PhoneVerificationText(
           'ยืนยันเบอร์โทร',
+          maxLines: 3,
+          softWrap: true,
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
@@ -396,7 +404,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             ),
           ),
           const SizedBox(height: 15),
-          Text(
+          _PhoneVerificationText(
             'ยืนยันเบอร์เพื่อปลดล็อกโพสต์ฟรี',
             style: TextStyle(
               fontSize: 17,
@@ -405,7 +413,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             ),
           ),
           const SizedBox(height: 7),
-          Text(
+          _PhoneVerificationText(
             'แพ็กเกจ Basic ต้องยืนยันเบอร์โทรก่อนใช้สิทธิ์โพสต์ฟรี 3 ครั้งต่อเดือน',
             style: TextStyle(
               fontSize: 13,
@@ -418,18 +426,26 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             key: const ValueKey('phone-verification-phone-field'),
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-              labelText: 'เบอร์โทร',
-              hintText: '0812345678 หรือ +66812345678',
-              helperText:
-                  'ใส่เบอร์ไทย 10 หลัก หรือเบอร์ต่างประเทศพร้อม +รหัสประเทศ',
-              helperMaxLines: 2,
-              prefixIcon: Icon(Icons.phone_outlined),
+            decoration: InputDecoration(
+              label: const _PhoneVerificationText('เบอร์โทร', softWrap: true),
+              hintText: _phoneVerificationText(context,
+                  '0812345678 หรือ +66812345678', '0812345678 or +66812345678'),
+              helper: Text(
+                _phoneVerificationText(
+                    context,
+                    'ใส่เบอร์ไทย 10 หลัก หรือเบอร์ต่างประเทศพร้อม +รหัสประเทศ',
+                    'Enter a 10-digit Thai mobile number, or an international number with +country code'),
+                style: Theme.of(context).inputDecorationTheme.helperStyle ??
+                    Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+              ),
+              prefixIcon: const Icon(Icons.phone_outlined),
             ),
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: AppTheme.spaceSm),
-            Text(
+            _PhoneVerificationText(
               _errorMessage!,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
@@ -440,7 +456,10 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             label: _isLoading
                 ? 'กำลังส่งรหัส...'
                 : _resendSecondsRemaining > 0
-                    ? 'ส่งรหัส OTP (รอ $_resendSecondsRemaining วินาที)'
+                    ? _phoneVerificationText(
+                        context,
+                        'ส่งรหัส OTP (รอ $_resendSecondsRemaining วินาที)',
+                        'Send OTP ($_resendWaitInEnglish)')
                     : 'ส่งรหัส OTP',
             icon: Icons.sms_outlined,
             onPressed: _isLoading || _resendSecondsRemaining > 0
@@ -460,7 +479,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          _PhoneVerificationText(
             'กรอกรหัส OTP',
             style: TextStyle(
               fontSize: 17,
@@ -470,7 +489,10 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
           ),
           const SizedBox(height: 7),
           Text(
-            'ส่งรหัส 6 หลักไปที่ ${_phoneController.text.trim()}',
+            _phoneVerificationText(
+                context,
+                'ส่งรหัส 6 หลักไปที่ ${_phoneController.text.trim()}',
+                'A 6-digit code was sent to ${_phoneController.text.trim()}'),
             style: TextStyle(
               fontSize: 13,
               height: 1.5,
@@ -496,7 +518,11 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                       child: Text.rich(
                         TextSpan(
                           children: [
-                            const TextSpan(text: 'โหมดทดสอบ: ใช้รหัส '),
+                            TextSpan(
+                                text: _phoneVerificationText(
+                                    context,
+                                    'โหมดทดสอบ: ใช้รหัส ',
+                                    'Test mode: use code ')),
                             TextSpan(
                               text: DevMockPhoneVerification.demoCode,
                               style: TextStyle(
@@ -524,16 +550,16 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             keyboardType: TextInputType.number,
             maxLength: 6,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: 'รหัส OTP',
+            decoration: InputDecoration(
+              label: const _PhoneVerificationText('รหัส OTP', softWrap: true),
               hintText: '123456',
               counterText: '',
-              prefixIcon: Icon(Icons.lock_outline),
+              prefixIcon: const Icon(Icons.lock_outline),
             ),
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: AppTheme.spaceSm),
-            Text(
+            _PhoneVerificationText(
               _errorMessage!,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
@@ -559,14 +585,17 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            child: Text(_resendSecondsRemaining > 0
-                ? 'ส่งรหัสอีกครั้ง (รอ $_resendSecondsRemaining วินาที)'
+            child: _PhoneVerificationText(_resendSecondsRemaining > 0
+                ? _phoneVerificationText(
+                    context,
+                    'ส่งรหัสอีกครั้ง (รอ $_resendSecondsRemaining วินาที)',
+                    'Resend code ($_resendWaitInEnglish)')
                 : 'ส่งรหัสอีกครั้ง'),
           ),
           TextButton(
             key: const ValueKey('phone-verification-change-phone'),
             onPressed: _isLoading ? null : _changePhone,
-            child: const Text('เปลี่ยนเบอร์'),
+            child: const _PhoneVerificationText('เปลี่ยนเบอร์'),
           ),
         ],
       ),
@@ -594,7 +623,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          Text(
+          _PhoneVerificationText(
             'ยืนยันเบอร์เรียบร้อย',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -604,7 +633,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          _PhoneVerificationText(
             'ตอนนี้คุณใช้สิทธิ์โพสต์ฟรีของแพ็กเกจ Basic ได้แล้ว',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -639,12 +668,12 @@ class _GreenActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 52),
       child: FilledButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 20),
-        label: Text(label),
+        label: _PhoneVerificationText(label),
         style: FilledButton.styleFrom(
           backgroundColor: AppTheme.accent,
           foregroundColor: Colors.white,
@@ -663,3 +692,89 @@ class _GreenActionButton extends StatelessWidget {
     );
   }
 }
+
+class _PhoneVerificationText extends StatelessWidget {
+  const _PhoneVerificationText(this.message,
+      {this.style, this.textAlign, this.maxLines, this.softWrap});
+
+  final String message;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final int? maxLines;
+  final bool? softWrap;
+
+  @override
+  Widget build(BuildContext context) => Text(
+        _phoneVerificationMessage(context, message),
+        style: style,
+        textAlign: textAlign,
+        maxLines: maxLines,
+        softWrap: softWrap,
+      );
+}
+
+bool _phoneVerificationUsesThai(BuildContext context) =>
+    (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+            ?.locale
+            .languageCode ??
+        'th') ==
+    'th';
+
+String _phoneVerificationText(
+        BuildContext context, String thai, String english) =>
+    _phoneVerificationUsesThai(context) ? thai : english;
+
+String _phoneVerificationMessage(BuildContext context, String message) =>
+    _phoneVerificationUsesThai(context)
+        ? message
+        : _englishPhoneVerificationMessages[message] ?? message;
+
+// Keep raw errors in state so app-owned messages follow the current locale.
+// Provider behavior and unrecognized messages remain unchanged.
+const _englishPhoneVerificationMessages = <String, String>{
+  'ยืนยันเบอร์โทร': 'Verify phone number',
+  'เบอร์โทร': 'Phone number',
+  'รหัส OTP': 'OTP code',
+  'ยืนยันเบอร์เพื่อปลดล็อกโพสต์ฟรี': 'Verify your phone to unlock free posting',
+  'แพ็กเกจ Basic ต้องยืนยันเบอร์โทรก่อนใช้สิทธิ์โพสต์ฟรี 3 ครั้งต่อเดือน':
+      'The Basic plan requires phone verification before you can use its 3 free post units per month.',
+  'กำลังส่งรหัส...': 'Sending code...',
+  'ส่งรหัส OTP': 'Send OTP',
+  'กรอกรหัส OTP': 'Enter OTP',
+  'กำลังยืนยัน...': 'Verifying...',
+  'ยืนยัน': 'Verify',
+  'ส่งรหัสอีกครั้ง': 'Resend code',
+  'เปลี่ยนเบอร์': 'Change number',
+  'ยืนยันเบอร์เรียบร้อย': 'Phone number verified',
+  'ตอนนี้คุณใช้สิทธิ์โพสต์ฟรีของแพ็กเกจ Basic ได้แล้ว':
+      "You can now use your Basic plan's free posting allowance.",
+  'เสร็จสิ้น': 'Done',
+  'กรอกเบอร์โทรมือถือไทย 10 หลัก เช่น 0812345678 หรือเบอร์ต่างประเทศพร้อมรหัสประเทศ':
+      'Enter a 10-digit Thai mobile number, e.g. 0812345678, or an international number with its country code.',
+  'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้ายืนยันเบอร์อีกครั้ง':
+      'Your account has changed. Please reopen phone verification.',
+  'บัญชีเปลี่ยน กรุณาเปิดหน้ายืนยันเบอร์อีกครั้ง':
+      'Your account has changed. Please reopen phone verification.',
+  'คำขอยืนยันหมดอายุ กรุณาส่งรหัสอีกครั้ง':
+      'The verification request has expired. Please send a new code.',
+  'ส่งรหัส OTP ไม่สำเร็จ': 'Could not send OTP.',
+  'ยืนยันรหัสไม่สำเร็จ': 'Could not verify the code.',
+  'รหัส OTP ไม่ถูกต้อง (โหมดทดสอบใช้ 123456)':
+      'Invalid OTP (test mode uses 123456).',
+  'ตรวจสอบเบอร์โทรมือถือและรหัสประเทศ เช่น 0812345678 หรือ +66812345678':
+      'Check your mobile number and country code, e.g. 0812345678 or +66812345678.',
+  'รหัส OTP ไม่ถูกต้อง กรุณากรอกรหัสล่าสุดจาก SMS อีกครั้ง':
+      'Invalid OTP. Enter the latest code from your SMS.',
+  'รหัส OTP หมดอายุแล้ว กรุณากดส่งรหัสอีกครั้ง':
+      'Your OTP has expired. Please request a new code.',
+  'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่':
+      'Too many requests. Please wait a moment and try again.',
+  'ระบบส่ง SMS ไม่พร้อมชั่วคราว กรุณาลองใหม่ภายหลัง':
+      'SMS delivery is temporarily unavailable. Please try again later.',
+  'เชื่อมต่อไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่':
+      'Could not connect. Check your internet connection and try again.',
+  'เบอร์นี้ใช้กับบัญชีอื่นแล้ว กรุณาใช้เบอร์อื่นหรือเข้าสู่บัญชีเดิม':
+      'This number is linked to another account. Use another number or sign in to the original account.',
+  'ยืนยันเบอร์โทรไม่สำเร็จ กรุณาลองใหม่อีกครั้ง':
+      'Could not verify your phone number. Please try again.',
+};

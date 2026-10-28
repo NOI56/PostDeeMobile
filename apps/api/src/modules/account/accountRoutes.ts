@@ -8,6 +8,7 @@ import type { AiEditUsageStore } from '../aiEdits/aiEditUsageStore.js';
 import type { RealClipCaptionUsageStore } from '../captions/captionUsageStore.js';
 import type { MonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 import type { DeviceTokenStore } from '../devices/deviceTokenStore.js';
+import type { SupportChatStore } from '../supportChat/supportChat.js';
 import type { LinkInBioStore } from '../linkInBio/linkInBioStore.js';
 import type { LinkInBioImageStore } from '../linkInBio/linkInBioImageStore.js';
 import type { PostStore } from '../posts/postStore.js';
@@ -49,6 +50,7 @@ export type AccountRouteDependencies = {
   monthlyAddonStore?: Pick<MonthlyAddonStore, 'deleteAllForUser'>;
   aiEditUsageStore: AiEditUsageStore;
   deviceTokenStore: DeviceTokenStore;
+  supportChatStore?: Pick<SupportChatStore, 'deleteAllForUser'>;
   linkInBioStore?: LinkInBioStore;
   linkInBioImageStore?: LinkInBioImageStore;
   socialConnectionStore?: SocialConnectionStore;
@@ -109,6 +111,7 @@ export const registerAccountRoutes = (
     monthlyAddonStore,
     aiEditUsageStore,
     deviceTokenStore,
+    supportChatStore,
     linkInBioStore,
     linkInBioImageStore,
     socialConnectionStore,
@@ -506,6 +509,7 @@ export const registerAccountRoutes = (
       monthlyAddonStore?.deleteAllForUser,
       aiEditUsageStore.deleteAllForUser,
       deviceTokenStore.deleteAllForUser,
+      supportChatStore?.deleteAllForUser,
       linkInBioStore?.deleteAllForUser,
       linkInBioImageStore?.deleteAllForUser,
       socialConnectionStore?.deleteAllForUser,

@@ -6,6 +6,7 @@ import { createMemoryTrialAccessStore } from './trialAccess.js';
 import { toCsv } from './adminReports.js';
 import type { AdminConsoleConfig } from './adminConfig.js';
 import { createMemoryServiceIncidentStore } from '../serviceStatus/serviceIncident.js';
+import { createMemorySupportChatStore } from '../supportChat/supportChat.js';
 
 const config: AdminConsoleConfig = { origin: 'http://localhost:4174', environment: 'LOCAL', ownerUids: ['owner'], viewerUids: ['viewer'],
   firebaseWeb: { apiKey: 'fixture', authDomain: 'fixture.firebaseapp.com', projectId: 'fixture', appId: 'fixture' } };
@@ -15,18 +16,24 @@ const setup = (enabled = true) => {
   const app = express(); app.use(express.json());
   const trials = createMemoryTrialAccessStore({ now });
   const incidents = createMemoryServiceIncidentStore({ now });
+  const support = createMemorySupportChatStore({ now });
+  const notifySupportReply = vi.fn(async (_userId: string) => undefined);
   const view = vi.fn(async () => ({ rows: [member], total: 1,
     asOf: '2026-10-17T23:59:59.000Z', summary: { memberCount: 1, captionRequests: 0, editMinutes: 0,
       quotaPostUnits: 0, postUnits: 0, livePostUnits: 0, draftPostUnits: 0, otherDeliveredPostUnits: 0,
       failedPostUnits: 0, pendingPostUnits: 0, estimatedUsd: null } }));
-  registerAdminConsole(app, { config: enabled ? config : undefined, trials, now, incidents,
+  registerAdminConsole(app, { config: enabled ? config : undefined, trials, now, incidents, support, notifySupportReply,
     data: { member: async id => id === member.id ? member : null, view },
     authenticate: (req, res, next) => { const id = req.get('authorization')?.replace('Bearer ', '');
       if (!id) { res.sendStatus(401); return; }
       res.locals.authUser = { id: id === 'old-owner' ? 'owner' : id, provider: id === 'mock-owner' ? 'mock' : 'firebase', authenticatedAtSeconds: id === 'old-owner' ? 1 : now().getTime() / 1000 };
       next(); }
-  }); return { app, trials, view, incidents };
+  }); return { app, trials, view, incidents, support, notifySupportReply };
 };
+const adminPost = (app: express.Express, role: string, path: string, body: Record<string, unknown>) => request(app)
+  .post(`/admin/api/${path}`).set('Authorization', `Bearer ${role}`).set('Origin', config.origin)
+  .set('X-PostDee-Admin', '1').send(body);
+const chatId = (n: number) => `7d1f9c3a-2b4e-4c8a-9f10-${String(n).padStart(12, '0')}`;
 const incident = { action: 'CREATE', id: '0f7c2a51-3b8d-4e7a-9c1f-5d2e6b8a9c01', title: 'TikTok ส่งช้า',
   message: 'ทีมงานกำลังตรวจสอบ', platforms: ['TIKTOK'], stage: 'INVESTIGATING' };
 const postIncident = (app: express.Express, role: string, body: Record<string, unknown> = incident) => request(app)
@@ -152,6 +159,38 @@ describe('private administrator console', () => {
       .set('Origin', config.origin).set('X-PostDee-Admin', '1').send({ view: 'incidents', csv: true });
     expect(csv.status).toBe(400);
     expect(await incidents.active()).toEqual([]);
+  });
+  it('lets owners and viewers read and answer support chats, notifying the member', async () => {
+    const { app, support, notifySupportReply } = setup();
+    await support.postFromMember({ userId: 'member', id: chatId(1), body: 'โพสต์ไม่ขึ้น' });
+    expect((await adminPost(app, 'customer', 'support/reply', { userId: 'member', id: chatId(2), body: 'x' })).status).toBe(403);
+    const list = await adminPost(app, 'viewer', 'view', { view: 'support', status: 'WAITING_TEAM' });
+    expect(list.status).toBe(200);
+    expect(list.body.rows).toMatchObject([{ userId: 'member', status: 'WAITING_TEAM', lastPreview: 'โพสต์ไม่ขึ้น' }]);
+    const reply = await adminPost(app, 'viewer', 'support/reply', { userId: 'member', id: chatId(2), body: 'ทีมงานกำลังดูให้ครับ' });
+    expect(reply.status).toBe(200);
+    expect(reply.body.message).toMatchObject({ sender: 'TEAM', byYou: true });
+    expect(reply.body.message).not.toHaveProperty('authorId');
+    expect(notifySupportReply).toHaveBeenCalledWith('member');
+    expect((await adminPost(app, 'viewer', 'support/reply', { userId: 'member', id: chatId(2), body: 'ทีมงานกำลังดูให้ครับ' })).status).toBe(200);
+    expect(notifySupportReply).toHaveBeenCalledTimes(1);
+    const thread = await adminPost(app, 'owner', 'support/thread', { userId: 'member' });
+    expect(thread.status).toBe(200);
+    expect(thread.body).toMatchObject({ thread: { status: 'WAITING_MEMBER' }, member: { email: member.email }, hasEarlier: false });
+    expect(thread.body.messages.map((m: { sender: string; byYou: boolean }) => [m.sender, m.byYou])).toEqual([['MEMBER', false], ['TEAM', false]]);
+  });
+  it('closes only the conversation the administrator saw and validates chat commands', async () => {
+    const { app, support, notifySupportReply } = setup();
+    await support.postFromMember({ userId: 'member', id: chatId(1), body: 'ช่วยด้วย' });
+    expect((await adminPost(app, 'owner', 'support/close', { userId: 'member', lastMessageId: chatId(9) })).body.code).toBe('ADMIN_SUPPORT_THREAD_CHANGED');
+    expect((await adminPost(app, 'viewer', 'support/close', { userId: 'member', lastMessageId: chatId(1) })).body.thread.status).toBe('CLOSED');
+    for (const [path, body] of [['support/reply', { userId: 'member', id: 'bad', body: 'x' }], ['support/reply', { userId: 'member', id: chatId(3), body: ' ' }],
+      ['support/thread', { userId: '' }], ['support/close', { userId: 'member' }], ['view', { view: 'support', status: 'OPEN' }]] as const) {
+      expect((await adminPost(app, 'owner', path, body)).status).toBe(400);
+    }
+    expect((await adminPost(app, 'owner', 'support/reply', { userId: 'nobody', id: chatId(4), body: 'สวัสดี' })).status).toBe(404);
+    expect((await adminPost(app, 'owner', 'support/thread', { userId: 'nobody' })).status).toBe(404);
+    expect(notifySupportReply).not.toHaveBeenCalled();
   });
   it('neutralizes spreadsheet formulas and quotes CSV fields', () => {
     const csv = toCsv([{ email: '=HYPERLINK("https://evil.example")', reason: '\t+cmd', text: 'a,"b"' }]);

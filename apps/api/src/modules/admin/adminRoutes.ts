@@ -10,12 +10,29 @@ import { AdminError, type TrialAccessStore, type TrialCommand } from './trialAcc
 import { accountDeletionIntentHash, readAccountDeletionReason, type AdminAccountDeletionStore } from './adminAccountDeletion.js';
 import { toCsv } from './adminReports.js';
 import { readServiceIncidentDraft, type ServiceIncidentStore } from '../serviceStatus/serviceIncident.js';
+import {
+  SupportChatError, readSupportMessageBody, readSupportMessageId, supportThreadStatuses,
+  type SupportChatStore, type SupportMessage, type SupportThreadStatus
+} from '../supportChat/supportChat.js';
+import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 
 type Options = { config?: AdminConsoleConfig; authenticate: RequestHandler; trials?: TrialAccessStore;
   data?: AdminDataSource; now?: () => Date; runWithTarget?: RunWithActiveOwner; incidents?: ServiceIncidentStore;
+  support?: SupportChatStore; notifySupportReply?: (userId: string) => Promise<void>;
   accountDeletions?: AdminAccountDeletionStore; deleteAccount?: (userId: string) => Promise<AccountDeletionOutcome>;
   testPreviewToken?: string; testOnly?: boolean };
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Team replies show who answered only as "you" or "the team"; UIDs stay server side.
+const adminSupportMessage = (m: SupportMessage, actorId: string) => ({ id: m.id, sender: m.sender, body: m.body,
+  createdAt: m.createdAt, byYou: m.sender === 'TEAM' && m.authorId === actorId });
+const readSupportUserId = (value: unknown) => {
+  if (typeof value !== 'string' || !value || value.length > 128) throw new AdminError('ADMIN_FILTER_INVALID', 400);
+  return value;
+};
+const supportFailure = (error: unknown) => error instanceof AdminError ? error
+  : error instanceof SupportChatError ? new AdminError(error.code, error.status)
+  : error instanceof UploadSessionConflictError ? new AdminError('ADMIN_SUPPORT_MEMBER_DELETING')
+  : new AdminError('ADMIN_SUPPORT_UNAVAILABLE', 503);
 export const registerAdminConsole = (app: Express, options: Options) => {
   const { config, trials, data, authenticate } = options;
   if (!config) return;
@@ -70,6 +87,18 @@ export const registerAdminConsole = (app: Express, options: Options) => {
         }
         if (!options.incidents) throw new AdminError('ADMIN_DATA_UNAVAILABLE', 503);
         const result = await options.incidents.list({ cursor: b.cursor as string | undefined });
+        res.json({ ...result, asOf: now().toISOString(), checkedAt: now().toISOString() });
+        return;
+      }
+      if (b?.view === 'support') {
+        if (b.csv !== undefined || (b.cursor !== undefined && (typeof b.cursor !== 'string' || b.cursor.length > 160)) ||
+            (b.query !== undefined && (typeof b.query !== 'string' || b.query.length > 120)) ||
+            (b.status !== undefined && b.status !== '' && !supportThreadStatuses.includes(b.status as SupportThreadStatus))) {
+          throw new AdminError('ADMIN_FILTER_INVALID', 400);
+        }
+        if (!options.support) throw new AdminError('ADMIN_DATA_UNAVAILABLE', 503);
+        const result = await options.support.listThreads({ status: (b.status || undefined) as SupportThreadStatus | undefined,
+          query: String(b.query ?? '').trim() || undefined, cursor: b.cursor as string | undefined });
         res.json({ ...result, asOf: now().toISOString(), checkedAt: now().toISOString() });
         return;
       }
@@ -169,6 +198,56 @@ export const registerAdminConsole = (app: Express, options: Options) => {
       res.json({ status: 'ok', incident });
     } catch (error) {
       const safe = error instanceof AdminError ? error : new AdminError('ADMIN_INCIDENT_UNAVAILABLE', 503);
+      res.status(safe.status).json({ code: safe.code });
+    }
+  });
+  // Support chat: owners and viewers both read and answer member conversations.
+  api.post('/support/thread', async (req, res) => {
+    const actor = readAuthUser(res.locals)!;
+    try {
+      const userId = readSupportUserId(req.body?.userId);
+      if (!options.support) throw new AdminError('ADMIN_SUPPORT_UNAVAILABLE', 503);
+      const read = await options.support.readThread(userId);
+      if (!read) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
+      const member = await data.member(userId);
+      res.json({ thread: read.thread, messages: read.messages.map(m => adminSupportMessage(m, actor.id)), hasEarlier: read.hasEarlier,
+        member: member ? { id: member.id, email: member.email, displayName: member.displayName ?? null, paidPlan: member.paidPlan } : null,
+        checkedAt: now().toISOString() });
+    } catch (error) {
+      const safe = supportFailure(error);
+      res.status(safe.status).json({ code: safe.code });
+    }
+  });
+  // The browser makes one message id per reply and reuses it on retry, so a
+  // retry after a lost response neither duplicates the reply nor its push.
+  api.post('/support/reply', async (req, res) => {
+    const actor = readAuthUser(res.locals)!;
+    try {
+      const userId = readSupportUserId(req.body?.userId);
+      const id = readSupportMessageId(req.body?.id);
+      const body = readSupportMessageBody(req.body?.body);
+      if (!options.support) throw new AdminError('ADMIN_SUPPORT_UNAVAILABLE', 503);
+      const store = options.support;
+      const execute = async () => { try { return { reply: await store.replyAsTeam({ userId, id, actorId: actor.id, body }) }; }
+        catch (error) { return { error }; } };
+      const result = options.runWithTarget ? await options.runWithTarget(userId, execute) : await execute();
+      if ('error' in result) throw result.error;
+      // Best-effort: a push failure must not turn a saved reply into an error.
+      if (result.reply.created) await options.notifySupportReply?.(userId).catch(() => undefined);
+      res.json({ status: 'ok', message: adminSupportMessage(result.reply.message, actor.id) });
+    } catch (error) {
+      const safe = supportFailure(error);
+      res.status(safe.status).json({ code: safe.code });
+    }
+  });
+  api.post('/support/close', async (req, res) => {
+    try {
+      const userId = readSupportUserId(req.body?.userId);
+      const lastMessageId = readSupportMessageId(req.body?.lastMessageId);
+      if (!options.support) throw new AdminError('ADMIN_SUPPORT_UNAVAILABLE', 503);
+      res.json({ status: 'ok', thread: await options.support.close({ userId, lastMessageId }) });
+    } catch (error) {
+      const safe = supportFailure(error);
       res.status(safe.status).json({ code: safe.code });
     }
   });

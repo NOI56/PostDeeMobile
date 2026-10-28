@@ -178,6 +178,11 @@ import { registerPlannedRoutes } from './routes/plannedRoutes.js';
 import { createMemoryServiceIncidentStore, type ServiceIncidentStore } from './modules/serviceStatus/serviceIncident.js';
 import { createPrismaServiceIncidentStore, type PrismaServiceIncidentClient } from './modules/serviceStatus/prismaServiceIncidentStore.js';
 import { registerServiceStatusRoutes } from './modules/serviceStatus/serviceStatusRoutes.js';
+import { createMemorySupportChatStore, type SupportChatStore } from './modules/supportChat/supportChat.js';
+import { createPrismaSupportChatStore } from './modules/supportChat/prismaSupportChatStore.js';
+import { registerSupportChatRoutes } from './modules/supportChat/supportChatRoutes.js';
+import { createSupportReplyNotifier } from './modules/notifications/supportReplyNotifier.js';
+import type { PushSender } from './modules/notifications/pushSender.js';
 import { createRateLimitMiddleware } from './modules/security/rateLimit.js';
 import { createReadinessHandler } from './readiness.js';
 
@@ -236,6 +241,8 @@ type AppOptions = {
   managedUploadService?: ManagedUploadService;
   ownerMutationLock?: OwnerMutationCoordinator;
   serviceIncidentStore?: ServiceIncidentStore;
+  supportChatStore?: SupportChatStore;
+  supportPushSender?: PushSender;
   now?: () => Date;
 };
 
@@ -901,6 +908,23 @@ export const createApp = (options: AppOptions = {}) => {
       ? createPrismaServiceIncidentStore(prismaClient as unknown as PrismaServiceIncidentClient, options.now)
       : createMemoryServiceIncidentStore({ now: options.now }));
   registerServiceStatusRoutes(router, { store: serviceIncidentStore, now: options.now });
+  const supportChatStore =
+    options.supportChatStore ??
+    (prismaClient
+      ? createPrismaSupportChatStore(prismaClient as unknown as PrismaClient, options.now)
+      : createMemorySupportChatStore({ now: options.now }));
+  registerSupportChatRoutes(router, accountAwareAuthMiddleware, {
+    store: supportChatStore,
+    userStore,
+    sendRateLimit: createRateLimitMiddleware({ bucket: 'support-chat', windowMs: 60_000, maxRequests: 20 })
+  });
+  // Created on the first reply, so a misconfigured push sender cannot stop the
+  // API from booting; the notifier is best-effort either way.
+  let supportPushSender = options.supportPushSender;
+  const notifySupportReply = createSupportReplyNotifier({
+    deviceTokenStore,
+    pushSender: { send: (message) => (supportPushSender ??= createPushSenderFromConfig({ config })).send(message) }
+  });
   registerSocialConnectionRoutes(router, accountAwareAuthMiddleware, {
     store: socialConnectionStore,
     connectClient: postPeerConnectClient,
@@ -923,6 +947,7 @@ export const createApp = (options: AppOptions = {}) => {
     realClipCaptionUsageStore,
     aiEditUsageStore,
     deviceTokenStore,
+    supportChatStore,
     linkInBioStore,
     linkInBioImageStore,
     socialConnectionStore,
@@ -954,6 +979,7 @@ export const createApp = (options: AppOptions = {}) => {
       trials: trialAccessStore,
       data: options.adminDataSource ?? createPrismaAdminDataSource(prismaClient as unknown as PrismaClient, config.adminConsole, options.now),
       now: options.now, runWithTarget: runWithOwnerLifetime, incidents: serviceIncidentStore,
+      support: supportChatStore, notifySupportReply,
       accountDeletions: options.adminAccountDeletionStore ??
         (prismaClient ? createPrismaAdminAccountDeletionStore(prismaClient as unknown as PrismaClient, options.now) : undefined),
       deleteAccount: accountRoutes.deleteAccountAsOperator,

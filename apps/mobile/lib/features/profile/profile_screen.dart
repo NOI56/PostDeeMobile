@@ -15,6 +15,7 @@ import '../billing/paywall_screen.dart';
 import '../legal/legal_document_screen.dart';
 import '../platforms/connections_screen.dart';
 import '../shared/postdee_undo_toast.dart';
+import '../support/support_chat_screen.dart';
 import 'edit_profile_screen.dart';
 import 'profile_draft_store.dart';
 import 'profile_ui_motion.dart';
@@ -38,6 +39,7 @@ class ProfileScreen extends StatefulWidget {
     this.verifyPhone,
     this.onSendEmailVerification,
     this.onRefreshEmailVerification,
+    this.onOpenSupportChat,
     super.key,
   });
 
@@ -58,6 +60,9 @@ class ProfileScreen extends StatefulWidget {
   final Future<AuthSession?> Function(BuildContext context)? verifyPhone;
   final Future<bool> Function()? onSendEmailVerification;
   final Future<bool> Function()? onRefreshEmailVerification;
+
+  /// Opens the support chat; defaults to pushing [SupportChatScreen].
+  final VoidCallback? onOpenSupportChat;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -676,6 +681,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                             onTap: () => _openLegal(context, _securityInfo),
                           ),
                           _ProfileMenuRow(
+                            key: const ValueKey('profile-support-chat-row'),
+                            icon: Icons.chat_bubble_outline,
+                            label: 'แชทกับทีมงาน',
+                            onTap: widget.onOpenSupportChat ??
+                                () => _openSupportChat(context),
+                          ),
+                          _ProfileMenuRow(
                             icon: Icons.help_outline,
                             label: 'ช่วยเหลือ',
                             onTap: () => _openLegal(context, _helpInfo),
@@ -1257,6 +1269,12 @@ String _quotaResetLabel(DateTime value) {
   return '${local.day}/${local.month}/${local.year} เวลา $hour:$minute';
 }
 
+void _openSupportChat(BuildContext context) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (context) => const SupportChatScreen()),
+  );
+}
+
 void _openLegal(BuildContext context, LegalDocument document) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(
@@ -1287,7 +1305,7 @@ const _helpInfo = LegalDocument(
       '- โควตาโพสต์ฟรีคิดอย่างไร? แพ็กเกจ Basic ได้ 3 หน่วยต่อเดือนหลังยืนยันเบอร์\n'
       '  1 ช่องทางใช้ 1 หน่วย เช่น 1 คลิปลง 3 ช่องทาง ใช้ 3 หน่วย\n'
       '- ตั้งเวลาโพสต์ได้ไหม? Starter ล่วงหน้าได้ 14 วัน และ Pro 30 วัน\n\n'
-      'ติดต่อทีมงาน: postdee.support@gmail.com',
+      'ติดต่อทีมงาน: กดแชทกับทีมงานในหน้าบัญชี หรืออีเมล postdee.support@gmail.com',
 );
 
 class _DeleteAccountButton extends StatelessWidget {

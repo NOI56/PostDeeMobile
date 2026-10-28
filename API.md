@@ -2,6 +2,65 @@
 
 PostDee backend API reference.
 
+## Support chat (2026-10-28, phase 2 local candidate)
+
+One continuous conversation per member, answered by administrators in the
+admin console. Phase 3 will add an AI helper; there is no bot yet.
+
+### `GET /support/chat`
+
+Signed-in member only, `Cache-Control: private, no-store`. Without `after` it
+returns the latest 100 messages; with `after=<cursor>` only newer ones (up to
+100), which is what Mobile polls every 5 seconds while the chat is open.
+
+```json
+{
+  "status": "ok",
+  "thread": { "status": "WAITING_MEMBER", "lastMessageAt": "2026-10-28T09:20:00.000Z" },
+  "messages": [
+    { "id": "7d1f9c3a-2b4e-4c8a-9f10-000000000001", "sender": "MEMBER", "body": "โพสต์ไม่ขึ้น", "createdAt": "2026-10-28T09:12:00.000Z" },
+    { "id": "7d1f9c3a-2b4e-4c8a-9f10-000000000002", "sender": "TEAM", "body": "ทีมงานกำลังดูให้", "createdAt": "2026-10-28T09:20:00.000Z" }
+  ],
+  "cursor": "opaque"
+}
+```
+
+`thread` is `null` before the first message. `cursor` echoes the request when
+nothing is new. Team replies never carry the administrator's identity.
+`400 SUPPORT_CURSOR_INVALID` for a malformed cursor.
+
+### `POST /support/chat/messages`
+
+Body `{ "id": "<UUID>", "body": "..." }`; returns `201 { status, message }`.
+The app makes the UUID once per message and reuses it on retry, so a retry
+after a lost response returns the stored message instead of a duplicate.
+`body` is 1–1000 characters after trimming; newlines are kept, other control
+characters are rejected. The thread becomes `WAITING_TEAM` (a closed thread
+reopens). Errors: `400 SUPPORT_MESSAGE_INVALID`, `409
+SUPPORT_MESSAGE_CONFLICT` (id reused with other content), `429
+SUPPORT_MESSAGE_LIMIT` (100 member messages per rolling 24 hours), the global
+and a per-client limit of 20 sends per minute, and the usual account-deletion
+`409 ACCOUNT_DELETION_IN_PROGRESS`.
+
+### Administrator commands (owners and viewers)
+
+| Route | Contract |
+| --- | --- |
+| `POST /admin/api/view` | `view: "support"`; optional `status` (`WAITING_TEAM`/`WAITING_MEMBER`/`CLOSED`), `query` (email or name), opaque `cursor`; newest conversation first, 50 per page, no CSV |
+| `POST /admin/api/support/thread` | `{userId}`; thread, latest 200 messages (`byYou` marks the caller's own replies), `hasEarlier`, member email/name/purchased plan |
+| `POST /admin/api/support/reply` | `{userId, id (UUID), body}`; runs inside the member's owner lifetime, sets `WAITING_MEMBER`, and sends one push (`type: support_reply`, generic text) the first time the reply is stored |
+| `POST /admin/api/support/close` | `{userId, lastMessageId}`; closes only if no newer message arrived (`409 ADMIN_SUPPORT_THREAD_CHANGED` otherwise) |
+
+Other errors: `404 ADMIN_SUPPORT_THREAD_NOT_FOUND`, `409
+ADMIN_SUPPORT_MEMBER_DELETING`, `503 ADMIN_SUPPORT_UNAVAILABLE`.
+
+Deployment: migration `20261028020000_support_chat` adds `SupportThread` and
+`SupportMessage` (additive, cascade from `User`, so account deletion removes the
+conversation). No environment flag. Replies notify through the existing
+`PUSH_SENDER`; with the mock sender they are saved but no push is sent. The
+Mobile entry ("แชทกับทีมงาน" under Account help) needs a new build. See the
+[support chat plan](docs/superpowers/plans/2026-10-28-support-chat-room.md).
+
 ## Service status notices (2026-10-28, local candidate)
 
 Administrators publish customer-facing notices while the app has a problem;
@@ -445,11 +504,12 @@ All responses use private/no-store. Every POST requires exact configured `Origin
 | Route | Contract |
 | --- | --- |
 | `GET /admin/api/session` | Role, email, environment; owner lists are never exposed |
-| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit/deletions, and since 2026-10-28 incidents (`deletions` searches by exact Firebase UID); optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
+| `POST /admin/api/view` | `view`: overview/members/posts/trials/channels/reports/audit/deletions, and since 2026-10-28 incidents and support (`deletions` searches by exact Firebase UID); optional `query`, opaque `cursor`; posts accept `status`, `platform`; posts/reports accept `from`, `through` (inclusive UTC dates); reports accept `reportScope: ALL_ACCOUNTS` or `LATEST_TRIAL` (legacy API default); the new console explicitly starts with all accounts |
 | `POST /admin/api/member` | `userId`; existing member details, purchased plan, separate trial, current UTC-month usage |
 | `POST /admin/api/trials` | Owner only, auth_time within 15 minutes; command below |
 | `POST /admin/api/account-deletions` | Owner only, auth_time within 15 minutes; deletes a member on their verified request (see below) |
 | `POST /admin/api/incidents` | Owner only; creates/updates customer-facing service notices (2026-10-28, see Service status notices) |
+| `POST /admin/api/support/thread`, `/support/reply`, `/support/close` | Owners and viewers; support chat (2026-10-28, see Support chat) |
 
 `POST /admin/api/account-deletions` takes `{requestId (UUID), userId,
 expectedEmail, reason}`. `expectedEmail` must match the member's current email

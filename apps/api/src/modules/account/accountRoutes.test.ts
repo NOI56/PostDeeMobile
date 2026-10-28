@@ -260,6 +260,21 @@ describe('account routes', () => {
     expect(templatesAfter.body.templates).toEqual([]);
   });
 
+  it('removes the support chat conversation when the account is deleted', async () => {
+    const app = createApp();
+    const send = (userId: string, id: string) => request(app).post('/support/chat/messages')
+      .set('x-postdee-user-id', userId).send({ id, body: 'ช่วยดูโพสต์ให้หน่อย' }).expect(201);
+    await send('chat-seller-to-delete', '7d1f9c3a-2b4e-4c8a-9f10-000000000101');
+    await send('chat-seller-kept', '7d1f9c3a-2b4e-4c8a-9f10-000000000102');
+
+    await request(app).delete('/account').set('x-postdee-user-id', 'chat-seller-to-delete').expect(200);
+
+    const deleted = await request(app).get('/support/chat').set('x-postdee-user-id', 'chat-seller-to-delete').expect(200);
+    expect(deleted.body).toMatchObject({ thread: null, messages: [] });
+    const kept = await request(app).get('/support/chat').set('x-postdee-user-id', 'chat-seller-kept').expect(200);
+    expect(kept.body.messages).toHaveLength(1);
+  });
+
   it("leaves other users' data intact", async () => {
     const app = createApp();
 

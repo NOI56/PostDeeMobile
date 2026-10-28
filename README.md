@@ -13,6 +13,17 @@ Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 > describe them (including the AI editing notes under Mobile and Backend) are
 > history. The canonical list is in `AGENTS.md` under "Retired Features".
 
+## Support chat (2026-10-28, local candidate)
+
+Members tap **บัญชี › แชทกับทีมงาน** to message the PostDee team; known
+service notices show at the top of the chat. Owners and viewers answer in
+the admin console's **แชทช่วยเหลือ** tab, where conversations are listed newest
+first and filtered by "รอทีมงานตอบ / รอลูกค้า / ปิดเรื่องแล้ว". A reply sends a
+push to the member (when `PUSH_SENDER=firebase`). Never ask members for
+passwords, OTP codes or card details in chat. Deploying needs migration
+`20261028020000_support_chat`; the chat entry needs a new Mobile build. Phase 2
+of the support chat plan in `ROADMAP.md`.
+
 ## Service status notices (2026-10-28, local candidate)
 
 When the app has a problem, an owner opens the admin console's "สถานะระบบ"

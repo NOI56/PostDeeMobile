@@ -92,6 +92,7 @@ model User {
   adminTrialAccess   AdminTrialAccess?
   adminTrialAudits   AdminTrialAudit[]
   monthlyAddonPurchases MonthlyAddonPurchase[]
+  supportThread      SupportThread?
 }
 
 // Keep transaction tombstones after deleting an account so a consumed purchase
@@ -179,6 +180,38 @@ model ServiceIncident {
 
   @@index([startedAt, id])
   @@index([resolvedAt, startedAt])
+}
+
+// One support conversation per member. Both tables cascade from User, so
+// account deletion removes the whole chat. authorId is the administrator
+// Firebase UID of a team reply and is never sent to members.
+model SupportThread {
+  userId        String           @id
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        String
+  lastSender    String
+  lastMessageId String
+  lastPreview   String
+  lastMessageAt DateTime
+  createdAt     DateTime
+  updatedAt     DateTime
+  messages      SupportMessage[]
+
+  @@index([lastMessageAt, userId])
+  @@index([status, lastMessageAt])
+}
+
+model SupportMessage {
+  id        String        @id
+  userId    String
+  thread    SupportThread @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  sender    String
+  authorId  String?
+  body      String
+  createdAt DateTime
+
+  @@index([userId, createdAt, id])
+  @@index([userId, sender, createdAt])
 }
 
 model LinkInBioProfile {

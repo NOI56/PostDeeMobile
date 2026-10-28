@@ -11,6 +11,24 @@ Architecture overview for the PostDee mobile app and backend scaffold.
 > below that describe them are history. The canonical list is in `AGENTS.md`
 > under "Retired Features" and wins when an older section disagrees.
 
+## Support chat (2026-10-28, phase 2 local candidate)
+
+`apps/api/src/modules/supportChat` keeps one conversation per member:
+`SupportThread` (keyed by `userId`, cascades from `User`) and
+`SupportMessage` (client-made UUID ids, `MEMBER`/`TEAM` sender, `authorId`
+only on team replies). `SupportChatStore` has memory and Prisma adapters; the
+Prisma writes run in `runActiveOwnerTransaction`, so nothing lands for an
+account being deleted, and a duplicate id replays the stored message. Member
+routes (`/support/chat`) sit behind the account-aware auth middleware; the
+admin console reuses its session/origin checks, lets viewers as well as
+owners reply, runs replies inside `runWithOwnerLifetime`, and calls a
+best-effort `createSupportReplyNotifier` (generic push with `userId` and
+`type: support_reply`) only when a reply is newly stored. Paging uses opaque
+`(createdAt, id)` cursors so polling returns only newer messages. Mobile's
+`SupportChatScreen` (pushed from Profile) polls every 5 seconds while open and
+the app is foreground, merges by id, never advances the cursor from its own
+sends, and reuses `HomeServiceStatusBanner` for known issues.
+
 ## Service status notices (2026-10-28, local candidate)
 
 `apps/api/src/modules/serviceStatus` owns customer-facing outage notices.

@@ -1160,6 +1160,8 @@ void main() {
     final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
     await tester.scrollUntilVisible(button, 400,
         scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
     tester
@@ -1196,6 +1198,8 @@ void main() {
     final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
     await tester.scrollUntilVisible(button, 400,
         scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
     tester

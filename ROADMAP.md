@@ -29,10 +29,14 @@ grounded answer, with an administrator able to step in.
    and close notices in the admin console's "สถานะระบบ" tab; open notices show
    as a banner at the top of Mobile Home. See the
    [phase 1 plan](docs/superpowers/plans/2026-10-28-service-status-notices.md).
-2. **Support chat room (planned).** Mobile "chat with the team" from Account
-   help; an admin inbox where owners and viewers can reply; polling plus a
-   push notification when an administrator replies; threads cascade-delete
-   with the account.
+2. **Support chat room (built, local candidate).** Mobile "แชทกับทีมงาน"
+   under Account help shows known service notices, polls every 5 seconds while
+   open and retries failed sends safely; the admin console's "แชทช่วยเหลือ"
+   inbox lets owners and viewers reply and close; a reply sends a generic push;
+   conversations cascade-delete with the account. See the
+   [phase 2 plan](docs/superpowers/plans/2026-10-28-support-chat-room.md).
+   Follow-ups: tapping the reply push should open the chat (today it opens the
+   app), and the privacy policy should mention stored support messages.
 3. **AI support bot (planned).** Answers first from open notices, the help FAQ
    and the member's own recent publish results only; hands off to an
    administrator when unsure; never acts on the account; labeled as a bot;

@@ -8,6 +8,7 @@ import type { AdminReportSummary } from '../src/modules/admin/adminUsageReport.j
 import { adminChannelResult } from '../src/modules/admin/adminDataSource.js';
 import { createMemoryAdminAccountDeletionStore } from '../src/modules/admin/adminAccountDeletion.js';
 import { createMemoryServiceIncidentStore } from '../src/modules/serviceStatus/serviceIncident.js';
+import { createMemorySupportChatStore } from '../src/modules/supportChat/supportChat.js';
 
 const app = express(); app.use(express.json({ limit: '16kb' }));
 const viewer = process.argv.includes('--viewer'); const emptyTrials = process.argv.includes('--empty-trials');
@@ -19,6 +20,9 @@ if (portArguments.length > 1 || (requestedPort !== undefined && (!/^\d+$/.test(r
 const port = requestedPort === undefined ? (emptyTrials ? 4176 : 4174) + (viewer ? 1 : 0) : Number(requestedPort);
 const trials = createMemoryTrialAccessStore();
 const accountDeletions = createMemoryAdminAccountDeletionStore();
+const support = createMemorySupportChatStore();
+await support.postFromMember({ userId:'fixture-mali', id:randomUUID(), body:'โพสต์ลง TikTok เมื่อเช้าขึ้นว่าส่งไม่สำเร็จ ต้องทำยังไงคะ' });
+await support.postFromMember({ userId:'fixture-narin', id:randomUUID(), body:'ขอสอบถามเรื่องแพ็กเกจ Pro ครับ' });
 const time = new Date().toISOString();
 const members: AdminMember[] = [
   { id:'fixture-mali',email:'mali@example.com',displayName:'Mali S.',paidPlan:'BASIC',createdAt:time,updatedAt:time,postCount:12,channelCount:2 },
@@ -62,7 +66,7 @@ const data: AdminDataSource = { member, view: async (view: AdminView, options) =
 const previewToken = viewer ? 'fixture-viewer' : 'fixture-owner';
 registerAdminConsole(app,{config:{origin:`http://127.0.0.1:${port}`,environment:'LOCAL',ownerUids:['fixture-owner'],viewerUids:['fixture-viewer'],
   firebaseWeb:{apiKey:'fixture',authDomain:'fixture.firebaseapp.com',projectId:'fixture',appId:'fixture'}},data,trials,testOnly:true,testPreviewToken:previewToken,
-  incidents:createMemoryServiceIncidentStore(),
+  incidents:createMemoryServiceIncidentStore(),support,notifySupportReply:async()=>undefined,
   // Fixture deletion only removes the in-memory sample member.
   accountDeletions,deleteAccount:async userId=>{const index=members.findIndex(r=>r.id===userId);if(index>=0)members.splice(index,1);return {status:200,body:{status:'ok'}};},
   authenticate:(req,res,next)=>{const id=req.get('authorization')?.replace('Bearer ','');

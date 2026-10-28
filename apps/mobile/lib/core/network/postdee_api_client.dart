@@ -1332,6 +1332,61 @@ class ApiHealthResult {
       );
 }
 
+/// One message in the member's support chat. `sender` is `MEMBER` or `TEAM`.
+class SupportMessageResult {
+  const SupportMessageResult({
+    required this.id,
+    required this.sender,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String sender;
+  final String body;
+  final DateTime createdAt;
+
+  bool get isFromTeam => sender == 'TEAM';
+
+  static SupportMessageResult? tryParse(Object? json) {
+    if (json is! Map<String, Object?>) return null;
+    final id = json['id'];
+    final sender = json['sender'];
+    final body = json['body'];
+    final createdAt = json['createdAt'] is String
+        ? DateTime.tryParse(json['createdAt'] as String)
+        : null;
+    if (id is! String ||
+        (sender != 'MEMBER' && sender != 'TEAM') ||
+        body is! String ||
+        createdAt == null) {
+      return null;
+    }
+    return SupportMessageResult(
+      id: id,
+      sender: sender as String,
+      body: body,
+      createdAt: createdAt.toLocal(),
+    );
+  }
+}
+
+/// The member's support chat, or only the messages after a polling cursor.
+class SupportChatResult {
+  const SupportChatResult({
+    required this.messages,
+    this.threadStatus,
+    this.cursor,
+  });
+
+  /// `WAITING_TEAM`, `WAITING_MEMBER` or `CLOSED`; null before the first message.
+  final String? threadStatus;
+  final List<SupportMessageResult> messages;
+
+  /// Pass back as `after` to fetch only newer messages.
+  final String? cursor;
+}
+
 /// An open service notice that administrators publish while the app has a
 /// problem. Resolved notices are never shown, so they are not parsed.
 class ServiceIncidentResult {
@@ -3420,6 +3475,43 @@ class PostDeeApiClient {
         .map(ServiceIncidentResult.tryParse)
         .whereType<ServiceIncidentResult>()
         .toList(growable: false);
+  }
+
+  Future<SupportChatResult> loadSupportChat({String? after}) async {
+    final query =
+        after == null ? '' : '?after=${Uri.encodeQueryComponent(after)}';
+    final response = await _getJson('/support/chat$query');
+    final messages = response['messages'];
+    if (messages is! List<Object?>) {
+      throw const ApiException('Support chat response is missing messages');
+    }
+    final thread = response['thread'];
+    final cursor = response['cursor'];
+    return SupportChatResult(
+      threadStatus: thread is Map<String, Object?> && thread['status'] is String
+          ? thread['status'] as String
+          : null,
+      messages: messages
+          .map(SupportMessageResult.tryParse)
+          .whereType<SupportMessageResult>()
+          .toList(growable: false),
+      cursor: cursor is String ? cursor : after,
+    );
+  }
+
+  /// Sends one support message. Reuse the same [id] to retry after a failure;
+  /// the server returns the stored message instead of a duplicate.
+  Future<SupportMessageResult> sendSupportMessage({
+    required String id,
+    required String body,
+  }) async {
+    final response =
+        await _postJson('/support/chat/messages', {'id': id, 'body': body});
+    final message = SupportMessageResult.tryParse(response['message']);
+    if (message == null) {
+      throw const ApiException('Support chat response is missing the message');
+    }
+    return message;
   }
 
   Future<void> prepareSubscriptionPurchase() async {

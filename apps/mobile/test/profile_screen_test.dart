@@ -23,6 +23,8 @@ void main() {
     await tester.pumpWidget(_hostProfile());
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('ช่วยเหลือ'), 350);
+    await tester.ensureVisible(find.text('ช่วยเหลือ'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('ช่วยเหลือ'));
     await tester.pumpAndSettle();
     expect(find.textContaining('3 หน่วยต่อเดือน'), findsOneWidget);
@@ -371,6 +373,42 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  testWidgets('account help opens the chat with the team', (tester) async {
+    var opened = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('th'),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: Scaffold(
+          body: ProfileScreen(
+            languageController: PostDeeLanguageController(),
+            themeController: PostDeeThemeController(),
+            onOpenTemplates: () {},
+            onDeleteAccount: () {},
+            apiClient: _FakeSocialApiClient(connections: const []),
+            onOpenSupportChat: () => opened++,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('profile-support-chat-row'),
+        skipOffstage: false);
+    await tester.scrollUntilVisible(row, 300,
+        scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    await tester.pumpAndSettle();
+    expect(find.text('แชทกับทีมงาน'), findsOneWidget);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(opened, 1);
   });
 
   testWidgets('groups account menus and shows only the current package', (

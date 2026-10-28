@@ -411,6 +411,71 @@ void main() {
     expect(opened, 1);
   });
 
+  for (final initialLocale in [const Locale('en'), const Locale('th')]) {
+    testWidgets(
+        'support chat follows a ${initialLocale.languageCode} locale roundtrip and opens once',
+        (tester) async {
+      final locale = ValueNotifier(initialLocale);
+      final language = PostDeeLanguageController(initialLocale: initialLocale);
+      final theme = PostDeeThemeController();
+      final apiClient = _FakeSocialApiClient(connections: const []);
+      addTearDown(locale.dispose);
+      addTearDown(language.dispose);
+      addTearDown(theme.dispose);
+      var opened = 0;
+      await tester.pumpWidget(
+        ValueListenableBuilder<Locale>(
+          valueListenable: locale,
+          builder: (context, currentLocale, child) => MaterialApp(
+            locale: currentLocale,
+            localizationsDelegates: const [
+              PostDeeLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: PostDeeLocalizations.supportedLocales,
+            home: Scaffold(
+              body: ProfileScreen(
+                languageController: language,
+                themeController: theme,
+                onOpenTemplates: () {},
+                onDeleteAccount: () {},
+                apiClient: apiClient,
+                onOpenSupportChat: () => opened++,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final profileState = tester.state(find.byType(ProfileScreen));
+      final row = find.byKey(const ValueKey('profile-support-chat-row'),
+          skipOffstage: false);
+      await tester.scrollUntilVisible(row, 300,
+          scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+      final otherLocale = initialLocale.languageCode == 'en'
+          ? const Locale('th')
+          : const Locale('en');
+      for (final nextLocale in [initialLocale, otherLocale, initialLocale]) {
+        locale.value = nextLocale;
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(row);
+        final label = nextLocale.languageCode == 'th'
+            ? 'แชทกับทีมงาน'
+            : 'Chat with the team';
+        expect(find.descendant(of: row, matching: find.text(label)),
+            findsOneWidget);
+        expect(tester.state(find.byType(ProfileScreen)), same(profileState));
+        expect(opened, 0);
+      }
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(opened, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('groups account menus and shows only the current package', (
     tester,
   ) async {

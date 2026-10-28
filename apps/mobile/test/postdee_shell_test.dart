@@ -1097,7 +1097,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('email-forgot-password')));
     await tester.pumpAndSettle();
     expect(gateway.resets, ['seller@example.com']);
-    expect(find.textContaining('หากอีเมลนี้มีบัญชี'), findsOneWidget);
+    expect(
+      find.text(
+        'If an account exists for this email, you will receive a password reset link. Check your inbox and spam folder.',
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
   testWidgets('login legal links open the existing legal documents',
@@ -2546,7 +2551,7 @@ void main() {
       'local-drafts',
     ]);
     // Back on the login gate after the account is removed.
-    expect(find.text('Sign in to PostDee'), findsOneWidget);
+    expect(find.text('Post once. Sell everywhere.'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('postdee-undo-toast')),
       findsOneWidget,
@@ -2634,7 +2639,7 @@ void main() {
           .onPressed!();
       await tester.pumpAndSettle();
 
-      expect(find.text('Sign in to PostDee'), findsOneWidget);
+      expect(find.text('Post once. Sell everywhere.'), findsOneWidget);
       expect(
         find.text(
           'Account deleted, but some data remains on this device. Please clear app data.',
@@ -2788,7 +2793,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(deletionCalls, ['ready', 'delete']);
-    expect(find.text('Sign in to PostDee'), findsOneWidget);
+    expect(find.text('Post once. Sell everywhere.'), findsOneWidget);
   });
 
   for (final code in [

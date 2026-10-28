@@ -313,7 +313,7 @@ String _describeGoogleSignInFailure(GoogleSignInException error) {
 
   if (error.code == GoogleSignInExceptionCode.unknownError &&
       description.contains('no credential')) {
-    return 'ยังไม่พบบัญชี Google บนอุปกรณ์นี้ กรุณาเพิ่มหรือลงชื่อเข้าใช้บัญชี Google ผ่าน Google Play หรือการตั้งค่า Android แล้วลองอีกครั้ง';
+    return 'Google could not access a sign-in credential on this device. Please try again, check your Google account in Android Settings, or sign in with email.';
   }
 
   if (error.code == GoogleSignInExceptionCode.canceled) {

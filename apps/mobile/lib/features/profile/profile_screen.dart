@@ -725,7 +725,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                           _ProfileMenuRow(
                             key: const ValueKey('profile-support-chat-row'),
                             icon: Icons.chat_bubble_outline,
-                            label: 'แชทกับทีมงาน',
+                            label: _profileText(
+                                context, 'แชทกับทีมงาน', 'Chat with the team'),
                             onTap: widget.onOpenSupportChat ??
                                 () => _openSupportChat(context),
                           ),

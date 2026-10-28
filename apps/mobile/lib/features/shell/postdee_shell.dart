@@ -13,6 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_controller.dart';
 import '../analytics/analytics_screen.dart';
 import '../auth/auth_controller.dart';
+import '../auth/auth_message_localization.dart';
 import '../auth/firebase_apple_auth_gateway.dart';
 import '../auth/firebase_account_access_revoker.dart';
 import '../auth/firebase_email_auth_gateway.dart';
@@ -1411,15 +1412,18 @@ class _LoginGate extends StatelessWidget {
     final helperMessage = setupMessage.toLowerCase().contains('local mock auth')
         ? l10n.loginMockHelper
         : setupMessage.isNotEmpty
-            ? setupMessage
-            : l10n.loginDefaultHelper;
-    final heroTitle = isThai ? 'ลงครั้งเดียว ขายได้ทุกที่' : l10n.loginTitle;
+            ? localizeAuthMessage(context, setupMessage)
+            : isThai
+                ? l10n.loginDefaultHelper
+                : 'Sign in with Google or email to get started.';
+    final heroTitle =
+        isThai ? 'ลงครั้งเดียว ขายได้ทุกที่' : 'Post once. Sell everywhere.';
     final heroSubtitle = isThai
         ? 'โพสต์วิดีโอเดียวไป TikTok, Shorts,\nReels และ Facebook พร้อมกัน'
-        : l10n.loginSubtitle;
+        : 'Post one video to TikTok, Shorts,\nReels and Facebook at once.';
     final requirement = isThai
         ? 'เชื่อมต่อบัญชีเพียงครั้งเดียว ปลอดภัย ไม่เก็บรหัสผ่านของคุณ'
-        : l10n.loginRequirementMessage;
+        : 'Connect your account once. Sign in securely. PostDee does not store your password.';
     final googleLabel = isThai ? 'เข้าสู่ระบบด้วย Google' : l10n.loginButton;
     final emailLabel = isThai ? 'เข้าสู่ระบบด้วยอีเมล' : 'Sign in with email';
 
@@ -1663,7 +1667,8 @@ class _LoginGate extends StatelessWidget {
                           if (controller.errorMessage != null) ...[
                             const SizedBox(height: 14),
                             Text(
-                              controller.errorMessage!,
+                              localizeAuthMessage(
+                                  context, controller.errorMessage!),
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Theme.of(context).colorScheme.error,
@@ -1843,9 +1848,14 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final title =
-        _createAccount ? 'สร้างบัญชีด้วยอีเมล' : 'เข้าสู่ระบบด้วยอีเมล';
-    final submitLabel = _createAccount ? 'สร้างบัญชี' : 'เข้าสู่ระบบ';
+    final isThai = PostDeeLocalizations.of(context).locale.languageCode == 'th';
+    String text(String thai, String english) => isThai ? thai : english;
+    final title = _createAccount
+        ? text('สร้างบัญชีด้วยอีเมล', 'Create an account with email')
+        : text('เข้าสู่ระบบด้วยอีเมล', 'Sign in with email');
+    final submitLabel = _createAccount
+        ? text('สร้างบัญชี', 'Create account')
+        : text('เข้าสู่ระบบ', 'Sign in');
 
     return AlertDialog(
       key: const ValueKey('email-sign-in-form'),
@@ -1862,8 +1872,8 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
               enabled: !_isSubmitting,
               keyboardType: TextInputType.emailAddress,
               autofillHints: const [AutofillHints.email],
-              decoration: const InputDecoration(
-                labelText: 'อีเมล',
+              decoration: InputDecoration(
+                label: Text(text('อีเมล', 'Email')),
               ),
             ),
             const SizedBox(height: 12),
@@ -1873,14 +1883,14 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
               obscureText: true,
               autofillHints: const [AutofillHints.password],
               onSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(
-                labelText: 'รหัสผ่าน',
+              decoration: InputDecoration(
+                label: Text(text('รหัสผ่าน', 'Password')),
               ),
             ),
             if (_validationMessage != null) ...[
               const SizedBox(height: 12),
               Text(
-                _validationMessage!,
+                localizeAuthMessage(context, _validationMessage!),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.error,
                   fontSize: 12,
@@ -1889,13 +1899,14 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
             ],
             if (_recoveryMessage != null) ...[
               const SizedBox(height: 12),
-              Text(_recoveryMessage!, style: const TextStyle(fontSize: 12)),
+              Text(localizeAuthMessage(context, _recoveryMessage!),
+                  style: const TextStyle(fontSize: 12)),
             ],
             if (!_createAccount && widget.controller.supportsEmailRecovery)
               TextButton(
                 key: const ValueKey('email-forgot-password'),
                 onPressed: _isSubmitting ? null : _resetPassword,
-                child: const Text('ลืมรหัสผ่าน?'),
+                child: Text(text('ลืมรหัสผ่าน?', 'Forgot password?')),
               ),
             const SizedBox(height: 10),
             TextButton(
@@ -1904,8 +1915,10 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
                   : () => setState(() => _createAccount = !_createAccount),
               child: Text(
                 _createAccount
-                    ? 'มีบัญชีอยู่แล้ว? เข้าสู่ระบบ'
-                    : 'ยังไม่มีบัญชี? สร้างบัญชีใหม่',
+                    ? text('มีบัญชีอยู่แล้ว? เข้าสู่ระบบ',
+                        'Already have an account? Sign in')
+                    : text('ยังไม่มีบัญชี? สร้างบัญชีใหม่',
+                        'New to PostDee? Create an account'),
               ),
             ),
           ],
@@ -1914,11 +1927,13 @@ class _EmailSignInDialogState extends State<_EmailSignInDialog> {
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-          child: const Text('ยกเลิก'),
+          child: Text(text('ยกเลิก', 'Cancel')),
         ),
         FilledButton(
           onPressed: _isSubmitting ? null : _submit,
-          child: Text(_isSubmitting ? 'กำลังดำเนินการ...' : submitLabel),
+          child: Text(_isSubmitting
+              ? text('กำลังดำเนินการ...', 'Please wait...')
+              : submitLabel),
         ),
       ],
     );

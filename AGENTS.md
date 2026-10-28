@@ -97,6 +97,7 @@ Current Stack:
 - PostgreSQL schema
 - Redis + BullMQ queue adapters
 - Mock, Cloudflare R2, and legacy S3 video storage adapters
+- Off/mock/OpenAI support-chat helper (Dot), off by default and switched on by an owner in the admin console
 - Mock and Gemini caption adapters, ElevenLabs transcription, and legacy OpenAI adapters; Groq is intentionally rejected by current runtime configuration. Gemini edit-planning adapters belong to retired AI editing and are built only when `AI_EDITING_ENABLED=true`
 - Mock/Firebase auth plus Firebase Admin push adapter
 - Memory/Prisma stores, PostPeer publisher, and RevenueCat billing adapters

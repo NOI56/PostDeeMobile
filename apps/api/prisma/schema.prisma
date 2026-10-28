@@ -195,10 +195,22 @@ model SupportThread {
   lastMessageAt DateTime
   createdAt     DateTime
   updatedAt     DateTime
+  botEnabled    Boolean          @default(true)
+  // The member or Dot asked for a person; cleared by a team reply or close.
+  teamRequested Boolean          @default(false)
   messages      SupportMessage[]
 
   @@index([lastMessageAt, userId])
   @@index([status, lastMessageAt])
+}
+
+// Global switch for Dot, the AI support helper. One row, id "global"; no row
+// means off, so the bot never answers until an owner turns it on.
+model SupportBotSetting {
+  id        String   @id
+  enabled   Boolean
+  updatedBy String
+  updatedAt DateTime
 }
 
 model SupportMessage {

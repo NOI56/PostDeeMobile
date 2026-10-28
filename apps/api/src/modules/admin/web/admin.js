@@ -1,14 +1,14 @@
 const app = document.querySelector('#app');
 const names = { overview:'ภาพรวม', incidents:'สถานะระบบ', support:'แชทช่วยเหลือ', members:'สมาชิก', posts:'โพสต์', trials:'สิทธิ์ทดลอง', channels:'ช่องทางที่เชื่อม', reports:'รายงาน', audit:'ประวัติผู้ดูแล', deletions:'ประวัติการลบบัญชี' };
 const paths = { overview:'M3 11 12 3l9 8M5 10v11h5v-7h4v7h5V10', incidents:'M12 3 2 20h20L12 3M12 10v4M12 17h.01',support:'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.7A8 8 0 1 1 21 12M8 10h8M8 14h5',members:'M20 21v-2a7 7 0 0 0-14 0v2M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0', posts:'M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M8 8h8M8 12h8M8 16h4', trials:'M9 3h6M10 3v7l-5 9q-1 2 2 2h10q3 0 2-2l-5-9V3M8 15h8', channels:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2', reports:'M5 21V12M12 21V3M19 21V8', audit:'M12 8v5l4 2M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0', deletions:'M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6' };
-const labels = { BASIC:'ฟรี', STARTER:'Starter', PRO:'Pro', ACTIVE:'ใช้งานอยู่', NOT_STARTED:'ยังไม่เริ่ม', EXPIRED:'หมดอายุ', REVOKED:'ยกเลิกแล้ว', DRAFT:'ร่าง', QUEUED:'รอส่ง', PUBLISHING:'กำลังส่ง', PUBLISHED:'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED:'ส่งถึงบางช่องทาง', FAILED:'ส่งไม่สำเร็จ', GRANT:'ให้สิทธิ์', EXTEND:'ต่อเวลา', REVOKE:'ยกเลิกสิทธิ์', TIKTOK:'TikTok', YOUTUBE_SHORTS:'YouTube Shorts', INSTAGRAM_REELS:'Instagram Reels', FACEBOOK_REELS:'Facebook Reels', PENDING:'ยังไม่เสร็จ · ลองใหม่ได้', COMPLETED:'ลบเรียบร้อย', INVESTIGATING:'กำลังตรวจสอบ', IDENTIFIED:'พบสาเหตุ · กำลังแก้ไข', MONITORING:'แก้แล้ว · กำลังติดตามผล', RESOLVED:'ปิดประกาศแล้ว', WAITING_TEAM:'รอทีมงานตอบ', WAITING_MEMBER:'รอลูกค้า', CLOSED:'ปิดเรื่องแล้ว', MEMBER:'ลูกค้า', TEAM:'ทีมงาน' };
+const labels = { BASIC:'ฟรี', STARTER:'Starter', PRO:'Pro', ACTIVE:'ใช้งานอยู่', NOT_STARTED:'ยังไม่เริ่ม', EXPIRED:'หมดอายุ', REVOKED:'ยกเลิกแล้ว', DRAFT:'ร่าง', QUEUED:'รอส่ง', PUBLISHING:'กำลังส่ง', PUBLISHED:'ส่งถึงช่องทางแล้ว', PARTIAL_PUBLISHED:'ส่งถึงบางช่องทาง', FAILED:'ส่งไม่สำเร็จ', GRANT:'ให้สิทธิ์', EXTEND:'ต่อเวลา', REVOKE:'ยกเลิกสิทธิ์', TIKTOK:'TikTok', YOUTUBE_SHORTS:'YouTube Shorts', INSTAGRAM_REELS:'Instagram Reels', FACEBOOK_REELS:'Facebook Reels', PENDING:'ยังไม่เสร็จ · ลองใหม่ได้', COMPLETED:'ลบเรียบร้อย', INVESTIGATING:'กำลังตรวจสอบ', IDENTIFIED:'พบสาเหตุ · กำลังแก้ไข', MONITORING:'แก้แล้ว · กำลังติดตามผล', RESOLVED:'ปิดประกาศแล้ว', WAITING_TEAM:'รอทีมงานตอบ', WAITING_MEMBER:'รอลูกค้า', CLOSED:'ปิดเรื่องแล้ว', MEMBER:'ลูกค้า', TEAM:'ทีมงาน', BOT:'Dot (AI)' };
 const messages = { ADMIN_ACCESS_DENIED:'บัญชีนี้ยังไม่ได้รับสิทธิ์ผู้ดูแล PostDee', ADMIN_OWNER_REQUIRED:'เฉพาะเจ้าของระบบสามารถเปลี่ยนสิทธิ์ทดลองได้', ADMIN_REAUTH_REQUIRED:'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ เพื่อยืนยันตัวตนก่อนเปลี่ยนสิทธิ์', ADMIN_MEMBER_CHANGED:'อีเมลบัญชีเปลี่ยนแล้ว กรุณาค้นหาสมาชิกและตรวจสอบใหม่', ADMIN_TRIAL_CHANGED:'สิทธิ์มีการเปลี่ยนแปลง กรุณาปิดหน้าต่างแล้วโหลดข้อมูลล่าสุดก่อน', ADMIN_TRIAL_ALREADY_ACTIVE:'บัญชีนี้มีสิทธิ์ทดลองอยู่แล้ว ใช้การต่อเวลาแทน', ADMIN_TRIAL_NOT_ACTIVE:'ไม่พบสิทธิ์ทดลองที่ยังใช้งานอยู่', ADMIN_TRIAL_EXTENSION_LIMIT:'ต่อเวลาได้ไม่เกิน 90 วันนับจากวันนี้', ADMIN_TRIAL_INVALID:'กรุณาระบุแพ็กเกจ ระยะเวลา และเหตุผลอย่างน้อย 3 ตัวอักษร', ADMIN_REQUEST_CONFLICT:'หมายเลขคำขอนี้ใช้กับข้อมูลอื่นแล้ว กรุณาตรวจประวัติก่อน', ADMIN_TRIAL_UNAVAILABLE:'ยังยืนยันผลการเปลี่ยนสิทธิ์ไม่ได้ ใช้ปุ่มตรวจผลคำขอเดิม หรือตรวจประวัติผู้ดูแล', ADMIN_DATA_UNAVAILABLE:'ยังโหลดข้อมูลไม่ได้ กรุณาลองใหม่', ADMIN_FILTER_INVALID:'ตัวกรองหรือช่วงวันที่ไม่ถูกต้อง', ADMIN_MEMBER_NOT_FOUND:'ไม่พบบัญชีสมาชิกนี้แล้ว',
   ADMIN_DELETION_INVALID:'กรุณาพิมพ์ยืนยันให้ตรง และระบุเหตุผล 3–500 ตัวอักษรโดยไม่มีอีเมล', ADMIN_DELETE_PROTECTED:'ลบบัญชีผู้ดูแลระบบจากหน้านี้ไม่ได้', ADMIN_ACCOUNT_DELETION_UNAVAILABLE:'ยังยืนยันผลการลบไม่ได้ ใช้ปุ่มลองอีกครั้งด้วยคำขอเดิม หรือตรวจประวัติการลบบัญชี',
   ACCOUNT_DELETION_UNAVAILABLE:'ระบบลบบัญชียังปิดอยู่บนเซิร์ฟเวอร์นี้ ยังไม่มีข้อมูลใดถูกลบ', ACCOUNT_DELETION_AUTHORIZATION_UNAVAILABLE:'บันทึกการยืนยันการลบไม่สำเร็จ ยังไม่มีข้อมูลใดถูกลบ ลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_WRITE_DRAIN_FAILED:'บัญชีนี้มีงานที่ยังทำไม่เสร็จ รอสักครู่แล้วลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_UPLOADS_DRAINING:'มีวิดีโอกำลังอัปโหลดเสร็จ รอสักครู่แล้วลองอีกครั้งด้วยคำขอเดิม',
   ACCOUNT_MEDIA_CLEANUP_UNAVAILABLE:'ระบบลบวิดีโอยังไม่พร้อม ยังไม่มีข้อมูลใดถูกลบ', ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE:'ระบบถอดการเชื่อมต่อโซเชียลยังไม่พร้อม ยังไม่มีข้อมูลใดถูกลบ', ACCOUNT_SOCIAL_CLEANUP_FAILED:'ถอดการเชื่อมต่อโซเชียลยังไม่ครบ ข้อมูลบัญชียังอยู่ ลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_PUBLISH_CLEANUP_FAILED:'ยกเลิกโพสต์ที่รอส่งยังไม่ครบ ลองอีกครั้งด้วยคำขอเดิม',
   ACCOUNT_MEDIA_CLEANUP_FAILED:'ลบวิดีโอยังไม่ครบ ลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_IDENTITY_DELETE_FAILED:'ลบข้อมูลแล้ว แต่ยังลบการเข้าสู่ระบบไม่สำเร็จ ลองอีกครั้งด้วยคำขอเดิม', ACCOUNT_UPLOAD_STATE_CLEANUP_FAILED:'ลบเกือบเสร็จแล้ว ลองอีกครั้งด้วยคำขอเดิม',
   ADMIN_INCIDENT_INVALID:'กรุณาใส่หัวข้อ 3–80 ตัวอักษร (บรรทัดเดียว) ข้อความถึงลูกค้า 3–500 ตัวอักษร และเลือกสถานะ', ADMIN_INCIDENT_LIMIT:'มีประกาศที่ยังเปิดอยู่ครบ 5 เรื่องแล้ว ปิดเรื่องที่แก้แล้วก่อนสร้างใหม่', ADMIN_INCIDENT_CHANGED:'ประกาศนี้ถูกแก้ไขโดยผู้ดูแลคนอื่นแล้ว ปิดหน้าต่างแล้วโหลดข้อมูลล่าสุดก่อน', ADMIN_INCIDENT_RESOLVED:'ประกาศนี้ปิดแล้ว หากปัญหากลับมาให้สร้างประกาศใหม่', ADMIN_INCIDENT_NOT_FOUND:'ไม่พบประกาศนี้แล้ว', ADMIN_INCIDENT_UNAVAILABLE:'ยังยืนยันการบันทึกประกาศไม่ได้ กดบันทึกอีกครั้ง ระบบจะไม่สร้างประกาศซ้ำ',
-  ADMIN_SUPPORT_THREAD_NOT_FOUND:'ไม่พบแชทนี้แล้ว บัญชีอาจถูกลบ', ADMIN_SUPPORT_THREAD_CHANGED:'ลูกค้าส่งข้อความใหม่ระหว่างนั้น อ่านข้อความล่าสุดก่อนปิดเรื่อง', ADMIN_SUPPORT_UNAVAILABLE:'ยังส่งหรือโหลดแชทไม่ได้ กดส่งอีกครั้ง ระบบจะไม่ส่งซ้ำ', ADMIN_SUPPORT_MEMBER_DELETING:'บัญชีนี้กำลังถูกลบ ตอบแชทไม่ได้แล้ว', SUPPORT_MESSAGE_INVALID:'พิมพ์คำตอบ 1–1,000 ตัวอักษร', SUPPORT_MESSAGE_CONFLICT:'คำตอบนี้ถูกแก้หลังส่งไม่สำเร็จ กดส่งอีกครั้งเพื่อส่งเป็นข้อความใหม่' };
+  ADMIN_SUPPORT_THREAD_NOT_FOUND:'ไม่พบแชทนี้แล้ว บัญชีอาจถูกลบ', ADMIN_SUPPORT_THREAD_CHANGED:'ลูกค้าส่งข้อความใหม่ระหว่างนั้น อ่านข้อความล่าสุดก่อนปิดเรื่อง', ADMIN_SUPPORT_UNAVAILABLE:'ยังส่งหรือโหลดแชทไม่ได้ กดส่งอีกครั้ง ระบบจะไม่ส่งซ้ำ', ADMIN_SUPPORT_MEMBER_DELETING:'บัญชีนี้กำลังถูกลบ ตอบแชทไม่ได้แล้ว', SUPPORT_MESSAGE_INVALID:'พิมพ์คำตอบ 1–1,000 ตัวอักษร', SUPPORT_MESSAGE_CONFLICT:'คำตอบนี้ถูกแก้หลังส่งไม่สำเร็จ กดส่งอีกครั้งเพื่อส่งเป็นข้อความใหม่', ADMIN_SUPPORT_BOT_UNCONFIGURED:'เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า SUPPORT_BOT_PROVIDER และ OpenAI จึงเปิด Dot ไม่ได้' };
 const incidentPlatforms = ['TIKTOK','YOUTUBE_SHORTS','INSTAGRAM_REELS','FACEBOOK_REELS'];
 const platformsText = list => list?.length ? list.map(translate).join(', ') : 'ทั้งแอป';
 const h = (tag, attributes = {}, ...children) => { const e = document.createElement(tag); for(const [k,v] of Object.entries(attributes)) {
@@ -125,6 +125,7 @@ function table() {
    if(key==='supportMember')return h('span',{},h('span',{class:'member-name'},row.displayName||row.email||'บัญชีที่ไม่มีอีเมล'),h('div',{class:'member-email'},row.email||row.userId));
    if(key==='lastPreview')return h('span',{class:'pre-line'},row.lastPreview);
    if(key==='supportAction')return button('เปิดแชท',()=>openChat(row.userId),row.status==='WAITING_TEAM'?'primary':'');
+   if(view==='support'&&key==='status')return h('span',{},translate(row.status),row.teamRequested?h('div',{class:'team-flag'},'ลูกค้าขอคุยกับทีมงาน'):null);
    if(view==='incidents'&&(key==='title'||key==='message'))return h('span',{class:'pre-line'},row[key]);
    if(key==='platforms')return platformsText(row.platforms); if(key==='resolvedAt'&&!row.resolvedAt)return 'ยังเปิดอยู่';
    if(key==='incidentAction')return row.resolvedAt?'—':button('อัปเดต / ปิดประกาศ',()=>openIncident(row));
@@ -150,8 +151,15 @@ function render() { if(!session)return renderLogin();const focusedSearch=documen
  if(refreshReset)content.append(h('p',{class:'notice',role:'status'},'อัปเดตข้อมูลแล้ว · แสดงหน้าแรกเพื่อไม่รวมรายการจากคนละรอบข้อมูล'));
  if(pending&&!selected)content.append(h('p',{class:'notice'},pending.kind==='DELETE'?'มีคำขอลบบัญชีที่ยังยืนยันผลไม่ได้ ตรวจคำขอเดิมก่อนทำรายการใหม่':'มีคำขอเปลี่ยนสิทธิ์ที่ยังยืนยันผลไม่ได้ ตรวจคำขอเดิมก่อนทำรายการใหม่'),button('ตรวจผลคำขอเดิม',retryPending,'primary',{disabled:busy}));
  if(!['overview','incidents'].includes(view))content.append(form);
+ if(view==='incidents'&&page.signals)content.append(signalsPanel(page.signals));
  if(view==='incidents')content.append(h('p',{class:'notice'},'ประกาศที่ยังเปิดอยู่จะแสดงเป็นแถบแจ้งบนหน้าแรกของแอปให้ลูกค้าทุกคนเห็น เมื่อเปิดหรือรีเฟรชหน้าแรก · ห้ามใส่อีเมล ชื่อ หรือข้อมูลของลูกค้าในประกาศ'),
    session.role==='OWNER'?button('สร้างประกาศใหม่',()=>openIncident(),'primary',{disabled:busy||!!pending}):h('p',{class:'notice'},'บัญชีผู้ดูแลนี้ดูประกาศได้อย่างเดียว'));
+ if(view==='support'&&page.bot){const bot=page.bot;const configured=bot.provider!=='off';
+   content.append(h('section',{class:'bot-card','aria-label':'ผู้ช่วย AI Dot'},h('div',{},h('h2',{},`Dot ผู้ช่วย AI · ${bot.enabled?'เปิดอยู่':'ปิดอยู่'}`),
+     h('p',{class:'notice'},!configured?'เซิร์ฟเวอร์นี้ยังไม่ได้ตั้งค่า SUPPORT_BOT_PROVIDER จึงยังเปิด Dot ไม่ได้'
+       :bot.enabled?`Dot ตอบลูกค้าก่อนจากประกาศสถานะ คำถามที่พบบ่อย และผลโพสต์ล่าสุดของลูกค้า แล้วส่งต่อทีมงานเมื่อไม่แน่ใจ${bot.updatedAt?' · เปลี่ยนล่าสุด '+when(bot.updatedAt):''}`
+       :'เมื่อเปิด ข้อความแชทของลูกค้าจะถูกส่งให้ OpenAI ประมวลผล ตรวจว่านโยบายความเป็นส่วนตัวแจ้งเรื่องนี้แล้วก่อนเปิด')),
+     session.role==='OWNER'&&configured?button(bot.enabled?'ปิด Dot':'เปิด Dot',toggleBotGlobal,bot.enabled?'danger':'primary',{disabled:busy}):null));}
  if(view==='support')content.append(h('div',{class:'filters'},fieldSelect('สถานะ',[['','ทั้งหมด'],...['WAITING_TEAM','WAITING_MEMBER','CLOSED'].map(id=>[id,translate(id)])],status,v=>{status=v;cursor=undefined;load();})),
    h('p',{class:'notice'},'ลูกค้าเห็นคำตอบในแชทของแอปและได้รับการแจ้งเตือน · ลูกค้าไม่เห็นว่าผู้ดูแลคนไหนตอบ · ห้ามขอรหัสผ่านหรือข้อมูลบัตรจากลูกค้า'));
  if(view==='posts')content.append(h('div',{class:'filters'},
@@ -230,9 +238,22 @@ function renderDrawer() { const active=trialActive(selected.trial); const viewer
  drawer.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();if(e.key==='Tab'){const focusable=[...drawer.querySelectorAll('button,input,select,textarea')].filter(n=>!n.disabled);const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
 }
 // A create keeps one browser-made id until the server confirms, so pressing save again replays instead of posting twice.
-function openIncident(row) { if(busy||csvBusy||pending||editing||session.role!=='OWNER')return;
+// Sentry areas with errors in the last window. Dot sees only the area label;
+// the issue titles and links here are for administrators.
+function signalsPanel(snapshot) {
+ if(!snapshot.configured)return h('section',{class:'signals'},h('h2',{},'สัญญาณอัตโนมัติจาก Sentry'),
+   h('p',{class:'notice'},'ยังไม่ได้ตั้งค่า SENTRY_SIGNALS_TOKEN บนเซิร์ฟเวอร์ Dot จึงยังไม่รู้ข้อผิดพลาดของระบบโดยอัตโนมัติ'));
+ const rows=snapshot.signals.map(s=>h('div',{class:'signal'},h('div',{},h('strong',{},s.label),h('div',{class:'muted'},`พบล่าสุด ${when(s.lastSeen)} · ${s.issues.length} ปัญหาใน Sentry`),
+   h('ul',{},s.issues.map(i=>h('li',{},i.permalink?h('a',{href:i.permalink,target:'_blank',rel:'noopener noreferrer'},`${i.shortId} · ${i.title}`):`${i.shortId} · ${i.title}`)))),
+   session.role==='OWNER'?button('สร้างประกาศจากสัญญาณนี้',()=>openIncident(null,{title:`${s.label} มีปัญหาชั่วคราว`.slice(0,80),platforms:s.platform?[s.platform]:[]}),'',{disabled:busy||!!pending}):null));
+ return h('section',{class:'signals'},h('h2',{},'สัญญาณอัตโนมัติจาก Sentry'),
+   h('p',{class:'notice'},snapshot.failed?'อ่านข้อมูลจาก Sentry ไม่สำเร็จ ตรวจ token และสิทธิ์ event:read':
+     rows.length?'Dot ใช้ชื่อส่วนที่มีปัญหาเพื่อแจ้งลูกค้าว่าระบบตรวจพบข้อผิดพลาด (ไม่ส่งรายละเอียด error) ยืนยันกับลูกค้าด้วยการสร้างประกาศ':
+     'ไม่พบข้อผิดพลาดใหม่ในช่วงล่าสุด'),...rows);
+}
+function openIncident(row, draft) { if(busy||csvBusy||pending||editing||session.role!=='OWNER')return;
  editing=row?{action:'UPDATE',id:row.id,expectedVersion:row.version,title:row.title,message:row.message,platforms:[...row.platforms],stage:row.stage}
-   :{action:'CREATE',id:crypto.randomUUID(),title:'',message:'',platforms:[],stage:'INVESTIGATING'};
+   :{action:'CREATE',id:crypto.randomUUID(),title:draft?.title??'',message:'',platforms:draft?.platforms??[],stage:'INVESTIGATING'};
  reviewing=false;error='';success='';render(); }
 function closeIncident() { if(busy)return; editing=null;reviewing=false;error='';render(); }
 const incidentReady = () => { const t=editing.title.trim(),m=editing.message.trim(); return t.length>=3&&t.length<=80&&!/[\r\n]/.test(t)&&m.length>=3&&m.length<=500; };
@@ -272,7 +293,7 @@ async function submitIncident(){ if(busy||csvBusy||!editing||session.role!=='OWN
 let chatNodes=null;
 async function openChat(userId) { if(busy||csvBusy||pending||editing||chat)return;const generation=epoch;busy=true;error='';success='';render();
  try{const data=await api('support/thread',{userId});if(generation!==epoch)return;
-   chat={userId,...data,draft:'',outgoing:null,error:'',sending:false,refreshing:false};
+   chat={userId,...data,botGlobal:!!page.bot?.enabled,draft:'',outgoing:null,error:'',sending:false,refreshing:false};
    chatTimer=setInterval(()=>{void refreshChat();},10000);
  }catch(e){if(generation===epoch)error=e.message;}finally{if(generation===epoch){busy=false;render();}} }
 function closeChat() { if(!chat||chat.sending)return;clearInterval(chatTimer);chatTimer=null;chat=null;chatNodes=null;error='';return load(); }
@@ -283,16 +304,18 @@ async function refreshChat() { if(!chat||chat.sending||chat.refreshing||document
    if(changed)paintChat();
  }catch(e){if(generation===epoch&&chat===current){current.error=e.message;paintChat();}}
  finally{current.refreshing=false;} }
-function paintChat() { if(!chat||!chatNodes)return;const {log,status:statusNode,error:errorNode,send,close,reply}=chatNodes;
+function paintChat() { if(!chat||!chatNodes)return;const {log,status:statusNode,error:errorNode,send,close,reply,botToggle}=chatNodes;
  const atBottom=log.scrollHeight-log.scrollTop-log.clientHeight<48;
- log.replaceChildren(...(chat.hasEarlier?[h('p',{class:'muted'},'แสดง 200 ข้อความล่าสุด')]:[]),...chat.messages.map(m=>h('div',{class:`bubble ${m.sender==='TEAM'?'team':'member'}`},
-   h('div',{class:'pre-line'},m.body),h('div',{class:'bubble-meta'},`${m.sender==='TEAM'?(m.byYou?'คุณ':'ทีมงาน'):'ลูกค้า'} · ${when(m.createdAt)}`))));
+ log.replaceChildren(...(chat.hasEarlier?[h('p',{class:'muted'},'แสดง 200 ข้อความล่าสุด')]:[]),...chat.messages.map(m=>h('div',{class:`bubble ${m.sender==='TEAM'?'team':m.sender==='BOT'?'bot':'member'}`},
+   h('div',{class:'pre-line'},m.body),h('div',{class:'bubble-meta'},`${m.sender==='TEAM'?(m.byYou?'คุณ':'ทีมงาน'):m.sender==='BOT'?'Dot (AI)':'ลูกค้า'} · ${when(m.createdAt)}`))));
  if(atBottom)log.scrollTop=log.scrollHeight;
- statusNode.textContent=`สถานะ: ${translate(chat.thread.status)}${chat.member?` · แพ็กเกจที่ซื้อ ${translate(chat.member.paidPlan)}`:''} · อัปเดตทุก 10 วินาทีขณะเปิดแชท`;
+ statusNode.textContent=`สถานะ: ${translate(chat.thread.status)}${chat.thread.teamRequested?' · ลูกค้าขอคุยกับทีมงาน':''}${chat.member?` · แพ็กเกจที่ซื้อ ${translate(chat.member.paidPlan)}`:''} · อัปเดตทุก 10 วินาทีขณะเปิดแชท`;
  errorNode.replaceChildren(...(chat.error?[h('p',{class:'error',role:'alert'},chat.error)]:[]));
  reply.disabled=chat.sending;send.disabled=chat.sending||!chat.draft.trim();
  send.textContent=chat.sending?'กำลังส่ง…':chat.outgoing?'ส่งอีกครั้ง':'ส่งคำตอบ';
- close.disabled=chat.sending||chat.thread.status==='CLOSED'; }
+ close.disabled=chat.sending||chat.thread.status==='CLOSED';
+ botToggle.hidden=!chat.botGlobal;botToggle.disabled=chat.sending;
+ botToggle.textContent=chat.thread.botEnabled?'ปิด Dot ในแชทนี้':'เปิด Dot ในแชทนี้'; }
 function renderChatDrawer() { const member=chat.member;const name=member?.displayName||member?.email||chat.userId;
  const drawer=h('section',{class:'drawer chat-drawer',role:'dialog','aria-modal':'true','aria-label':`แชทกับ ${name}`},
    h('header',{},h('h2',{},'แชทช่วยเหลือ'),button('×',closeChat,'close',{'aria-label':'ปิดแชท'})));
@@ -302,10 +325,12 @@ function renderChatDrawer() { const member=chat.member;const name=member?.displa
    // An edited draft is a new message; keep the old id only for an unchanged retry.
    if(chat.outgoing&&chat.outgoing.body!==chat.draft.trim())chat.outgoing=null;paintChat();}},chat.draft);
  const send=button('ส่งคำตอบ',submitReply,'primary');const close=button('ปิดเรื่อง',closeThread);const errorNode=h('div');
- chatNodes={log,status:statusNode,error:errorNode,send,close,reply};
+ const botToggle=button('',toggleThreadBot,'bot-toggle');
+ chatNodes={log,status:statusNode,error:errorNode,send,close,reply,botToggle};
  drawer.append(h('span',{class:'label'},'สมาชิก'),h('div',{class:'identity'},name,member?.email&&member.email!==name?h('div',{class:'member-email'},member.email):null),statusNode,
    log,h('label',{class:'chat-reply'},h('span',{class:'label'},'ตอบลูกค้า'),reply),errorNode,
-   h('p',{class:'notice'},'ปิดเรื่องเมื่อแก้ปัญหาแล้ว ถ้าลูกค้าส่งข้อความใหม่ แชทจะกลับมารอทีมงานตอบเอง'),h('div',{class:'drawer-actions'},close,send));
+   h('p',{class:'notice'},'ปิดเรื่องเมื่อแก้ปัญหาแล้ว ถ้าลูกค้าส่งข้อความใหม่ แชทจะกลับมาเอง · Dot ยังช่วยตอบต่อหลังทีมงานตอบ ถ้าต้องการคุยเองให้ปิด Dot ในแชทนี้'),
+   botToggle,h('div',{class:'drawer-actions'},close,send));
  const backdrop=h('div',{class:'drawer-backdrop',onclick:closeChat}); app.append(backdrop,drawer);
  paintChat();log.scrollTop=log.scrollHeight;reply.focus();
  drawer.addEventListener('keydown',e=>{if(e.key==='Escape')closeChat();if(e.key==='Tab'){const focusable=[...drawer.querySelectorAll('button,input,select,textarea')].filter(n=>!n.disabled);const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
@@ -316,13 +341,22 @@ async function submitReply(){ if(!chat||chat.sending)return;const body=chat.draf
  try{const r=await api('support/reply',{userId:current.userId,id:current.outgoing.id,body});if(generation!==epoch||chat!==current)return;
    current.outgoing=null;current.draft='';chatNodes.reply.value='';
    if(!current.messages.some(m=>m.id===r.message.id))current.messages=[...current.messages,r.message];
-   current.thread={...current.thread,status:'WAITING_MEMBER',lastSender:'TEAM',lastMessageId:r.message.id,lastMessageAt:r.message.createdAt};
+   current.thread={...current.thread,status:'WAITING_MEMBER',lastSender:'TEAM',lastMessageId:r.message.id,lastMessageAt:r.message.createdAt,teamRequested:false};
  }catch(e){if(generation===epoch&&chat===current)current.error=e.message;}
  finally{if(chat===current){current.sending=false;paintChat();if(!current.error){chatNodes.log.scrollTop=chatNodes.log.scrollHeight;chatNodes.reply.focus();}}} }
 async function closeThread(){ if(!chat||chat.sending)return;const current=chat;const generation=epoch;let changed=false;current.sending=true;current.error='';paintChat();
  try{const r=await api('support/close',{userId:current.userId,lastMessageId:current.thread.lastMessageId});if(generation!==epoch||chat!==current)return;current.thread=r.thread;}
  catch(e){if(generation===epoch&&chat===current){current.error=e.message;changed=e.code==='ADMIN_SUPPORT_THREAD_CHANGED';}}
  finally{if(chat===current){current.sending=false;paintChat();if(changed)void refreshChat();}} }
+async function toggleThreadBot(){ if(!chat||chat.sending)return;const current=chat;const generation=epoch;current.sending=true;current.error='';paintChat();
+ try{const r=await api('support/thread-bot',{userId:current.userId,enabled:!current.thread.botEnabled});if(generation!==epoch||chat!==current)return;current.thread=r.thread;}
+ catch(e){if(generation===epoch&&chat===current)current.error=e.message;}
+ finally{if(chat===current){current.sending=false;paintChat();}} }
+async function toggleBotGlobal(){ if(busy||!page.bot||session.role!=='OWNER')return;const enable=!page.bot.enabled;
+ if(enable&&!window.confirm('เปิด Dot ให้ตอบลูกค้าทุกคน?\n\nข้อความแชทของลูกค้าจะถูกส่งให้ OpenAI ประมวลผล (ไม่ส่งอีเมล เบอร์โทร หรือชื่อ) ตรวจว่านโยบายความเป็นส่วนตัวแจ้งเรื่องนี้แล้ว'))return;
+ const generation=epoch;busy=true;error='';success='';render();
+ try{const r=await api('support/bot-settings',{enabled:enable});if(generation!==epoch)return;page={...page,bot:r.bot};success=r.bot.enabled?'เปิด Dot แล้ว · Dot จะตอบข้อความใหม่ของลูกค้า':'ปิด Dot แล้ว · ข้อความใหม่จะรอทีมงานตอบ';}
+ catch(e){if(generation===epoch)error=e.message;}finally{if(generation===epoch){busy=false;render();}} }
 async function submitTrial(){ if(busy||csvBusy||pending?.kind==='DELETE')return;const generation=epoch;pending ||= {requestId:crypto.randomUUID(),userId:selected.id,expectedEmail:selected.email,action:drawerAction,plan:selectedPlan,days,reason:reason.trim(),expectedVersion:selected.trial?.version??0};
  busy=true;error='';render();try{await api('trials',pending);if(generation!==epoch)return;pending=null;selected=null;success='บันทึกสิทธิ์ทดลองแล้ว พร้อมประวัติการจัดการ';busy=false;await load();}catch(e){if(generation!==epoch)return;if(e.status>=400&&e.status<500)pending=null;error=e.message;busy=false;render();}}
 // Keeps the reviewed request id until the server confirms, so a retry continues the same audited deletion.

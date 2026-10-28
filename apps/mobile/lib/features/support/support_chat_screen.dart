@@ -15,6 +15,7 @@ typedef SupportMessageSender = Future<SupportMessageResult> Function({
   required String id,
   required String body,
 });
+typedef SupportTeamRequester = Future<void> Function();
 
 /// A random version-4 UUID, made once per message so the server recognizes
 /// a retry after a lost response instead of storing the message twice.
@@ -29,13 +30,16 @@ String newSupportMessageId([Random? random]) {
 }
 
 /// The member's chat with the PostDee team. Known service problems show at
-/// the top, and new replies are polled while the screen is open.
+/// the top, and new replies are polled while the screen is open. While Dot,
+/// the AI helper, is on it answers most questions; the member can also ask
+/// the team to look, and Dot keeps helping until they reply.
 class SupportChatScreen extends StatefulWidget {
   const SupportChatScreen({
     super.key,
     this.loadChat,
     this.sendMessage,
     this.loadServiceStatus,
+    this.requestTeam,
     this.pollInterval = const Duration(seconds: 5),
     this.newMessageId = newSupportMessageId,
     this.now,
@@ -44,6 +48,7 @@ class SupportChatScreen extends StatefulWidget {
   final SupportChatLoader? loadChat;
   final SupportMessageSender? sendMessage;
   final HomeServiceStatusLoader? loadServiceStatus;
+  final SupportTeamRequester? requestTeam;
   final Duration pollInterval;
   final String Function() newMessageId;
   final DateTime Function()? now;
@@ -71,6 +76,10 @@ class _SupportChatScreenState extends State<SupportChatScreen>
   var _loading = true;
   String? _loadError;
   String? _sendError;
+  var _botAvailable = false;
+  var _botEnabled = true;
+  var _handingOff = false;
+  var _teamRequested = false;
   Timer? _timer;
   var _polling = false;
   var _appResumed = true;
@@ -78,6 +87,10 @@ class _SupportChatScreenState extends State<SupportChatScreen>
 
   SupportChatLoader get _load =>
       widget.loadChat ?? (_client ??= PostDeeApiClient()).loadSupportChat;
+  SupportTeamRequester get _requestTeam =>
+      widget.requestTeam ??
+      (_client ??= PostDeeApiClient()).requestSupportTeam;
+  bool get _botActive => _botAvailable && _botEnabled;
   SupportMessageSender get _send =>
       widget.sendMessage ??
       (_client ??= PostDeeApiClient()).sendSupportMessage;
@@ -133,6 +146,9 @@ class _SupportChatScreenState extends State<SupportChatScreen>
           ..clear()
           ..addAll(result.messages);
         _cursor = result.cursor;
+        _botAvailable = result.botAvailable;
+        _botEnabled = result.botEnabled;
+        _teamRequested = result.teamRequested;
         _loading = false;
       });
       _scrollToEnd();
@@ -154,6 +170,15 @@ class _SupportChatScreenState extends State<SupportChatScreen>
     try {
       final result = await _load(after: _cursor);
       if (!mounted || generation != _generation) return;
+      if (result.botAvailable != _botAvailable ||
+          result.botEnabled != _botEnabled ||
+          result.teamRequested != _teamRequested) {
+        setState(() {
+          _botAvailable = result.botAvailable;
+          _botEnabled = result.botEnabled;
+          _teamRequested = result.teamRequested;
+        });
+      }
       _merge(result.messages, cursor: result.cursor);
     } catch (_) {
       // A missed poll is simply retried on the next tick.
@@ -211,6 +236,33 @@ class _SupportChatScreenState extends State<SupportChatScreen>
                     'ส่งข้อความไม่สำเร็จ แตะข้อความเพื่อส่งอีกครั้ง');
       });
     }
+  }
+
+  Future<void> _handOff() async {
+    if (_handingOff) return;
+    setState(() {
+      _handingOff = true;
+      _sendError = null;
+    });
+    try {
+      await _requestTeam();
+      if (!mounted) return;
+      setState(() => _teamRequested = true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _sendError = apiErrorMessage(error,
+          fallbackMessage: 'ส่งต่อให้ทีมงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
+    } finally {
+      if (mounted) setState(() => _handingOff = false);
+    }
+  }
+
+  // Shown while Dot is expected to answer the member's newest message.
+  bool get _botTyping {
+    if (!_botActive || _messages.isEmpty || _outgoing.isNotEmpty) return false;
+    final last = _messages.last;
+    final now = (widget.now ?? DateTime.now)();
+    return last.sender == 'MEMBER' && now.difference(last.createdAt) < const Duration(minutes: 1);
   }
 
   void _discard(_Outgoing outgoing) => setState(() {
@@ -291,11 +343,18 @@ class _SupportChatScreenState extends State<SupportChatScreen>
         ),
         const SizedBox(height: 14),
         Text(
-          isThai
-              ? 'ทีมงาน PostDee จะตอบกลับในแชทนี้ และแจ้งเตือนเมื่อมีคำตอบ · '
-                  'ห้ามส่งรหัสผ่าน รหัส OTP หรือข้อมูลบัตร'
-              : 'The PostDee team replies here and notifies you. '
-                  'Never send passwords, OTP codes or card details.',
+          key: const ValueKey('support-chat-intro'),
+          _botActive
+              ? (isThai
+                  ? 'Dot ผู้ช่วย AI ตอบให้ทันทีจากข้อมูลของ PostDee และสถานะระบบล่าสุด (AI อาจตอบผิดได้) · '
+                      'ถ้าต้องการให้ทีมงานช่วยดู กด "ขอคุยกับทีมงาน" · ห้ามส่งรหัสผ่าน รหัส OTP หรือข้อมูลบัตร'
+                  : 'Dot, the AI helper, answers right away from PostDee information and the latest system status (AI can be wrong). '
+                      'Tap "Talk to the team" to have a person look. Never send passwords, OTP codes or card details.')
+              : (isThai
+                  ? 'ทีมงาน PostDee จะตอบกลับในแชทนี้ และแจ้งเตือนเมื่อมีคำตอบ · '
+                      'ห้ามส่งรหัสผ่าน รหัส OTP หรือข้อมูลบัตร'
+                  : 'The PostDee team replies here and notifies you. '
+                      'Never send passwords, OTP codes or card details.'),
           style: TextStyle(
             fontSize: 12,
             height: 1.45,
@@ -319,9 +378,14 @@ class _SupportChatScreenState extends State<SupportChatScreen>
           _SupportBubble(
             key: ValueKey('support-message-${message.id}'),
             body: message.body,
-            fromTeam: message.isFromTeam,
-            teamLabel: isThai ? 'ทีมงาน PostDee' : 'PostDee team',
-            meta: _time(message.createdAt, isThai),
+            fromTeam: message.isFromTeam || message.isFromBot,
+            isBot: message.isFromBot,
+            teamLabel: message.isFromBot
+                ? (isThai ? 'Dot · ผู้ช่วย AI' : 'Dot · AI helper')
+                : (isThai ? 'ทีมงาน PostDee' : 'PostDee team'),
+            meta: message.isFromBot
+                ? '${isThai ? 'ตอบโดย AI' : 'AI answer'} · ${_time(message.createdAt, isThai)}'
+                : _time(message.createdAt, isThai),
           ),
         for (final pending in _outgoing)
           _SupportBubble(
@@ -338,6 +402,39 @@ class _SupportChatScreenState extends State<SupportChatScreen>
             onRetry: pending.failed ? () => _deliver(pending) : null,
             onDiscard: pending.failed ? () => _discard(pending) : null,
             discardLabel: isThai ? 'ลบข้อความนี้' : 'Remove this message',
+          ),
+        if (_botTyping)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              isThai ? 'Dot กำลังพิมพ์…' : 'Dot is typing…',
+              key: const ValueKey('support-bot-typing'),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
+          ),
+        if (_teamRequested && _botActive)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              isThai
+                  ? 'แจ้งทีมงานแล้ว ทีมงานจะตอบในแชทนี้โดยเร็วที่สุด ระหว่างนี้ถาม Dot ต่อได้ค่ะ'
+                  : 'The team has been told and will reply here. Meanwhile you can keep asking Dot.',
+              key: const ValueKey('support-chat-handed-off'),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, color: AppTheme.accentCyanInk),
+            ),
+          )
+        else if (_botActive && _messages.any((message) => message.isFromBot))
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Center(
+              child: OutlinedButton.icon(
+                key: const ValueKey('support-chat-handoff'),
+                onPressed: _handingOff ? null : _handOff,
+                icon: const Icon(Icons.support_agent_rounded, size: 18),
+                label: Text(isThai ? 'ขอคุยกับทีมงาน' : 'Talk to the team'),
+              ),
+            ),
           ),
       ],
     );
@@ -414,6 +511,7 @@ class _SupportBubble extends StatelessWidget {
     required this.fromTeam,
     required this.teamLabel,
     required this.meta,
+    this.isBot = false,
     this.failed = false,
     this.onRetry,
     this.onDiscard,
@@ -422,6 +520,7 @@ class _SupportBubble extends StatelessWidget {
 
   final String body;
   final bool fromTeam;
+  final bool isBot;
   final String teamLabel;
   final String meta;
   final bool failed;
@@ -434,7 +533,11 @@ class _SupportBubble extends StatelessWidget {
     final error = Theme.of(context).colorScheme.error;
     final bubble = DecoratedBox(
       decoration: BoxDecoration(
-        color: fromTeam ? AppTheme.glass : AppTheme.mint,
+        color: isBot
+            ? AppTheme.sel
+            : fromTeam
+                ? AppTheme.glass
+                : AppTheme.mint,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: failed ? error.withValues(alpha: 0.6) : AppTheme.borderSoft,

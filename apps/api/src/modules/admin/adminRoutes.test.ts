@@ -7,28 +7,34 @@ import { toCsv } from './adminReports.js';
 import type { AdminConsoleConfig } from './adminConfig.js';
 import { createMemoryServiceIncidentStore } from '../serviceStatus/serviceIncident.js';
 import { createMemorySupportChatStore } from '../supportChat/supportChat.js';
+import { createMemorySupportBotSettingsStore } from '../supportBot/supportBot.js';
 
 const config: AdminConsoleConfig = { origin: 'http://localhost:4174', environment: 'LOCAL', ownerUids: ['owner'], viewerUids: ['viewer'],
   firebaseWeb: { apiKey: 'fixture', authDomain: 'fixture.firebaseapp.com', projectId: 'fixture', appId: 'fixture' } };
 const member = { id: 'member', email: 'mali@example.com', displayName: 'Mali', paidPlan: 'BASIC' };
 const now = () => new Date('2026-10-18T00:00:00Z');
-const setup = (enabled = true) => {
+const setup = (enabled = true, botProvider: 'off' | 'mock' | 'openai' = 'openai') => {
   const app = express(); app.use(express.json());
   const trials = createMemoryTrialAccessStore({ now });
   const incidents = createMemoryServiceIncidentStore({ now });
   const support = createMemorySupportChatStore({ now });
   const notifySupportReply = vi.fn(async (_userId: string) => undefined);
+  const botSettings = createMemorySupportBotSettingsStore({ now });
   const view = vi.fn(async () => ({ rows: [member], total: 1,
     asOf: '2026-10-17T23:59:59.000Z', summary: { memberCount: 1, captionRequests: 0, editMinutes: 0,
       quotaPostUnits: 0, postUnits: 0, livePostUnits: 0, draftPostUnits: 0, otherDeliveredPostUnits: 0,
       failedPostUnits: 0, pendingPostUnits: 0, estimatedUsd: null } }));
   registerAdminConsole(app, { config: enabled ? config : undefined, trials, now, incidents, support, notifySupportReply,
+    supportBot: { provider: botProvider, settings: botSettings },
+    signals: { read: async () => ({ configured: true, checkedAt: now().toISOString(), failed: false,
+      signals: [{ key: 'uploads' as const, label: 'การอัปโหลดวิดีโอ', lastSeen: now().toISOString(),
+        issues: [{ shortId: 'API-3', title: 'Error: upload', permalink: 'https://postdee.sentry.io/issues/3/', lastSeen: now().toISOString(), count: 4 }] }] }) },
     data: { member: async id => id === member.id ? member : null, view },
     authenticate: (req, res, next) => { const id = req.get('authorization')?.replace('Bearer ', '');
       if (!id) { res.sendStatus(401); return; }
       res.locals.authUser = { id: id === 'old-owner' ? 'owner' : id, provider: id === 'mock-owner' ? 'mock' : 'firebase', authenticatedAtSeconds: id === 'old-owner' ? 1 : now().getTime() / 1000 };
       next(); }
-  }); return { app, trials, view, incidents, support, notifySupportReply };
+  }); return { app, trials, view, incidents, support, notifySupportReply, botSettings };
 };
 const adminPost = (app: express.Express, role: string, path: string, body: Record<string, unknown>) => request(app)
   .post(`/admin/api/${path}`).set('Authorization', `Bearer ${role}`).set('Origin', config.origin)
@@ -146,7 +152,8 @@ describe('private administrator console', () => {
     const read = await request(app).post('/admin/api/view').set('Authorization', 'Bearer viewer')
       .set('Origin', config.origin).set('X-PostDee-Admin', '1').send({ view: 'incidents' });
     expect(read.status).toBe(200);
-    expect(read.body).toMatchObject({ rows: [{ id: incident.id, stage: 'RESOLVED' }], checkedAt: now().toISOString() });
+    expect(read.body).toMatchObject({ rows: [{ id: incident.id, stage: 'RESOLVED' }], checkedAt: now().toISOString(),
+      signals: { configured: true, signals: [{ key: 'uploads', issues: [{ shortId: 'API-3' }] }] } });
     expect(view).not.toHaveBeenCalled();
   });
   it('validates service notice commands before writing', async () => {
@@ -191,6 +198,26 @@ describe('private administrator console', () => {
     expect((await adminPost(app, 'owner', 'support/reply', { userId: 'nobody', id: chatId(4), body: 'สวัสดี' })).status).toBe(404);
     expect((await adminPost(app, 'owner', 'support/thread', { userId: 'nobody' })).status).toBe(404);
     expect(notifySupportReply).not.toHaveBeenCalled();
+  });
+  it('lets only owners switch Dot on, and only when a provider is configured', async () => {
+    const { app, botSettings } = setup();
+    expect((await adminPost(app, 'viewer', 'support/bot-settings', { enabled: true })).status).toBe(403);
+    expect((await adminPost(app, 'owner', 'support/bot-settings', { enabled: 'yes' })).status).toBe(400);
+    const on = await adminPost(app, 'owner', 'support/bot-settings', { enabled: true });
+    expect(on.body.bot).toEqual({ provider: 'openai', enabled: true, updatedAt: now().toISOString() });
+    expect(await botSettings.read()).toMatchObject({ enabled: true, updatedBy: 'owner' });
+    expect((await adminPost(app, 'viewer', 'view', { view: 'support' })).body.bot).toMatchObject({ provider: 'openai', enabled: true });
+    const unconfigured = setup(true, 'off');
+    expect((await adminPost(unconfigured.app, 'owner', 'support/bot-settings', { enabled: true })).body.code).toBe('ADMIN_SUPPORT_BOT_UNCONFIGURED');
+    expect((await adminPost(unconfigured.app, 'owner', 'support/bot-settings', { enabled: false })).status).toBe(200);
+  });
+  it('lets any administrator switch Dot off or on for one conversation', async () => {
+    const { app, support } = setup();
+    await support.postFromMember({ userId: 'member', id: chatId(1), body: 'ช่วยด้วย' });
+    expect((await adminPost(app, 'viewer', 'support/thread-bot', { userId: 'member', enabled: false })).body.thread.botEnabled).toBe(false);
+    expect((await adminPost(app, 'owner', 'support/thread-bot', { userId: 'member', enabled: true })).body.thread.botEnabled).toBe(true);
+    expect((await adminPost(app, 'owner', 'support/thread-bot', { userId: 'nobody', enabled: true })).status).toBe(404);
+    expect((await adminPost(app, 'owner', 'support/thread-bot', { userId: 'member' })).status).toBe(400);
   });
   it('neutralizes spreadsheet formulas and quotes CSV fields', () => {
     const csv = toCsv([{ email: '=HYPERLINK("https://evil.example")', reason: '\t+cmd', text: 'a,"b"' }]);

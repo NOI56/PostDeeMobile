@@ -93,6 +93,8 @@ describe('readServerConfig', () => {
       videoStorage: 'mock',
       captionProvider: 'mock',
       openAiCaptionModel: 'gpt-4o-mini',
+      supportBotProvider: 'off',
+      openAiSupportBotModel: 'gpt-4o-mini',
       geminiCaptionModel: 'gemini-2.5-flash-lite',
       authProvider: 'mock',
       socialPublisher: 'mock',
@@ -366,6 +368,36 @@ describe('readServerConfig', () => {
         // VIDEO_STORAGE left at its mock default.
       })
     ).toThrow('VIDEO_STORAGE=mock is not allowed when NODE_ENV=production');
+  });
+
+  it('keeps the support bot off by default and validates its provider', () => {
+    expect(readServerConfig({}).supportBotProvider).toBe('off');
+    expect(readServerConfig({ SUPPORT_BOT_PROVIDER: 'mock' })).toMatchObject({
+      supportBotProvider: 'mock',
+      openAiSupportBotModel: 'gpt-4o-mini'
+    });
+    expect(() => readServerConfig({ SUPPORT_BOT_PROVIDER: 'gpt' })).toThrow(
+      'SUPPORT_BOT_PROVIDER must be off, mock, or openai'
+    );
+    expect(() => readServerConfig({ SUPPORT_BOT_PROVIDER: 'openai' })).toThrow(
+      'OPENAI_API_KEY is required when SUPPORT_BOT_PROVIDER=openai'
+    );
+    expect(
+      readServerConfig({ SUPPORT_BOT_PROVIDER: 'openai', OPENAI_API_KEY: 'sk-test', OPENAI_SUPPORT_BOT_MODEL: 'gpt-4.1-mini' })
+    ).toMatchObject({ supportBotProvider: 'openai', openAiSupportBotModel: 'gpt-4.1-mini' });
+    expect(() =>
+      readServerConfig({
+        NODE_ENV: 'production',
+        AUTH_PROVIDER: 'firebase',
+        FIREBASE_PROJECT_ID: 'postdee-prod',
+        BILLING_PROVIDER: 'store',
+        SOCIAL_PUBLISHER: 'postpeer',
+        POSTPEER_API_KEY: 'postpeer-key',
+        VIDEO_STORAGE: 'r2',
+        CLOUDFLARE_R2_BUCKET: 'postdee-r2-temp',
+        SUPPORT_BOT_PROVIDER: 'mock'
+      })
+    ).toThrow('SUPPORT_BOT_PROVIDER=mock is not allowed when NODE_ENV=production');
   });
 
   it('allows an explicitly disabled social publisher to fail closed in staging', () => {

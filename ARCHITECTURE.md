@@ -11,6 +11,31 @@ Architecture overview for the PostDee mobile app and backend scaffold.
 > below that describe them are history. The canonical list is in `AGENTS.md`
 > under "Retired Features" and wins when an older section disagrees.
 
+## Dot support helper (2026-10-28, phase 3 local candidate)
+
+`apps/api/src/modules/supportBot` adds an AI first responder to the support
+chat. After `POST /support/chat/messages` stores a member message, the route
+calls a per-member `createSupportBotScheduler` (one run at a time, one
+re-run for messages sent meanwhile). `createSupportBot` checks the provider
+and the cached global `SupportBotSetting`, the thread's `botEnabled`, and the
+daily cap; loads a minimal context (`serviceIncidentStore.active`, plan,
+last five posts with `adminPublishFailure` reasons); scrubs the last 20
+messages; and calls the provider (`createOpenAiSupportBotProvider`: chat
+completions, JSON reply `{reply, handoff}`, no tools). The write goes
+through `SupportChatStore.replyAsBot`, which stores only if the answered
+message is still the newest and the bot is on, inside the owner-locked
+transaction, and runs under `runWithOwnerLifetime`. Failures become a fixed
+handoff. A handoff only sets `teamRequested` (the thread stays `WAITING_TEAM`
+through later Dot replies); Dot stays on until an administrator switches it
+off, because the team may be one person. `src/monitoring/sentrySignals.ts`
+derives the Sentry organization/region/project from `SENTRY_DSN` and, with
+`SENTRY_SIGNALS_TOKEN`, searches recent unresolved issues per area using the
+safe tags `sentryMonitoring.ts` attaches (operation, platform, route). The
+cached snapshot feeds Dot's context (fixed Thai labels only) and the admin
+status tab (titles and links, plus a button to draft a notice). Mobile shows
+Dot bubbles, a typing hint and a "talk to the team" button; the admin console
+shows the global and per-thread switches and a team-requested marker.
+
 ## Support chat (2026-10-28, phase 2 local candidate)
 
 `apps/api/src/modules/supportChat` keeps one conversation per member:

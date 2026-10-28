@@ -14,6 +14,10 @@ class _FakeChat {
   Object? sendError;
   var failSends = 0;
   var _minute = 0;
+  var botAvailable = false;
+  var botEnabled = true;
+  var teamRequests = 0;
+  var teamRequested = false;
 
   SupportMessageResult message(String sender, String body, {String? id}) {
     final result = SupportMessageResult(
@@ -34,7 +38,15 @@ class _FakeChat {
       messages: messages.sublist(start),
       cursor: '${messages.length}',
       threadStatus: messages.isEmpty ? null : 'WAITING_TEAM',
+      botAvailable: botAvailable,
+      botEnabled: botEnabled,
+      teamRequested: teamRequested,
     );
+  }
+
+  Future<void> requestTeam() async {
+    teamRequests++;
+    teamRequested = true;
   }
 
   Future<SupportMessageResult> send(
@@ -49,7 +61,8 @@ class _FakeChat {
   }
 }
 
-Widget _app(_FakeChat chat, {Duration poll = const Duration(seconds: 5)}) {
+Widget _app(_FakeChat chat,
+    {Duration poll = const Duration(seconds: 5), DateTime? now}) {
   var next = 0;
   return MaterialApp(
     theme: AppTheme.light,
@@ -64,10 +77,11 @@ Widget _app(_FakeChat chat, {Duration poll = const Duration(seconds: 5)}) {
     home: SupportChatScreen(
       loadChat: chat.load,
       sendMessage: chat.send,
+      requestTeam: chat.requestTeam,
       loadServiceStatus: () async => const [],
       pollInterval: poll,
       newMessageId: () => 'client-${next++}',
-      now: () => DateTime(2026, 10, 28, 15),
+      now: () => now ?? DateTime(2026, 10, 28, 15),
     ),
   );
 }
@@ -202,5 +216,60 @@ void main() {
     await tester.tap(find.text('ลองใหม่'));
     await tester.pumpAndSettle();
     expect(find.text('คำตอบเดิม'), findsOneWidget);
+  });
+
+  testWidgets('labels Dot replies and lets the member ask for a person',
+      (tester) async {
+    final chat = _FakeChat()
+      ..botAvailable = true
+      ..message('MEMBER', 'โพสต์ TikTok ไม่ขึ้น')
+      ..message('BOT', 'ตอนนี้ TikTok ส่งช้าค่ะ');
+    await tester.pumpWidget(_app(chat));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dot · ผู้ช่วย AI'), findsOneWidget);
+    expect(find.text('ตอบโดย AI · 14:01 น.'), findsOneWidget);
+    expect(find.textContaining('Dot ผู้ช่วย AI ตอบให้ทันที'), findsOneWidget);
+    expect(find.byKey(const ValueKey('support-bot-typing')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('support-chat-handoff')));
+    await tester.pumpAndSettle();
+    expect(chat.teamRequests, 1);
+    expect(find.byKey(const ValueKey('support-chat-handoff')), findsNothing);
+    expect(find.byKey(const ValueKey('support-chat-handed-off')), findsOneWidget);
+    // Dot stays available while the chat waits for the team.
+    expect(find.textContaining('Dot ผู้ช่วย AI ตอบให้ทันที'), findsOneWidget);
+    expect(find.textContaining('ระหว่างนี้ถาม Dot ต่อได้'), findsOneWidget);
+  });
+
+  testWidgets('shows Dot typing until its reply arrives by polling',
+      (tester) async {
+    final chat = _FakeChat()..botAvailable = true;
+    await tester.pumpWidget(_app(chat,
+        poll: const Duration(seconds: 1), now: DateTime(2026, 10, 28, 14, 0, 30)));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('support-chat-input')), 'ส่งไม่ได้ค่ะ');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('support-chat-send')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('support-bot-typing')), findsOneWidget);
+
+    chat.message('BOT', 'ลองส่งใหม่อีกครั้งได้ค่ะ');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.text('ลองส่งใหม่อีกครั้งได้ค่ะ'), findsOneWidget);
+    expect(find.byKey(const ValueKey('support-bot-typing')), findsNothing);
+  });
+
+  testWidgets('hides Dot controls when Dot is switched off', (tester) async {
+    final chat = _FakeChat()
+      ..message('MEMBER', 'สวัสดี')
+      ..message('BOT', 'คำตอบเก่าจาก Dot');
+    await tester.pumpWidget(_app(chat));
+    await tester.pumpAndSettle();
+    expect(find.text('Dot · ผู้ช่วย AI'), findsOneWidget);
+    expect(find.byKey(const ValueKey('support-chat-handoff')), findsNothing);
+    expect(find.textContaining('Dot ผู้ช่วย AI ตอบให้ทันที'), findsNothing);
   });
 }

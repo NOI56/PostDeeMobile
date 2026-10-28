@@ -74,6 +74,11 @@ void main() {
             body:
                 'สวัสดีครับ ตอนนี้ TikTok ขัดข้องชั่วคราว\nโพสต์ที่ตั้งเวลาไว้จะส่งต่ออัตโนมัติ ไม่ต้องส่งซ้ำครับ',
             createdAt: DateTime(2026, 10, 28, 9, 20)),
+        SupportMessageResult(
+            id: 'm3',
+            sender: 'BOT',
+            body: 'ถ้าคลิปขึ้นว่าส่งไม่สำเร็จ ลองตรวจบน TikTok ก่อนส่งซ้ำนะคะ จะได้ไม่โพสต์ซ้ำ',
+            createdAt: DateTime(2026, 10, 28, 9, 21)),
       ];
       await tester.pumpWidget(RepaintBoundary(
         key: _captureKey,
@@ -96,7 +101,8 @@ void main() {
           home: SupportChatScreen(
             now: () => DateTime(2026, 10, 28, 15),
             loadChat: ({String? after}) async =>
-                SupportChatResult(messages: after == null ? messages : const [], cursor: '2'),
+                SupportChatResult(
+                    messages: after == null ? messages : const [], cursor: '3', botAvailable: true),
             sendMessage: ({required String id, required String body}) async =>
                 throw const ApiException('offline', statusCode: 503),
             loadServiceStatus: () async => [

@@ -248,6 +248,10 @@ void main() {
       'strict patterns leave near matches, provider HTML and later-page bodies raw',
       (tester) async {
     final context = await _context(tester, 'en');
+    expect(
+        localizeUploaderMessage(
+            context, 'เขียนเอง หรือกดให้ AI ช่วยเมื่อพร้อม'),
+        'Write your own caption, or let AI help when you are ready.');
     for (final raw in const [
       'ฉบับร่าง (7)\n',
       'prefix ฉบับร่าง (7)',
@@ -261,7 +265,6 @@ void main() {
       'ตรวจทาน กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่',
       '<html>เลือกวิดีโอจากเครื่องก่อน</html>',
       '00:05 นาที · 512 ไบต์ · ชื่อแบบร่าง',
-      'เขียนเอง หรือกดให้ AI ช่วยเมื่อพร้อม',
       'เลือกบัญชีปลายทางและตั้งค่าของแต่ละช่องทาง',
       'ตรวจข้อมูลและเลือกเวลาที่ต้องการโพสต์',
     ]) {

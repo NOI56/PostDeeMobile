@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import 'caption_localizations.dart';
 
 class CaptionQuotaStrip extends StatelessWidget {
   const CaptionQuotaStrip({
@@ -45,7 +46,7 @@ class CaptionQuotaStrip extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: CaptionText(
                     'แคปชั่น AI คงเหลือ',
                     style: secondaryStyle?.copyWith(fontSize: 12),
                   ),
@@ -88,12 +89,14 @@ class CaptionQuotaStrip extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      TextSpan(text: ' / ${quota.limit} เครดิต'),
+                      TextSpan(text: captionText(context, ' / ${quota.limit} เครดิต',
+                          ' / ${quota.limit} ${quota.limit == 1 ? 'credit' : 'credits'}')),
                     ],
                   ),
                   style: secondaryStyle,
                 ),
-                Text('ใช้ไป ${quota.usedThisMonth} เครดิต',
+                Text(captionText(context, 'ใช้ไป ${quota.usedThisMonth} เครดิต',
+                    '${quota.usedThisMonth} ${quota.usedThisMonth == 1 ? 'credit' : 'credits'} used'),
                     style: secondaryStyle),
               ],
             ),
@@ -107,19 +110,21 @@ class CaptionQuotaStrip extends StatelessWidget {
                 backgroundColor: AppTheme.border,
                 color: AppTheme.accentCyanInk,
                 semanticsLabel:
-                    'แคปชั่น AI เหลือ ${quota.remainingThisMonth} จาก ${quota.limit} เครดิต',
+                    captionText(context, 'แคปชั่น AI เหลือ ${quota.remainingThisMonth} จาก ${quota.limit} เครดิต',
+                        '${quota.remainingThisMonth} of ${quota.limit} AI caption credits remaining'),
               ),
             ),
             if ((plan.toUpperCase() == 'STARTER' ||
                     plan.toUpperCase() == 'PRO') &&
                 quota.addonRemaining > 0) ...[
               const SizedBox(height: 4),
-              Text('+ เครดิตเติม ${quota.addonRemaining} เครดิต',
+              Text(captionText(context, '+ เครดิตเติม ${quota.addonRemaining} เครดิต',
+                  '+ ${quota.addonRemaining} add-on ${quota.addonRemaining == 1 ? 'credit' : 'credits'}'),
                   style: secondaryStyle),
             ],
             if (plan.toUpperCase() == 'BASIC') ...[
               const SizedBox(height: 4),
-              Text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro',
+              CaptionText('AI แคปชั่นใช้ได้ใน Starter หรือ Pro',
                   key: const ValueKey('uploader-ai-caption-quota-access-hint'),
                   style: secondaryStyle),
             ],

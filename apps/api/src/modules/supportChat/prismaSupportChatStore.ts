@@ -48,6 +48,19 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
       return { message: replaySupportMessage(mapMessage(existing), expected), created: false };
     }
   };
+  const postFromMemberWithReceipt: SupportChatStore['postFromMemberWithReceipt'] = async ({ userId, id, body }) => {
+    // Read inside the owner-locked transaction, so it is the state this write replaced.
+    const before: { previousStatus: SupportThreadStatus | null; botEnabled: boolean } = { previousStatus: null, botEnabled: true };
+    const result = await append({ id, userId, sender: 'MEMBER', authorId: null, body }, 'WAITING_TEAM', async (tx, time) => {
+      const recent = await tx.supportMessage.count({ where: { userId, sender: 'MEMBER',
+        createdAt: { gt: new Date(time.getTime() - 86400000) } } });
+      if (recent >= maxMemberMessagesPerDay) throw new SupportChatError('SUPPORT_MESSAGE_LIMIT', 429);
+      const thread = await tx.supportThread.findUnique({ where: { userId }, select: { status: true, botEnabled: true } });
+      before.previousStatus = (thread?.status ?? null) as SupportThreadStatus | null;
+      before.botEnabled = thread?.botEnabled ?? true;
+    });
+    return { ...result, ...before };
+  };
   return {
     readForMember: async (userId, options) => {
       const cursor = readMemberCursor(options.after);
@@ -61,12 +74,9 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
       return { thread: thread ? mapThread(thread) : null, messages,
         ...(last ? { cursor: supportMessageCursor(last) } : options.after ? { cursor: options.after } : {}) };
     },
-    postFromMember: async ({ userId, id, body }) => (await append({ id, userId, sender: 'MEMBER', authorId: null, body },
-      'WAITING_TEAM', async (tx, time) => {
-        const recent = await tx.supportMessage.count({ where: { userId, sender: 'MEMBER',
-          createdAt: { gt: new Date(time.getTime() - 86400000) } } });
-        if (recent >= maxMemberMessagesPerDay) throw new SupportChatError('SUPPORT_MESSAGE_LIMIT', 429);
-      })).message,
+    postFromMember: async input => (await postFromMemberWithReceipt(input)).message,
+    postFromMemberWithReceipt,
+    countWaitingForTeam: () => prisma.supportThread.count({ where: { status: 'WAITING_TEAM' } }),
     replyAsTeam: ({ userId, id, actorId, body }) => append({ id, userId, sender: 'TEAM', authorId: actorId, body },
       'WAITING_MEMBER', async tx => {
         if (!await tx.supportThread.findUnique({ where: { userId }, select: { userId: true } })) {

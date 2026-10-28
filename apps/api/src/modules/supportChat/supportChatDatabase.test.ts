@@ -37,6 +37,23 @@ describe.skipIf(!databaseUrl)('support chat in PostgreSQL', () => {
     expect(await prisma.supportThread.findUnique({ where: { userId } })).toMatchObject({ status: 'WAITING_TEAM', lastMessageId: id });
     await expect(store.postFromMember({ userId, id, body: 'ข้อความอื่น' })).rejects.toThrow('SUPPORT_MESSAGE_CONFLICT');
   });
+  it('returns one created receipt for concurrent member retries and counts pending threads without pagination', async () => {
+    const userId = await member(); const id = randomUUID();
+    const before = await store.countWaitingForTeam();
+    const results = await Promise.all([1, 2, 3].map(() => store.postFromMemberWithReceipt({ userId, id, body: 'Help' })));
+    expect(results.filter(result => result.created)).toHaveLength(1);
+    expect(results.every(result => result.message.id === id)).toBe(true);
+    expect(await store.postFromMember({ userId, id, body: 'Help' })).toEqual(results[0].message);
+    expect(await store.countWaitingForTeam()).toBe(before + 1);
+    await store.replyAsBot({ userId, id: randomUUID(), body: 'Dot answer', handoff: false, triggerMessageId: id });
+    expect(await store.countWaitingForTeam()).toBe(before);
+    await store.requestTeam(userId);
+    expect(await store.countWaitingForTeam()).toBe(before + 1);
+    const reply = await store.replyAsTeam({ userId, id: randomUUID(), actorId: 'fixture-admin', body: 'Team answer' });
+    expect(await store.countWaitingForTeam()).toBe(before);
+    await store.close({ userId, lastMessageId: reply.message.id });
+    expect(await store.countWaitingForTeam()).toBe(before);
+  });
   it('polls in order, answers, closes only what was seen, and lists with member email', async () => {
     const userId = await member();
     time = new Date('2026-10-28T04:00:00Z');
@@ -70,6 +87,17 @@ describe.skipIf(!databaseUrl)('support chat in PostgreSQL', () => {
     await prisma.user.delete({ where: { id: userId } });
     expect(await prisma.supportThread.count({ where: { userId } })).toBe(0);
     expect(await prisma.supportMessage.count({ where: { userId } })).toBe(0);
+  });
+  it('reports the thread status before each member write', async () => {
+    const userId = await member();
+    expect(await store.postFromMemberWithReceipt({ userId, id: randomUUID(), body: 'First' }))
+      .toMatchObject({ created: true, previousStatus: null, botEnabled: true });
+    expect((await store.postFromMemberWithReceipt({ userId, id: randomUUID(), body: 'Second' })).previousStatus).toBe('WAITING_TEAM');
+    await store.replyAsTeam({ userId, id: randomUUID(), actorId: 'fixture-owner', body: 'Answer' });
+    await store.setBotEnabled({ userId, enabled: false });
+    const third = { userId, id: randomUUID(), body: 'Third' };
+    expect(await store.postFromMemberWithReceipt(third)).toMatchObject({ created: true, previousStatus: 'WAITING_MEMBER', botEnabled: false });
+    expect(await store.postFromMemberWithReceipt(third)).toMatchObject({ created: false });
   });
   it('enforces sender, author, and length rules in the database', async () => {
     const userId = await member();

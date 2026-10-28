@@ -67,6 +67,25 @@ describe('private administrator console', () => {
     expect(r.status).toBe(200); expect(r.headers['cache-control']).toContain('no-store');
     expect(r.body.rows[0].email).toBe(member.email);
   });
+  it('returns only the pending support count to authenticated owners and viewers', async () => {
+    const { app, support, view, notifySupportReply } = setup();
+    const count = vi.spyOn(support, 'countWaitingForTeam').mockResolvedValue(6);
+    for (const role of ['owner', 'viewer']) {
+      const r = await request(app).get('/admin/api/support/pending-count').set('Authorization', `Bearer ${role}`);
+      expect(r.status).toBe(200); expect(r.headers['cache-control']).toContain('private, no-store');
+      expect(r.body).toEqual({ count: 6, checkedAt: now().toISOString() });
+    }
+    expect((await request(app).get('/admin/api/support/pending-count')).status).toBe(401);
+    expect((await request(app).get('/admin/api/support/pending-count').set('Authorization', 'Bearer customer')).status).toBe(403);
+    expect(count).toHaveBeenCalledTimes(2); expect(view).not.toHaveBeenCalled(); expect(notifySupportReply).not.toHaveBeenCalled();
+  });
+  it('does not misreport an unavailable pending count as zero or leak store errors', async () => {
+    const { app, support } = setup();
+    vi.spyOn(support, 'countWaitingForTeam').mockRejectedValue(new Error('private storage detail'));
+    const r = await request(app).get('/admin/api/support/pending-count').set('Authorization', 'Bearer owner');
+    expect(r.status).toBe(503); expect(r.body).toEqual({ code: 'ADMIN_SUPPORT_UNAVAILABLE' });
+    expect(r.text).not.toContain('private storage detail');
+  });
   it('requires the same origin and explicit JSON admin request header', async () => {
     const { app, trials } = setup();
     const r = await request(app).post('/admin/api/trials').set('Authorization', 'Bearer owner')

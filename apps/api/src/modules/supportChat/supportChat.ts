@@ -30,6 +30,13 @@ export type SupportThreadPage = { rows: SupportThread[]; nextCursor?: string };
 export type SupportChatStore = {
   readForMember: (userId: string, options: { after?: string }) => Promise<SupportMemberRead>;
   postFromMember: (input: { userId: string; id: string; body: string }) => Promise<SupportMessage>;
+  // Internal receipt lets notification callers distinguish a new message from a retry,
+  // and see whether it moved the thread into WAITING_TEAM (previousStatus; null = new
+  // thread) and whether the in-app bot may answer it. Only meaningful when created.
+  postFromMemberWithReceipt: (input: { userId: string; id: string; body: string }) => Promise<{
+    message: SupportMessage; created: boolean; previousStatus: SupportThreadStatus | null; botEnabled: boolean }>;
+  // Pending replies, not unread messages; independent of inbox filters or pages.
+  countWaitingForTeam: () => Promise<number>;
   listThreads: (options: { status?: SupportThreadStatus; query?: string; cursor?: string }) => Promise<SupportThreadPage>;
   readThread: (userId: string) => Promise<{ thread: SupportThread; messages: SupportMessage[]; hasEarlier: boolean } | null>;
   // `created` is false when a retried reply already landed, so callers notify once.
@@ -114,6 +121,19 @@ export const createMemorySupportChatStore = ({ now = () => new Date() }: { now?:
     threads.set(userId, next);
     return structuredClone(next);
   };
+  const postFromMemberWithReceipt: SupportChatStore['postFromMemberWithReceipt'] = async ({ userId, id, body }) => {
+    const existing = messages.get(id);
+    const previous = threads.get(userId);
+    const before = { previousStatus: previous?.status ?? null, botEnabled: previous?.botEnabled ?? true };
+    if (existing) return { message: structuredClone(replaySupportMessage(existing, { userId, sender: 'MEMBER', body })), created: false, ...before };
+    const time = now();
+    const since = new Date(time.getTime() - 86400000).toISOString();
+    if (threadMessages(userId).filter(m => m.sender === 'MEMBER' && m.createdAt > since).length >= maxMemberMessagesPerDay) {
+      throw new SupportChatError('SUPPORT_MESSAGE_LIMIT', 429);
+    }
+    return { message: append({ id, userId, sender: 'MEMBER', authorId: null, body, createdAt: time.toISOString() }, 'WAITING_TEAM'),
+      created: true, ...before };
+  };
   return {
     readForMember: async (userId, options) => {
       const cursor = readMemberCursor(options.after);
@@ -123,16 +143,9 @@ export const createMemorySupportChatStore = ({ now = () => new Date() }: { now?:
       return structuredClone({ thread: threads.get(userId) ?? null, messages: page,
         ...(last ? { cursor: supportMessageCursor(last) } : options.after ? { cursor: options.after } : {}) });
     },
-    postFromMember: async ({ userId, id, body }) => {
-      const existing = messages.get(id);
-      if (existing) return structuredClone(replaySupportMessage(existing, { userId, sender: 'MEMBER', body }));
-      const time = now();
-      const since = new Date(time.getTime() - 86400000).toISOString();
-      if (threadMessages(userId).filter(m => m.sender === 'MEMBER' && m.createdAt > since).length >= maxMemberMessagesPerDay) {
-        throw new SupportChatError('SUPPORT_MESSAGE_LIMIT', 429);
-      }
-      return append({ id, userId, sender: 'MEMBER', authorId: null, body, createdAt: time.toISOString() }, 'WAITING_TEAM');
-    },
+    postFromMember: async input => (await postFromMemberWithReceipt(input)).message,
+    postFromMemberWithReceipt,
+    countWaitingForTeam: async () => [...threads.values()].filter(thread => thread.status === 'WAITING_TEAM').length,
     listThreads: async ({ status, query, cursor }) => {
       const before = readAdminThreadCursor(cursor);
       const text = query?.trim().toLowerCase();

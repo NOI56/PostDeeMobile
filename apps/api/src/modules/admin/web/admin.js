@@ -22,6 +22,7 @@ const whenUtc = value => new Intl.DateTimeFormat('th-TH',{dateStyle:'medium',tim
 const trialActive = t => t && !t.revokedAt && Date.parse(t.startsAt)<=Date.now() && Date.parse(t.expiresAt)>Date.now();
 const trialText = t => !t ? 'ไม่มี' : t.revokedAt ? 'ยกเลิกแล้ว' : Date.parse(t.startsAt)>Date.now() ? 'ยังไม่เริ่ม' : !trialActive(t) ? 'หมดอายุ' : `${translate(t.plan)} · เหลือ ${Math.ceil((Date.parse(t.expiresAt)-Date.now())/86400000)} วัน`;
 let boot, auth, firebase, currentUser, previewToken, session, epoch=0, loadEpoch=0, view='members', page={rows:[]}, query='', appliedQuery='', cursor, status='', platform='', from='', through='', reportScope='ALL_ACCOUNTS', error='', success='', busy=false, csvBusy=false, selected=null, drawerAction='DETAIL', selectedPlan='PRO', days=7, reason='', deleteConfirm='', reviewing=false, pending=null, controllers=new Set(), readController=null, refreshTimer=null, refreshFailed=false, refreshReset=false, loadedFilters=null, editing=null, chat=null, chatTimer=null;
+let supportPendingCount=null, supportCountFailed=false, supportCountTimer=null, supportCountController=null, supportCountEpoch=0;
 const api = async (path, body, csv=false, controller=new AbortController()) => { const captured=epoch; controllers.add(controller);
   try { const token=previewToken || await currentUser?.getIdToken(); if(!token) throw new Error('กรุณาเข้าสู่ระบบ');
     if(captured!==epoch) throw new Error('บัญชีเปลี่ยนแล้ว');
@@ -33,14 +34,14 @@ const api = async (path, body, csv=false, controller=new AbortController()) => {
   } catch(e) { if(e.name==='TypeError')throw new Error('เชื่อมต่อระบบไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่');throw e; }
   finally { controllers.delete(controller); }
 };
-const logout = async () => { epoch++; loadEpoch++; clearInterval(refreshTimer); refreshTimer=null; controllers.forEach(c=>c.abort()); controllers.clear(); readController=null; currentUser=null; previewToken=null; session=null; page={rows:[]}; loadedFilters=null; selected=null; editing=null; chat=null; clearInterval(chatTimer); chatTimer=null; pending=null; reason='';deleteConfirm='';busy=false;csvBusy=false;refreshFailed=false;refreshReset=false;
+const logout = async () => { epoch++; loadEpoch++; stopSupportCount();supportPendingCount=null;supportCountFailed=false;clearInterval(refreshTimer); refreshTimer=null; controllers.forEach(c=>c.abort()); controllers.clear(); readController=null; currentUser=null; previewToken=null; session=null; page={rows:[]}; loadedFilters=null; selected=null; editing=null; chat=null; clearInterval(chatTimer); chatTimer=null; pending=null; reason='';deleteConfirm='';busy=false;csvBusy=false;refreshFailed=false;refreshReset=false;
   if(auth) await firebase.signOut(auth); renderLogin(); };
 async function login() { const generation=++epoch;error=''; renderLogin(true); try {
   if(boot.previewToken) previewToken=boot.previewToken;
   else { const [{initializeApp}, sdk]=await Promise.all([import('https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js')]);
     firebase=sdk; auth ||= sdk.getAuth(initializeApp(boot.firebaseWeb)); await sdk.setPersistence(auth,sdk.inMemoryPersistence);
     currentUser=(await sdk.signInWithPopup(auth,new sdk.GoogleAuthProvider())).user; }
-  if(generation!==epoch)return;session=await api('session');if(generation!==epoch)return;await load();syncRefreshClock();
+  if(generation!==epoch)return;session=await api('session');if(generation!==epoch)return;await load();syncRefreshClock();syncSupportCountClock();
 } catch(e) { if(generation!==epoch)return;error=e.message; currentUser=null; previewToken=null; session=null; if(auth) await firebase.signOut(auth); renderLogin(); } }
 function renderLogin(loading=false) { document.body.classList.remove('has-drawer'); app.removeAttribute('aria-busy');
   app.replaceChildren(h('main',{class:'login'},h('section',{class:'login-panel'},h('div',{class:'brand'},'PostDee'),h('h1',{},'เข้าสู่ระบบผู้ดูแล'),
@@ -58,7 +59,31 @@ function updateFreshness() { const node=app.querySelector('.refresh-status');if(
 function syncRefreshClock() { clearInterval(refreshTimer);refreshTimer=null;
   if(session&&!document.hidden)refreshTimer=setInterval(()=>{updateFreshness();void refreshData(true);},60000);
 }
-document.addEventListener('visibilitychange',()=>{updateFreshness();syncRefreshClock();});
+// This small read updates only the badge, including while a reply or form is open.
+// Opening a thread does not clear it: it counts conversations waiting for the team.
+function paintSupportBadge(node=app.querySelector('.support-badge')) {
+  if(!node)return;const positive=supportPendingCount>0;
+  node.replaceChildren(document.createTextNode(positive?(supportPendingCount>99?'99+':String(supportPendingCount)):supportCountFailed?'!':''));
+  const label=supportCountFailed?`ยังอัปเดตจำนวนแชทไม่ได้${positive?` · ยืนยันล่าสุด ${supportPendingCount} เรื่องรอทีมงานตอบ`:''}`:`${supportPendingCount??0} เรื่องรอทีมงานตอบ`;
+  node.setAttribute('aria-label',label);node.setAttribute('title',label);node.classList.toggle('stale',supportCountFailed);
+  if(positive||supportCountFailed)node.removeAttribute('hidden');else node.setAttribute('hidden','');
+}
+function supportBadge() { const node=h('span',{class:'support-badge',role:'status','aria-live':'polite','aria-atomic':'true'});paintSupportBadge(node);return node; }
+function stopSupportCount() { clearInterval(supportCountTimer);supportCountTimer=null;supportCountEpoch++;supportCountController?.abort();supportCountController=null; }
+async function refreshSupportCount() {
+  if(!session||document.hidden||supportCountController)return;
+  const generation=epoch,ticket=++supportCountEpoch,controller=new AbortController();supportCountController=controller;
+  const timeout=setTimeout(()=>controller.abort(),10000);
+  try { const data=await api('support/pending-count',undefined,false,controller);
+    if(generation!==epoch||ticket!==supportCountEpoch||controller.signal.aborted)return;
+    if(!Number.isSafeInteger(data.count)||data.count<0)throw new Error('Invalid support count');
+    supportPendingCount=data.count;supportCountFailed=false;paintSupportBadge();
+  } catch { if(generation===epoch&&ticket===supportCountEpoch&&session&&!document.hidden){supportCountFailed=true;paintSupportBadge();} }
+  finally { clearTimeout(timeout);if(supportCountController===controller)supportCountController=null; }
+}
+function syncSupportCountClock() { stopSupportCount();if(session&&!document.hidden){void refreshSupportCount();supportCountTimer=setInterval(()=>{void refreshSupportCount();},30000);} }
+function refreshSupportCountAfterChange() { supportCountEpoch++;supportCountController?.abort();supportCountController=null;void refreshSupportCount(); }
+document.addEventListener('visibilitychange',()=>{updateFreshness();syncRefreshClock();syncSupportCountClock();});
 async function refreshData(automatic=false) { if(refreshPaused(automatic))return;return load(false,{refresh:true,automatic}); }
 async function load(append=false, options={}) { if(csvBusy || (options.refresh&&refreshPaused(options.automatic)))return;
   readController?.abort();const controller=new AbortController();readController=controller;
@@ -140,7 +165,7 @@ function table() {
 function render() { if(!session)return renderLogin();const focusedSearch=document.activeElement?.getAttribute('data-focus')==='search';const selection=focusedSearch?[document.activeElement.selectionStart,document.activeElement.selectionEnd]:null;
  document.body.classList.toggle('has-drawer',!!selected||!!editing||!!chat); app.setAttribute('aria-busy',busy?'true':'false');
  const side=h('aside',{class:'sidebar'},h('div',{class:'brand'},'PostDee'),button('เมนู',()=>side.classList.toggle('open'),'menu-toggle',{'aria-label':'เปิดเมนูผู้ดูแล'}),
-   h('nav',{class:'nav','aria-label':'เมนูผู้ดูแล'},Object.entries(names).map(([id,name])=>button(h('span',{},icon(id),h('span',{},name)),()=>navigate(id),id===view?'selected':'',{'aria-current':id===view?'page':false,disabled:!!pending||csvBusy}))),
+   h('nav',{class:'nav','aria-label':'เมนูผู้ดูแล'},Object.entries(names).map(([id,name])=>button(h('span',{},icon(id),h('span',{},name),id==='support'?supportBadge():null),()=>navigate(id),id===view?'selected':'',{'aria-current':id===view?'page':false,disabled:!!pending||csvBusy}))),
    h('div',{class:'role'},icon('members'),h('span',{},session.role==='OWNER'?'เจ้าของระบบ':'ผู้ดูแล · ดูข้อมูล')));
  const searchLabel=view==='deletions'?'ค้นหารหัสบัญชี (UID)':'ค้นหาชื่อหรืออีเมล';
  const q=h('input',{type:'search',placeholder:searchLabel,value:query,maxlength:120,disabled:csvBusy,'data-focus':'search','aria-label':searchLabel,oninput:e=>{if(!csvBusy)query=e.target.value;}});
@@ -342,10 +367,11 @@ async function submitReply(){ if(!chat||chat.sending)return;const body=chat.draf
    current.outgoing=null;current.draft='';chatNodes.reply.value='';
    if(!current.messages.some(m=>m.id===r.message.id))current.messages=[...current.messages,r.message];
    current.thread={...current.thread,status:'WAITING_MEMBER',lastSender:'TEAM',lastMessageId:r.message.id,lastMessageAt:r.message.createdAt,teamRequested:false};
+   refreshSupportCountAfterChange();
  }catch(e){if(generation===epoch&&chat===current)current.error=e.message;}
  finally{if(chat===current){current.sending=false;paintChat();if(!current.error){chatNodes.log.scrollTop=chatNodes.log.scrollHeight;chatNodes.reply.focus();}}} }
 async function closeThread(){ if(!chat||chat.sending)return;const current=chat;const generation=epoch;let changed=false;current.sending=true;current.error='';paintChat();
- try{const r=await api('support/close',{userId:current.userId,lastMessageId:current.thread.lastMessageId});if(generation!==epoch||chat!==current)return;current.thread=r.thread;}
+ try{const r=await api('support/close',{userId:current.userId,lastMessageId:current.thread.lastMessageId});if(generation!==epoch||chat!==current)return;current.thread=r.thread;refreshSupportCountAfterChange();}
  catch(e){if(generation===epoch&&chat===current){current.error=e.message;changed=e.code==='ADMIN_SUPPORT_THREAD_CHANGED';}}
  finally{if(chat===current){current.sending=false;paintChat();if(changed)void refreshChat();}} }
 async function toggleThreadBot(){ if(!chat||chat.sending)return;const current=chat;const generation=epoch;current.sending=true;current.error='';paintChat();

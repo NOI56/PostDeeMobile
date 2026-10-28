@@ -24,7 +24,8 @@ const sendError = (response: Response, error: unknown) => {
  * `POST /support/chat/handoff` asks for a person instead of Dot.
  */
 export const registerSupportChatRoutes = (router: Router, authMiddleware: RequestHandler,
-  { store, userStore, sendRateLimit, bot }: { store: SupportChatStore; userStore: UserStore; sendRateLimit?: RequestHandler;
+  { store, userStore, sendRateLimit, bot, notifySupportTeam }: { store: SupportChatStore; userStore: UserStore; sendRateLimit?: RequestHandler;
+    notifySupportTeam?: () => Promise<void>;
     // Dot, when configured: whether it answers now, and the hook that wakes it.
     bot?: { available: () => Promise<boolean>; onMemberMessage: (member: AuthUser) => void } }) => {
   const botAvailable = async () => { try { return await bot?.available() ?? false; } catch { return false; } };
@@ -53,10 +54,20 @@ export const registerSupportChatRoutes = (router: Router, authMiddleware: Reques
       const id = readSupportMessageId(request.body?.id);
       const body = readSupportMessageBody(request.body?.body);
       const user = await userStore.ensure(authUser);
-      const message = await store.postFromMember({ userId: user.id, id, body });
+      const receipt = await store.postFromMemberWithReceipt({ userId: user.id, id, body });
+      const { message } = receipt;
       // Dot answers after the response, so a slow model never delays the send.
       bot?.onMemberMessage({ ...authUser, id: user.id });
       response.status(201).json({ status: 'ok', message: memberMessageView(message) });
+      // Alert only when the chat starts waiting for a person (new, answered or closed
+      // before), not on every follow-up, and not while the in-app bot will answer it.
+      // Delivery is best-effort after the response, never a chat-send dependency.
+      if (receipt.created && receipt.previousStatus !== 'WAITING_TEAM' && notifySupportTeam) {
+        void (async () => {
+          if (receipt.botEnabled && await botAvailable()) return;
+          await notifySupportTeam();
+        })().catch(() => undefined);
+      }
     } catch (error) { sendError(response, error); }
   });
 

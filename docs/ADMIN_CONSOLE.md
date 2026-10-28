@@ -5,6 +5,42 @@
 “ประวัติการลบบัญชี” และปุ่มลบบัญชีตามคำขอ (ดูหัวข้อด้านล่าง)
 ระบบปิดอยู่โดยค่าเริ่มต้น และไม่มีบัญชีใดได้รับสิทธิ์จาก source code นี้
 
+## Support alerts (2026-10-29 candidate)
+
+The support inbox adds a **รอทีมงานตอบ** badge beside **แชทช่วยเหลือ**. It
+counts conversations in `WAITING_TEAM` across every filter/page, rather than
+unread messages. Reading a conversation does not clear it; replying, closing
+or Dot's existing status changes update the count. The badge refreshes on
+login/resume, every 30 seconds while the tab is visible and after a successful
+reply/close. It shows `99+` above 99. A failed read keeps the previous count
+with a stale marker (`!` when no count is known); opening or refreshing the
+inbox remains available. Badge reads do not replace an open reply draft.
+
+A chat that starts waiting for the team (new, or answered/closed before) also
+triggers one generic administrator push through the existing Firebase sender.
+Follow-up messages while it already waits and duplicate retries do not send
+another alert, and neither do messages the in-app bot will answer;
+a handoff request without a new message changes the badge without another
+push. Pushes contain no member identity or conversation text. Owners and
+viewers are recipients, using their configured Firebase UIDs and registered
+Mobile devices. To receive alerts with the admin web page closed:
+
+1. Keep the existing `PUSH_SENDER=firebase` and messaging credentials working.
+2. Sign into Mobile with an allowlisted owner/viewer identity from the same
+   Firebase project and allow notifications so its device is registered.
+3. Send a message from a separate test member, confirm the administrator's
+   device receives the alert and the web badge updates, then reply/close and
+   confirm the count follows the remaining waiting conversations.
+
+Delivery is best effort; the waiting-conversation count is the work queue.
+Tapping this push opens Mobile, so use the admin web support inbox to answer.
+This does not request browser notification permission or add browser Web Push.
+No new environment key, migration or Mobile build is required for the alert
+capability. Actual device delivery, staging acceptance and production rollout
+must be recorded separately; this candidate section does not certify them.
+
+## Earlier release records
+
 รุ่นรายงานการใช้งาน `fc457b2` รวมเข้า main, push และ Live บน Staging แล้ว
 เวลา 13:10:11 น. ประเทศไทย วันที่ 18 ต.ค. 2026 (`dep-dba64iqjnfac73egt8i0`)
 CI API/Flutter `39102818467`, health/readiness และไฟล์หน้าเว็บตรงกับ source ผ่าน
@@ -48,7 +84,8 @@ https://postdee-api-staging.onrender.com/admin โดย health/readiness แล
    บัญชีที่มีทดลองอยู่ใช้ “ต่อเวลา” หรือ “ยกเลิกสิทธิ์ทดลอง”; ต่อเวลาได้ไม่เกิน 90 วันล่วงหน้า
 4. ประวัติแสดงผู้ทำ เหตุผล และสิทธิ์ก่อน/หลัง รายการล่าสุดอยู่ก่อน
    หากเครือข่ายขาด ให้ใช้ “ตรวจผลคำขอเดิม” ซึ่งใช้หมายเลขคำขอเดิม หรือตรวจประวัติ
-5. ผู้ดูแบบอ่านอย่างเดียวดูข้อมูลและส่งออกรายงานได้ แต่เปลี่ยนสิทธิ์ไม่ได้
+5. ผู้ดูดูข้อมูลและส่งออกรายงานได้ แต่เปลี่ยนสิทธิ์ไม่ได้ ส่วนแชทช่วยเหลือ
+   ผู้ดูและเจ้าของตอบกลับ ปิดเรื่อง และเปิด/ปิด Dot รายแชทได้ตามสิทธิ์เดิม
 
 ## ลบบัญชีตามคำขอของสมาชิก (เพิ่ม 26 ต.ค. 2026)
 

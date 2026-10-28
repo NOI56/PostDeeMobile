@@ -49,8 +49,8 @@ grounded answer, with an administrator able to step in.
 4. **Automatic signals (partly done).** Sentry signals and draft-a-notice are
    built with phase 3. The 2026-10-29 admin alert candidate adds a web badge
    counting all `WAITING_TEAM` conversations (visible-tab polling every 30
-   seconds) and generic Firebase pushes for newly stored member messages to
-   owner/viewer Mobile devices. Handoff-only requests affect the badge but
+   seconds) and one generic Firebase push per conversation that starts waiting
+   for the team, to owner/viewer Mobile devices. Handoff-only requests affect the badge but
    send no extra push. Existing Firebase push configuration and an opted-in
    signed-in admin device are required; no new migration or Mobile build.
    Local checks do not establish real device delivery or production readiness.

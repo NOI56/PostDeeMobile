@@ -25,6 +25,9 @@ const setup = (botAvailable = false, notifySupportTeam: () => Promise<void> = vi
 };
 const send = (app: express.Express, user: string, body: Record<string, unknown>) =>
   request(app).post('/support/chat/messages').set('x-test-user', user).send(body);
+const chatId = (n: number) => `7d1f9c3a-2b4e-4c8a-9f10-${String(n).padStart(12, '0')}`;
+// Team alerts run after the response; let them settle before asserting.
+const settle = () => new Promise(resolve => setImmediate(resolve));
 
 describe('member support chat routes', () => {
   it('notifies the team once per new message while retaining the public message shape and Dot retries', async () => {
@@ -36,6 +39,28 @@ describe('member support chat routes', () => {
     expect(replies[0].body.message).toEqual({ id: messageId, sender: 'MEMBER', body: body.body, createdAt: '2026-10-28T03:00:00.000Z' });
     await send(app, 'member', { ...body, body: 'Changed retry' }).expect(409);
     await send(app, 'member', { id: 'bad', body: 'Invalid' }).expect(400);
+    expect(notifySupportTeam).toHaveBeenCalledTimes(1);
+  });
+  it('alerts the team only when a chat starts waiting for a person, not for every follow-up', async () => {
+    const { app, store, notifySupportTeam } = setup();
+    await send(app, 'member', { id: chatId(11), body: 'First question' }).expect(201); await settle();
+    await send(app, 'member', { id: chatId(12), body: 'More detail' }).expect(201);
+    await send(app, 'member', { id: chatId(13), body: 'Still waiting' }).expect(201); await settle();
+    expect(notifySupportTeam).toHaveBeenCalledTimes(1);
+    await store.replyAsTeam({ userId: 'member', id: chatId(14), actorId: 'admin', body: 'Team answer' });
+    await send(app, 'member', { id: chatId(15), body: 'New follow-up' }).expect(201); await settle();
+    expect(notifySupportTeam).toHaveBeenCalledTimes(2);
+    await store.close({ userId: 'member', lastMessageId: chatId(15) });
+    await send(app, 'member', { id: chatId(16), body: 'Another problem' }).expect(201); await settle();
+    expect(notifySupportTeam).toHaveBeenCalledTimes(3);
+  });
+  it('does not alert while the built-in bot answers the chat, but does once an admin switches it off', async () => {
+    const { app, store, notifySupportTeam } = setup(true);
+    await send(app, 'member', { id: chatId(21), body: 'Question for the bot' }).expect(201); await settle();
+    expect(notifySupportTeam).not.toHaveBeenCalled();
+    await store.replyAsBot({ userId: 'member', id: chatId(22), body: 'Bot answer', handoff: false, triggerMessageId: chatId(21) });
+    await store.setBotEnabled({ userId: 'member', enabled: false });
+    await send(app, 'member', { id: chatId(23), body: 'Now for a person' }).expect(201); await settle();
     expect(notifySupportTeam).toHaveBeenCalledTimes(1);
   });
   it('finishes the member response without waiting for team push and ignores delivery failures', async () => {

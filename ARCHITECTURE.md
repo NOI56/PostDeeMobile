@@ -56,9 +56,11 @@ sends, and reuses `HomeServiceStatusBanner` for known issues.
 
 The 2026-10-29 admin alert candidate adds a created-message receipt to member
 writes while keeping `postFromMember` and the public message response
-compatible. Only the request that actually creates a member message invokes
-the best-effort administrator notifier after the response. Duplicate-id
-replays do not invoke it again. The notifier deduplicates owner/viewer UIDs,
+compatible. The receipt also carries the thread status the write replaced
+(read inside the owner-locked transaction) and the thread's bot switch. The
+route invokes the best-effort administrator notifier after the response only
+when a created message moves the thread into `WAITING_TEAM` and the in-app bot
+will not answer it; follow-ups while waiting and duplicate-id replays do not. The notifier deduplicates owner/viewer UIDs,
 uses their registered devices and the existing Firebase push sender, and sends
 generic text with `type: support_new_message` and the recipient administrator
 as `data.userId`. A handoff without a new member message sends no extra push.

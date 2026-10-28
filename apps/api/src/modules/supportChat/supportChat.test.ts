@@ -24,6 +24,16 @@ describe('memory support chat store', () => {
     expect(await store.postFromMember(input)).toEqual(writes[0].message);
     await expect(store.postFromMemberWithReceipt({ ...input, body: 'Changed retry' })).rejects.toThrow('SUPPORT_MESSAGE_CONFLICT');
   });
+  it('reports the thread status before each member write so callers can tell when it starts waiting', async () => {
+    const store = createMemorySupportChatStore();
+    expect(await store.postFromMemberWithReceipt({ userId: 'member', id: id(931), body: 'First' }))
+      .toMatchObject({ created: true, previousStatus: null, botEnabled: true });
+    expect((await store.postFromMemberWithReceipt({ userId: 'member', id: id(932), body: 'Second' })).previousStatus).toBe('WAITING_TEAM');
+    await store.replyAsTeam({ userId: 'member', id: id(933), actorId: 'admin', body: 'Answer' });
+    await store.setBotEnabled({ userId: 'member', enabled: false });
+    expect(await store.postFromMemberWithReceipt({ userId: 'member', id: id(934), body: 'Third' }))
+      .toMatchObject({ created: true, previousStatus: 'WAITING_MEMBER', botEnabled: false });
+  });
   it('counts all threads waiting for the team through Dot, handoff, reply, close, and account cleanup', async () => {
     const store = createMemorySupportChatStore();
     expect(await store.countWaitingForTeam()).toBe(0);

@@ -16,8 +16,10 @@ reply/close. It shows `99+` above 99. A failed read keeps the previous count
 with a stale marker (`!` when no count is known); opening or refreshing the
 inbox remains available. Badge reads do not replace an open reply draft.
 
-Newly stored member messages also trigger a generic administrator push through
-the existing Firebase sender. Duplicate retries do not send another alert;
+A chat that starts waiting for the team (new, or answered/closed before) also
+triggers one generic administrator push through the existing Firebase sender.
+Follow-up messages while it already waits and duplicate retries do not send
+another alert, and neither do messages the in-app bot will answer;
 a handoff request without a new message changes the badge without another
 push. Pushes contain no member identity or conversation text. Owners and
 viewers are recipients, using their configured Firebase UIDs and registered

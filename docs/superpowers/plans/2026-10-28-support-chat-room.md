@@ -19,9 +19,12 @@ member message API, Dot switches or team-reply notification behavior.
   visible, on login/resume and after reply/close. It displays `99+`, marks
   stale reads and preserves open conversations, filters and drafts. Reads
   stop while hidden/logged out; late responses cannot cross sessions.
-- Only actually created member messages trigger a best-effort generic Firebase
-  push to deduplicated configured owner/viewer UIDs with registered Mobile
-  devices. Same-id retries do not retrigger. Payload data uses the recipient
+- A created member message that moves the conversation into `WAITING_TEAM`
+  (new, or previously `WAITING_MEMBER`/`CLOSED`) triggers one best-effort
+  generic Firebase push to deduplicated configured owner/viewer UIDs with
+  registered Mobile devices. Follow-ups while it already waits, same-id
+  retries, and messages the in-app bot will answer do not retrigger (review
+  fix on 2026-10-29: the first candidate pushed on every new message). Payload data uses the recipient
   administrator's `userId` and `type: support_new_message`; no member identity
   or message body appears. Handoff-only requests update the count without
   another push.

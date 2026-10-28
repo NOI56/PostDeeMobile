@@ -88,6 +88,17 @@ describe.skipIf(!databaseUrl)('support chat in PostgreSQL', () => {
     expect(await prisma.supportThread.count({ where: { userId } })).toBe(0);
     expect(await prisma.supportMessage.count({ where: { userId } })).toBe(0);
   });
+  it('reports the thread status before each member write', async () => {
+    const userId = await member();
+    expect(await store.postFromMemberWithReceipt({ userId, id: randomUUID(), body: 'First' }))
+      .toMatchObject({ created: true, previousStatus: null, botEnabled: true });
+    expect((await store.postFromMemberWithReceipt({ userId, id: randomUUID(), body: 'Second' })).previousStatus).toBe('WAITING_TEAM');
+    await store.replyAsTeam({ userId, id: randomUUID(), actorId: 'fixture-owner', body: 'Answer' });
+    await store.setBotEnabled({ userId, enabled: false });
+    const third = { userId, id: randomUUID(), body: 'Third' };
+    expect(await store.postFromMemberWithReceipt(third)).toMatchObject({ created: true, previousStatus: 'WAITING_MEMBER', botEnabled: false });
+    expect(await store.postFromMemberWithReceipt(third)).toMatchObject({ created: false });
+  });
   it('enforces sender, author, and length rules in the database', async () => {
     const userId = await member();
     await store.postFromMember({ userId, id: randomUUID(), body: 'มีเธรดแล้ว' });

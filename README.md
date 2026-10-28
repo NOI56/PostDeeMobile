@@ -40,9 +40,10 @@ of the support chat plan in `ROADMAP.md`.
 The 2026-10-29 admin alert candidate adds a **รอทีมงานตอบ** count beside
 **แชทช่วยเหลือ**, refreshed every 30 seconds while the admin tab is visible.
 It counts conversations in `WAITING_TEAM`, independently of the inbox filter;
-opening a chat does not clear it. Newly stored member messages also send a
-generic push to configured owners and viewers through the existing Firebase
-sender, including when the admin web page is closed. An administrator must
+opening a chat does not clear it. When a chat starts waiting for the team (not
+on every follow-up message), a generic push also goes to configured owners and
+viewers through the existing Firebase sender, including when the admin web
+page is closed. An administrator must
 have signed into Mobile with the same Firebase identity and registered an
 opted-in device; `PUSH_SENDER=firebase` and working messaging credentials are
 required. Push delivery is best effort, and tapping it opens Mobile rather

@@ -91,9 +91,12 @@ SUPPORT_MESSAGE_LIMIT` (100 member messages per rolling 24 hours), the global
 and a per-client limit of 20 sends per minute, and the usual account-deletion
 `409 ACCOUNT_DELETION_IN_PROGRESS`.
 
-The 2026-10-29 admin alert candidate preserves this response contract. Only
-a newly stored member message triggers a best-effort administrator push after
-the response; retries with the same message id do not trigger another push.
+The 2026-10-29 admin alert candidate preserves this response contract. A
+best-effort administrator push is sent after the response only when a newly
+stored member message moves the conversation into `WAITING_TEAM` (a new
+conversation, or one that was `WAITING_MEMBER` or `CLOSED`). Follow-ups while it
+already waits, retries with the same message id, and messages the in-app bot
+will answer (bot available and on for that thread) send no push.
 Recipients are the deduplicated configured owner and viewer UIDs with
 registered Mobile devices. The generic payload has
 `{ userId: "<recipient administrator UID>", type: "support_new_message" }`

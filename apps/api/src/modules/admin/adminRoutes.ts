@@ -9,9 +9,10 @@ import { adminViews, type AdminDataSource, type AdminView } from './adminDataSou
 import { AdminError, type TrialAccessStore, type TrialCommand } from './trialAccess.js';
 import { accountDeletionIntentHash, readAccountDeletionReason, type AdminAccountDeletionStore } from './adminAccountDeletion.js';
 import { toCsv } from './adminReports.js';
+import { readServiceIncidentDraft, type ServiceIncidentStore } from '../serviceStatus/serviceIncident.js';
 
 type Options = { config?: AdminConsoleConfig; authenticate: RequestHandler; trials?: TrialAccessStore;
-  data?: AdminDataSource; now?: () => Date; runWithTarget?: RunWithActiveOwner;
+  data?: AdminDataSource; now?: () => Date; runWithTarget?: RunWithActiveOwner; incidents?: ServiceIncidentStore;
   accountDeletions?: AdminAccountDeletionStore; deleteAccount?: (userId: string) => Promise<AccountDeletionOutcome>;
   testPreviewToken?: string; testOnly?: boolean };
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,6 +63,16 @@ export const registerAdminConsole = (app: Express, options: Options) => {
   api.post('/view', async (req, res) => {
     try {
       const b = req.body as Record<string, unknown>;
+      // Service notices live in their own store, not the read-only member snapshot.
+      if (b?.view === 'incidents') {
+        if (b.csv !== undefined || (b.cursor !== undefined && (typeof b.cursor !== 'string' || b.cursor.length > 160))) {
+          throw new AdminError('ADMIN_FILTER_INVALID', 400);
+        }
+        if (!options.incidents) throw new AdminError('ADMIN_DATA_UNAVAILABLE', 503);
+        const result = await options.incidents.list({ cursor: b.cursor as string | undefined });
+        res.json({ ...result, asOf: now().toISOString(), checkedAt: now().toISOString() });
+        return;
+      }
       if (!b || typeof b.view !== 'string' || !adminViews.includes(b.view as AdminView) ||
           (b.query !== undefined && (typeof b.query !== 'string' || b.query.length > 120)) ||
           (b.cursor !== undefined && (typeof b.cursor !== 'string' || b.cursor.length > 160))) {
@@ -137,6 +148,27 @@ export const registerAdminConsole = (app: Express, options: Options) => {
       res.json({ status: 'ok', trial: result.trial });
     } catch (error) {
       const safe = error instanceof AdminError ? error : new AdminError('ADMIN_TRIAL_UNAVAILABLE', 503);
+      res.status(safe.status).json({ code: safe.code });
+    }
+  });
+  // Publishes or updates a customer-facing service notice. The browser makes
+  // one id per reviewed create and keeps it until confirmed, so retries replay.
+  api.post('/incidents', async (req, res) => {
+    const actor = readAuthUser(res.locals)!;
+    if (res.locals.adminRole !== 'OWNER') { res.status(403).json({ code: 'ADMIN_OWNER_REQUIRED' }); return; }
+    try {
+      const b = req.body as Record<string, unknown>;
+      if (!b || typeof b.id !== 'string' || !requestIdPattern.test(b.id) || !['CREATE', 'UPDATE'].includes(String(b.action)) ||
+          (b.action === 'UPDATE' && (!Number.isSafeInteger(b.expectedVersion) || Number(b.expectedVersion) < 1))) {
+        throw new AdminError('ADMIN_INCIDENT_INVALID', 400);
+      }
+      if (!options.incidents) throw new AdminError('ADMIN_INCIDENT_UNAVAILABLE', 503);
+      const command = { id: b.id.toLowerCase(), actorId: actor.id, draft: readServiceIncidentDraft(b) };
+      const incident = b.action === 'CREATE' ? await options.incidents.create(command)
+        : await options.incidents.update({ ...command, expectedVersion: Number(b.expectedVersion) });
+      res.json({ status: 'ok', incident });
+    } catch (error) {
+      const safe = error instanceof AdminError ? error : new AdminError('ADMIN_INCIDENT_UNAVAILABLE', 503);
       res.status(safe.status).json({ code: safe.code });
     }
   });

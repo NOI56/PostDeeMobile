@@ -7,6 +7,7 @@ import type { AdminDataSource, AdminMember, AdminView } from '../src/modules/adm
 import type { AdminReportSummary } from '../src/modules/admin/adminUsageReport.js';
 import { adminChannelResult } from '../src/modules/admin/adminDataSource.js';
 import { createMemoryAdminAccountDeletionStore } from '../src/modules/admin/adminAccountDeletion.js';
+import { createMemoryServiceIncidentStore } from '../src/modules/serviceStatus/serviceIncident.js';
 
 const app = express(); app.use(express.json({ limit: '16kb' }));
 const viewer = process.argv.includes('--viewer'); const emptyTrials = process.argv.includes('--empty-trials');
@@ -61,6 +62,7 @@ const data: AdminDataSource = { member, view: async (view: AdminView, options) =
 const previewToken = viewer ? 'fixture-viewer' : 'fixture-owner';
 registerAdminConsole(app,{config:{origin:`http://127.0.0.1:${port}`,environment:'LOCAL',ownerUids:['fixture-owner'],viewerUids:['fixture-viewer'],
   firebaseWeb:{apiKey:'fixture',authDomain:'fixture.firebaseapp.com',projectId:'fixture',appId:'fixture'}},data,trials,testOnly:true,testPreviewToken:previewToken,
+  incidents:createMemoryServiceIncidentStore(),
   // Fixture deletion only removes the in-memory sample member.
   accountDeletions,deleteAccount:async userId=>{const index=members.findIndex(r=>r.id===userId);if(index>=0)members.splice(index,1);return {status:200,body:{status:'ok'}};},
   authenticate:(req,res,next)=>{const id=req.get('authorization')?.replace('Bearer ','');

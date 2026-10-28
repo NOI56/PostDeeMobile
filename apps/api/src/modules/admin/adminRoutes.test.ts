@@ -5,6 +5,7 @@ import { registerAdminConsole } from './adminRoutes.js';
 import { createMemoryTrialAccessStore } from './trialAccess.js';
 import { toCsv } from './adminReports.js';
 import type { AdminConsoleConfig } from './adminConfig.js';
+import { createMemoryServiceIncidentStore } from '../serviceStatus/serviceIncident.js';
 
 const config: AdminConsoleConfig = { origin: 'http://localhost:4174', environment: 'LOCAL', ownerUids: ['owner'], viewerUids: ['viewer'],
   firebaseWeb: { apiKey: 'fixture', authDomain: 'fixture.firebaseapp.com', projectId: 'fixture', appId: 'fixture' } };
@@ -13,18 +14,24 @@ const now = () => new Date('2026-10-18T00:00:00Z');
 const setup = (enabled = true) => {
   const app = express(); app.use(express.json());
   const trials = createMemoryTrialAccessStore({ now });
+  const incidents = createMemoryServiceIncidentStore({ now });
   const view = vi.fn(async () => ({ rows: [member], total: 1,
     asOf: '2026-10-17T23:59:59.000Z', summary: { memberCount: 1, captionRequests: 0, editMinutes: 0,
       quotaPostUnits: 0, postUnits: 0, livePostUnits: 0, draftPostUnits: 0, otherDeliveredPostUnits: 0,
       failedPostUnits: 0, pendingPostUnits: 0, estimatedUsd: null } }));
-  registerAdminConsole(app, { config: enabled ? config : undefined, trials, now,
+  registerAdminConsole(app, { config: enabled ? config : undefined, trials, now, incidents,
     data: { member: async id => id === member.id ? member : null, view },
     authenticate: (req, res, next) => { const id = req.get('authorization')?.replace('Bearer ', '');
       if (!id) { res.sendStatus(401); return; }
       res.locals.authUser = { id: id === 'old-owner' ? 'owner' : id, provider: id === 'mock-owner' ? 'mock' : 'firebase', authenticatedAtSeconds: id === 'old-owner' ? 1 : now().getTime() / 1000 };
       next(); }
-  }); return { app, trials, view };
+  }); return { app, trials, view, incidents };
 };
+const incident = { action: 'CREATE', id: '0f7c2a51-3b8d-4e7a-9c1f-5d2e6b8a9c01', title: 'TikTok ส่งช้า',
+  message: 'ทีมงานกำลังตรวจสอบ', platforms: ['TIKTOK'], stage: 'INVESTIGATING' };
+const postIncident = (app: express.Express, role: string, body: Record<string, unknown> = incident) => request(app)
+  .post('/admin/api/incidents').set('Authorization', `Bearer ${role}`).set('Origin', config.origin)
+  .set('X-PostDee-Admin', '1').send(body);
 const command = { requestId: '54ce1fea-78bc-4c8e-a4e2-01bed4234420', userId: 'member', expectedEmail: 'mali@example.com',
   action: 'GRANT', plan: 'PRO', days: 7, expectedVersion: 0, reason: 'ทดลองลูกค้า' };
 const post = (app: express.Express, role: string, body = command) => request(app).post('/admin/api/trials')
@@ -116,6 +123,35 @@ describe('private administrator console', () => {
       .toContain('postdee-usage-report.csv');
     expect((await read({ view: 'reports', csv: true })).headers['content-disposition'])
       .toContain('postdee-trial-report.csv');
+  });
+  it('lets owners publish and update service notices while viewers only read them', async () => {
+    const { app, incidents, view } = setup();
+    expect((await postIncident(app, 'viewer')).status).toBe(403);
+    expect((await postIncident(app, 'customer')).status).toBe(403);
+    expect(await incidents.active()).toEqual([]);
+    const created = await postIncident(app, 'owner');
+    expect(created.status).toBe(200);
+    expect(created.body.incident).toMatchObject({ id: incident.id, version: 1, createdBy: 'owner', stage: 'INVESTIGATING' });
+    expect((await postIncident(app, 'owner')).body.incident).toEqual(created.body.incident);
+    const resolved = await postIncident(app, 'owner', { ...incident, action: 'UPDATE', expectedVersion: 1, stage: 'RESOLVED' });
+    expect(resolved.body.incident).toMatchObject({ version: 2, resolvedAt: now().toISOString() });
+    expect((await postIncident(app, 'owner', { ...incident, action: 'UPDATE', expectedVersion: 1 })).body.code).toBe('ADMIN_INCIDENT_RESOLVED');
+    const read = await request(app).post('/admin/api/view').set('Authorization', 'Bearer viewer')
+      .set('Origin', config.origin).set('X-PostDee-Admin', '1').send({ view: 'incidents' });
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ rows: [{ id: incident.id, stage: 'RESOLVED' }], checkedAt: now().toISOString() });
+    expect(view).not.toHaveBeenCalled();
+  });
+  it('validates service notice commands before writing', async () => {
+    const { app, incidents } = setup();
+    for (const body of [{ ...incident, id: 'not-a-uuid' }, { ...incident, action: 'DELETE' }, { ...incident, title: 'x' },
+      { ...incident, action: 'UPDATE' }, { ...incident, action: 'UPDATE', expectedVersion: -1 }, { ...incident, platforms: ['MYSPACE'] }]) {
+      expect((await postIncident(app, 'owner', body)).status).toBe(400);
+    }
+    const csv = await request(app).post('/admin/api/view').set('Authorization', 'Bearer owner')
+      .set('Origin', config.origin).set('X-PostDee-Admin', '1').send({ view: 'incidents', csv: true });
+    expect(csv.status).toBe(400);
+    expect(await incidents.active()).toEqual([]);
   });
   it('neutralizes spreadsheet formulas and quotes CSV fields', () => {
     const csv = toCsv([{ email: '=HYPERLINK("https://evil.example")', reason: '\t+cmd', text: 'a,"b"' }]);

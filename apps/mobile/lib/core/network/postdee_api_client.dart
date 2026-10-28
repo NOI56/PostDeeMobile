@@ -1332,6 +1332,70 @@ class ApiHealthResult {
       );
 }
 
+/// An open service notice that administrators publish while the app has a
+/// problem. Resolved notices are never shown, so they are not parsed.
+class ServiceIncidentResult {
+  const ServiceIncidentResult({
+    required this.id,
+    required this.title,
+    required this.message,
+    required this.platforms,
+    required this.stage,
+    required this.updatedAt,
+  });
+
+  static const openStages = {'INVESTIGATING', 'IDENTIFIED', 'MONITORING'};
+  static const knownPlatforms = {
+    'TIKTOK',
+    'YOUTUBE_SHORTS',
+    'INSTAGRAM_REELS',
+    'FACEBOOK_REELS',
+  };
+
+  final String id;
+  final String title;
+  final String message;
+
+  /// Affected platform API values; empty means the whole app.
+  final List<String> platforms;
+  final String stage;
+  final DateTime updatedAt;
+
+  /// Returns null for a malformed or closed notice so one bad entry cannot
+  /// hide the others.
+  static ServiceIncidentResult? tryParse(Object? json) {
+    if (json is! Map<String, Object?>) return null;
+    final id = json['id'];
+    final title = json['title'];
+    final message = json['message'];
+    final stage = json['stage'];
+    final platforms = json['platforms'];
+    final updatedAt =
+        json['updatedAt'] is String ? DateTime.tryParse(json['updatedAt'] as String) : null;
+    if (id is! String ||
+        title is! String ||
+        title.trim().isEmpty ||
+        message is! String ||
+        stage is! String ||
+        !openStages.contains(stage) ||
+        platforms is! List<Object?> ||
+        updatedAt == null) {
+      return null;
+    }
+    return ServiceIncidentResult(
+      id: id,
+      title: title.trim(),
+      message: message.trim(),
+      platforms: platforms
+          .whereType<String>()
+          .where(knownPlatforms.contains)
+          .toList(growable: false),
+      stage: stage,
+      updatedAt: updatedAt.toLocal(),
+    );
+  }
+}
+
 class PostDeeApiAuthHeaders {
   PostDeeApiAuthHeaders({
     AuthTokenProvider? authTokenProvider,
@@ -3342,6 +3406,20 @@ class PostDeeApiClient {
     final response = await _getJson('/health');
 
     return ApiHealthResult.fromJson(response);
+  }
+
+  Future<List<ServiceIncidentResult>> loadServiceStatus() async {
+    final response = await _getJson('/support/status');
+    final incidents = response['incidents'];
+
+    if (incidents is! List<Object?>) {
+      throw const ApiException('Service status response is missing incidents');
+    }
+
+    return incidents
+        .map(ServiceIncidentResult.tryParse)
+        .whereType<ServiceIncidentResult>()
+        .toList(growable: false);
   }
 
   Future<void> prepareSubscriptionPurchase() async {

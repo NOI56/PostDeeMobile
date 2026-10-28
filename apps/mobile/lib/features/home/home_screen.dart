@@ -25,6 +25,7 @@ import '../uploader/publish_draft.dart';
 import '../uploader/uploader_screen.dart';
 import 'home_activity_section.dart';
 import 'home_draft_thumbnail.dart';
+import 'home_service_status_banner.dart';
 
 typedef HomeSubscriptionLoader = Future<SubscriptionStatusResult> Function();
 typedef HomeRecentPostsLoader = Future<List<PostSummaryResult>> Function();
@@ -50,6 +51,7 @@ class HomeScreen extends StatefulWidget {
     this.loadConnections,
     this.loadScheduledPosts,
     this.loadLinkProfile,
+    this.loadServiceStatus,
     this.onCreatePost,
     this.onResumeDraft,
     this.onOpenConnections,
@@ -75,6 +77,7 @@ class HomeScreen extends StatefulWidget {
   final Future<List<SocialConnectionResult>> Function()? loadConnections;
   final HomeRecentPostsLoader? loadScheduledPosts;
   final HomeLinkProfileLoader? loadLinkProfile;
+  final HomeServiceStatusLoader? loadServiceStatus;
   final Future<void> Function()? onCreatePost;
   final Future<void> Function(PublishDraft)? onResumeDraft;
   final VoidCallback? onOpenConnections;
@@ -101,6 +104,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void>? _dashboardRefreshFuture;
   final _activityKey = GlobalKey<HomeActivitySectionState>();
   final _shopKey = GlobalKey<_LinkInBioShortcutCardState>();
+  final _statusKey = GlobalKey<HomeServiceStatusBannerState>();
   bool? _refreshSucceeded;
   String? _postsErrorMessage;
   String? _subscriptionErrorMessage;
@@ -359,6 +363,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _refreshSucceeded = null);
     bool succeeded;
     try {
+      // Service notices are best-effort, so they never count as a failed refresh.
+      final statusRefresh =
+          _statusKey.currentState?.refresh() ?? Future<void>.value();
       final results = await Future.wait<bool>([
         _loadSubscription(preserveContent: true),
         _loadRecentPosts(preserveContent: true),
@@ -367,6 +374,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _shopKey.currentState?.refresh(preserveContent: true) ??
             Future<bool>.value(false),
       ]);
+      await statusRefresh;
       succeeded = results.every((result) => result);
     } catch (_) {
       succeeded = false;
@@ -494,6 +502,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       accountLabel: l10n.userAccountAction,
                       onNotificationsPressed: widget.onOpenNotifications,
                       onAccountPressed: widget.onOpenProfile,
+                    ),
+                    HomeServiceStatusBanner(
+                      key: _statusKey,
+                      isActive: widget.isActive,
+                      loadStatus: widget.loadServiceStatus,
+                      now: widget.now,
                     ),
                     const SizedBox(height: 14),
                     _PlanSummaryCard(

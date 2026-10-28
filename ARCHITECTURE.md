@@ -11,6 +11,22 @@ Architecture overview for the PostDee mobile app and backend scaffold.
 > below that describe them are history. The canonical list is in `AGENTS.md`
 > under "Retired Features" and wins when an older section disagrees.
 
+## Service status notices (2026-10-28, local candidate)
+
+`apps/api/src/modules/serviceStatus` owns customer-facing outage notices.
+`ServiceIncidentStore` has a memory adapter (local/tests) and a Prisma adapter
+over the new `ServiceIncident` table (no User relation; stage is a checked
+string, `resolvedAt` is set exactly when the stage is `RESOLVED`). Creates are
+idempotent by a browser-made UUID and run serializable so at most five notices
+stay open; updates use an optimistic `version`. The store is created in
+`createApp` from the shared Prisma client and passed to both the public
+`GET /support/status` route and the admin console (`incidents` view and
+owner-only `POST /admin/api/incidents`). Mobile reads it through
+`PostDeeApiClient.loadServiceStatus`; `HomeServiceStatusBanner` sits under the
+Home header, refreshes on entry, resume and pull-to-refresh, renders nothing
+when there is no notice, and keeps its last known notices on a failed read
+without counting as a failed Home refresh.
+
 ## Uploader post-quota presentation (2026-10-25, follow-up candidate)
 
 The clip-selection step renders a compact post-quota strip even with no clip

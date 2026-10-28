@@ -37,12 +37,13 @@ grounded answer, with an administrator able to step in.
    [phase 2 plan](docs/superpowers/plans/2026-10-28-support-chat-room.md).
    Follow-ups: tapping the reply push should open the chat (today it opens the
    app), and the privacy policy should mention stored support messages.
-3. **AI support bot (planned).** Answers first from open notices, the help FAQ
-   and the member's own recent publish results only; hands off to an
-   administrator when unsure; never acts on the account; labeled as a bot;
-   per-member daily reply cap; can be switched off per thread and globally.
-   Needs a privacy-policy update before launch because messages go to the
-   model provider.
+3. **Dot, the AI support helper (built, local candidate).** Answers first from
+   open notices, plan facts and the member's own recent publish results;
+   hands off when unsure, on money topics or on request; never acts on the
+   account; labeled as AI; 20 replies per member per day; switched per
+   thread and globally (off by default). Before launch: update the privacy
+   policy (chat text goes to OpenAI) and test answer quality on Staging. See
+   the [Dot plan](docs/superpowers/plans/2026-10-28-support-bot-dot.md).
 4. **Automatic signals (later).** Publish-failure spikes suggest a draft notice
    for an owner to confirm; administrators get alerted to new chats.
 

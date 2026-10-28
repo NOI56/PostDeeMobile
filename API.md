@@ -2,6 +2,38 @@
 
 PostDee backend API reference.
 
+## Dot, the AI support helper (2026-10-28, phase 3 local candidate)
+
+Dot answers support chat messages first when both switches are on: the
+server's `SUPPORT_BOT_PROVIDER` (`off` default, `mock` for local only and
+refused in production, or `openai`, which reuses `OPENAI_API_KEY` and
+`OPENAI_SUPPORT_BOT_MODEL`, default `gpt-4o-mini`) and an owner's global
+switch in the admin console (no saved setting = off).
+
+- `GET /support/chat` adds `bot: { available }` and `thread.botEnabled`.
+  Messages may now have `sender: "BOT"`; clients must accept it.
+- `POST /support/chat/messages` is unchanged; Dot's reply is written after
+  the response and arrives through polling. Dot answers only the newest
+  member message, sets `WAITING_MEMBER`, or on handoff `WAITING_TEAM` with
+  `botEnabled: false`.
+- `POST /support/chat/handoff` (signed-in member, no body) asks for a person:
+  `200 { status, thread: { status: "WAITING_TEAM", botEnabled: false } }`,
+  `404 SUPPORT_THREAD_NOT_FOUND` before the first message.
+- A team reply turns Dot off for that thread; closing turns it back on.
+- Admin: `view: "support"` adds `bot: { provider, enabled, updatedAt }`;
+  `POST /admin/api/support/bot-settings {enabled}` is owner-only (`409
+  ADMIN_SUPPORT_BOT_UNCONFIGURED` when the provider is `off`);
+  `POST /admin/api/support/thread-bot {userId, enabled}` is for owners and
+  viewers.
+- Limits: 20 Dot replies per member per 24 hours, 500 output tokens, 20 s
+  timeout; any failure becomes a fixed handoff message. Dot receives only
+  open notices, plan facts, the plan and the last five posts' statuses with
+  translated failure reasons, plus the last 20 messages with emails, phone
+  numbers and long digit runs removed.
+
+Deployment: migration `20261028030000_support_bot` (additive). Update the
+privacy policy before an owner turns Dot on. See the [Dot plan](docs/superpowers/plans/2026-10-28-support-bot-dot.md).
+
 ## Support chat (2026-10-28, phase 2 local candidate)
 
 One continuous conversation per member, answered by administrators in the

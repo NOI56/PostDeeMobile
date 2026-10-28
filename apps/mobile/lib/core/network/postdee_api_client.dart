@@ -1332,7 +1332,8 @@ class ApiHealthResult {
       );
 }
 
-/// One message in the member's support chat. `sender` is `MEMBER` or `TEAM`.
+/// One message in the member's support chat. `sender` is `MEMBER`, `TEAM`,
+/// or `BOT` for Dot, the AI helper.
 class SupportMessageResult {
   const SupportMessageResult({
     required this.id,
@@ -1347,6 +1348,7 @@ class SupportMessageResult {
   final DateTime createdAt;
 
   bool get isFromTeam => sender == 'TEAM';
+  bool get isFromBot => sender == 'BOT';
 
   static SupportMessageResult? tryParse(Object? json) {
     if (json is! Map<String, Object?>) return null;
@@ -1357,7 +1359,7 @@ class SupportMessageResult {
         ? DateTime.tryParse(json['createdAt'] as String)
         : null;
     if (id is! String ||
-        (sender != 'MEMBER' && sender != 'TEAM') ||
+        (sender != 'MEMBER' && sender != 'TEAM' && sender != 'BOT') ||
         body is! String ||
         createdAt == null) {
       return null;
@@ -1377,6 +1379,8 @@ class SupportChatResult {
     required this.messages,
     this.threadStatus,
     this.cursor,
+    this.botAvailable = false,
+    this.botEnabled = true,
   });
 
   /// `WAITING_TEAM`, `WAITING_MEMBER` or `CLOSED`; null before the first message.
@@ -1385,6 +1389,14 @@ class SupportChatResult {
 
   /// Pass back as `after` to fetch only newer messages.
   final String? cursor;
+
+  /// Dot is switched on for the app right now.
+  final bool botAvailable;
+
+  /// Dot may answer this conversation; false after a handoff or a team reply.
+  final bool botEnabled;
+
+  bool get botActive => botAvailable && botEnabled;
 }
 
 /// An open service notice that administrators publish while the app has a
@@ -3487,16 +3499,27 @@ class PostDeeApiClient {
     }
     final thread = response['thread'];
     final cursor = response['cursor'];
+    final bot = response['bot'];
     return SupportChatResult(
       threadStatus: thread is Map<String, Object?> && thread['status'] is String
           ? thread['status'] as String
           : null,
+      botAvailable: bot is Map<String, Object?> && bot['available'] == true,
+      botEnabled: !(thread is Map<String, Object?> && thread['botEnabled'] == false),
       messages: messages
           .map(SupportMessageResult.tryParse)
           .whereType<SupportMessageResult>()
           .toList(growable: false),
       cursor: cursor is String ? cursor : after,
     );
+  }
+
+  /// Asks for a person instead of Dot; the team answers in the same chat.
+  Future<void> requestSupportTeam() async {
+    final response = await _postJson('/support/chat/handoff', const {});
+    if (response['status'] != 'ok') {
+      throw const ApiException('Support chat handoff was not confirmed');
+    }
   }
 
   /// Sends one support message. Reuse the same [id] to retry after a failure;

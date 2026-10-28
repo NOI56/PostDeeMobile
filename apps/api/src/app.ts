@@ -42,7 +42,7 @@ import type { AnalyticsStore } from './modules/analytics/analyticsStore.js';
 import type { PrismaAnalyticsClient } from './modules/analytics/prismaAnalyticsRepository.js';
 import { createAuthMiddlewareFromConfig } from './modules/auth/authMiddlewareFactory.js';
 import { registerAuthRoutes } from './modules/auth/authRoutes.js';
-import { readAuthUser } from './modules/auth/authTypes.js';
+import { readAuthUser, type AuthUser } from './modules/auth/authTypes.js';
 import type { FirebaseTokenVerifier } from './modules/auth/authTypes.js';
 import {
   createFirebaseAdminAuth,
@@ -183,6 +183,15 @@ import { createPrismaSupportChatStore } from './modules/supportChat/prismaSuppor
 import { registerSupportChatRoutes } from './modules/supportChat/supportChatRoutes.js';
 import { createSupportReplyNotifier } from './modules/notifications/supportReplyNotifier.js';
 import type { PushSender } from './modules/notifications/pushSender.js';
+import {
+  cacheSupportBotSettings, createMemorySupportBotSettingsStore, createPrismaSupportBotSettingsStore, createSupportBot,
+  createSupportBotScheduler, type SupportBotSettingsStore
+} from './modules/supportBot/supportBot.js';
+import {
+  createMockSupportBotProvider, createOpenAiSupportBotProvider, type SupportBotProvider
+} from './modules/supportBot/supportBotProvider.js';
+import type { SupportBotContext } from './modules/supportBot/supportBotKnowledge.js';
+import { adminPublishFailure } from './modules/admin/adminPublishFailure.js';
 import { createRateLimitMiddleware } from './modules/security/rateLimit.js';
 import { createReadinessHandler } from './readiness.js';
 
@@ -243,6 +252,8 @@ type AppOptions = {
   serviceIncidentStore?: ServiceIncidentStore;
   supportChatStore?: SupportChatStore;
   supportPushSender?: PushSender;
+  supportBotProvider?: SupportBotProvider;
+  supportBotSettingsStore?: SupportBotSettingsStore;
   now?: () => Date;
 };
 
@@ -913,10 +924,64 @@ export const createApp = (options: AppOptions = {}) => {
     (prismaClient
       ? createPrismaSupportChatStore(prismaClient as unknown as PrismaClient, options.now)
       : createMemorySupportChatStore({ now: options.now }));
+  // Dot, the AI support helper. It needs SUPPORT_BOT_PROVIDER and an owner's
+  // switch in the admin console; until then it never answers.
+  const supportBotProvider =
+    options.supportBotProvider ??
+    (config.supportBotProvider === 'openai'
+      ? createOpenAiSupportBotProvider({ apiKey: config.openAiApiKey!, model: config.openAiSupportBotModel })
+      : config.supportBotProvider === 'mock' ? createMockSupportBotProvider() : undefined);
+  const supportBotSettings = cacheSupportBotSettings(
+    options.supportBotSettingsStore ??
+      (prismaClient
+        ? createPrismaSupportBotSettingsStore(prismaClient as unknown as PrismaClient, options.now)
+        : createMemorySupportBotSettingsStore({ now: options.now }))
+  );
+  // Only what Dot needs: open notices, the plan, and the last five posts'
+  // statuses with translated failure reasons. No captions or contact details.
+  const loadSupportBotContext = async (member: AuthUser): Promise<SupportBotContext> => {
+    const [incidents, posts, plan] = await Promise.all([
+      serviceIncidentStore.active(),
+      postStore.list({ userId: member.id, limit: 5 }),
+      subscriptionStore.getPlan(member).catch(() => undefined)
+    ]);
+    const publishes = posts.length && platformPublishStore.listForPostIds
+      ? await platformPublishStore.listForPostIds(posts.map((post) => post.id))
+      : [];
+    return {
+      plan,
+      incidents: incidents.map(({ title, message, platforms, stage }) => ({ title, message, platforms, stage })),
+      recentPosts: posts.map((post) => ({
+        createdAt: post.createdAt,
+        ...(post.scheduledAt ? { scheduledAt: post.scheduledAt } : {}),
+        status: post.status,
+        platforms: post.platforms,
+        failures: publishes
+          .filter((publish) => publish.postId === post.id && publish.status === 'FAILED')
+          .map((publish) => `${publish.platform}: ${adminPublishFailure(publish.errorMessage ?? null)}`)
+      }))
+    };
+  };
+  const supportBotScheduler = createSupportBotScheduler(
+    createSupportBot({
+      store: supportChatStore,
+      settings: supportBotSettings,
+      provider: supportBotProvider,
+      loadContext: loadSupportBotContext,
+      runWithOwner: runWithOwnerLifetime,
+      now: options.now
+    }),
+    { onError: (error) => console.warn('Support bot reply failed', error instanceof Error ? error.name : 'unknown') }
+  );
+  app.locals.supportBotScheduler = supportBotScheduler;
   registerSupportChatRoutes(router, accountAwareAuthMiddleware, {
     store: supportChatStore,
     userStore,
-    sendRateLimit: createRateLimitMiddleware({ bucket: 'support-chat', windowMs: 60_000, maxRequests: 20 })
+    sendRateLimit: createRateLimitMiddleware({ bucket: 'support-chat', windowMs: 60_000, maxRequests: 20 }),
+    bot: {
+      available: async () => Boolean(supportBotProvider) && (await supportBotSettings.read()).enabled,
+      onMemberMessage: supportBotScheduler.schedule
+    }
   });
   // Created on the first reply, so a misconfigured push sender cannot stop the
   // API from booting; the notifier is best-effort either way.
@@ -980,6 +1045,7 @@ export const createApp = (options: AppOptions = {}) => {
       data: options.adminDataSource ?? createPrismaAdminDataSource(prismaClient as unknown as PrismaClient, config.adminConsole, options.now),
       now: options.now, runWithTarget: runWithOwnerLifetime, incidents: serviceIncidentStore,
       support: supportChatStore, notifySupportReply,
+      supportBot: { provider: supportBotProvider?.kind ?? 'off', settings: supportBotSettings },
       accountDeletions: options.adminAccountDeletionStore ??
         (prismaClient ? createPrismaAdminAccountDeletionStore(prismaClient as unknown as PrismaClient, options.now) : undefined),
       deleteAccount: accountRoutes.deleteAccountAsOperator,

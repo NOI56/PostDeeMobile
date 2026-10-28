@@ -6,6 +6,8 @@ import { readServerConfig } from './config/env.js';
 import { createOwnerMutationLock } from './modules/account/ownerMutationLock.js';
 import { createInMemorySocialConnectionStore } from './modules/socialConnections/socialConnectionStore.js';
 import { createMockVideoStorage } from './modules/storage/videoStorage.js';
+import { createMemorySupportBotSettingsStore } from './modules/supportBot/supportBot.js';
+import { createMockSupportBotProvider } from './modules/supportBot/supportBotProvider.js';
 
 describe('PostDee API scaffold', () => {
   const app = createApp();
@@ -23,6 +25,21 @@ describe('PostDee API scaffold', () => {
     const response = await request(app).get('/support/status').expect(200);
 
     expect(response.body).toMatchObject({ status: 'ok', incidents: [] });
+  });
+
+  it('lets Dot answer a support message once an owner switched it on', async () => {
+    const supportBotSettingsStore = createMemorySupportBotSettingsStore();
+    await supportBotSettingsStore.set({ enabled: true, actorId: 'owner' });
+    const botApp = createApp({ supportBotProvider: createMockSupportBotProvider(), supportBotSettingsStore });
+    const { supportBotScheduler } = botApp.locals as { supportBotScheduler: { drain: () => Promise<void> } };
+    await request(botApp).post('/support/chat/messages').set('x-postdee-user-id', 'bot-member')
+      .send({ id: '7d1f9c3a-2b4e-4c8a-9f10-000000000201', body: 'โพสต์ไม่ขึ้น' }).expect(201);
+    await supportBotScheduler.drain();
+    const read = await request(botApp).get('/support/chat').set('x-postdee-user-id', 'bot-member').expect(200);
+    expect(read.body.bot).toEqual({ available: true });
+    expect(read.body.messages.map((m: { sender: string }) => m.sender)).toEqual(['MEMBER', 'BOT']);
+    // No open notice, so the mock hands the question to the team.
+    expect(read.body.thread).toMatchObject({ status: 'WAITING_TEAM', botEnabled: false });
   });
 
   it('does not expose the removed legacy clip review endpoint', async () => {

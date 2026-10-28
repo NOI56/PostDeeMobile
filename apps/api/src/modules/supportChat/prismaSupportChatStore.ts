@@ -15,6 +15,7 @@ const mapMessage = (r: MessageRow): SupportMessage => ({ id: r.id, userId: r.use
 const mapThread = (r: ThreadRow): SupportThread => ({ userId: r.userId, status: r.status as SupportThreadStatus,
   lastSender: r.lastSender as SupportSender, lastMessageId: r.lastMessageId, lastPreview: r.lastPreview,
   lastMessageAt: r.lastMessageAt.toISOString(), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
+  botEnabled: r.botEnabled,
   ...(r.user ? { email: r.user.email, displayName: r.user.displayName } : {}) });
 const afterCursor = (cursor: { time: Date; id: string }): Prisma.SupportMessageWhereInput =>
   ({ OR: [{ createdAt: { gt: cursor.time } }, { createdAt: cursor.time, id: { gt: cursor.id } }] });
@@ -24,7 +25,7 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
   // Writes take the member's active-owner lock, so no chat row lands while the
   // account is being deleted; a racing duplicate id replays the stored message.
   const append = async (message: Omit<SupportMessage, 'createdAt'>, status: SupportThreadStatus,
-    guard: (tx: Prisma.TransactionClient, time: Date) => Promise<void>) => {
+    guard: (tx: Prisma.TransactionClient, time: Date) => Promise<void>, botEnabled?: boolean) => {
     const expected = { userId: message.userId, sender: message.sender, body: message.body };
     try {
       return await runActiveOwnerTransaction(prisma, message.userId, async tx => {
@@ -33,7 +34,8 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
         const time = now();
         await guard(tx, time);
         const last = { status, lastSender: message.sender, lastMessageId: message.id,
-          lastPreview: supportPreview(message.body), lastMessageAt: time, updatedAt: time };
+          lastPreview: supportPreview(message.body), lastMessageAt: time, updatedAt: time,
+          ...(botEnabled === undefined ? {} : { botEnabled }) };
         await tx.supportThread.upsert({ where: { userId: message.userId }, update: last,
           create: { userId: message.userId, ...last, createdAt: time } });
         return { message: mapMessage(await tx.supportMessage.create({ data: { ...message, createdAt: time } })), created: true };
@@ -69,7 +71,37 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
         if (!await tx.supportThread.findUnique({ where: { userId }, select: { userId: true } })) {
           throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
         }
-      }),
+      }, false),
+    replyAsBot: async ({ userId, id, body, handoff, triggerMessageId }) => {
+      try {
+        // The guard runs in the same owner-locked transaction as the insert, so
+        // a member message that lands first makes this reply a no-op.
+        const result = await append({ id, userId, sender: 'BOT', authorId: null, body }, handoff ? 'WAITING_TEAM' : 'WAITING_MEMBER',
+          async tx => {
+            const thread = await tx.supportThread.findUnique({ where: { userId }, select: { botEnabled: true, lastMessageId: true } });
+            if (!thread?.botEnabled || thread.lastMessageId !== triggerMessageId) throw new SupportChatError('SUPPORT_BOT_SKIPPED');
+          }, !handoff);
+        return result.created ? result.message : null;
+      } catch (error) {
+        if (error instanceof SupportChatError && error.code === 'SUPPORT_BOT_SKIPPED') return null;
+        throw error;
+      }
+    },
+    requestTeam: async userId => {
+      const { count } = await prisma.supportThread.updateMany({ where: { userId },
+        data: { status: 'WAITING_TEAM', botEnabled: false, updatedAt: now() } });
+      const thread = count === 1 ? await prisma.supportThread.findUnique({ where: { userId } }) : null;
+      if (!thread) throw new SupportChatError('SUPPORT_THREAD_NOT_FOUND', 404);
+      return mapThread(thread);
+    },
+    setBotEnabled: async ({ userId, enabled }) => {
+      const { count } = await prisma.supportThread.updateMany({ where: { userId }, data: { botEnabled: enabled, updatedAt: now() } });
+      const thread = count === 1 ? await prisma.supportThread.findUnique({ where: { userId } }) : null;
+      if (!thread) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
+      return mapThread(thread);
+    },
+    countSince: ({ userId, sender, since }) =>
+      prisma.supportMessage.count({ where: { userId, sender, createdAt: { gt: since } } }),
     listThreads: async ({ status, query, cursor }) => {
       const before = readAdminThreadCursor(cursor);
       const literal = query?.replace(/[\\%_]/g, '\\$&');
@@ -93,7 +125,7 @@ export const createPrismaSupportChatStore = (prisma: PrismaClient, now: () => Da
     },
     close: async ({ userId, lastMessageId }) => {
       const { count } = await prisma.supportThread.updateMany({ where: { userId, lastMessageId },
-        data: { status: 'CLOSED', updatedAt: now() } });
+        data: { status: 'CLOSED', botEnabled: true, updatedAt: now() } });
       const thread = await prisma.supportThread.findUnique({ where: { userId } });
       if (!thread) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
       if (count !== 1) throw new AdminError('ADMIN_SUPPORT_THREAD_CHANGED');

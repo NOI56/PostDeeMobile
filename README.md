@@ -13,6 +13,16 @@ Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 > describe them (including the AI editing notes under Mobile and Backend) are
 > history. The canonical list is in `AGENTS.md` under "Retired Features".
 
+## Dot, the AI support helper (2026-10-28, local candidate)
+
+Dot answers support chat questions first, from open service notices, plan
+facts and the member's recent post results, and hands the chat to the team
+when it is unsure, the topic is money, or the member taps "ขอคุยกับทีมงาน".
+It is off until the server sets `SUPPORT_BOT_PROVIDER=openai` and an owner
+turns it on in **แชทช่วยเหลือ** in the admin console. Update the privacy
+policy first: chat text is sent to OpenAI (never email, phone or name).
+Deploying needs migration `20261028030000_support_bot`.
+
 ## Support chat (2026-10-28, local candidate)
 
 Members tap **บัญชี › แชทกับทีมงาน** to message the PostDee team; known

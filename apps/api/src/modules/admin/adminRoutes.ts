@@ -15,10 +15,13 @@ import {
   type SupportChatStore, type SupportMessage, type SupportThreadStatus
 } from '../supportChat/supportChat.js';
 import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
+import type { SupportBotProviderKind } from '../../config/env.js';
+import type { SupportBotSettingsStore } from '../supportBot/supportBot.js';
 
 type Options = { config?: AdminConsoleConfig; authenticate: RequestHandler; trials?: TrialAccessStore;
   data?: AdminDataSource; now?: () => Date; runWithTarget?: RunWithActiveOwner; incidents?: ServiceIncidentStore;
   support?: SupportChatStore; notifySupportReply?: (userId: string) => Promise<void>;
+  supportBot?: { provider: SupportBotProviderKind; settings: SupportBotSettingsStore };
   accountDeletions?: AdminAccountDeletionStore; deleteAccount?: (userId: string) => Promise<AccountDeletionOutcome>;
   testPreviewToken?: string; testOnly?: boolean };
 const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,6 +44,11 @@ export const registerAdminConsole = (app: Express, options: Options) => {
     throw new Error('Fixture preview authentication is local-test-only');
   }
   const now = options.now ?? (() => new Date());
+  const supportBotStatus = async () => {
+    const settings = options.supportBot ? await options.supportBot.settings.read() : null;
+    return { provider: options.supportBot?.provider ?? 'off', enabled: !!settings?.enabled && options.supportBot?.provider !== 'off',
+      updatedAt: settings?.updatedAt ?? null };
+  };
   const root = Router();
   root.use((_req, res, next) => {
     res.set('Cache-Control', 'private, no-store'); res.set('Referrer-Policy', 'no-referrer');
@@ -97,9 +105,9 @@ export const registerAdminConsole = (app: Express, options: Options) => {
           throw new AdminError('ADMIN_FILTER_INVALID', 400);
         }
         if (!options.support) throw new AdminError('ADMIN_DATA_UNAVAILABLE', 503);
-        const result = await options.support.listThreads({ status: (b.status || undefined) as SupportThreadStatus | undefined,
-          query: String(b.query ?? '').trim() || undefined, cursor: b.cursor as string | undefined });
-        res.json({ ...result, asOf: now().toISOString(), checkedAt: now().toISOString() });
+        const [result, bot] = await Promise.all([options.support.listThreads({ status: (b.status || undefined) as SupportThreadStatus | undefined,
+          query: String(b.query ?? '').trim() || undefined, cursor: b.cursor as string | undefined }), supportBotStatus()]);
+        res.json({ ...result, bot, asOf: now().toISOString(), checkedAt: now().toISOString() });
         return;
       }
       if (!b || typeof b.view !== 'string' || !adminViews.includes(b.view as AdminView) ||
@@ -198,6 +206,34 @@ export const registerAdminConsole = (app: Express, options: Options) => {
       res.json({ status: 'ok', incident });
     } catch (error) {
       const safe = error instanceof AdminError ? error : new AdminError('ADMIN_INCIDENT_UNAVAILABLE', 503);
+      res.status(safe.status).json({ code: safe.code });
+    }
+  });
+  // Dot's global switch. Owners only, and only when a provider is configured,
+  // because turning it on sends member messages to the model provider.
+  api.post('/support/bot-settings', async (req, res) => {
+    const actor = readAuthUser(res.locals)!;
+    if (res.locals.adminRole !== 'OWNER') { res.status(403).json({ code: 'ADMIN_OWNER_REQUIRED' }); return; }
+    try {
+      if (typeof req.body?.enabled !== 'boolean') throw new AdminError('ADMIN_FILTER_INVALID', 400);
+      if (!options.supportBot) throw new AdminError('ADMIN_SUPPORT_UNAVAILABLE', 503);
+      if (req.body.enabled && options.supportBot.provider === 'off') throw new AdminError('ADMIN_SUPPORT_BOT_UNCONFIGURED');
+      await options.supportBot.settings.set({ enabled: req.body.enabled, actorId: actor.id });
+      res.json({ status: 'ok', bot: await supportBotStatus() });
+    } catch (error) {
+      const safe = supportFailure(error);
+      res.status(safe.status).json({ code: safe.code });
+    }
+  });
+  // Per-conversation switch; any administrator who answers chats may use it.
+  api.post('/support/thread-bot', async (req, res) => {
+    try {
+      const userId = readSupportUserId(req.body?.userId);
+      if (typeof req.body?.enabled !== 'boolean') throw new AdminError('ADMIN_FILTER_INVALID', 400);
+      if (!options.support) throw new AdminError('ADMIN_SUPPORT_UNAVAILABLE', 503);
+      res.json({ status: 'ok', thread: await options.support.setBotEnabled({ userId, enabled: req.body.enabled }) });
+    } catch (error) {
+      const safe = supportFailure(error);
       res.status(safe.status).json({ code: safe.code });
     }
   });

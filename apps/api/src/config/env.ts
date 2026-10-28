@@ -11,6 +11,7 @@ export type PublishQueueKind = 'memory' | 'bullmq';
 export type VideoStorageKind = 'mock' | 's3' | 'r2';
 export type UploadProtocolMode = 'legacy' | 'dual' | 'multipart';
 export type CaptionProviderKind = 'mock' | 'openai' | 'gemini';
+export type SupportBotProviderKind = 'off' | 'mock' | 'openai';
 export type AuthProviderKind = 'mock' | 'firebase';
 export type BillingProviderKind = 'mock' | 'store' | 'revenuecat';
 export type PushSenderKind = 'mock' | 'firebase';
@@ -86,6 +87,8 @@ export type ServerConfig = {
   videoStorage: VideoStorageKind;
   captionProvider: CaptionProviderKind;
   openAiCaptionModel: string;
+  supportBotProvider: SupportBotProviderKind;
+  openAiSupportBotModel: string;
   geminiCaptionModel: string;
   authProvider: AuthProviderKind;
   socialPublisher: SocialPublisherKind;
@@ -303,6 +306,20 @@ const readCaptionProvider = (env: EnvSource): CaptionProviderKind => {
   return value;
 };
 
+// Dot, the AI support helper, is off unless explicitly configured.
+const readSupportBotProvider = (env: EnvSource): SupportBotProviderKind => {
+  const value = readOptional(env, 'SUPPORT_BOT_PROVIDER') ?? 'off';
+
+  if (value !== 'off' && value !== 'mock' && value !== 'openai') {
+    throw new Error('SUPPORT_BOT_PROVIDER must be off, mock, or openai');
+  }
+  if (value === 'openai' && !readOptional(env, 'OPENAI_API_KEY')) {
+    throw new Error('OPENAI_API_KEY is required when SUPPORT_BOT_PROVIDER=openai');
+  }
+
+  return value;
+};
+
 const readAuthProvider = (env: EnvSource): AuthProviderKind => {
   const value = readOptional(env, 'AUTH_PROVIDER') ?? 'mock';
 
@@ -418,6 +435,11 @@ const assertProductionSafeConfig = (config: ServerConfig) => {
   // have nothing to fetch. Require real object storage in production.
   if (config.videoStorage === 'mock') {
     throw new Error('VIDEO_STORAGE=mock is not allowed when NODE_ENV=production');
+  }
+
+  // The mock support bot gives canned answers that would mislead real members.
+  if (config.supportBotProvider === 'mock') {
+    throw new Error('SUPPORT_BOT_PROVIDER=mock is not allowed when NODE_ENV=production');
   }
 
   const postPeerAccountIds = [
@@ -595,6 +617,8 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     videoStorage: readVideoStorage(env),
     captionProvider: readCaptionProvider(env),
     openAiCaptionModel: readOptional(env, 'OPENAI_CAPTION_MODEL') ?? 'gpt-4o-mini',
+    supportBotProvider: readSupportBotProvider(env),
+    openAiSupportBotModel: readOptional(env, 'OPENAI_SUPPORT_BOT_MODEL') ?? 'gpt-4o-mini',
     geminiCaptionModel: readOptional(env, 'GEMINI_CAPTION_MODEL') ?? 'gemini-2.5-flash-lite',
     authProvider: readAuthProvider(env),
     socialPublisher: readSocialPublisher(env),

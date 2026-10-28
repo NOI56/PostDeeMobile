@@ -1,10 +1,11 @@
 import { AdminError } from '../admin/trialAccess.js';
 
 // One continuous support conversation per member, like a shop chat. A member
-// message reopens a closed thread; replies come from the PostDee team.
+// message reopens a closed thread; replies come from the PostDee team or from
+// Dot, the AI helper, which answers first while the thread's bot is enabled.
 export const supportThreadStatuses = ['WAITING_TEAM', 'WAITING_MEMBER', 'CLOSED'] as const;
 export type SupportThreadStatus = typeof supportThreadStatuses[number];
-export type SupportSender = 'MEMBER' | 'TEAM';
+export type SupportSender = 'MEMBER' | 'TEAM' | 'BOT';
 export const maxSupportMessageLength = 1000;
 // Member messages allowed per rolling 24 hours, so one account cannot flood the inbox.
 export const maxMemberMessagesPerDay = 100;
@@ -17,6 +18,8 @@ export type SupportMessage = { id: string; userId: string; sender: SupportSender
   authorId: string | null; body: string; createdAt: string };
 export type SupportThread = { userId: string; status: SupportThreadStatus; lastSender: SupportSender;
   lastMessageId: string; lastPreview: string; lastMessageAt: string; createdAt: string; updatedAt: string;
+  // Dot may answer this thread. A team reply or a handoff turns it off; closing turns it back on.
+  botEnabled: boolean;
   email?: string; displayName?: string | null };
 export type SupportMemberRead = { thread: SupportThread | null; messages: SupportMessage[]; cursor?: string };
 export type SupportThreadPage = { rows: SupportThread[]; nextCursor?: string };
@@ -28,6 +31,13 @@ export type SupportChatStore = {
   // `created` is false when a retried reply already landed, so callers notify once.
   replyAsTeam: (input: { userId: string; id: string; actorId: string; body: string }) => Promise<{ message: SupportMessage; created: boolean }>;
   close: (input: { userId: string; lastMessageId: string }) => Promise<SupportThread>;
+  // Stores Dot's reply only if `triggerMessageId` is still the newest message
+  // and the thread's bot is on; returns null when the conversation moved on.
+  replyAsBot: (input: { userId: string; id: string; body: string; handoff: boolean; triggerMessageId: string }) => Promise<SupportMessage | null>;
+  // The member asked for a person: Dot stops and the thread waits for the team.
+  requestTeam: (userId: string) => Promise<SupportThread>;
+  setBotEnabled: (input: { userId: string; enabled: boolean }) => Promise<SupportThread>;
+  countSince: (input: { userId: string; sender: SupportSender; since: Date }) => Promise<number>;
   // Used by account deletion. Optional because the Prisma store relies on the User cascade.
   deleteAllForUser?: (userId: string) => Promise<void>;
 };
@@ -84,13 +94,21 @@ export const createMemorySupportChatStore = ({ now = () => new Date() }: { now?:
   const threads = new Map<string, SupportThread>();
   const messages = new Map<string, SupportMessage>();
   const threadMessages = (userId: string) => [...messages.values()].filter(m => m.userId === userId).sort(oldestFirst);
-  const append = (message: SupportMessage, status: SupportThreadStatus) => {
+  const append = (message: SupportMessage, status: SupportThreadStatus, botEnabled?: boolean) => {
     const previous = threads.get(message.userId);
     messages.set(message.id, message);
     threads.set(message.userId, { userId: message.userId, status, lastSender: message.sender, lastMessageId: message.id,
       lastPreview: supportPreview(message.body), lastMessageAt: message.createdAt,
-      createdAt: previous?.createdAt ?? message.createdAt, updatedAt: message.createdAt });
+      createdAt: previous?.createdAt ?? message.createdAt, updatedAt: message.createdAt,
+      botEnabled: botEnabled ?? previous?.botEnabled ?? true });
     return structuredClone(message);
+  };
+  const update = (userId: string, change: Partial<SupportThread>) => {
+    const thread = threads.get(userId);
+    if (!thread) throw new SupportChatError('SUPPORT_THREAD_NOT_FOUND', 404);
+    const next = { ...thread, ...change, updatedAt: now().toISOString() };
+    threads.set(userId, next);
+    return structuredClone(next);
   };
   return {
     readForMember: async (userId, options) => {
@@ -133,16 +151,27 @@ export const createMemorySupportChatStore = ({ now = () => new Date() }: { now?:
       const existing = messages.get(id);
       if (existing) return { message: structuredClone(replaySupportMessage(existing, { userId, sender: 'TEAM', body })), created: false };
       if (!threads.has(userId)) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
-      return { message: append({ id, userId, sender: 'TEAM', authorId: actorId, body, createdAt: now().toISOString() }, 'WAITING_MEMBER'), created: true };
+      return { message: append({ id, userId, sender: 'TEAM', authorId: actorId, body, createdAt: now().toISOString() }, 'WAITING_MEMBER', false), created: true };
     },
     close: async ({ userId, lastMessageId }) => {
       const thread = threads.get(userId);
       if (!thread) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
       if (thread.lastMessageId !== lastMessageId) throw new AdminError('ADMIN_SUPPORT_THREAD_CHANGED');
-      const closed = { ...thread, status: 'CLOSED' as const, updatedAt: now().toISOString() };
-      threads.set(userId, closed);
-      return structuredClone(closed);
+      return update(userId, { status: 'CLOSED', botEnabled: true });
     },
+    replyAsBot: async ({ userId, id, body, handoff, triggerMessageId }) => {
+      const thread = threads.get(userId);
+      if (!thread || !thread.botEnabled || thread.lastMessageId !== triggerMessageId || messages.has(id)) return null;
+      return append({ id, userId, sender: 'BOT', authorId: null, body, createdAt: now().toISOString() },
+        handoff ? 'WAITING_TEAM' : 'WAITING_MEMBER', !handoff);
+    },
+    requestTeam: async userId => update(userId, { status: 'WAITING_TEAM', botEnabled: false }),
+    setBotEnabled: async ({ userId, enabled }) => {
+      if (!threads.has(userId)) throw new AdminError('ADMIN_SUPPORT_THREAD_NOT_FOUND', 404);
+      return update(userId, { botEnabled: enabled });
+    },
+    countSince: async ({ userId, sender, since }) =>
+      threadMessages(userId).filter(m => m.sender === sender && m.createdAt > since.toISOString()).length,
     deleteAllForUser: async userId => {
       threads.delete(userId);
       for (const [id, message] of messages) if (message.userId === userId) messages.delete(id);

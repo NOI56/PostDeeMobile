@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createPrismaSupportChatStore } from './prismaSupportChatStore.js';
 import { maxMemberMessagesPerDay } from './supportChat.js';
+import { createPrismaSupportBotSettingsStore } from '../supportBot/supportBot.js';
 
 // Opt-in only; refuse external hosts, default Postgres ports and existing app databases.
 const databaseUrl = process.env.ADMIN_TEST_DATABASE_URL;
@@ -74,8 +75,39 @@ describe.skipIf(!databaseUrl)('support chat in PostgreSQL', () => {
     const userId = await member();
     await store.postFromMember({ userId, id: randomUUID(), body: 'มีเธรดแล้ว' });
     for (const data of [{ sender: 'TEAM', authorId: null, body: 'ไม่มีผู้ตอบ' }, { sender: 'MEMBER', authorId: 'x', body: 'มีผู้ตอบ' },
-      { sender: 'BOT', authorId: null, body: 'ยังไม่รองรับ' }, { sender: 'MEMBER', authorId: null, body: 'x'.repeat(1001) }]) {
+      { sender: 'BOT', authorId: 'x', body: 'บอทไม่มีผู้ตอบ' }, { sender: 'ROBOT', authorId: null, body: 'ไม่รู้จัก' },
+      { sender: 'MEMBER', authorId: null, body: 'x'.repeat(1001) }]) {
       await expect(prisma.supportMessage.create({ data: { ...data, id: randomUUID(), userId, createdAt: time } })).rejects.toThrow();
     }
+    await expect(prisma.supportMessage.create({ data: { sender: 'BOT', authorId: null, body: 'Dot ตอบได้', id: randomUUID(), userId, createdAt: time } }))
+      .resolves.toMatchObject({ sender: 'BOT' });
+  });
+  it('stores Dot only for the newest member message and tracks the per-thread switch', async () => {
+    const userId = await member();
+    const first = await store.postFromMember({ userId, id: randomUUID(), body: 'ข้อแรก' });
+    const second = await store.postFromMember({ userId, id: randomUUID(), body: 'ข้อสอง' });
+    expect(await store.replyAsBot({ userId, id: randomUUID(), body: 'ตอบข้อแรก', handoff: false, triggerMessageId: first.id })).toBeNull();
+    const reply = await store.replyAsBot({ userId, id: randomUUID(), body: 'ตอบข้อสอง', handoff: false, triggerMessageId: second.id });
+    expect(reply).toMatchObject({ sender: 'BOT', authorId: null });
+    expect(await store.countSince({ userId, sender: 'BOT', since: new Date(time.getTime() - 86400000) })).toBe(1);
+    expect((await store.readThread(userId))!.thread).toMatchObject({ status: 'WAITING_MEMBER', lastSender: 'BOT', botEnabled: true });
+    const third = await store.postFromMember({ userId, id: randomUUID(), body: 'ขอคนจริง' });
+    expect(await store.requestTeam(userId)).toMatchObject({ status: 'WAITING_TEAM', botEnabled: false });
+    expect(await store.replyAsBot({ userId, id: randomUUID(), body: 'ไม่ควรตอบ', handoff: false, triggerMessageId: third.id })).toBeNull();
+    expect((await store.setBotEnabled({ userId, enabled: true })).botEnabled).toBe(true);
+    const team = await store.replyAsTeam({ userId, id: randomUUID(), actorId: 'fixture-owner', body: 'ทีมงานตอบค่ะ' });
+    expect((await store.readThread(userId))!.thread.botEnabled).toBe(false);
+    expect(await store.close({ userId, lastMessageId: team.message.id })).toMatchObject({ status: 'CLOSED', botEnabled: true });
+    await expect(store.requestTeam(`missing-${randomUUID()}`)).rejects.toThrow('SUPPORT_THREAD_NOT_FOUND');
+  });
+  it('keeps Dot off until an owner saves the global switch', async () => {
+    await prisma.supportBotSetting.deleteMany({});
+    const settings = createPrismaSupportBotSettingsStore(prisma, () => time);
+    expect(await settings.read()).toEqual({ enabled: false, updatedBy: null, updatedAt: null });
+    expect(await settings.set({ enabled: true, actorId: 'fixture-owner' })).toEqual({ enabled: true, updatedBy: 'fixture-owner', updatedAt: time.toISOString() });
+    expect((await settings.set({ enabled: false, actorId: 'fixture-owner' })).enabled).toBe(false);
+    expect(await prisma.supportBotSetting.count()).toBe(1);
+    await expect(prisma.supportBotSetting.create({ data: { id: 'second', enabled: true, updatedBy: 'x', updatedAt: time } })).rejects.toThrow();
+    await prisma.supportBotSetting.deleteMany({});
   });
 });

@@ -4,6 +4,7 @@ import '../../core/localization/postdee_localizations.dart';
 import 'caption_localizations.dart';
 import 'channel_localizations.dart';
 import 'review_localizations.dart';
+import 'publish_submission_localizations.dart';
 
 bool uploaderUsesThai(BuildContext context) =>
     (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
@@ -68,8 +69,8 @@ String localizeUploaderMessage(BuildContext context, String message) {
   if (recovered != null) {
     return 'Original submission found: ${recovered[1]} · ${_recoveryStatuses[recovered[2]]} · Not submitted again. The draft is still on this device.';
   }
-  return localizeReviewMessage(context,
-      localizeChannelMessage(context, localizeCaptionMessage(context, message)));
+  return localizePublishSubmissionMessage(context, localizeReviewMessage(context,
+      localizeChannelMessage(context, localizeCaptionMessage(context, message))));
 }
 
 RegExpMatch? _wholeMatch(RegExp pattern, String message) {

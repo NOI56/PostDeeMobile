@@ -392,6 +392,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   PostDeeStatusSheetData? _pendingStatusSheet;
   bool _pickVideoAfterStatus = false;
   String? _pendingInlineError;
+  String? _submissionInlineError;
   int _currentStep = 0;
   bool _allowExit = false;
   bool _isAskingToExit = false;
@@ -4984,6 +4985,29 @@ class _UploaderScreenState extends State<UploaderScreen>
     _pickVideoAfterStatus = false;
   }
 
+  String _localizeSubmissionError(BuildContext context, String message) {
+    final localized = localizeUploaderMessage(context, message);
+    if (uploaderUsesThai(context) || localized != message) return localized;
+    return apiErrorMessage(ApiException(message),
+        languageCode: 'en',
+        fallbackMessage:
+            'An error occurred while sending your post. Check your connection and try again.');
+  }
+
+  PostDeeStatusSheetData _localizeSubmissionStatus(
+          BuildContext context, PostDeeStatusSheetData data) =>
+      PostDeeStatusSheetData(
+        icon: data.icon,
+        iconColor: data.iconColor,
+        iconTint: data.iconTint,
+        title: localizeUploaderMessage(context, data.title),
+        body: _localizeSubmissionError(context, data.body),
+        primaryLabel: localizeUploaderMessage(context, data.primaryLabel),
+        secondaryLabel: data.secondaryLabel == null
+            ? null
+            : localizeUploaderMessage(context, data.secondaryLabel!),
+      );
+
   Future<void> _showPendingStatus() async {
     final data = _pendingStatusSheet;
     final shouldPickVideo = _pickVideoAfterStatus;
@@ -4993,9 +5017,13 @@ class _UploaderScreenState extends State<UploaderScreen>
     _pendingInlineError = null;
     if (data == null || !mounted) return;
 
-    final confirmed = await showPostDeeStatusSheet(context, data: data);
+    final confirmed = await showPostDeeStatusSheet(context,
+        data: data, localizeData: _localizeSubmissionStatus);
     if (mounted && inlineError != null) {
-      setState(() => _errorMessage = inlineError);
+      setState(() {
+        _errorMessage = inlineError;
+        _submissionInlineError = inlineError;
+      });
     }
     if (confirmed == true && shouldPickVideo && mounted) {
       await _pickVideoFile();
@@ -5390,7 +5418,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: Semantics(liveRegion: true,
                                       child: PostDeeNotice(
-                                      message: localizeUploaderMessage(context, _errorMessage!),
+                                      message: _errorMessage == _submissionInlineError
+                                          ? _localizeSubmissionError(context, _errorMessage!)
+                                          : localizeUploaderMessage(context, _errorMessage!),
                                       color:
                                           Theme.of(context).colorScheme.error,
                                       icon: Icons.error_outline))),

@@ -9,6 +9,7 @@ import '../platforms/social_platform_logo.dart';
 import '../posts/posts_screen.dart';
 import '../shared/post_delivery_outcome.dart';
 import '../shared/tiktok_draft_next_step.dart';
+import 'publish_flow_localizations.dart';
 
 enum PublishFlowAction { finish, analytics }
 
@@ -151,8 +152,9 @@ class _PublishFlowScreenState extends State<PublishFlowScreen>
 
   String get _publishErrorMessage {
     return apiErrorMessage(_publishError!,
-        fallbackMessage:
-            'เกิดข้อผิดพลาดระหว่างส่งโพสต์ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่');
+        languageCode: publishFlowUsesThai(context) ? 'th' : 'en',
+        fallbackMessage: localizePublishFlowMessage(context,
+            'เกิดข้อผิดพลาดระหว่างส่งโพสต์ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่'));
   }
 
   void _viewPost() {
@@ -160,7 +162,8 @@ class _PublishFlowScreenState extends State<PublishFlowScreen>
     if (post == null || !mounted) return;
     if (!_viewPostSession.isCurrent) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายการโพสต์ใหม่')));
+          content: PublishFlowText(
+              'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายการโพสต์ใหม่')));
       return;
     }
     final onViewPost = widget.onViewPost;
@@ -179,7 +182,7 @@ class _PublishFlowScreenState extends State<PublishFlowScreen>
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
-          content: Text(
+          content: PublishFlowText(
             'ยังยกเลิกไม่ได้ระหว่างส่งข้อมูล กรุณารอจนจบขั้นตอน',
           ),
         ),
@@ -204,7 +207,7 @@ class _PublishFlowScreenState extends State<PublishFlowScreen>
                       platforms: widget.platforms,
                       isScheduled: widget.isScheduled,
                       post: _post!,
-                       onViewPost: _viewPost,
+                      onViewPost: _viewPost,
                     )
                   : _publishError != null
                       ? _PublishErrorView(
@@ -428,7 +431,7 @@ class _PublishingViewState extends State<_PublishingView>
       );
 
   Widget _progressRail(int percent) => Semantics(
-        label: 'ความคืบหน้าตามขั้นตอน',
+        label: localizePublishFlowMessage(context, 'ความคืบหน้าตามขั้นตอน'),
         value: '$percent%',
         child: ExcludeSemantics(
           child: ClipRRect(
@@ -504,12 +507,14 @@ class _PublishingViewState extends State<_PublishingView>
           Expanded(
             child: Semantics(
               key: ValueKey('publish-flow-step-${steps[index].id}'),
-              label: steps[index].label,
-              value: index < current
-                  ? 'เสร็จแล้ว'
-                  : index == current
-                      ? 'กำลังทำ'
-                      : 'รอขั้นตอน',
+              label: localizePublishFlowMessage(context, steps[index].label),
+              value: localizePublishFlowMessage(
+                  context,
+                  index < current
+                      ? 'เสร็จแล้ว'
+                      : index == current
+                          ? 'กำลังทำ'
+                          : 'รอขั้นตอน'),
               excludeSemantics: true,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -538,7 +543,7 @@ class _PublishingViewState extends State<_PublishingView>
                       ),
                     ),
                     const SizedBox(height: 7),
-                    Text(steps[index].label,
+                    PublishFlowText(steps[index].label,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 11,
@@ -565,7 +570,7 @@ class _PublishingViewState extends State<_PublishingView>
           children: [
             _emblem(),
             const SizedBox(height: 22),
-            Text(
+            PublishFlowText(
               widget.progress.title,
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -575,7 +580,7 @@ class _PublishingViewState extends State<_PublishingView>
               ),
             ),
             const SizedBox(height: 6),
-            Text(
+            PublishFlowText(
               'กำลังดำเนินการสำหรับ ${widget.platforms.length} ช่องทาง',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
@@ -585,7 +590,7 @@ class _PublishingViewState extends State<_PublishingView>
             const SizedBox(height: 26),
             _progressRail(percent),
             const SizedBox(height: 10),
-            Text(
+            PublishFlowText(
               '$percent% · ความคืบหน้าตามขั้นตอน',
               key: const ValueKey('publish-flow-progress-label'),
               textAlign: TextAlign.center,
@@ -598,7 +603,7 @@ class _PublishingViewState extends State<_PublishingView>
             const SizedBox(height: 24),
             _steps(),
             const SizedBox(height: 22),
-            Text(
+            PublishFlowText(
               'เปอร์เซ็นต์นี้แสดงขั้นตอนงาน ไม่ใช่จำนวนไบต์ที่อัปโหลด',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -608,13 +613,13 @@ class _PublishingViewState extends State<_PublishingView>
               ),
             ),
             const SizedBox(height: 12),
-            Text(
+            PublishFlowText(
               'กรุณาเปิดแอปหน้านี้ไว้ระหว่างเตรียมและส่งข้อมูล '
               'ยังยกเลิกไม่ได้จนจบขั้นตอน',
               key: const ValueKey('publish-flow-foreground-notice'),
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, height: 1.5,
-                  color: AppTheme.textSecondary),
+              style: TextStyle(
+                  fontSize: 12, height: 1.5, color: AppTheme.textSecondary),
             ),
           ],
         ),
@@ -657,7 +662,7 @@ class _PublishErrorView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            Text(
+            PublishFlowText(
               'ส่งโพสต์ไม่สำเร็จ',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -667,7 +672,7 @@ class _PublishErrorView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            PublishFlowText(
               message,
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -690,17 +695,17 @@ class _PublishErrorView extends StatelessWidget {
                     borderRadius: BorderRadius.circular(15),
                   ),
                 ),
-                child: const Text('ลองใหม่'),
+                child: const PublishFlowText('ลองใหม่'),
               ),
             ),
             const SizedBox(height: 4),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                  minWidth: double.infinity, minHeight: 48),
               child: TextButton(
                 key: const ValueKey('publish-flow-back-after-error'),
                 onPressed: onBack,
-                child: const Text('กลับไปตรวจสอบ'),
+                child: const PublishFlowText('กลับไปตรวจสอบ'),
               ),
             ),
           ],
@@ -812,17 +817,21 @@ class _PublishDoneView extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                _failed ? Icons.error_outline_rounded : _hasUnconfirmedOutcome
-                    ? Icons.help_outline_rounded
-                    : Icons.check_rounded,
+                _failed
+                    ? Icons.error_outline_rounded
+                    : _hasUnconfirmedOutcome
+                        ? Icons.help_outline_rounded
+                        : Icons.check_rounded,
                 size: 54,
-                color: _failed ? Theme.of(context).colorScheme.error : _hasUnconfirmedOutcome
-                    ? AppTheme.textMuted
-                    : AppTheme.accentCyanInk,
+                color: _failed
+                    ? Theme.of(context).colorScheme.error
+                    : _hasUnconfirmedOutcome
+                        ? AppTheme.textMuted
+                        : AppTheme.accentCyanInk,
               ),
             ),
             const SizedBox(height: 16),
-            Text(
+            PublishFlowText(
               _title,
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -832,7 +841,7 @@ class _PublishDoneView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            PublishFlowText(
               _body,
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -869,7 +878,7 @@ class _PublishDoneView extends StatelessWidget {
                             SocialPlatformLogo(platform: platform, size: 18),
                             const SizedBox(width: 6),
                             Flexible(
-                              child: Text(
+                              child: PublishFlowText(
                                 _platformLabel(platform),
                                 style: TextStyle(
                                   fontSize: 12,
@@ -887,8 +896,9 @@ class _PublishDoneView extends StatelessWidget {
             ),
             if (hasConfirmedTikTokDraft(post.platformResults)) ...[
               const SizedBox(height: 18),
-              const TikTokDraftNextStepCard(
-                  key: ValueKey('tiktok-draft-next-step')),
+              TikTokDraftNextStepCard(
+                  key: const ValueKey('tiktok-draft-next-step'),
+                  languageCode: publishFlowUsesThai(context) ? 'th' : 'en'),
             ],
             const SizedBox(height: 30),
             SizedBox(
@@ -897,7 +907,7 @@ class _PublishDoneView extends StatelessWidget {
                 key: const ValueKey('publish-flow-view-post'),
                 onPressed: onViewPost,
                 icon: const Icon(Icons.receipt_long_outlined),
-                label: const Text('ดูโพสต์นี้'),
+                label: const PublishFlowText('ดูโพสต์นี้'),
                 style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(48)),
               ),
@@ -921,13 +931,13 @@ class _PublishDoneView extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                child: const Text('เสร็จสิ้น'),
+                child: const PublishFlowText('เสร็จสิ้น'),
               ),
             ),
             const SizedBox(height: 4),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                  minWidth: double.infinity, minHeight: 48),
               child: TextButton(
                 key: const ValueKey('publish-flow-analytics'),
                 onPressed: () =>
@@ -939,7 +949,7 @@ class _PublishDoneView extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                child: const Text('ดูสถิติโพสต์'),
+                child: const PublishFlowText('ดูสถิติโพสต์'),
               ),
             ),
           ],

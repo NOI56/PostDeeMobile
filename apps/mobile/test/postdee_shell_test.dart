@@ -3359,7 +3359,8 @@ void main() {
 
     expect(createdPostRequest?.scheduledAt, isNotNull);
     expect(preparationCalls, 1);
-    expect(find.text('จัดคิวส่งตามเวลาแล้ว'), findsOneWidget);
+    expect(find.text('Post scheduled'), findsOneWidget);
+    expect(find.text('จัดคิวส่งตามเวลาแล้ว'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('publish-flow-finish')));
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Calendar'));

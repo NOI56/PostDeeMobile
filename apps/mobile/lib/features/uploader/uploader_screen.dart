@@ -1239,7 +1239,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     await Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (_) => PostVideoPreviewScreen(
             videoFile: File(path),
-            videoName: _selectedVideoName ?? 'คลิปของคุณ')));
+            videoName: _selectedVideoName ??
+                uploaderText(context, 'คลิปของคุณ', 'Your video'))));
   }
 
   Future<void> _openPostPreview() async {

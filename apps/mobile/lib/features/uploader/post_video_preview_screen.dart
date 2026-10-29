@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/theme/app_theme.dart';
 import 'publish_post_preview.dart';
+import 'video_preview_localizations.dart';
 
 /// Plays a local clip or a temporary owned-post URL without uploading media.
 class PostVideoPreviewScreen extends StatefulWidget {
@@ -447,11 +448,12 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
     final title = postPreview == null ? 'ดูคลิป' : 'พรีวิว';
     if (_accessRevoked) {
       return Scaffold(
-          appBar: AppBar(title: Text(title)),
+          appBar: AppBar(title: VideoPreviewText(title)),
           body: const Center(
               child: Padding(
                   padding: EdgeInsets.all(24),
-                  child: Text('บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดคลิปใหม่',
+                  child: VideoPreviewText(
+                      'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดคลิปใหม่',
                       textAlign: TextAlign.center))));
     }
     final controller = _controller;
@@ -474,7 +476,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
               child: _buildImmersivePreview(postPreview, controller),
             )
           : Scaffold(
-              appBar: AppBar(title: Text(title)),
+              appBar: AppBar(title: VideoPreviewText(title)),
               body: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -527,11 +529,13 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
           fit: StackFit.expand,
           children: [
             Tooltip(
-              message: playing ? 'หยุดคลิป' : 'เล่นคลิป',
+              message: localizeVideoPreviewMessage(
+                  context, playing ? 'หยุดคลิป' : 'เล่นคลิป'),
               child: Semantics(
                 button: true,
                 enabled: enabled,
-                label: playing ? 'หยุดคลิป' : 'เล่นคลิป',
+                label: localizeVideoPreviewMessage(
+                    context, playing ? 'หยุดคลิป' : 'เล่นคลิป'),
                 child: GestureDetector(
                   key: const ValueKey('post-video-preview-play'),
                   behavior: HitTestBehavior.opaque,
@@ -574,49 +578,54 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
               right: 8,
               child: SafeArea(
                 bottom: false,
-                child: SizedBox(
-                  height: 56,
-                  child: Row(children: [
-                    IconButton(
-                      tooltip:
-                          MaterialLocalizations.of(context).backButtonTooltip,
-                      color: Colors.white,
-                      icon: const Icon(Icons.arrow_back_ios_new, size: 26),
-                      onPressed: () => Navigator.of(context).maybePop(),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 56),
+                      child: Row(children: [
+                        IconButton(
+                          tooltip: MaterialLocalizations.of(context)
+                              .backButtonTooltip,
+                          color: Colors.white,
+                          icon: const Icon(Icons.arrow_back_ios_new, size: 26),
+                          onPressed: () => Navigator.of(context).maybePop(),
+                        ),
+                        const Expanded(
+                          child: VideoPreviewText('พรีวิว',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                        IconButton(
+                          key: const ValueKey(
+                              'post-video-preview-volume-toggle'),
+                          tooltip: localizeVideoPreviewMessage(
+                              context, 'ปรับเสียงพรีวิว'),
+                          color: Colors.white,
+                          disabledColor: Colors.white38,
+                          onPressed: enabled
+                              ? () => setState(
+                                  () => _volumePanelOpen = !_volumePanelOpen)
+                              : null,
+                          icon: Icon(_previewVolume == 0
+                              ? Icons.volume_off_outlined
+                              : Icons.volume_up_outlined),
+                        ),
+                      ])),
+                  if (_volumePanelOpen && ready)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, right: 4),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: _buildImmersiveVolume(),
+                      ),
                     ),
-                    const Expanded(
-                      child: Text('พรีวิว',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                    IconButton(
-                      key: const ValueKey('post-video-preview-volume-toggle'),
-                      tooltip: 'ปรับเสียงพรีวิว',
-                      color: Colors.white,
-                      disabledColor: Colors.white38,
-                      onPressed: enabled
-                          ? () => setState(
-                              () => _volumePanelOpen = !_volumePanelOpen)
-                          : null,
-                      icon: Icon(_previewVolume == 0
-                          ? Icons.volume_off_outlined
-                          : Icons.volume_up_outlined),
-                    ),
-                  ]),
-                ),
+                ]),
               ),
             ),
-            if (_volumePanelOpen && ready)
-              Positioned(
-                top: MediaQuery.paddingOf(context).top + 64,
-                right: MediaQuery.paddingOf(context).right + 12,
-                child: _buildImmersiveVolume(),
-              ),
             if (_playbackMessage != null)
               Positioned(
                 left: 16,
@@ -627,7 +636,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Text(_playbackMessage!,
+                    child: VideoPreviewText(_playbackMessage!,
                         textAlign: TextAlign.center,
                         style: const TextStyle(color: Colors.white)),
                   ),
@@ -653,8 +662,8 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
           child: Row(children: [
             IconButton(
               key: const ValueKey('post-video-preview-mute'),
-              tooltip:
-                  _previewVolume == 0 ? 'เปิดเสียงพรีวิว' : 'ปิดเสียงพรีวิว',
+              tooltip: localizeVideoPreviewMessage(context,
+                  _previewVolume == 0 ? 'เปิดเสียงพรีวิว' : 'ปิดเสียงพรีวิว'),
               color: Colors.white,
               onPressed: enabled
                   ? () => unawaited(_setPreviewVolume(
@@ -666,14 +675,15 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
             ),
             Expanded(
               child: Semantics(
-                label: 'ระดับเสียงพรีวิว',
+                label: localizeVideoPreviewMessage(context, 'ระดับเสียงพรีวิว'),
                 child: Slider(
                   key: const ValueKey('post-video-preview-volume'),
                   value: displayedVolume,
                   activeColor: Colors.white,
                   inactiveColor: Colors.white30,
                   semanticFormatterCallback: (value) =>
-                      '${(value * 100).round()} เปอร์เซ็นต์',
+                      localizeVideoPreviewMessage(
+                          context, '${(value * 100).round()} เปอร์เซ็นต์'),
                   onChanged: enabled
                       ? (value) => setState(() => _dragVolume = value)
                       : null,
@@ -683,14 +693,11 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
                 ),
               ),
             ),
-            SizedBox(
-              width: 48,
-              child: Text('${(displayedVolume * 100).round()}%',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                  style: const TextStyle(color: Colors.white, fontSize: 12)),
-            ),
+            Text('${(displayedVolume * 100).round()}%',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: const TextStyle(color: Colors.white, fontSize: 12)),
           ]),
         ),
       ),
@@ -711,9 +718,9 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
                       ? Colors.white70
                       : Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(height: 16),
-              Text(_errorMessage!, textAlign: TextAlign.center),
+              VideoPreviewText(_errorMessage!, textAlign: TextAlign.center),
               const SizedBox(height: 8),
-              Text(
+              VideoPreviewText(
                 widget.videoUrl != null
                     ? 'กลับไปตรวจสถานะเพื่อเปิดตัวอย่างล่าสุด'
                     : 'ลองเปิดอีกครั้ง หรือกลับไปเลือกคลิปอื่น',
@@ -725,7 +732,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
                   key: const ValueKey('post-video-preview-retry'),
                   onPressed: _restartInitialization,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('ลองเปิดคลิปอีกครั้ง'),
+                  label: const VideoPreviewText('ลองเปิดคลิปอีกครั้ง'),
                 ),
             ],
           ),
@@ -748,7 +755,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
                   : const Icon(Icons.hourglass_empty, size: 28),
             ),
             const SizedBox(height: 16),
-            const Text('กำลังเปิดคลิป…'),
+            const VideoPreviewText('กำลังเปิดคลิป…'),
           ],
         ),
       );
@@ -784,7 +791,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
       children: [
         const SizedBox(height: 12),
         Semantics(
-          label: 'เลื่อนเวลาคลิป',
+          label: localizeVideoPreviewMessage(context, 'เลื่อนเวลาคลิป'),
           child: Slider(
             key: const ValueKey('post-video-preview-seek'),
             value: positionMs,
@@ -805,7 +812,8 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
           children: [
             IconButton.filled(
               key: const ValueKey('post-video-preview-play'),
-              tooltip: value.isPlaying ? 'หยุดคลิป' : 'เล่นคลิป',
+              tooltip: localizeVideoPreviewMessage(
+                  context, value.isPlaying ? 'หยุดคลิป' : 'เล่นคลิป'),
               onPressed: controlsEnabled ? _togglePlayback : null,
               style: IconButton.styleFrom(
                 backgroundColor: AppTheme.accent,
@@ -815,7 +823,7 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
             ),
             const SizedBox(width: 8),
             IconButton(
-              tooltip: 'เริ่มคลิปใหม่',
+              tooltip: localizeVideoPreviewMessage(context, 'เริ่มคลิปใหม่'),
               onPressed: controlsEnabled ? () => _seek(0) : null,
               icon: const Icon(Icons.replay),
             ),
@@ -835,8 +843,8 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
           children: [
             IconButton(
               key: const ValueKey('post-video-preview-mute'),
-              tooltip:
-                  _previewVolume == 0 ? 'เปิดเสียงพรีวิว' : 'ปิดเสียงพรีวิว',
+              tooltip: localizeVideoPreviewMessage(context,
+                  _previewVolume == 0 ? 'เปิดเสียงพรีวิว' : 'ปิดเสียงพรีวิว'),
               onPressed: controlsEnabled
                   ? () => unawaited(_setPreviewVolume(
                       _previewVolume == 0 ? _lastAudibleVolume : 0))
@@ -847,14 +855,15 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
             ),
             Expanded(
               child: Semantics(
-                label: 'ระดับเสียงพรีวิว',
+                label: localizeVideoPreviewMessage(context, 'ระดับเสียงพรีวิว'),
                 child: Slider(
                   key: const ValueKey('post-video-preview-volume'),
                   value: _dragVolume ?? _previewVolume,
                   activeColor: AppTheme.accent,
                   label: '${((_dragVolume ?? _previewVolume) * 100).round()}%',
                   semanticFormatterCallback: (value) =>
-                      '${(value * 100).round()} เปอร์เซ็นต์',
+                      localizeVideoPreviewMessage(
+                          context, '${(value * 100).round()} เปอร์เซ็นต์'),
                   onChanged: controlsEnabled
                       ? (value) => setState(() => _dragVolume = value)
                       : null,
@@ -864,21 +873,18 @@ class _PostVideoPreviewScreenState extends State<PostVideoPreviewScreen>
                 ),
               ),
             ),
-            SizedBox(
-              width: 54,
-              child: Text(
-                '${((_dragVolume ?? _previewVolume) * 100).round()}%',
-                maxLines: 1,
-                textAlign: TextAlign.end,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+            Text(
+              '${((_dragVolume ?? _previewVolume) * 100).round()}%',
+              maxLines: 1,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
         if (_playbackMessage != null) ...[
           const SizedBox(height: 8),
-          Text(_playbackMessage!, textAlign: TextAlign.center),
+          VideoPreviewText(_playbackMessage!, textAlign: TextAlign.center),
         ],
       ],
     );

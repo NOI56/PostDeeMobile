@@ -241,6 +241,9 @@ class ReviewVideoTimeline extends StatelessWidget {
     required this.onSeekEnd,
     this.maxPosition,
     this.sliderKey = const ValueKey('ai-review-seek-slider'),
+    this.positionLabel = 'ตำแหน่งวิดีโอ',
+    this.semanticValueFormatter,
+    this.remainingLabelFormatter,
   });
 
   final Duration position;
@@ -251,6 +254,10 @@ class ReviewVideoTimeline extends StatelessWidget {
   final ValueChanged<Duration> onSeekEnd;
   final Duration? maxPosition;
   final Key sliderKey;
+  final String positionLabel;
+  final String Function(String elapsed, String duration, int remainingSeconds)?
+      semanticValueFormatter;
+  final String Function(int seconds)? remainingLabelFormatter;
 
   @override
   Widget build(BuildContext context) {
@@ -283,8 +290,9 @@ class ReviewVideoTimeline extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Semantics(
-          label: 'ตำแหน่งวิดีโอ',
-          value:
+          label: positionLabel,
+          value: semanticValueFormatter?.call(
+                  elapsedLabel, durationLabel, remainingSeconds) ??
               '$elapsedLabel จาก $durationLabel เหลือ $remainingSeconds วินาที',
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
@@ -320,8 +328,10 @@ class ReviewVideoTimeline extends StatelessWidget {
                   position: semanticPosition,
                   duration: duration,
                 );
-                return '$semanticElapsedLabel จาก $durationLabel '
-                    'เหลือ $semanticRemainingSeconds วินาที';
+                return semanticValueFormatter?.call(semanticElapsedLabel,
+                        durationLabel, semanticRemainingSeconds) ??
+                    '$semanticElapsedLabel จาก $durationLabel '
+                        'เหลือ $semanticRemainingSeconds วินาที';
               },
             ),
           ),
@@ -343,7 +353,8 @@ class ReviewVideoTimeline extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                'เหลือ $remainingSeconds วิ',
+                remainingLabelFormatter?.call(remainingSeconds) ??
+                    'เหลือ $remainingSeconds วิ',
                 key: const ValueKey('ai-review-time-remaining'),
                 style: TextStyle(
                   fontSize: 12,

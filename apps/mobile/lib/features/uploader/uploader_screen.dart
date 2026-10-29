@@ -30,6 +30,7 @@ import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
 import 'caption_quota_strip.dart';
 import 'caption_localizations.dart';
+import 'channel_localizations.dart';
 import 'post_quota_strip.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
@@ -5067,7 +5068,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                           platform: platform,
                           displayName:
                               _connectionDetails[platform]?.displayName ?? '',
-                          child: const Text(
+                          child: const ChannelText(
                               'บัญชีหรือคลิปเปลี่ยนแล้ว กรุณาเปิดการตั้งค่าใหม่'));
                     }
                     if (snapshot.connectionState == ConnectionState.waiting) {
@@ -5084,7 +5085,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                         'uploader-platform-defaults-loading'),
                                     strokeWidth: 2)),
                             SizedBox(width: 12),
-                            Expanded(child: Text('กำลังโหลดค่าที่จำไว้')),
+                            Expanded(child: ChannelText('กำลังโหลดค่าที่จำไว้')),
                           ]));
                     }
                     final remembered = snapshot.data?.value;
@@ -5176,7 +5177,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     } catch (_) {
       if (!mounted || !isCurrent() || savedForm != _formSnapshot) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
+          content: ChannelText(
               'ใช้การตั้งค่ากับคลิปนี้แล้ว แต่จำค่าไว้ครั้งถัดไปไม่สำเร็จ')));
     }
   }
@@ -6778,10 +6779,13 @@ class _PlatformSelectorSection extends StatelessWidget {
             .where(connectedPlatforms.contains)
             .toList(growable: false);
     final unavailableDraftMessage = isLoadingConnections
-        ? 'กำลังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้: '
+        ? channelText(context, 'กำลังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้: ',
+            'Checking channels selected in this draft: ')
         : hasConnectionError
-            ? 'ยังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้ไม่ได้: '
-            : 'ฉบับร่างเลือกไว้แต่ยังไม่ได้เชื่อม: ';
+            ? channelText(context, 'ยังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้ไม่ได้: ',
+                'Could not check channels selected in this draft: ')
+            : channelText(context, 'ฉบับร่างเลือกไว้แต่ยังไม่ได้เชื่อม: ',
+                'Selected in this draft but not connected: ');
     final statusColor = hasConnectedPlatforms
         ? AppTheme.accentCyanInk
         : const Color(0xFFB5740B);
@@ -6791,13 +6795,13 @@ class _PlatformSelectorSection extends StatelessWidget {
       children: [
         Semantics(
           button: true,
-          label: isLoadingConnections
+          label: localizeChannelMessage(context, isLoadingConnections
               ? 'กำลังตรวจสอบช่องทาง'
               : hasConnectionError
                   ? 'ตรวจสอบช่องทางไม่ได้ ลองใหม่'
                   : connectedPlatforms.isEmpty
                       ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
-                      : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง',
+                      : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง'),
           child: GestureDetector(
             onTap: connectionsErrorMessage != null
                 ? onRetryConnections
@@ -6829,7 +6833,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        ChannelText(
                           isLoadingConnections
                               ? 'กำลังตรวจสอบช่องทาง...'
                               : connectionsErrorMessage ??
@@ -6847,7 +6851,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 1),
-                        Text(
+                        ChannelText(
                           isLoadingConnections
                               ? 'กรุณารอผลการตรวจสอบสถานะช่องทาง'
                               : hasConnectionError
@@ -6884,7 +6888,7 @@ class _PlatformSelectorSection extends StatelessWidget {
               key: const ValueKey('uploader-retry-connections'),
               onPressed: isLoadingConnections ? null : onRetryConnections,
               icon: const Icon(Icons.refresh),
-              label: const Text('ลองใหม่'),
+              label: const ChannelText('ลองใหม่'),
             ),
           ),
         ],
@@ -6895,7 +6899,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                 key: const ValueKey('uploader-refresh-publishing-readiness'),
                 onPressed: isLoadingConnections ? null : onRetryConnections,
                 icon: const Icon(Icons.refresh, size: 17),
-                label: const Text('ตรวจสิทธิ์อีกครั้ง'),
+                label: const ChannelText('ตรวจสิทธิ์อีกครั้ง'),
               )),
         if (unavailableDraftPlatforms.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -6924,7 +6928,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 9),
                 ),
-                child: Text(durationWarnings.isEmpty
+                child: ChannelText(durationWarnings.isEmpty
                     ? 'เลือกทั้งหมด'
                     : 'เลือกทั้งหมดที่รองรับ'),
               ),
@@ -6935,7 +6939,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 9),
                 ),
-                child: const Text('ล้างทั้งหมด'),
+                child: const ChannelText('ล้างทั้งหมด'),
               ),
             ],
           ),
@@ -6995,7 +6999,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Text(validationMessage!, style: TextStyle(
+                              UploaderText(validationMessage!, style: TextStyle(
                                   color: Theme.of(context).colorScheme.error)),
                               Align(
                                 alignment: Alignment.centerLeft,
@@ -7003,7 +7007,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                                   key: ValueKey('uploader-platform-validation-edit-${visiblePlatforms[index].apiValue}'),
                                   onPressed: () => onOpenPlatformSettings(visiblePlatforms[index]),
                                   icon: const Icon(Icons.tune_rounded),
-                                  label: const Text('แก้การตั้งค่าช่องทางนี้'),
+                                  label: const ChannelText('แก้การตั้งค่าช่องทางนี้'),
                                 ),
                               ),
                             ],
@@ -7083,7 +7087,7 @@ class _PlatformRow extends StatelessWidget {
     final identity = connectionDisplayName?.trim();
     return Semantics(
       label: publishReviewPlatformLabel(platform),
-      hint: blockedReason ?? subLabel,
+      hint: localizeUploaderMessage(context, blockedReason ?? subLabel),
       button: true,
       enabled: blockedReason == null || isSelected,
       selected: isSelected,
@@ -7125,7 +7129,7 @@ class _PlatformRow extends StatelessWidget {
                             const SizedBox(height: 1),
                             Text(
                               identity == null || identity.isEmpty
-                                  ? 'ยังยืนยันบัญชีไม่ได้'
+                                  ? localizeChannelMessage(context, 'ยังยืนยันบัญชีไม่ได้')
                                   : identity,
                               key: ValueKey(
                                   'uploader-platform-account-${platform.apiValue}'),
@@ -7137,7 +7141,7 @@ class _PlatformRow extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 3),
-                            Text(
+                            ChannelText(
                                 blockedReason == null
                                     ? settingsSummary
                                     : 'โพสต์ช่องทางนี้ไม่ได้',
@@ -7146,7 +7150,7 @@ class _PlatformRow extends StatelessWidget {
                                     color: AppTheme.textSecondary)),
                             if (readinessLabel != null) ...[
                               const SizedBox(height: 3),
-                              Text(readinessLabel!,
+                              UploaderText(readinessLabel!,
                                   key: ValueKey(
                                       'uploader-channel-readiness-${platform.apiValue}'),
                                   style: TextStyle(
@@ -7157,7 +7161,7 @@ class _PlatformRow extends StatelessWidget {
                               const SizedBox(height: 4),
                               Semantics(
                                 liveRegion: true,
-                                child: Text(blockedReason!,
+                                child: UploaderText(blockedReason!,
                                     key: ValueKey('uploader-platform-duration-${platform.apiValue}'),
                                     style: TextStyle(
                                         fontSize: 12,
@@ -7207,7 +7211,7 @@ class _PlatformRow extends StatelessWidget {
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(
+                            child: ChannelText(
                               'ตั้งค่าช่องทาง',
                             ),
                           ),
@@ -7319,17 +7323,19 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text('ชื่อที่จะปรากฏบน YouTube Shorts'),
+                      const ChannelText('ชื่อที่จะปรากฏบน YouTube Shorts'),
                       const SizedBox(height: 6),
                       Text(
                         youtubeTitle.isEmpty
-                            ? 'เพิ่มแคปชันหรือชื่อคลิป YouTube'
+                            ? localizeChannelMessage(
+                                context, 'เพิ่มแคปชันหรือชื่อคลิป YouTube')
                             : youtubeTitle,
                         key: const ValueKey('uploader-youtube-title-preview'),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
-                      const Text('แคปชันฉบับเต็มและแฮชแท็กจะใช้เป็นคำอธิบาย'),
+                      const ChannelText(
+                          'แคปชันฉบับเต็มและแฮชแท็กจะใช้เป็นคำอธิบาย'),
                       if (!_isEditingYoutubeTitle)
                         Align(
                           alignment: Alignment.centerLeft,
@@ -7340,7 +7346,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               _isEditingYoutubeTitle = true;
                             }),
                             icon: const Icon(Icons.edit_outlined, size: 16),
-                            label: const Text('ปรับชื่อเฉพาะ YouTube'),
+                            label: const ChannelText('ปรับชื่อเฉพาะ YouTube'),
                           ),
                         ),
                       if (_isEditingYoutubeTitle) ...[
@@ -7352,15 +7358,26 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                             _hasCustomYoutubeTitle = value.trim().isNotEmpty;
                           }),
                           decoration: InputDecoration(
-                            labelText: 'ชื่อวิดีโอ YouTube',
-                            helperText: 'เว้นว่างเพื่อใช้ชื่อจากแคปชัน',
+                            labelText: localizeChannelMessage(
+                                context, 'ชื่อวิดีโอ YouTube'),
+                            helper: ChannelText(
+                                'เว้นว่างเพื่อใช้ชื่อจากแคปชัน',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    )),
                             counterText:
                                 '${_youtubeTitleController.text.trim().runes.length}/100',
-                            errorText: _hasCustomYoutubeTitle &&
+                            error: _hasCustomYoutubeTitle &&
                                     (youtubeTitle.runes.length > 100 ||
                                         youtubeTitle.contains('<') ||
                                         youtubeTitle.contains('>'))
-                                ? 'ชื่อ YouTube ต้องไม่เกิน 100 ตัวอักษร และห้ามมี < หรือ >'
+                                ? const ChannelText(
+                                    'ชื่อ YouTube ต้องไม่เกิน 100 ตัวอักษร และห้ามมี < หรือ >')
                                 : null,
                           ),
                         ),
@@ -7374,7 +7391,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               _hasCustomYoutubeTitle = false;
                               _isEditingYoutubeTitle = false;
                             }),
-                            child: const Text('ใช้ชื่อจากแคปชัน'),
+                            child: const ChannelText('ใช้ชื่อจากแคปชัน'),
                           ),
                         ),
                       ],
@@ -7383,20 +7400,21 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                         isExpanded: true,
                         key: const ValueKey('uploader-youtube-visibility'),
                         initialValue: current.youtubeVisibility,
-                        decoration:
-                            const InputDecoration(labelText: 'การมองเห็น'),
+                        decoration: InputDecoration(
+                            labelText: localizeChannelMessage(
+                                context, 'การมองเห็น')),
                         items: const [
                           DropdownMenuItem(
                             value: YouTubeVisibility.private,
-                            child: Text('ส่วนตัว (Private)'),
+                            child: ChannelText('ส่วนตัว (Private)'),
                           ),
                           DropdownMenuItem(
                             value: YouTubeVisibility.unlisted,
-                            child: Text('ไม่เป็นสาธารณะ (Unlisted)'),
+                            child: ChannelText('ไม่เป็นสาธารณะ (Unlisted)'),
                           ),
                           DropdownMenuItem(
                             value: YouTubeVisibility.public,
-                            child: Text('สาธารณะ (Public)'),
+                            child: ChannelText('สาธารณะ (Public)'),
                           ),
                         ],
                         onChanged: (value) {
@@ -7409,7 +7427,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                       if (current.youtubeVisibility !=
                           YouTubeVisibility.private) ...[
                         const SizedBox(height: 8),
-                        Text(
+                        ChannelText(
                           'การมองเห็นจริงขึ้นอยู่กับสถานะวิดีโอและบัญชี YouTube '
                           'กรุณาตรวจผลหลังเผยแพร่',
                           style: TextStyle(
@@ -7435,7 +7453,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               current.copyWith(youtubeMadeForKids: value),
                         ),
                       ),
-                      Text(
+                      ChannelText(
                           'พิจารณาว่าเด็กเป็นกลุ่มผู้ชมเป้าหมาย ไม่ใช่เพียงเด็กดูได้',
                           style: TextStyle(
                               fontSize: 12, color: AppTheme.textMuted)),
@@ -7452,7 +7470,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                           ),
                         ),
                       ),
-                      Text(
+                      ChannelText(
                           'หมายถึงภาพหรือเสียงที่สร้างหรือดัดแปลงให้ดูเหมือนจริง '
                           'การช่วยคิดแคปชั่นอย่างเดียวไม่ถือเป็นสื่อสังเคราะห์ในวิดีโอ',
                           style: TextStyle(
@@ -7469,7 +7487,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                             youtubeCommunityGuidelinesCertified: value ?? false,
                           ),
                         ),
-                        title: const Text(
+                        title: const ChannelText(
                           'ฉันยืนยันว่าวิดีโอเป็นไปตามกฎชุมชน YouTube',
                         ),
                         controlAffinity: ListTileControlAffinity.leading,
@@ -7494,8 +7512,8 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                       instagramShareToFeed: value,
                     ),
                   ),
-                  title: const Text('แชร์ Reels ไปยังฟีด'),
-                  subtitle: const Text('ปิดเพื่อแสดงเฉพาะใน Reels'),
+                  title: const ChannelText('แชร์ Reels ไปยังฟีด'),
+                  subtitle: const ChannelText('ปิดเพื่อแสดงเฉพาะใน Reels'),
                 )),
             const SizedBox(height: 12),
             _buildCoverSummary(),
@@ -7548,7 +7566,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
         );
       case SocialPlatform.shopeeVideo:
       case SocialPlatform.lazadaVideo:
-        return const Text('ช่องทางนี้ยังไม่รองรับการโพสต์');
+        return const ChannelText('ช่องทางนี้ยังไม่รองรับการโพสต์');
     }
   }
 
@@ -7575,7 +7593,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
         ),
         const SizedBox(height: 8),
         if (value == null)
-          Text('ยังไม่ระบุ (ไม่บังคับ)',
+          ChannelText('ยังไม่ระบุ (ไม่บังคับ)',
               style: TextStyle(fontSize: 12, color: AppTheme.textSecondary))
         else
           Align(
@@ -7583,7 +7601,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
               child: TextButton(
                   key: ValueKey('uploader-$prefix-ai-clear'),
                   onPressed: () => change(null),
-                  child: const Text('ล้างคำตอบ'))),
+                  child: const ChannelText('ล้างคำตอบ'))),
       ]),
     );
   }
@@ -7597,7 +7615,8 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
       title: 'ภาพปก',
       description: 'เปลี่ยนภาพปกได้ในขั้นตอนคลิป',
       child: cover == null
-          ? const Text('ยังไม่ได้เลือกปก · แพลตฟอร์มจะเลือกเฟรมจากวิดีโอ')
+          ? const ChannelText(
+              'ยังไม่ได้เลือกปก · แพลตฟอร์มจะเลือกเฟรมจากวิดีโอ')
           : Row(children: [
               ClipRRect(
                   borderRadius: BorderRadius.circular(8),
@@ -7613,10 +7632,14 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               errorBuilder: (_, __, ___) => imageFallback))),
               const SizedBox(width: 12),
               Expanded(
-                  child: Text(cover.sourceKind == CoverSourceKind.videoFrame
-                      ? 'ใช้ปกที่เลือกจากวิดีโอ '
-                          'วินาทีที่ ${(cover.coverFrameTimeMs / 1000).toStringAsFixed(1)}'
-                      : 'ใช้ภาพปกที่เลือกไว้')),
+                  child: cover.sourceKind == CoverSourceKind.videoFrame
+                      ? Text(channelText(
+                          context,
+                          'ใช้ปกที่เลือกจากวิดีโอ '
+                          'วินาทีที่ ${(cover.coverFrameTimeMs / 1000).toStringAsFixed(1)}',
+                          'Using the selected video frame at '
+                          '${(cover.coverFrameTimeMs / 1000).toStringAsFixed(1)} seconds'))
+                      : const ChannelText('ใช้ภาพปกที่เลือกไว้')),
             ]),
     );
   }
@@ -7642,7 +7665,7 @@ class _BinarySettingRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        ChannelText(
           title,
           style: TextStyle(
             color: AppTheme.textPrimary,
@@ -7716,9 +7739,9 @@ class _SettingsChoiceButton extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label),
+                ChannelText(label),
                 if (subtitle != null)
-                  Text(
+                  ChannelText(
                     subtitle!,
                     style: TextStyle(
                       color: AppTheme.textMuted,

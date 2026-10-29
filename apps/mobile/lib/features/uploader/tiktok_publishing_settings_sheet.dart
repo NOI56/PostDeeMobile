@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../platforms/social_platform.dart';
+import 'channel_localizations.dart';
 import 'platform_publish_settings.dart';
 import 'platform_settings_scaffold.dart';
 
@@ -171,13 +172,14 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
     }
     if (!opened && mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-          content: Text('เปิดเงื่อนไข TikTok ไม่สำเร็จ '
+          content: ChannelText('เปิดเงื่อนไข TikTok ไม่สำเร็จ '
               'ลองใหม่หรือเปิดลิงก์นี้ในเบราว์เซอร์: $url')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 21;
     final direct = _settings.tiktokPublishMode == TikTokPublishMode.directPost;
     final info = _options?.creatorInfo;
     final commercialIncomplete = _commercial &&
@@ -208,18 +210,18 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
               ? _error ?? validation
               : null,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('วิธีส่งวิดีโอ',
+        const ChannelText('วิธีส่งวิดีโอ',
             style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Wrap(spacing: 8, children: [
           ChoiceChip(
               key: const ValueKey('uploader-tiktok-mode-inbox'),
-              label: const Text('ส่งเป็นร่างเข้า TikTok'),
+              label: const ChannelText('ส่งเป็นร่างเข้า TikTok'),
               selected: !direct,
               onSelected: (_) => _selectMode(TikTokPublishMode.inboxDraft)),
           ChoiceChip(
               key: const ValueKey('uploader-tiktok-mode-direct'),
-              label: const Text('โพสต์ตรง'),
+              label: const ChannelText('โพสต์ตรง'),
               selected: direct,
               onSelected: (_) => _selectMode(TikTokPublishMode.directPost)),
         ]),
@@ -228,14 +230,14 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
           const PlatformSettingsSection(
               title: 'ตั้งค่าต่อใน TikTok',
               description: 'ส่งออกจริงและใช้โควตาโพสต์',
-              child: Text('วิดีโอจะถูกส่งเข้า TikTok Inbox '
+              child: ChannelText('วิดีโอจะถูกส่งเข้า TikTok Inbox '
                   'ให้คุณเปิด TikTok เพื่อตรวจ แก้ไข และยืนยันเผยแพร่ต่อ')),
         if (direct && _loading) const LinearProgressIndicator(),
         if (direct && _error != null) ...[
           TextButton(
               key: const ValueKey('uploader-tiktok-options-retry'),
               onPressed: widget.isCurrent() ? _load : null,
-              child: const Text('ลองใหม่')),
+              child: const ChannelText('ลองใหม่')),
         ],
         if (direct && info != null) ...[
           PlatformSettingsSection(
@@ -243,23 +245,32 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    DropdownButtonFormField<TikTokPrivacyLevel>(
+                    if (largeText) ...[
+                      ExcludeSemantics(child: ChannelText('ใครดูวิดีโอนี้ได้',
+                          style: Theme.of(context).textTheme.bodyLarge)),
+                      const SizedBox(height: 8),
+                    ],
+                    Semantics(
+                      label: largeText ? localizeChannelMessage(context, 'ใครดูวิดีโอนี้ได้') : null,
+                      child: DropdownButtonFormField<TikTokPrivacyLevel>(
                         isExpanded: true,
+                        isDense: !largeText,
+                        itemHeight: largeText ? null : kMinInteractiveDimension,
                         key: ValueKey('uploader-tiktok-privacy'),
                         initialValue: _settings.tiktokPrivacyLevel,
-                        decoration: const InputDecoration(
-                            labelText: 'ใครดูวิดีโอนี้ได้',
-                            hintText: 'เลือกการมองเห็น'),
+                        decoration: InputDecoration(
+                            labelText: largeText ? null : localizeChannelMessage(context, 'ใครดูวิดีโอนี้ได้'),
+                            hintText: localizeChannelMessage(context, 'เลือกการมองเห็น')),
                         items: info.privacyLevelOptions
                             .map((value) => DropdownMenuItem(
                                 value: value,
                                 enabled:
                                     !(value == TikTokPrivacyLevel.selfOnly &&
                                         _settings.tiktokBrandContentToggle),
-                                child: Text(tikTokPrivacyLabel(value))))
+                                child: ChannelText(tikTokPrivacyLabel(value))))
                             .toList(),
                         onChanged: (value) => _change(
-                            _settings.copyWith(tiktokPrivacyLevel: value))),
+                            _settings.copyWith(tiktokPrivacyLevel: value)))),
                     const SizedBox(height: 12),
                     _interaction(
                         'comment',
@@ -290,7 +301,7 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                   children: [
                     SwitchListTile(
                         key: const ValueKey('uploader-tiktok-commercial'),
-                        title: const Text('เนื้อหาเชิงพาณิชย์'),
+                        title: const ChannelText('เนื้อหาเชิงพาณิชย์'),
                         value: _commercial,
                         onChanged: (value) {
                           _commercial = value;
@@ -303,7 +314,7 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                     if (_commercial) ...[
                       CheckboxListTile(
                           key: const ValueKey('uploader-tiktok-own-brand'),
-                          title: const Text('โปรโมตแบรนด์ของฉัน'),
+                          title: const ChannelText('โปรโมตแบรนด์ของฉัน'),
                           value: _settings.tiktokBrandOrganicToggle,
                           onChanged: (value) => _change(
                               _settings.copyWith(
@@ -311,7 +322,7 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                               resetConsents: true)),
                       CheckboxListTile(
                           key: const ValueKey('uploader-tiktok-third-party'),
-                          title: const Text('โปรโมตแบรนด์ของบุคคลอื่น'),
+                          title: const ChannelText('โปรโมตแบรนด์ของบุคคลอื่น'),
                           value: _settings.tiktokBrandContentToggle,
                           onChanged: _settings.tiktokPrivacyLevel ==
                                   TikTokPrivacyLevel.selfOnly
@@ -322,13 +333,13 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                                   resetConsents: true)),
                       if (_settings.tiktokPrivacyLevel ==
                           TikTokPrivacyLevel.selfOnly)
-                        const Text(
+                        const ChannelText(
                             'เนื้อหาที่มีผู้สนับสนุนตั้งเป็นเฉพาะฉันไม่ได้ เลือกผู้ชมอื่นก่อน'),
                       if (_settings.tiktokBrandContentToggle)
-                        const Text(
+                        const ChannelText(
                             'วิดีโอนี้จะแสดงป้าย Paid partnership / มีผู้สนับสนุน')
                       else if (_settings.tiktokBrandOrganicToggle)
-                        const Text('วิดีโอนี้จะแสดงป้ายเนื้อหาโปรโมต'),
+                        const ChannelText('วิดีโอนี้จะแสดงป้ายเนื้อหาโปรโมต'),
                     ],
                   ])),
           const SizedBox(height: 12),
@@ -341,13 +352,13 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                   children: [
                     CheckboxListTile(
                         key: const ValueKey('uploader-tiktok-aigc'),
-                        title: const Text('มีเนื้อหาที่สร้างโดย AI'),
+                        title: const ChannelText('มีเนื้อหาที่สร้างโดย AI'),
                         value: _settings.tiktokIsAigc,
                         onChanged: (value) => _change(
                             _settings.copyWith(tiktokIsAigc: value ?? false))),
                     CheckboxListTile(
                         key: const ValueKey('uploader-tiktok-music-consent'),
-                        title: const Text(
+                        title: const ChannelText(
                             'ฉันยืนยันสิทธิ์การใช้เพลงและยอมรับเงื่อนไขการใช้เพลงของ TikTok'),
                         value: _settings.tiktokMusicUsageConfirmed,
                         onChanged: (value) => setState(() => _settings =
@@ -356,11 +367,11 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                     TextButton(
                         onPressed: () => _policy(
                             'https://www.tiktok.com/legal/page/global/music-usage-confirmation/en'),
-                        child: const Text('อ่านเงื่อนไขการใช้เพลง')),
+                        child: const ChannelText('อ่านเงื่อนไขการใช้เพลง')),
                     if (_settings.tiktokBrandContentToggle) ...[
                       CheckboxListTile(
                           key: const ValueKey('uploader-tiktok-brand-consent'),
-                          title: const Text(
+                          title: const ChannelText(
                               'ฉันยอมรับนโยบาย Branded Content ของ TikTok'),
                           value: _settings.tiktokBrandedContentPolicyConfirmed,
                           onChanged: (value) => setState(() => _settings =
@@ -370,9 +381,9 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
                       TextButton(
                           onPressed: () => _policy(
                               'https://www.tiktok.com/legal/page/global/bc-policy/en'),
-                          child: const Text('อ่านนโยบาย Branded Content')),
+                          child: const ChannelText('อ่านนโยบาย Branded Content')),
                     ],
-                    const Text(
+                    const ChannelText(
                         'TikTok อาจใช้เวลาประมวลผลหลายนาที ผลเผยแพร่ขึ้นอยู่กับการมองเห็นที่เลือก'),
                   ])),
         ],
@@ -385,8 +396,8 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
       CheckboxListTile(
         key: ValueKey('uploader-tiktok-allow-$key'),
         contentPadding: EdgeInsets.zero,
-        title: Text(title),
-        subtitle: disabled ? const Text('บัญชี TikTok นี้ไม่อนุญาต') : null,
+        title: ChannelText(title),
+        subtitle: disabled ? const ChannelText('บัญชี TikTok นี้ไม่อนุญาต') : null,
         value: !disabled && value,
         onChanged: disabled ? null : (next) => _change(update(next ?? false)),
       );

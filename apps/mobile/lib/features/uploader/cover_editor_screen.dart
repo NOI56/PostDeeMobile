@@ -9,6 +9,7 @@ import '../ai_editing/review_video_timeline.dart';
 import '../ai_editing/video_duration_probe.dart';
 import '../platforms/social_platform.dart';
 import 'cover_image_processor.dart';
+import 'review_localizations.dart';
 
 class CoverEditorRequest {
   const CoverEditorRequest({
@@ -711,9 +712,11 @@ class CoverPlatformCapabilityNotice extends StatelessWidget {
       key: const ValueKey('cover-platform-capability-notice'),
       padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F8F5),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? AppTheme.glassDeep : const Color(0xFFF2F8F5),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFB9DCCB)),
+        border: Border.all(color: Theme.of(context).brightness == Brightness.dark
+            ? AppTheme.border : const Color(0xFFB9DCCB)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -726,7 +729,7 @@ class CoverPlatformCapabilityNotice extends StatelessWidget {
                 color: AppTheme.accentCyanInk,
               ),
               const SizedBox(width: 7),
-              Text(
+              ReviewText(
                 'การรองรับหน้าปก',
                 style: TextStyle(
                   color: AppTheme.textPrimary,
@@ -741,7 +744,7 @@ class CoverPlatformCapabilityNotice extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 3),
               child: Text(
-                '• $message',
+                '• ${localizeReviewMessage(context, message)}',
                 style: TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: compact ? 10.5 : 11.5,

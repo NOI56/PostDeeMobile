@@ -31,6 +31,7 @@ import 'clip_frame_extractor.dart';
 import 'caption_quota_strip.dart';
 import 'caption_localizations.dart';
 import 'channel_localizations.dart';
+import 'review_localizations.dart';
 import 'post_quota_strip.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
@@ -1281,7 +1282,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     await Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (_) => PostVideoPreviewScreen(
         videoFile: File(path),
-        videoName: _selectedVideoName ?? 'คลิปของคุณ',
+        videoName: _selectedVideoName ??
+            reviewText(context, 'คลิปของคุณ', 'Your video'),
         postPreview: preview,
         ownerSession: ownerSession,
       ),
@@ -2278,6 +2280,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (!mounted || !stillCurrent()) return;
     final picked = await showPostDeeTimePicker(
       context: context,
+      languageCode: reviewUsesThai(context) ? 'th' : 'en',
       initialTime:
           _selectedScheduleTime ?? const TimeOfDay(hour: 18, minute: 30),
       date: _selectedScheduleDate ?? _scheduleDateFromToday(1),
@@ -3908,21 +3911,21 @@ class _UploaderScreenState extends State<UploaderScreen>
                   : Icons.link_off_rounded,
           iconColor: const Color(0xFFF59E0B),
           iconTint: const Color(0x24F59E0B),
-          title: hasConnectionError
+          title: localizeUploaderMessage(context, hasConnectionError
               ? 'ตรวจสอบช่องทางไม่ได้'
               : hasConnectedPlatforms
                   ? 'ยังไม่ได้เลือกช่องทาง'
-                  : 'ยังไม่ได้เชื่อมช่องทาง',
-          body: _connectionsErrorMessage ??
+                  : 'ยังไม่ได้เชื่อมช่องทาง'),
+          body: localizeUploaderMessage(context, _connectionsErrorMessage ??
               (hasConnectedPlatforms
                   ? 'เลือกอย่างน้อย 1 ช่องทางก่อนเริ่มโพสต์'
-                  : 'ต้องเชื่อมอย่างน้อย 1 ช่องทางก่อนจึงจะเริ่มโพสต์ได้'),
-          primaryLabel: hasConnectionError
+                  : 'ต้องเชื่อมอย่างน้อย 1 ช่องทางก่อนจึงจะเริ่มโพสต์ได้')),
+          primaryLabel: localizeUploaderMessage(context, hasConnectionError
               ? 'ลองใหม่'
               : hasConnectedPlatforms
                   ? 'เลือกทั้งหมด'
-                  : 'ไปเชื่อมช่องทาง',
-          secondaryLabel: 'ไว้ก่อน',
+                  : 'ไปเชื่อมช่องทาง'),
+          secondaryLabel: localizeReviewMessage(context, 'ไว้ก่อน'),
         ),
       );
 
@@ -5575,39 +5578,41 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 key: const ValueKey('uploader-send-foreground-notice'),
                                 icon: Icons.info_outline,
                                 color: AppTheme.accentCyanInk,
-                                message: 'ระหว่างเตรียมและส่งข้อมูล กรุณาเปิดแอปหน้านี้ไว้ '
-                                    'ยังยกเลิกไม่ได้จนจบขั้นตอน',
+                                message: localizeReviewMessage(context,
+                                    'ระหว่างเตรียมและส่งข้อมูล กรุณาเปิดแอปหน้านี้ไว้ '
+                                    'ยังยกเลิกไม่ได้จนจบขั้นตอน'),
                               ),
                               const SizedBox(height: 10),
                               if (_captionLimitError case final message?)
                                 PostDeeNotice(
-                                  message: message,
-                                  actionLabel: 'แก้แคปชัน',
+                                  message: localizeUploaderMessage(context, message),
+                                  actionLabel: localizeReviewMessage(context, 'แก้แคปชัน'),
                                   onAction: () => _goToStep(1),
                                 ),
                               if (_selectedDurationProblem case final problem?)
                                 PostDeeNotice(
                                   key: const ValueKey('uploader-selected-duration-error'),
-                                  message: '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่',
-                                  actionLabel: 'แก้ช่องทาง',
+                                  message: localizeUploaderMessage(context,
+                                      '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่'),
+                                  actionLabel: localizeReviewMessage(context, 'แก้ช่องทาง'),
                                   onAction: () => _goToStep(2),
                                 ),
                               if (_connectionsErrorMessage != null)
                                 PostDeeNotice(
-                                    message: _connectionsErrorMessage!,
+                                    message: localizeUploaderMessage(context, _connectionsErrorMessage!),
                                     color: Theme.of(context).colorScheme.error,
                                     icon: Icons.cloud_off_outlined),
                               if (_selectedReadinessIssue case final issue?)
                                 PostDeeNotice(
-                                    message: issue,
+                                    message: localizeUploaderMessage(context, issue),
                                     color: Theme.of(context).colorScheme.error,
                                     icon: Icons.link_off_outlined),
                               if (_readScheduledAt() case final schedule?
                                   when _errorMessage == null &&
                                       !schedule.isAfter(widget.now()))
                                 PostDeeNotice(
-                                    message:
-                                        'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลยก่อนยืนยัน',
+                                    message: localizeUploaderMessage(context,
+                                        'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลยก่อนยืนยัน'),
                                     color: Theme.of(context).colorScheme.error,
                                     icon: Icons.schedule_outlined),
                               SizedBox(
@@ -5639,7 +5644,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                               const SizedBox(height: 20),
                               PublishReviewSummary(
                                 videoName:
-                                    _selectedVideoName ?? 'ยังไม่ได้เลือกคลิป',
+                                    _selectedVideoName ?? localizeReviewMessage(
+                                        context, 'ยังไม่ได้เลือกคลิป'),
                                 caption: _captionController.text,
                                 platforms: SocialPlatform.values
                                     .where(_selectedPlatforms.contains)
@@ -8379,6 +8385,21 @@ class _SchedulePanel extends StatelessWidget {
     'ธ.ค.',
   ];
 
+  static const _englishMonths = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
   final DateTime Function() now;
   final TextEditingController scheduledAtController;
   final DateTime? selectedDate;
@@ -8426,18 +8447,19 @@ class _SchedulePanel extends StatelessWidget {
     return false;
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(BuildContext context, DateTime date) {
     final today = _todayDate();
 
     if (_isSameDate(date, today)) {
-      return 'วันนี้';
+      return reviewText(context, 'วันนี้', 'Today');
     }
 
     if (_isSameDate(date, today.add(const Duration(days: 1)))) {
-      return 'พรุ่งนี้';
+      return reviewText(context, 'พรุ่งนี้', 'Tomorrow');
     }
 
-    return '${date.day} ${_thaiMonths[date.month - 1]} ${date.year}';
+    final months = reviewUsesThai(context) ? _thaiMonths : _englishMonths;
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
   String _formatTime(TimeOfDay time) {
@@ -8479,7 +8501,7 @@ class _SchedulePanel extends StatelessWidget {
             ),
             const SizedBox(width: AppTheme.spaceSm),
             Expanded(
-              child: Text(
+              child: ReviewText(
                 'ตั้งเวลาโพสต์',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -8515,7 +8537,10 @@ class _SchedulePanel extends StatelessWidget {
         if (!hasSchedule && selectedDate != null) ...[
           const SizedBox(height: 10),
           Text(
-            'วันที่จากปฏิทิน: ${_formatDate(selectedDate!)} · กดตั้งเวลาเพื่อเลือกเวลา',
+            reviewText(
+                context,
+                'วันที่จากปฏิทิน: ${_formatDate(context, selectedDate!)} · กดตั้งเวลาเพื่อเลือกเวลา',
+                'Calendar date: ${_formatDate(context, selectedDate!)} · Tap Schedule to choose a time.'),
             key: const ValueKey('uploader-calendar-date-hint'),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppTheme.textSecondary,
@@ -8545,7 +8570,10 @@ class _SchedulePanel extends StatelessWidget {
                   const SizedBox(width: AppTheme.spaceSm),
                   Expanded(
                     child: Text(
-                      'ลงโพสต์ ${_formatDate(selectedDate!)} เวลา ${_formatTime(selectedTime!)} น.',
+                      reviewText(
+                          context,
+                          'ลงโพสต์ ${_formatDate(context, selectedDate!)} เวลา ${_formatTime(selectedTime!)} น.',
+                          'Post ${_formatDate(context, selectedDate!)} at ${_formatTime(selectedTime!)}'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -8559,7 +8587,7 @@ class _SchedulePanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
+          ReviewText(
             'เลือกวัน',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: AppTheme.textSecondary,
@@ -8585,7 +8613,7 @@ class _SchedulePanel extends StatelessWidget {
                 key: const ValueKey('uploader-schedule-day-custom'),
                 label: selectedDate == null || quickSelectedDay != null
                     ? 'เลือกวัน'
-                    : _formatDate(selectedDate!),
+                    : _formatDate(context, selectedDate!),
                 icon: Icons.edit_calendar_outlined,
                 isSelected: selectedDate != null && quickSelectedDay == null,
                 onPressed: onPickCustomDate,
@@ -8593,7 +8621,7 @@ class _SchedulePanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
+          ReviewText(
             'เลือกเวลา',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: AppTheme.textSecondary,
@@ -8641,9 +8669,12 @@ class _SchedulePanel extends StatelessWidget {
                   Text(
                     switch (schedulePlan) {
                       'STARTER' =>
-                        'แพ็กเกจ Starter ตั้งเวลาล่วงหน้าได้สูงสุด 14 วัน',
-                      'PRO' => 'แพ็กเกจ Pro ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน',
-                      _ => schedulePlanSummary,
+                        localizeReviewMessage(context,
+                            'แพ็กเกจ Starter ตั้งเวลาล่วงหน้าได้สูงสุด 14 วัน'),
+                      'PRO' => localizeReviewMessage(context,
+                          'แพ็กเกจ Pro ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน'),
+                      _ => getSchedulePlanSummary(
+                          languageCode: reviewUsesThai(context) ? 'th' : 'en'),
                     },
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppTheme.textSecondary,
@@ -8703,7 +8734,7 @@ class _SchedulePickerChip extends StatelessWidget {
               ),
               const SizedBox(width: 5),
               Flexible(
-                  child: Text(
+                  child: ReviewText(
                 label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: isSelected
@@ -8743,11 +8774,7 @@ class _ScheduleModeButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 15),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        label: ReviewText(label),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 10),
           minimumSize: const Size(0, 48),

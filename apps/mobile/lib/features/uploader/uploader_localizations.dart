@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/localization/postdee_localizations.dart';
 import 'caption_localizations.dart';
 import 'channel_localizations.dart';
+import 'review_localizations.dart';
 
 bool uploaderUsesThai(BuildContext context) =>
     (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
@@ -67,8 +68,8 @@ String localizeUploaderMessage(BuildContext context, String message) {
   if (recovered != null) {
     return 'Original submission found: ${recovered[1]} · ${_recoveryStatuses[recovered[2]]} · Not submitted again. The draft is still on this device.';
   }
-  return localizeChannelMessage(
-      context, localizeCaptionMessage(context, message));
+  return localizeReviewMessage(context,
+      localizeChannelMessage(context, localizeCaptionMessage(context, message)));
 }
 
 RegExpMatch? _wholeMatch(RegExp pattern, String message) {
@@ -219,7 +220,7 @@ const _englishMessages = <String, String>{
       "This draft's video could not be found on this device.",
   'เปิดฉบับร่างแล้ว': 'Draft opened',
   'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลยก่อนยืนยัน':
-      'The original time has passed. Choose a new time or publish now before confirming.',
+      'The previous time has passed. Choose a new time or Post now before confirming.',
   'บางช่องทางในร่างยังไม่ได้เชื่อมต่อ กรุณาเชื่อมใหม่ก่อนโพสต์':
       'Some channels in this draft are disconnected. Reconnect them before posting.',
   'เปิดฉบับร่างนี้ไม่ได้ อาจถูกลบแล้ว เลือกฉบับร่างอื่นหรือสร้างโพสต์ใหม่':

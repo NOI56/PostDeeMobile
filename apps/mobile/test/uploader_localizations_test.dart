@@ -256,6 +256,10 @@ void main() {
         localizeUploaderMessage(
             context, 'เลือกบัญชีปลายทางและตั้งค่าของแต่ละช่องทาง'),
         'Choose destination accounts and configure each channel.');
+    expect(
+        localizeUploaderMessage(
+            context, 'ตรวจข้อมูลและเลือกเวลาที่ต้องการโพสต์'),
+        'Review your details and choose when to post.');
     for (final raw in const [
       'ฉบับร่าง (7)\n',
       'prefix ฉบับร่าง (7)',
@@ -269,7 +273,6 @@ void main() {
       'ตรวจทาน กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่',
       '<html>เลือกวิดีโอจากเครื่องก่อน</html>',
       '00:05 นาที · 512 ไบต์ · ชื่อแบบร่าง',
-      'ตรวจข้อมูลและเลือกเวลาที่ต้องการโพสต์',
     ]) {
       expect(localizeUploaderMessage(context, raw), raw);
     }

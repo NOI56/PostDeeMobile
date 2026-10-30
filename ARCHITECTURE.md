@@ -1486,6 +1486,22 @@ and type-check frame keys, cap each frame at 5 MiB, stream every download
 against its byte limit, and allow two clip-caption requests per instance to
 hold media at once (`503 AI_MEDIA_BUSY` otherwise).
 
+The 2026-10-30 local admission follow-up shares that counter with legacy
+transcription, acquires a slot before reservation/provider work, and releases
+it in `finally` after success, failure or quota denial. Gemini reserves its
+existing credit cost before downloading; existing fallback and exact-reservation
+refund behavior remain. The owner-operation router recognizes `AI_MEDIA_BUSY`
+as a pre-provider rejection and releases its deletion ticket, while retaining
+the fence for unknown remote outcomes. No schema, entitlement, media limit or
+provider configuration changes are needed.
+
+The Android launcher resolves the canonical main worktree, binds the requested
+AVD to its actual serial, and rechecks that identity before install, force-stop
+and launch. `-OpenOnly` uses the existing package without the build/update path;
+the existing APK identity is independent of the newest main source. Launcher
+mutex and UID/storage checks remain in place. Fake-bridge workflow regressions
+cover serial replacement while builds or package checks are in progress.
+
 The 2026-10-06 bottom-navigation revision presents Home, Calendar, Create post,
 Store link, and Account while retaining the existing shell indices and
 callbacks. Visual button order maps to indices 0, 3, 2, 1, 5; Create post (2)

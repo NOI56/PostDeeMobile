@@ -1312,6 +1312,17 @@ accept only image frame keys, cap frames at 5 MiB, and return
 `503 AI_MEDIA_BUSY` when two requests already hold media on the instance. See
 `docs/superpowers/plans/2026-10-24-ai-editing-retirement-security-batch3.md`.
 
+The 2026-10-30 local follow-up applies the same admission limit to legacy
+caption transcription, reserves caption credits before Gemini media downloads,
+and prevents a busy rejection from leaving an account-deletion blocker. Existing
+pricing, fallback/refund behavior and AI-editing retirement remain unchanged.
+See `docs/superpowers/plans/2026-10-30-pending-work-reconciliation.md`.
+
+The Android main-worktree launcher now defaults to the exact `Pixel_8` AVD and
+rechecks its identity before install/launch. Use `-OpenOnly` to open the existing
+Staging app without rebuilding, reinstalling or force-stopping it; this mode
+does not certify the installed APK as the latest main build. See `docs/STAGING.md`.
+
 Each authenticated account keeps one profile page. The 2026-10-26 shop-link
 limit candidate allows Basic/free 2, Starter 199 THB/month 7, and Pro
 299 THB/month 20 enabled links per new publish/update. New draft additions count

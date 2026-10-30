@@ -2,7 +2,8 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
-import { aiCaptionFrameMaxBytes, realClipCaptionClipMaxBytes } from '../storage/mediaDownload.js';
+import { MediaDownloadError, aiCaptionFrameMaxBytes, realClipCaptionClipMaxBytes } from '../storage/mediaDownload.js';
+import { createInMemoryRealClipCaptionUsageStore } from './captionUsageStore.js';
 import type { GeneratedRealClipCaption, RealClipCaptionGenerateInput } from './realClipCaptionProvider.js';
 
 const ownedUploadKey = (userId: string, fileName: string, uploadId = 'clip') =>
@@ -39,6 +40,123 @@ const sendProClipCaption = (app: ReturnType<typeof createApp>, userId: string, b
 // inputs are small JPEG stills from the app, so anything else must be refused
 // before the server downloads it.
 describe('real-clip caption media limits', () => {
+  it('does not download media when the atomic reservation loses a quota race, and releases its slot', async () => {
+    const userId = 'seller-media-quota-race';
+    const usage = createInMemoryRealClipCaptionUsageStore();
+    const reserve = vi.spyOn(usage, 'reserve').mockResolvedValueOnce({ ok: false, usedThisMonth: 120 });
+    const generate = vi.fn(async (input: RealClipCaptionGenerateInput) => fakeCaption(input));
+    const fetchClipMedia = vi.fn(async () => ({ data: new Uint8Array([1]), mimeType: 'video/mp4' }));
+    const app = createApp({
+      realClipCaptionProvider: { generate }, fetchClipMedia,
+      realClipCaptionUsageStore: usage, maxConcurrentAiMediaRequests: 1
+    });
+
+    await sendProClipCaption(app, userId, { videoS3Key: ownedUploadKey(userId, 'first.mp4') }).expect(429);
+
+    expect(reserve).toHaveBeenCalledOnce();
+    expect(fetchClipMedia).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+
+    await sendProClipCaption(app, userId, { videoS3Key: ownedUploadKey(userId, 'next.mp4', 'next') }).expect(200);
+    expect(fetchClipMedia).toHaveBeenCalledOnce();
+    expect(generate).toHaveBeenCalledOnce();
+  });
+
+  it('refunds only the early reservation after invalid media and admits the next request', async () => {
+    const userId = 'seller-media-rejected';
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const usage = createInMemoryRealClipCaptionUsageStore();
+    await usage.record({ userId, monthKey });
+    const generate = vi.fn(async (input: RealClipCaptionGenerateInput) => fakeCaption(input));
+    const fetchClipMedia = vi.fn()
+      .mockRejectedValueOnce(new MediaDownloadError('Media too large', 413, 'AI_MEDIA_TOO_LARGE'))
+      .mockResolvedValue({ data: new Uint8Array([1]), mimeType: 'video/mp4' });
+    const app = createApp({
+      realClipCaptionProvider: { generate }, fetchClipMedia,
+      realClipCaptionUsageStore: usage, maxConcurrentAiMediaRequests: 1
+    });
+
+    await sendProClipCaption(app, userId, { audioS3Key: ownedUploadKey(userId, 'invalid.m4a') }).expect(413);
+    expect(await usage.countForMonth({ userId, monthKey })).toBe(1);
+    expect(generate).not.toHaveBeenCalled();
+
+    await sendProClipCaption(app, userId, { videoS3Key: ownedUploadKey(userId, 'next.mp4', 'next') }).expect(200);
+    expect(await usage.countForMonth({ userId, monthKey })).toBe(2);
+  });
+
+  it('limits legacy transcription before quota or provider work and admits work after completion', async () => {
+    const userId = 'seller-legacy-media-busy';
+    const usage = createInMemoryRealClipCaptionUsageStore();
+    const reserve = vi.spyOn(usage, 'reserve');
+    const transcript = {
+      text: 'hello', language: 'en', durationSeconds: 3,
+      segments: [{ text: 'hello', start: 0, end: 3 }], words: [], model: 'test-transcription',
+      timingIntegrity: 'trusted' as const, hasTimedAudioEvents: false
+    };
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>((release) => { releaseFirst = release; });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    const transcribe = vi.fn(async () => transcript).mockImplementationOnce(async () => {
+      markStarted();
+      await gate;
+      return transcript;
+    });
+    const app = createApp({
+      transcriptionProvider: { transcribe }, realClipCaptionUsageStore: usage,
+      maxConcurrentAiMediaRequests: 1
+    });
+    const first = sendProClipCaption(app, userId, {
+      videoS3Key: ownedUploadKey(userId, 'first.mp4')
+    }).then((response) => response);
+    await started;
+
+    try {
+      const busy = await sendProClipCaption(app, userId, {
+        videoS3Key: ownedUploadKey(userId, 'second.mp4', 'second')
+      });
+      expect(busy.status).toBe(503);
+      expect(busy.headers['retry-after']).toBe('1');
+      expect(busy.body.code).toBe('AI_MEDIA_BUSY');
+      expect(transcribe).toHaveBeenCalledOnce();
+      expect(reserve).toHaveBeenCalledOnce();
+    } finally {
+      releaseFirst();
+      await first;
+    }
+
+    await sendProClipCaption(app, userId, { videoS3Key: ownedUploadKey(userId, 'third.mp4', 'third') }).expect(200);
+    expect(transcribe).toHaveBeenCalledTimes(2);
+    expect(reserve).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    new Error('Transcription unavailable'),
+    new MediaDownloadError('Media too large', 413, 'AI_MEDIA_TOO_LARGE')
+  ])('releases the legacy slot and refunds its reservation after %s', async (error) => {
+    const userId = 'seller-legacy-media-failure';
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const usage = createInMemoryRealClipCaptionUsageStore();
+    await usage.record({ userId, monthKey });
+    const transcribe = vi.fn().mockRejectedValueOnce(error).mockResolvedValue({
+      text: 'hello', language: 'en', durationSeconds: 3,
+      segments: [{ text: 'hello', start: 0, end: 3 }], words: [], model: 'test-transcription',
+      timingIntegrity: 'trusted', hasTimedAudioEvents: false
+    });
+    const app = createApp({
+      transcriptionProvider: { transcribe }, realClipCaptionUsageStore: usage,
+      maxConcurrentAiMediaRequests: 1
+    });
+
+    await sendProClipCaption(app, userId, { videoS3Key: ownedUploadKey(userId, 'invalid.mp4') })
+      .expect(error instanceof MediaDownloadError ? 413 : 502);
+    expect(await usage.countForMonth({ userId, monthKey })).toBe(1);
+
+    await sendProClipCaption(app, userId, { videoS3Key: ownedUploadKey(userId, 'next.mp4', 'next') }).expect(200);
+    expect(transcribe).toHaveBeenCalledTimes(2);
+    expect(await usage.countForMonth({ userId, monthKey })).toBe(2);
+  });
+
   it('rejects a non-image frame key before downloading any media', async () => {
     const userId = 'seller-frame-type';
     const generate = vi.fn(async (input: RealClipCaptionGenerateInput) => fakeCaption(input));

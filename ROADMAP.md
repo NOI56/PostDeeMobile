@@ -2,6 +2,21 @@
 
 Build roadmap for PostDee.
 
+## Historical work reconciliation (2026-10-30, local implementation)
+
+- Compare preserved worktrees and backups against verified main `59ad8f00`;
+  retain all historical files and port only active behavior still missing.
+- Close the caption admission gaps: legacy transcription uses the existing
+  concurrency budget; Gemini reserves credits before downloading; a busy
+  pre-provider rejection releases its account-deletion operation ticket.
+- Preserve per-channel/add-on accounting, fallback refunds, media ceilings,
+  owner fences, English UI and the retired-feature boundaries.
+- Complete the preserved Android launcher intent: `-OpenOnly`, exact Pixel_8
+  selection and identity rechecks after a long build; retain UID/storage guards.
+- Record delivered duplicates, outstanding tooling/UX candidates and verification
+  in `docs/superpowers/plans/2026-10-30-pending-work-reconciliation.md`.
+
+
 ## Retired Features (2026-10-28)
 
 These features are out of the active product. They are not planned work or

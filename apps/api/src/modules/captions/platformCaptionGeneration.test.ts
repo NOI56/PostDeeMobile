@@ -242,7 +242,8 @@ describe('platform-specific real-clip captions', () => {
 
   it('cleans selected owned frames and clip without charging when media download fails', async () => {
     const usage = createInMemoryRealClipCaptionUsageStore();
-    const reserve = vi.spyOn(usage, 'reserve');
+    const monthKey = new Date().toISOString().slice(0, 7);
+    await usage.record({ userId: 'platform-caption-owner', monthKey });
     const { provider, fetchImpl } = makeProvider({ ...providerPayload, platformCaptions });
     const frameKey = 'uploads/platform-caption-owner/frame/frame.jpg';
     const deleteObject = vi.fn(async () => {});
@@ -254,7 +255,7 @@ describe('platform-specific real-clip captions', () => {
     await request(app).post('/captions/generate-from-clip')
       .set('x-postdee-user-id', 'platform-caption-owner').set('x-postdee-subscription-plan', 'PRO')
       .send({ videoS3Key, platforms, expectedCredits: 4, selectedFrameKeys: [frameKey], deleteAfterUse: true }).expect(410);
-    expect(reserve).not.toHaveBeenCalled();
+    expect(await usage.countForMonth({ userId: 'platform-caption-owner', monthKey })).toBe(1);
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(deleteObject).toHaveBeenCalledTimes(2);
     expect(deleteObject).toHaveBeenCalledWith({ bucket: 'caption-test-bucket', key: frameKey });

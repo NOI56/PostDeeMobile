@@ -196,10 +196,15 @@ export const registerCaptionRoutes = (
     maxConcurrentMediaRequests?: number;
   } = {}
 ) => {
-  // Clip captions buffer up to a 200 MiB clip plus frames in this shared
-  // process, so only a few may hold media at once. Excess requests retry.
+  // Both Gemini and legacy transcription hold media in this shared process.
+  // Admit only a few requests at once, before downloading or reserving usage.
   const maxConcurrentMediaRequests = options.maxConcurrentMediaRequests ?? defaultMaxConcurrentMediaRequests;
   let activeMediaRequests = 0;
+  const acquireMediaSlot = () => {
+    if (activeMediaRequests >= maxConcurrentMediaRequests) return undefined;
+    activeMediaRequests += 1;
+    return () => { activeMediaRequests -= 1; };
+  };
   const readAddonRemaining = async (userId: string, now: string) => {
     const [grants, used] = await Promise.all([
       options.monthlyAddonStore?.readCredits({ userId, now }),
@@ -498,15 +503,19 @@ export const registerCaptionRoutes = (
     if (realClipCaptionProvider && fetchClipMedia) {
       // Primary path: Gemini listens to the clip (Starter) and also looks at
       // selected frames (Pro) to write the caption — no Whisper here.
-      if (activeMediaRequests >= maxConcurrentMediaRequests) {
+      const releaseMediaSlot = acquireMediaSlot();
+      if (!releaseMediaSlot) {
         await cleanupRequestedMedia();
         sendMediaBusyResponse(response);
         return;
       }
 
-      activeMediaRequests += 1;
       try {
         try {
+          if (!(await reserveUsageOrRespond())) {
+            return;
+          }
+
           const audio = await fetchClipMedia(validation.request.videoS3Key, {
             kind: validation.request.mediaKind ?? 'video',
             maxBytes: realClipCaptionClipMaxBytes
@@ -536,10 +545,6 @@ export const registerCaptionRoutes = (
                 fetchClipMedia(key, { kind: 'frame', maxBytes: aiCaptionFrameMaxBytes })
               )
             );
-          }
-
-          if (!(await reserveUsageOrRespond())) {
-            return;
           }
 
           caption = await realClipCaptionProvider.generate({
@@ -579,11 +584,17 @@ export const registerCaptionRoutes = (
           releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
         }
       } finally {
-        activeMediaRequests -= 1;
+        releaseMediaSlot();
       }
     } else if (transcriptionProvider) {
-      // Legacy path: Whisper transcript -> local template.
+      // Legacy path: transcription -> local template.
       let transcript;
+      const releaseMediaSlot = acquireMediaSlot();
+      if (!releaseMediaSlot) {
+        await cleanupRequestedMedia();
+        sendMediaBusyResponse(response);
+        return;
+      }
 
       try {
         if (!(await reserveUsageOrRespond())) {
@@ -610,6 +621,8 @@ export const registerCaptionRoutes = (
           message: 'Could not read audio from the selected clip'
         });
         return;
+      } finally {
+        releaseMediaSlot();
       }
 
       caption = generateLocalRealClipCaption({

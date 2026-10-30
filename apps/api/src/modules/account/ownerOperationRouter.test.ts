@@ -117,6 +117,7 @@ describe('owner operation route lifetime', () => {
     ['TIKTOK_PUBLISHING_UNAVAILABLE', false],
     ['TIKTOK_CREATOR_INFO_UNAVAILABLE', false],
     ['TIKTOK_CREATOR_INFO_INVALID', false],
+    ['AI_MEDIA_BUSY', false],
     ['PUBLISH_OUTCOME_UNKNOWN', true],
     ['SOCIAL_CONNECTION_FAILED', true]
   ])('retains only uncertain remote error %s', async (code, retained) => {

@@ -65,6 +65,39 @@ class _Outgoing {
   bool failed = false;
 }
 
+enum _SupportChatOperation { load, send, handoff }
+
+class _SupportChatFailure {
+  const _SupportChatFailure(this.error, this.operation);
+
+  final Object error;
+  final _SupportChatOperation operation;
+
+  String message(bool isThai) {
+    final cause = error;
+    if (operation == _SupportChatOperation.send &&
+        cause is ApiException &&
+        cause.code == 'SUPPORT_MESSAGE_LIMIT') {
+      return isThai
+          ? 'วันนี้ส่งข้อความครบจำนวนแล้ว รอทีมงานตอบกลับก่อน'
+          : 'You have reached the daily message limit. Wait for the team to reply.';
+    }
+    final fallback = switch (operation) {
+      _SupportChatOperation.load => isThai
+          ? 'โหลดแชทไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'
+          : 'Could not load the chat. Please try again.',
+      _SupportChatOperation.send => isThai
+          ? 'ส่งข้อความไม่สำเร็จ แตะข้อความเพื่อส่งอีกครั้ง'
+          : 'Could not send the message. Tap it to retry.',
+      _SupportChatOperation.handoff => isThai
+          ? 'ส่งต่อให้ทีมงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'
+          : 'Could not send your request to the team. Please try again.',
+    };
+    return apiErrorMessage(error,
+        fallbackMessage: fallback, languageCode: isThai ? 'th' : 'en');
+  }
+}
+
 class _SupportChatScreenState extends State<SupportChatScreen>
     with WidgetsBindingObserver {
   PostDeeApiClient? _client;
@@ -74,8 +107,8 @@ class _SupportChatScreenState extends State<SupportChatScreen>
   final _scroll = ScrollController();
   String? _cursor;
   var _loading = true;
-  String? _loadError;
-  String? _sendError;
+  _SupportChatFailure? _loadError;
+  _SupportChatFailure? _sendError;
   var _botAvailable = false;
   var _botEnabled = true;
   var _handingOff = false;
@@ -156,8 +189,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
       if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
-        _loadError = apiErrorMessage(error,
-            fallbackMessage: 'โหลดแชทไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        _loadError = _SupportChatFailure(error, _SupportChatOperation.load);
       });
     }
     _syncTimer();
@@ -225,15 +257,9 @@ class _SupportChatScreenState extends State<SupportChatScreen>
       _merge([message]);
     } catch (error) {
       if (!mounted) return;
-      final isLimit =
-          error is ApiException && error.code == 'SUPPORT_MESSAGE_LIMIT';
       setState(() {
         outgoing.failed = true;
-        _sendError = isLimit
-            ? 'วันนี้ส่งข้อความครบจำนวนแล้ว รอทีมงานตอบกลับก่อน'
-            : apiErrorMessage(error,
-                fallbackMessage:
-                    'ส่งข้อความไม่สำเร็จ แตะข้อความเพื่อส่งอีกครั้ง');
+        _sendError = _SupportChatFailure(error, _SupportChatOperation.send);
       });
     }
   }
@@ -250,8 +276,8 @@ class _SupportChatScreenState extends State<SupportChatScreen>
       setState(() => _teamRequested = true);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _sendError = apiErrorMessage(error,
-          fallbackMessage: 'ส่งต่อให้ทีมงานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
+      setState(() => _sendError =
+          _SupportChatFailure(error, _SupportChatOperation.handoff));
     } finally {
       if (mounted) setState(() => _handingOff = false);
     }
@@ -303,11 +329,22 @@ class _SupportChatScreenState extends State<SupportChatScreen>
         top: false,
         child: DecoratedBox(
           decoration: AppTheme.screenBackground,
-          child: Column(
-            children: [
-              Expanded(child: _buildBody(isThai)),
-              _buildComposer(isThai),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) => Column(
+              children: [
+                Expanded(child: _buildBody(isThai)),
+                ConstrainedBox(
+                  constraints:
+                      BoxConstraints(maxHeight: constraints.maxHeight),
+                  child: SingleChildScrollView(
+                    key: const ValueKey('support-chat-composer-scroll'),
+                    primary: false,
+                    reverse: true,
+                    child: _buildComposer(isThai),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -316,17 +353,23 @@ class _SupportChatScreenState extends State<SupportChatScreen>
 
   Widget _buildBody(bool isThai) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(
+        child: CircularProgressIndicator(
+          semanticsLabel: isThai ? 'กำลังโหลดแชท' : 'Loading chat',
+        ),
+      );
     }
     if (_loadError != null) {
-      return Padding(
-        padding: const EdgeInsets.all(AppTheme.spaceLg),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: PostDeeNotice(
-            message: _loadError!,
-            actionLabel: isThai ? 'ลองใหม่' : 'Retry',
-            onAction: _initialLoad,
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.spaceLg),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: PostDeeNotice(
+              message: _loadError!.message(isThai),
+              actionLabel: isThai ? 'ลองใหม่' : 'Retry',
+              onAction: _initialLoad,
+            ),
           ),
         ),
       );
@@ -459,7 +502,7 @@ class _SupportChatScreenState extends State<SupportChatScreen>
               Padding(
                 padding: const EdgeInsets.only(bottom: 6, left: 4),
                 child: Text(
-                  _sendError!,
+                  _sendError!.message(isThai),
                   key: const ValueKey('support-chat-send-error'),
                   style: TextStyle(
                     fontSize: 12,

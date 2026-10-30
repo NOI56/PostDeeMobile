@@ -757,7 +757,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
         }
 
         if (_showOnboarding == true) {
-          return OnboardingFlow(onFinished: _finishOnboarding);
+          return OnboardingFlow(
+              onFinished: _finishOnboarding,
+              onLocaleChanged: widget.languageController.setLocale);
         }
 
         return _buildMainShell(context);

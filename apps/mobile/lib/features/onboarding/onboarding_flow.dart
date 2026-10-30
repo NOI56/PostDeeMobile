@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'onboarding_localizations.dart';
 
 /// Persists whether the user finished (or skipped) first-run onboarding, so
 /// the flow shows exactly once after the first sign-in.
@@ -67,9 +68,11 @@ const _steps = [
 
 /// Three-step first-run intro, per design screen #2.
 class OnboardingFlow extends StatefulWidget {
-  const OnboardingFlow({super.key, required this.onFinished});
+  const OnboardingFlow(
+      {super.key, required this.onFinished, this.onLocaleChanged});
 
   final VoidCallback onFinished;
+  final ValueChanged<Locale>? onLocaleChanged;
 
   @override
   State<OnboardingFlow> createState() => _OnboardingFlowState();
@@ -106,20 +109,68 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             padding: const EdgeInsets.fromLTRB(24, 14, 24, 28),
             child: Column(
               children: [
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    key: const ValueKey('onboarding-skip'),
-                    onPressed: widget.onFinished,
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppTheme.textMuted,
-                      textStyle: const TextStyle(
-                        fontFamily: 'Anuphan',
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
+                SizedBox(
+                  width: double.infinity,
+                  child: Wrap(
+                    alignment: widget.onLocaleChanged == null
+                        ? WrapAlignment.end
+                        : WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    runSpacing: 4,
+                    children: [
+                      if (widget.onLocaleChanged != null)
+                        PopupMenuButton<Locale>(
+                          key: const ValueKey('onboarding-language'),
+                          tooltip: onboardingText(
+                              context, 'เปลี่ยนภาษา', 'Change language'),
+                          initialValue: onboardingUsesThai(context)
+                              ? const Locale('th')
+                              : const Locale('en'),
+                          onSelected: widget.onLocaleChanged,
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                                value: Locale('th'), child: Text('ไทย')),
+                            PopupMenuItem(
+                                value: Locale('en'), child: Text('English')),
+                          ],
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 48),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 12),
+                              child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.language,
+                                        size: 20, color: AppTheme.textMuted),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                        onboardingUsesThai(context)
+                                            ? 'ไทย'
+                                            : 'English',
+                                        style: TextStyle(
+                                            fontFamily: 'Anuphan',
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.textMuted)),
+                                  ]),
+                            ),
+                          ),
+                        ),
+                      TextButton(
+                        key: const ValueKey('onboarding-skip'),
+                        onPressed: widget.onFinished,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.textMuted,
+                          textStyle: const TextStyle(
+                            fontFamily: 'Anuphan',
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        child: const OnboardingText('ข้าม'),
                       ),
-                    ),
-                    child: const Text('ข้าม'),
+                    ],
                   ),
                 ),
                 Expanded(
@@ -159,7 +210,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                                   ConstrainedBox(
                                     constraints:
                                         const BoxConstraints(maxWidth: 300),
-                                    child: Text(
+                                    child: OnboardingText(
                                       step.title,
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
@@ -174,7 +225,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                                   ConstrainedBox(
                                     constraints:
                                         const BoxConstraints(maxWidth: 300),
-                                    child: Text(
+                                    child: OnboardingText(
                                       step.description,
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
@@ -189,30 +240,37 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                             ),
                           )),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    for (var i = 0; i < _steps.length; i += 1) ...[
-                      if (i > 0) const SizedBox(width: 7),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        width: i == _step ? 22 : 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: i == _step ? AppTheme.accent : AppTheme.border,
-                          borderRadius: BorderRadius.circular(999),
+                Semantics(
+                  key: const ValueKey('onboarding-progress'),
+                  label: onboardingStepLabel(context, _step + 1, _steps.length),
+                  child: ExcludeSemantics(
+                      child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (var i = 0; i < _steps.length; i += 1) ...[
+                        if (i > 0) const SizedBox(width: 7),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          width: i == _step ? 22 : 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color:
+                                i == _step ? AppTheme.accent : AppTheme.border,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  )),
                 ),
                 const SizedBox(height: 22),
                 Row(
                   children: [
                     if (_step > 0) ...[
                       Semantics(
+                        key: const ValueKey('onboarding-back'),
                         button: true,
-                        label: 'ย้อนกลับ',
+                        label: onboardingText(context, 'ย้อนกลับ', 'Back'),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(16),
                           onTap: _back,
@@ -257,7 +315,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Flexible(
-                                  child: Text(
+                                  child: OnboardingText(
                                       _isLastStep ? 'เริ่มใช้งาน' : 'ถัดไป',
                                       textAlign: TextAlign.center)),
                               const SizedBox(width: 8),

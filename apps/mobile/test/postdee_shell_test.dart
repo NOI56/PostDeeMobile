@@ -3634,16 +3634,19 @@ void main() {
     await tester.pumpAndSettle();
 
     // First run: the three-step intro shows before the main shell.
-    expect(find.text('เชื่อมช่องทางครั้งเดียว'), findsOneWidget);
+    expect(find.text('Connect your channels once'), findsOneWidget);
+    expect(find.text('เชื่อมช่องทางครั้งเดียว'), findsNothing);
     expect(_referenceNav(), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('onboarding-next')));
     await tester.pumpAndSettle();
-    expect(find.text('คลิปเดียว โพสต์ได้ทุกที่'), findsOneWidget);
+    expect(find.text('One video. Every channel.'), findsOneWidget);
+    expect(find.text('คลิปเดียว โพสต์ได้ทุกที่'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('onboarding-next')));
     await tester.pumpAndSettle();
-    expect(find.text('ตั้งเวลา + ดูยอดที่เดียว'), findsOneWidget);
+    expect(find.text('Schedule and track in one place'), findsOneWidget);
+    expect(find.text('ตั้งเวลา + ดูยอดที่เดียว'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('onboarding-next')));
     await tester.pumpAndSettle();

@@ -1431,7 +1431,10 @@ void main() {
 
   testWidgets('explains when rescheduling is blocked by publishing config',
       (tester) async {
-    final scheduledAt = DateTime.now().add(const Duration(days: 2));
+    // A fixed clock: with the real one, "two days ahead" falls in the next
+    // month on the last days of a month and the post is not preselected.
+    final now = DateTime(2026, 8, 11, 12);
+    final scheduledAt = now.add(const Duration(days: 2));
     var rescheduleCalls = 0;
 
     await tester.pumpWidget(
@@ -1439,6 +1442,7 @@ void main() {
         theme: AppTheme.dark,
         home: Scaffold(
           body: CalendarScreen(
+            now: () => now,
             loadScheduledPosts: () async => [
               ScheduledPostResult(
                 id: 'disabled-reschedule',
@@ -1447,7 +1451,7 @@ void main() {
                 platforms: const ['YOUTUBE_SHORTS'],
                 scheduledAt: scheduledAt,
                 status: 'QUEUED',
-                createdAt: DateTime.now(),
+                createdAt: now,
               ),
             ],
             loadSubscription: () async => _scheduleSubscription('PRO'),

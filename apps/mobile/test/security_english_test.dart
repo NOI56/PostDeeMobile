@@ -382,7 +382,6 @@ void main() {
       (tester) async {
     for (final document in [
       const LegalDocument(title: 'เอกสารเดิม', body: 'ข้อความเดิม'),
-      PostDeeLegalDocuments.privacyPolicy,
       PostDeeLegalDocuments.termsOfService,
     ]) {
       final f = _Fixture();

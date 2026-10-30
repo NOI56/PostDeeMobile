@@ -1134,6 +1134,14 @@ void main() {
             .widget<LegalDocumentScreen>(find.byType(LegalDocumentScreen))
             .document,
         PostDeeLegalDocuments.privacyPolicy);
+    expect(find.text('Privacy policy'), findsOneWidget);
+    expect(find.textContaining('Drafts on this device'), findsOneWidget);
+    expect(find.textContaining('Draft document'), findsOneWidget);
+    expect(find.text('นโยบายความเป็นส่วนตัว'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('login-privacy')), findsOneWidget);
+    expect(PostDeeAuthSessionStore.instance.session.isSignedIn, isFalse);
   });
   testWidgets('a fresh sign-in for the same owner rebuilds the shop screen',
       (tester) async {

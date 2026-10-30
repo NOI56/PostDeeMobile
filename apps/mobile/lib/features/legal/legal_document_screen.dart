@@ -45,6 +45,27 @@ class PostDeeLegalDocuments {
         '- ลบบัญชีจากหน้าโปรไฟล์เพื่อลบข้อมูลฝั่งบริการ การลบนี้อาจไม่ลบไฟล์เฉพาะเครื่องหรือสำเนาในระบบสำรองข้อมูล จึงควรลบร่างหรือล้างข้อมูลแอปแยกต่างหาก\n\n'
         'ติดต่อ: postdee.support@gmail.com\n\n'
         '(เอกสารฉบับร่าง — จะอัปเดตเป็นฉบับสมบูรณ์ก่อนเผยแพร่จริง)',
+    englishTitle: 'Privacy policy',
+    englishBody:
+        'PostDee collects only the information needed to publish and schedule videos to your social platforms.\n\n'
+        'What we collect\n'
+        '- The account and email address you use to sign in\n'
+        '- Videos and captions you upload for publishing or scheduling\n'
+        '- Social account connection tokens (stored securely and not disclosed to others)\n\n'
+        'Drafts on this device\n'
+        '- When you save a draft, the app copies the video, cover image and draft details into its own storage, separately for each signed-in account.\n'
+        '- Saving a draft does not upload it to the API/R2, send it to a platform, add it to the queue or use any post quota.\n'
+        '- Drafts do not sync across devices, but may be included in operating system backups depending on your settings.\n'
+        '- The app deletes a draft after the API accepts the post into the queue. If a step fails before the post is accepted into the queue, the draft is kept. If a file cannot be deleted, the app warns you that it may still be on the device.\n\n'
+        'How we use your data\n'
+        '- Only to publish and schedule posts, and show you analytics\n'
+        '- We do not sell personal information to third parties\n\n'
+        'Your rights\n'
+        '- You can request access to, correction of or deletion of your data at any time.\n'
+        '- You can delete individual drafts from the drafts page.\n'
+        '- Delete your account from the Account page to delete data held by the service. This may not delete files stored only on your device or copies in backups, so you should delete drafts or clear app data separately.\n\n'
+        'Contact: postdee.support@gmail.com\n\n'
+        '(Draft document — this will be updated to the final version before release.)',
   );
 
   static const termsOfService = LegalDocument(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'link_in_bio_localizations.dart';
+
 /// Carries ownership into dialogs opened from a Link in Bio editor.
 class BioOwnedModalScope extends InheritedWidget {
   const BioOwnedModalScope({super.key, required this.onOpened, required super.child});
@@ -46,7 +48,7 @@ class _BioColorPickerState extends State<_BioColorPicker> {
       ]);
   @override
   Widget build(BuildContext context) => AlertDialog(
-          title: const Text('เลือกสี'),
+          title: Text(linkInBioText(context, 'เลือกสี', 'Choose a color')),
           content: SizedBox(
               width: 320,
               child: SingleChildScrollView(
@@ -80,7 +82,7 @@ class _BioColorPickerState extends State<_BioColorPicker> {
                         '687065'
                       ])
                         Semantics(
-                            label: 'สี #$hex',
+                            label: linkInBioText(context, 'สี #$hex', 'Color #$hex'),
                             button: true,
                             child: InkWell(
                                 key: ValueKey('link-in-bio-color-swatch-$hex'),
@@ -101,21 +103,21 @@ class _BioColorPickerState extends State<_BioColorPicker> {
                     const SizedBox(height: 18),
                     _slider(
                         'link-in-bio-color-hue',
-                        'เฉดสี',
+                        linkInBioText(context, 'เฉดสี', 'Hue'),
                         _value.hue,
                         360,
                         (value) =>
                             setState(() => _value = _value.withHue(value))),
                     _slider(
                         'link-in-bio-color-saturation',
-                        'ความสดของสี',
+                        linkInBioText(context, 'ความสดของสี', 'Saturation'),
                         _value.saturation,
                         1,
                         (value) => setState(
                             () => _value = _value.withSaturation(value))),
                     _slider(
                         'link-in-bio-color-brightness',
-                        'ความสว่าง',
+                        linkInBioText(context, 'ความสว่าง', 'Brightness'),
                         _value.value,
                         1,
                         (value) =>
@@ -124,10 +126,10 @@ class _BioColorPickerState extends State<_BioColorPicker> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('ยกเลิก')),
+                child: Text(linkInBioText(context, 'ยกเลิก', 'Cancel'))),
             FilledButton(
                 key: const ValueKey('link-in-bio-color-confirm'),
                 onPressed: () => Navigator.pop(context, _value.toColor()),
-                child: const Text('ใช้สีนี้'))
+                child: Text(linkInBioText(context, 'ใช้สีนี้', 'Use this color')))
           ]);
 }

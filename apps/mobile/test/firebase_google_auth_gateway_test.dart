@@ -337,38 +337,43 @@ void main() {
     );
   });
 
-  test('FirebaseGoogleAuthGateway explains when no Google account is available',
-      () async {
-    final gateway = FirebaseGoogleAuthGateway(
-      googleClient: FakeGoogleIdentityClient(
-        const GoogleAccountSnapshot(),
-        error: const GoogleSignInException(
-          code: GoogleSignInExceptionCode.unknownError,
-          description: 'No credential available: no eligible accounts',
-        ),
-      ),
-      firebaseAuthClient: FakeFirebaseAuthClient(
+  for (final description in [
+    'No credential available: no eligible accounts',
+    'NO CREDENTIAL available',
+  ]) {
+    test(
+        'Google no-credential failure does not claim an account is absent: $description',
+        () async {
+      final firebase = FakeFirebaseAuthClient(
         const FirebaseUserSnapshot(
           userId: 'firebase-user-123',
           idToken: 'firebase-id-token',
         ),
-      ),
-    );
-
-    expect(
-      gateway.signIn,
-      throwsA(
-        isA<AuthUnavailableException>().having(
-          (error) => error.message,
-          'message',
-          allOf(
-            contains('บัญชี Google'),
-            contains('Google Play'),
+      );
+      final gateway = FirebaseGoogleAuthGateway(
+        googleClient: FakeGoogleIdentityClient(
+          const GoogleAccountSnapshot(),
+          error: GoogleSignInException(
+            code: GoogleSignInExceptionCode.unknownError,
+            description: description,
           ),
         ),
-      ),
-    );
-  });
+        firebaseAuthClient: firebase,
+      );
+
+      await expectLater(
+        gateway.signIn(),
+        throwsA(
+          isA<AuthUnavailableException>().having(
+            (error) => error.message,
+            'message',
+            'Google could not access a sign-in credential on this device. Please try again, check your Google account in Android Settings, or sign in with email.',
+          ),
+        ),
+      );
+      expect(firebase.signedInWithGoogleIdToken, isNull);
+    });
+  }
 
   test('FirebaseGoogleAuthGateway signs out from Firebase and Google',
       () async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/theme/app_theme.dart';
 import 'growth_tool_settings_store.dart';
 import 'postdee_card.dart';
@@ -159,7 +160,7 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
         _isSaving = false;
       });
       messenger.showSnackBar(
-        const SnackBar(content: Text('บันทึกการตั้งค่าไม่สำเร็จ')),
+        const SnackBar(content: _GrowthToolText('บันทึกการตั้งค่าไม่สำเร็จ')),
       );
       return;
     }
@@ -171,13 +172,72 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
     navigator.pop();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(
+        content: _GrowthToolText(
           widget.detail.prototypeOnly
               ? 'บันทึกแบบร่างไว้ในเครื่องแล้ว ยังไม่ได้เปิดใช้งานฟีเจอร์'
               : 'บันทึกการตั้งค่าแล้ว',
         ),
       ),
     );
+  }
+
+  Widget _statusPill(String message) {
+    final label = localizeGrowthToolMessage(context, message);
+    final color = widget.detail.color;
+    if (MediaQuery.textScalerOf(context).scale(12) <= 18) {
+      return PostDeeSoftPill(label: label, color: color);
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTheme.pillRadius),
+        color: AppTheme.isLightMode
+            ? color.withValues(alpha: 0.12)
+            : AppTheme.glassDeep.withValues(alpha: 0.82),
+        border: Border.all(color: color.withValues(
+            alpha: AppTheme.isLightMode ? 0.55 : 0.28)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        child: Text(label, softWrap: true,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: AppTheme.textPrimary, fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+
+  Widget _actions() {
+    final close = OutlinedButton(
+      onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+      child: const _GrowthToolText('ปิด'),
+    );
+    final save = FilledButton.icon(
+      onPressed: _isSaving ? null : _saveSettings,
+      icon: const Icon(Icons.save_outlined, size: 18),
+      label: _GrowthToolText(_isSaving
+          ? 'กำลังบันทึก...'
+          : widget.detail.prototypeOnly ? 'บันทึกแบบร่าง' : 'บันทึกการตั้งค่า'),
+      style: FilledButton.styleFrom(
+        backgroundColor: AppTheme.accent,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: AppTheme.accent.withValues(alpha: 0.55),
+        disabledForegroundColor: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+        textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+      ),
+    );
+    if (MediaQuery.textScalerOf(context).scale(14) > 18) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        close,
+        const SizedBox(height: 10),
+        ConstrainedBox(constraints: const BoxConstraints(minHeight: 48), child: save),
+      ]);
+    }
+    return Row(children: [
+      Expanded(child: close),
+      const SizedBox(width: 10),
+      Expanded(child: SizedBox(height: 48, child: save)),
+    ]);
   }
 
   @override
@@ -243,7 +303,7 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      _GrowthToolText(
                         'รายละเอียดและตั้งค่า',
                         style: textTheme.labelLarge?.copyWith(
                           color: detail.color,
@@ -252,7 +312,9 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'ตั้งค่า: ${detail.title}',
+                        _growthToolUsesThai(context)
+                            ? 'ตั้งค่า: ${detail.title}'
+                            : 'Settings: ${localizeGrowthToolMessage(context, detail.title)}',
                         style: textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
@@ -264,13 +326,13 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
                   onPressed:
                       _isSaving ? null : () => Navigator.of(context).pop(),
                   icon: const Icon(Icons.close),
-                  tooltip: 'ปิด',
+                  tooltip: localizeGrowthToolMessage(context, 'ปิด'),
                 ),
               ],
             ),
             const SizedBox(height: 10),
             Text(
-              detail.description,
+              localizeGrowthToolMessage(context, detail.description),
               style: textTheme.bodyMedium?.copyWith(
                 color: AppTheme.textSecondary,
                 height: 1.35,
@@ -282,16 +344,10 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                PostDeeSoftPill(
-                  label: detail.prototypeOnly ? 'เร็ว ๆ นี้' : detail.status,
-                  color: detail.color,
-                ),
-                PostDeeSoftPill(label: statusLabel, color: detail.color),
+                _statusPill(detail.prototypeOnly ? 'เร็ว ๆ นี้' : detail.status),
+                _statusPill(statusLabel),
                 if (!detail.prototypeOnly)
-                  PostDeeSoftPill(
-                    label: 'ตั้งค่าในเครื่องนี้',
-                    color: detail.color,
-                  ),
+                  _statusPill('ตั้งค่าในเครื่องนี้'),
               ],
             ),
             const SizedBox(height: 14),
@@ -309,7 +365,7 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  _GrowthToolText(
                     'ตั้งค่าที่ต้องการใช้',
                     style: textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -357,7 +413,7 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
+                      child: _GrowthToolText(
                         detail.prototypeOnly
                             ? 'ฟีเจอร์นี้ยังไม่เชื่อมระบบจริง ค่าที่เลือกจะบันทึกเป็นแบบร่างในเครื่องนี้เท่านั้น'
                             : detail.note,
@@ -373,49 +429,7 @@ class _GrowthToolDetailSheetState extends State<_GrowthToolDetailSheet> {
               ),
             ),
             const SizedBox(height: AppTheme.spaceMd),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        _isSaving ? null : () => Navigator.of(context).pop(),
-                    child: const Text('ปิด'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SizedBox(
-                    height: 48,
-                    child: FilledButton.icon(
-                      onPressed: _isSaving ? null : _saveSettings,
-                      icon: const Icon(Icons.save_outlined, size: 18),
-                      label: Text(
-                        _isSaving
-                            ? 'กำลังบันทึก...'
-                            : detail.prototypeOnly
-                                ? 'บันทึกแบบร่าง'
-                                : 'บันทึกการตั้งค่า',
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppTheme.accent,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor:
-                            AppTheme.accent.withValues(alpha: 0.55),
-                        disabledForegroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(13),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            _actions(),
           ],
         ),
       ),
@@ -444,7 +458,7 @@ class _ToolEnabledCard extends StatelessWidget {
           Icon(Icons.power_settings_new, color: color, size: 20),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
+            child: _GrowthToolText(
               'เปิดใช้งานเครื่องมือนี้',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
@@ -503,7 +517,7 @@ class _SettingToggleRow extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  label,
+                  localizeGrowthToolMessage(context, label),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppTheme.textSecondary,
                         fontWeight: FontWeight.w500,
@@ -518,3 +532,65 @@ class _SettingToggleRow extends StatelessWidget {
     );
   }
 }
+
+bool _growthToolUsesThai(BuildContext context) =>
+    (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+                ?.locale.languageCode ??
+            'th') ==
+        'th';
+
+/// Translate only known app-owned tool copy at render time. Unknown metadata
+/// remains intact; local setting IDs and saved values are never translated.
+String localizeGrowthToolMessage(BuildContext context, String message) =>
+    _growthToolUsesThai(context)
+        ? message
+        : _englishGrowthToolMessages[message] ?? message;
+
+class _GrowthToolText extends StatelessWidget {
+  const _GrowthToolText(this.message, {this.style});
+
+  final String message;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) => Text(
+        localizeGrowthToolMessage(context, message),
+        style: style,
+      );
+}
+
+const _englishGrowthToolMessages = <String, String>{
+  'รายละเอียดและตั้งค่า': 'Details and settings',
+  'เร็ว ๆ นี้': 'Coming soon',
+  'แบบร่างในเครื่อง': 'Local draft',
+  'เปิดใช้งานแล้ว': 'Enabled',
+  'ยังไม่เปิดใช้งาน': 'Not enabled',
+  'ตั้งค่าในเครื่องนี้': 'Settings on this device',
+  'ตั้งค่าที่ต้องการใช้': 'Options',
+  'เปิดใช้งานเครื่องมือนี้': 'Enable this tool',
+  'ปิด': 'Close',
+  'กำลังบันทึก...': 'Saving...',
+  'บันทึกแบบร่าง': 'Save draft',
+  'บันทึกการตั้งค่า': 'Save settings',
+  'บันทึกการตั้งค่าไม่สำเร็จ': 'Could not save settings.',
+  'บันทึกแบบร่างไว้ในเครื่องแล้ว ยังไม่ได้เปิดใช้งานฟีเจอร์':
+      'Draft saved on this device. This feature is still disabled.',
+  'บันทึกการตั้งค่าแล้ว': 'Settings saved',
+  'ฟีเจอร์นี้ยังไม่เชื่อมระบบจริง ค่าที่เลือกจะบันทึกเป็นแบบร่างในเครื่องนี้เท่านั้น':
+      'This feature is not connected to a live service yet. Your choices are saved only as a draft on this device.',
+  'รอบนี้เป็นหน้าตั้งค่าเบื้องต้น ระบบจะจำค่าที่เลือกไว้ในเครื่องเพื่อใช้ต่อยอดกับระบบจริง':
+      'These are initial settings. Your choices are saved on this device for future integration with the live service.',
+  'เรดาร์แฮชแท็กฮิต': 'Trending hashtag radar',
+  'ดูแฮชแท็ก/คีย์เวิร์ดที่กำลังขึ้น เพื่อใช้กับคลิปต่อไป':
+      'Find trending hashtags and keywords for your next video.',
+  'เลือกหมวดสินค้าหรือกลุ่มคอนเทนต์':
+      'Choose a product or content category',
+  'ดูแฮชแท็กที่น่าลองใช้กับคลิปถัดไป':
+      'Find hashtags to try in your next video',
+  'ศูนย์คอมเมนต์ AI': 'AI comment center',
+  'สรุปคอมเมนต์และเตรียมร่างคำตอบให้ตรวจภายหลัง':
+      'Summarize comments and prepare reply drafts for review.',
+  'ดูสรุปคอมเมนต์บวก ลบ และคำถามที่พบบ่อย':
+      'See positive and negative comments and common questions',
+  'ให้ AI ร่างคำตอบไว้รอตรวจ': 'Prepare AI reply drafts for review',
+};

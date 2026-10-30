@@ -29,6 +29,9 @@ import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
 import 'caption_quota_strip.dart';
+import 'caption_localizations.dart';
+import 'channel_localizations.dart';
+import 'review_localizations.dart';
 import 'post_quota_strip.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
@@ -48,6 +51,7 @@ import 'publish_post_preview.dart';
 import 'post_video_preview_screen.dart';
 import 'tiktok_video_preparer.dart';
 import 'tiktok_publishing_settings_sheet.dart';
+import 'uploader_localizations.dart';
 import 'video_picker_service.dart';
 import 'watermark_video_processor.dart';
 
@@ -388,6 +392,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   PostDeeStatusSheetData? _pendingStatusSheet;
   bool _pickVideoAfterStatus = false;
   String? _pendingInlineError;
+  String? _submissionInlineError;
   int _currentStep = 0;
   bool _allowExit = false;
   bool _isAskingToExit = false;
@@ -624,7 +629,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         children: [
           if (_videoDurationSeconds == null &&
               _localFilePathController.text.isNotEmpty)
-            Text(
+            UploaderText(
               _isReadingVideoDuration
                   ? 'กำลังอ่านความยาวคลิป...'
                   : 'ยังอ่านความยาวคลิปไม่ได้ จะตรวจซ้ำก่อนส่ง',
@@ -638,7 +643,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                 liveRegion: true,
                 child: PostDeeNotice(
                   key: ValueKey('uploader-duration-warning-${entry.key.apiValue}'),
-                  message: entry.value,
+                  message: localizeUploaderMessage(context, entry.value),
                   icon: Icons.timer_outlined,
                   color: Theme.of(context).colorScheme.error,
                 ),
@@ -1013,13 +1018,14 @@ class _UploaderScreenState extends State<UploaderScreen>
         : null;
   }
 
-  String? get _videoMetadataLabel {
+  String? _videoMetadataLabel(BuildContext context) {
     final width = _readPositiveInt(_widthController);
     final height = _readPositiveInt(_heightController);
     final size = _readPositiveInt(_sizeBytesController);
     final parts = <String>[
       if (_videoDurationSeconds case final seconds?)
-        '${_durationClock(seconds)} นาที',
+        uploaderText(context, '${_durationClock(seconds)} นาที',
+            '${_durationClock(seconds)} min'),
       if (width != null && height != null) '$width × $height px',
       if (_videoAspectLabel != null) '9:16',
       if (size != null)
@@ -1027,13 +1033,14 @@ class _UploaderScreenState extends State<UploaderScreen>
             ? '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'
             : size >= 1024
                 ? '${(size / 1024).toStringAsFixed(1)} KB'
-                : '$size ไบต์',
+                : uploaderText(context, '$size ไบต์',
+                    '$size ${size == 1 ? 'byte' : 'bytes'}'),
     ];
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
   Widget _buildVideoMetadata({TextAlign textAlign = TextAlign.left}) {
-    final metadata = _videoMetadataLabel;
+    final metadata = _videoMetadataLabel(context);
     return metadata == null
         ? const SizedBox.shrink()
         : Text(metadata,
@@ -1190,24 +1197,25 @@ class _UploaderScreenState extends State<UploaderScreen>
             context: context,
             builder: (dialogContext) => AlertDialog(
                   key: const ValueKey('uploader-exit-dialog'),
-                  title: const Text('เก็บโพสต์นี้ไว้ไหม?'),
-                  content: const Text(
+                  scrollable: MediaQuery.textScalerOf(dialogContext).scale(14) > 20,
+                  title: const UploaderText('เก็บโพสต์นี้ไว้ไหม?'),
+                  content: const UploaderText(
                       'มีข้อมูลที่ยังไม่ได้บันทึก กลับมาแก้ต่อได้จากฉบับร่าง'),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(dialogContext, 'cancel'),
-                        child: const Text('แก้ไขต่อ')),
+                        child: const UploaderText('แก้ไขต่อ')),
                     TextButton(
                         onPressed: () =>
                             Navigator.pop(dialogContext, 'discard'),
-                        child: const Text('ออกโดยไม่บันทึก')),
+                        child: const UploaderText('ออกโดยไม่บันทึก')),
                     FilledButton(
                         onPressed: !_draftStoreAvailable ||
                                 _localFilePathController.text.trim().isEmpty ||
                                 _isGeneratingCaption
                             ? null
                             : () => Navigator.pop(dialogContext, 'save'),
-                        child: const Text('บันทึกแล้วออก')),
+                        child: const UploaderText('บันทึกแล้วออก')),
                   ],
                 ));
         if (!mounted || action == null || action == 'cancel') return;
@@ -1232,7 +1240,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     await Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (_) => PostVideoPreviewScreen(
             videoFile: File(path),
-            videoName: _selectedVideoName ?? 'คลิปของคุณ')));
+            videoName: _selectedVideoName ??
+                uploaderText(context, 'คลิปของคุณ', 'Your video'))));
   }
 
   Future<void> _openPostPreview() async {
@@ -1275,7 +1284,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     await Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (_) => PostVideoPreviewScreen(
         videoFile: File(path),
-        videoName: _selectedVideoName ?? 'คลิปของคุณ',
+        videoName: _selectedVideoName ??
+            reviewText(context, 'คลิปของคุณ', 'Your video'),
         postPreview: preview,
         ownerSession: ownerSession,
       ),
@@ -2272,6 +2282,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (!mounted || !stillCurrent()) return;
     final picked = await showPostDeeTimePicker(
       context: context,
+      languageCode: reviewUsesThai(context) ? 'th' : 'en',
       initialTime:
           _selectedScheduleTime ?? const TimeOfDay(hour: 18, minute: 30),
       date: _selectedScheduleDate ?? _scheduleDateFromToday(1),
@@ -3234,20 +3245,20 @@ class _UploaderScreenState extends State<UploaderScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('เริ่มรายการโพสต์ใหม่?'),
-        content: const Text(
+        title: const UploaderText('เริ่มรายการโพสต์ใหม่?'),
+        content: const UploaderText(
           'กรุณาตรวจหน้ารายการโพสต์และแพลตฟอร์มปลายทางก่อน '
           'เพราะรายการเดิมอาจถูกส่งไปแล้ว การเริ่มรายการใหม่อาจโพสต์ซ้ำได้',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('ยกเลิก'),
+            child: const UploaderText('ยกเลิก'),
           ),
           FilledButton(
             key: const ValueKey('publish-new-attempt-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('ตรวจแล้ว เริ่มรายการใหม่'),
+            child: const UploaderText('ตรวจแล้ว เริ่มรายการใหม่'),
           ),
         ],
       ),
@@ -3665,19 +3676,20 @@ class _UploaderScreenState extends State<UploaderScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ลบฉบับร่างนี้?'),
-        content: const Text(
+        scrollable: MediaQuery.textScalerOf(context).scale(14) > 20,
+        title: const UploaderText('ลบฉบับร่างนี้?'),
+        content: const UploaderText(
           'วิดีโอและหน้าปกที่เก็บไว้กับฉบับร่างนี้จะถูกลบจากพื้นที่ของแอป',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('ยกเลิก'),
+            child: const UploaderText('ยกเลิก'),
           ),
           FilledButton(
             key: const ValueKey('publish-draft-delete-confirm'),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('ลบร่าง'),
+            child: const UploaderText('ลบร่าง'),
           ),
         ],
       ),
@@ -3743,6 +3755,14 @@ class _UploaderScreenState extends State<UploaderScreen>
     }
   }
 
+  Widget _draftSheetContent(BuildContext context, Widget child) {
+    if (MediaQuery.textScalerOf(context).scale(14) <= 20) return child;
+    return SingleChildScrollView(
+      key: const ValueKey('uploader-drafts-scroll'),
+      child: child,
+    );
+  }
+
   Future<void> _openDrafts() async {
     if (_isLoadingDrafts) return;
     try {
@@ -3755,22 +3775,22 @@ class _UploaderScreenState extends State<UploaderScreen>
             builder: (context, setSheetState) => SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Column(
+                child: _draftSheetContent(context, Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
+                    UploaderText(
                       'ฉบับร่างในเครื่อง',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    const UploaderText(
                       'ยังไม่อัปโหลด ไม่ส่งไปแพลตฟอร์ม และไม่ใช้โควตา',
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    const UploaderText(
                       'แอปคัดลอกวิดีโอและหน้าปกไว้ในพื้นที่แอปของเครื่องนี้ '
                       'ร่างไม่ซิงก์ข้ามอุปกรณ์ และอาจรวมอยู่ในข้อมูลสำรองของระบบ',
                       style: TextStyle(fontSize: 11.5),
@@ -3779,12 +3799,18 @@ class _UploaderScreenState extends State<UploaderScreen>
                     if (_drafts.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 28),
-                        child: Center(child: Text('ยังไม่มีฉบับร่างในเครื่อง')),
+                        child: Center(child: UploaderText('ยังไม่มีฉบับร่างในเครื่อง')),
                       )
                     else
                       Flexible(
                         child: ListView.separated(
                           shrinkWrap: true,
+                          primary: MediaQuery.textScalerOf(context).scale(14) > 20
+                              ? false
+                              : null,
+                          physics: MediaQuery.textScalerOf(context).scale(14) > 20
+                              ? const NeverScrollableScrollPhysics()
+                              : null,
                           itemCount: _drafts.length,
                           separatorBuilder: (_, __) => const Divider(),
                           itemBuilder: (context, index) {
@@ -3800,14 +3826,14 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: Text(
+                              subtitle: UploaderText(
                                 '${draft.platformApiValues.length} ช่องทาง · เก็บในเครื่อง',
                               ),
                               trailing: IconButton(
                                 key: ValueKey(
                                   'publish-draft-delete-${draft.id}',
                                 ),
-                                tooltip: 'ลบฉบับร่าง',
+                                tooltip: localizeUploaderMessage(context, 'ลบฉบับร่าง'),
                                 onPressed: () async {
                                   await _deleteDraft(draft);
                                   if (mounted) setSheetState(() {});
@@ -3823,7 +3849,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                         ),
                       ),
                   ],
-                ),
+                )),
               ),
             ),
           );
@@ -3887,21 +3913,21 @@ class _UploaderScreenState extends State<UploaderScreen>
                   : Icons.link_off_rounded,
           iconColor: const Color(0xFFF59E0B),
           iconTint: const Color(0x24F59E0B),
-          title: hasConnectionError
+          title: localizeUploaderMessage(context, hasConnectionError
               ? 'ตรวจสอบช่องทางไม่ได้'
               : hasConnectedPlatforms
                   ? 'ยังไม่ได้เลือกช่องทาง'
-                  : 'ยังไม่ได้เชื่อมช่องทาง',
-          body: _connectionsErrorMessage ??
+                  : 'ยังไม่ได้เชื่อมช่องทาง'),
+          body: localizeUploaderMessage(context, _connectionsErrorMessage ??
               (hasConnectedPlatforms
                   ? 'เลือกอย่างน้อย 1 ช่องทางก่อนเริ่มโพสต์'
-                  : 'ต้องเชื่อมอย่างน้อย 1 ช่องทางก่อนจึงจะเริ่มโพสต์ได้'),
-          primaryLabel: hasConnectionError
+                  : 'ต้องเชื่อมอย่างน้อย 1 ช่องทางก่อนจึงจะเริ่มโพสต์ได้')),
+          primaryLabel: localizeUploaderMessage(context, hasConnectionError
               ? 'ลองใหม่'
               : hasConnectedPlatforms
                   ? 'เลือกทั้งหมด'
-                  : 'ไปเชื่อมช่องทาง',
-          secondaryLabel: 'ไว้ก่อน',
+                  : 'ไปเชื่อมช่องทาง'),
+          secondaryLabel: localizeReviewMessage(context, 'ไว้ก่อน'),
         ),
       );
 
@@ -4959,6 +4985,29 @@ class _UploaderScreenState extends State<UploaderScreen>
     _pickVideoAfterStatus = false;
   }
 
+  String _localizeSubmissionError(BuildContext context, String message) {
+    final localized = localizeUploaderMessage(context, message);
+    if (uploaderUsesThai(context) || localized != message) return localized;
+    return apiErrorMessage(ApiException(message),
+        languageCode: 'en',
+        fallbackMessage:
+            'An error occurred while sending your post. Check your connection and try again.');
+  }
+
+  PostDeeStatusSheetData _localizeSubmissionStatus(
+          BuildContext context, PostDeeStatusSheetData data) =>
+      PostDeeStatusSheetData(
+        icon: data.icon,
+        iconColor: data.iconColor,
+        iconTint: data.iconTint,
+        title: localizeUploaderMessage(context, data.title),
+        body: _localizeSubmissionError(context, data.body),
+        primaryLabel: localizeUploaderMessage(context, data.primaryLabel),
+        secondaryLabel: data.secondaryLabel == null
+            ? null
+            : localizeUploaderMessage(context, data.secondaryLabel!),
+      );
+
   Future<void> _showPendingStatus() async {
     final data = _pendingStatusSheet;
     final shouldPickVideo = _pickVideoAfterStatus;
@@ -4968,9 +5017,13 @@ class _UploaderScreenState extends State<UploaderScreen>
     _pendingInlineError = null;
     if (data == null || !mounted) return;
 
-    final confirmed = await showPostDeeStatusSheet(context, data: data);
+    final confirmed = await showPostDeeStatusSheet(context,
+        data: data, localizeData: _localizeSubmissionStatus);
     if (mounted && inlineError != null) {
-      setState(() => _errorMessage = inlineError);
+      setState(() {
+        _errorMessage = inlineError;
+        _submissionInlineError = inlineError;
+      });
     }
     if (confirmed == true && shouldPickVideo && mounted) {
       await _pickVideoFile();
@@ -5047,7 +5100,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                           platform: platform,
                           displayName:
                               _connectionDetails[platform]?.displayName ?? '',
-                          child: const Text(
+                          child: const ChannelText(
                               'บัญชีหรือคลิปเปลี่ยนแล้ว กรุณาเปิดการตั้งค่าใหม่'));
                     }
                     if (snapshot.connectionState == ConnectionState.waiting) {
@@ -5064,7 +5117,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                         'uploader-platform-defaults-loading'),
                                     strokeWidth: 2)),
                             SizedBox(width: 12),
-                            Expanded(child: Text('กำลังโหลดค่าที่จำไว้')),
+                            Expanded(child: ChannelText('กำลังโหลดค่าที่จำไว้')),
                           ]));
                     }
                     final remembered = snapshot.data?.value;
@@ -5156,7 +5209,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     } catch (_) {
       if (!mounted || !isCurrent() || savedForm != _formSnapshot) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
+          content: ChannelText(
               'ใช้การตั้งค่ากับคลิปนี้แล้ว แต่จำค่าไว้ครั้งถัดไปไม่สำเร็จ')));
     }
   }
@@ -5301,13 +5354,20 @@ class _UploaderScreenState extends State<UploaderScreen>
   @override
   Widget build(BuildContext context) {
     final body = LayoutBuilder(
-        builder: (context, constraints) => Column(
+        builder: (context, constraints) {
+          // Reserve typing space while the keyboard resizes the large-text
+          // caption screen; the header and actions remain scrollable.
+          final captionKeyboard = _currentStep == 1 &&
+              View.of(context).viewInsets.bottom > 0 &&
+              MediaQuery.textScalerOf(context).scale(14) > 20;
+          return Column(
               children: [
                 // The underlying composer also resizes when a settings sheet opens its
                 // keyboard. Keep its header scrollable so large text cannot overflow.
                 ConstrainedBox(
                   constraints:
-                      BoxConstraints(maxHeight: constraints.maxHeight * .45),
+                      BoxConstraints(maxHeight: constraints.maxHeight *
+                          (captionKeyboard ? .25 : .45)),
                   child: SingleChildScrollView(
                     key: const ValueKey('uploader-header-scroll'),
                     primary: false,
@@ -5331,9 +5391,10 @@ class _UploaderScreenState extends State<UploaderScreen>
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                           children: [
                             if (_activeDraftUploadedMedia != null) ...[
-                              const PostDeeNotice(
-                                  message: 'มีข้อมูลอัปโหลดของคำขอเดิม '
-                                      'ตรวจผลการส่งได้โดยไม่อัปโหลดหรือส่งโพสต์ซ้ำ',
+                              PostDeeNotice(
+                                  message: localizeUploaderMessage(context,
+                                      'มีข้อมูลอัปโหลดของคำขอเดิม '
+                                      'ตรวจผลการส่งได้โดยไม่อัปโหลดหรือส่งโพสต์ซ้ำ'),
                                   icon: Icons.history_rounded),
                               Align(
                                   alignment: Alignment.centerLeft,
@@ -5345,7 +5406,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                           : _recoverUploadedSubmission,
                                       icon: const Icon(
                                           Icons.manage_search_rounded),
-                                      label: Text(_isRecoveringSubmission
+                                      label: UploaderText(_isRecoveringSubmission
                                           ? 'กำลังตรวจผลการส่งเดิม...'
                                           : 'ตรวจผลการส่งเดิม'))),
                               const SizedBox(height: 8),
@@ -5357,7 +5418,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: Semantics(liveRegion: true,
                                       child: PostDeeNotice(
-                                      message: _errorMessage!,
+                                      message: _errorMessage == _submissionInlineError
+                                          ? _localizeSubmissionError(context, _errorMessage!)
+                                          : localizeUploaderMessage(context, _errorMessage!),
                                       color:
                                           Theme.of(context).colorScheme.error,
                                       icon: Icons.error_outline))),
@@ -5365,7 +5428,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                               Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: PostDeeNotice(
-                                      message: _successMessage!,
+                                      message: localizeUploaderMessage(context, _successMessage!),
                                       color: AppTheme.successInk,
                                       icon: Icons.check_circle_outline)),
                             if (_recoveredPostId case final postId?)
@@ -5379,7 +5442,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                     }
                                   },
                                   icon: const Icon(Icons.receipt_long_outlined),
-                                  label: const Text('ดูโพสต์นี้'),
+                                  label: const UploaderText('ดูโพสต์นี้'),
                                 ),
                               ),
                             _UploadStepHeader(
@@ -5389,10 +5452,11 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 'uploader-step-platforms',
                                 'uploader-step-review'
                               ][_currentStep]),
-                              title: _wizardStepLabel(_currentStep),
+                              title: localizeUploaderMessage(context,
+                                  _wizardStepLabel(_currentStep)),
                             ),
                             const SizedBox(height: 6),
-                            Text(
+                            UploaderText(
                                 [
                                   'เริ่มจากคลิปแนวตั้งที่อยากโพสต์',
                                   'เขียนเอง หรือกดให้ AI ช่วยเมื่อพร้อม',
@@ -5435,20 +5499,21 @@ class _UploaderScreenState extends State<UploaderScreen>
                                           icon: const Icon(
                                               Icons.swap_horiz_rounded,
                                               size: 18),
-                                          label: const Text('เปลี่ยนคลิป')),
+                                          label: const UploaderText('เปลี่ยนคลิป')),
                                       OutlinedButton.icon(
                                           key: const ValueKey(
                                               'uploader-cover-edit-button'),
                                           onPressed: _openCoverEditor,
                                           icon: const Icon(Icons.image_outlined,
                                               size: 18),
-                                          label: Text(_coverResult == null
+                                          label: UploaderText(_coverResult == null
                                               ? 'แต่งหน้าปก'
                                               : 'แก้หน้าปก')),
                                     ]),
                                 if (_coverResult != null)
-                                  Text(
+                                  Text(uploaderText(context,
                                       'เลือกเฟรมที่ ${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}',
+                                      'Selected frame at ${formatReviewVideoClock(Duration(milliseconds: _coverResult!.coverFrameTimeMs))}'),
                                       key:
                                           const ValueKey('uploader-cover-time'),
                                       textAlign: TextAlign.center,
@@ -5496,7 +5561,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                                 icon: const Icon(
                                                     Icons.play_circle_outline,
                                                     size: 18),
-                                                label: const Text('ดูคลิป')),
+                                                label: const CaptionText('ดูคลิป')),
                                           ])),
                                     ]),
                                 const SizedBox(height: 20),
@@ -5544,39 +5609,41 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 key: const ValueKey('uploader-send-foreground-notice'),
                                 icon: Icons.info_outline,
                                 color: AppTheme.accentCyanInk,
-                                message: 'ระหว่างเตรียมและส่งข้อมูล กรุณาเปิดแอปหน้านี้ไว้ '
-                                    'ยังยกเลิกไม่ได้จนจบขั้นตอน',
+                                message: localizeReviewMessage(context,
+                                    'ระหว่างเตรียมและส่งข้อมูล กรุณาเปิดแอปหน้านี้ไว้ '
+                                    'ยังยกเลิกไม่ได้จนจบขั้นตอน'),
                               ),
                               const SizedBox(height: 10),
                               if (_captionLimitError case final message?)
                                 PostDeeNotice(
-                                  message: message,
-                                  actionLabel: 'แก้แคปชัน',
+                                  message: localizeUploaderMessage(context, message),
+                                  actionLabel: localizeReviewMessage(context, 'แก้แคปชัน'),
                                   onAction: () => _goToStep(1),
                                 ),
                               if (_selectedDurationProblem case final problem?)
                                 PostDeeNotice(
                                   key: const ValueKey('uploader-selected-duration-error'),
-                                  message: '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่',
-                                  actionLabel: 'แก้ช่องทาง',
+                                  message: localizeUploaderMessage(context,
+                                      '${problem.message} กรุณายกเลิกช่องทางนี้หรือเลือกคลิปใหม่'),
+                                  actionLabel: localizeReviewMessage(context, 'แก้ช่องทาง'),
                                   onAction: () => _goToStep(2),
                                 ),
                               if (_connectionsErrorMessage != null)
                                 PostDeeNotice(
-                                    message: _connectionsErrorMessage!,
+                                    message: localizeUploaderMessage(context, _connectionsErrorMessage!),
                                     color: Theme.of(context).colorScheme.error,
                                     icon: Icons.cloud_off_outlined),
                               if (_selectedReadinessIssue case final issue?)
                                 PostDeeNotice(
-                                    message: issue,
+                                    message: localizeUploaderMessage(context, issue),
                                     color: Theme.of(context).colorScheme.error,
                                     icon: Icons.link_off_outlined),
                               if (_readScheduledAt() case final schedule?
                                   when _errorMessage == null &&
                                       !schedule.isAfter(widget.now()))
                                 PostDeeNotice(
-                                    message:
-                                        'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลยก่อนยืนยัน',
+                                    message: localizeUploaderMessage(context,
+                                        'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลยก่อนยืนยัน'),
                                     color: Theme.of(context).colorScheme.error,
                                     icon: Icons.schedule_outlined),
                               SizedBox(
@@ -5608,7 +5675,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                               const SizedBox(height: 20),
                               PublishReviewSummary(
                                 videoName:
-                                    _selectedVideoName ?? 'ยังไม่ได้เลือกคลิป',
+                                    _selectedVideoName ?? localizeReviewMessage(
+                                        context, 'ยังไม่ได้เลือกคลิป'),
                                 caption: _captionController.text,
                                 platforms: SocialPlatform.values
                                     .where(_selectedPlatforms.contains)
@@ -5643,9 +5711,21 @@ class _UploaderScreenState extends State<UploaderScreen>
                     ),
                   ),
                 ),
-                _buildStickyActionBar(context),
+                if (captionKeyboard)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                        maxHeight: constraints.maxHeight * .35),
+                    child: SingleChildScrollView(
+                      key: const ValueKey('uploader-caption-actions-scroll'),
+                      primary: false,
+                      child: _buildStickyActionBar(context),
+                    ),
+                  )
+                else
+                  _buildStickyActionBar(context),
               ],
-            ));
+            );
+        });
     final motionBody = TickerMode(enabled: _appIsResumed, child: body);
     if (!widget.fullScreen) return motionBody;
     return PopScope(
@@ -5671,7 +5751,7 @@ class _UploaderScreenState extends State<UploaderScreen>
             if (widget.fullScreen)
               IconButton(
                   key: const ValueKey('uploader-close'),
-                  tooltip: 'ปิดหน้าสร้างโพสต์',
+                  tooltip: localizeUploaderMessage(context, 'ปิดหน้าสร้างโพสต์'),
                   onPressed: _formBusy ? null : _requestExit,
                   icon: const Icon(Icons.close_rounded)),
           ]),
@@ -5686,7 +5766,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                         ? null
                         : _openDrafts,
                 icon: const Icon(Icons.folder_open_outlined, size: 17),
-                label: Text('ฉบับร่าง (${_drafts.length})')),
+                label: UploaderText('ฉบับร่าง (${_drafts.length})')),
             OutlinedButton.icon(
                 key: const ValueKey('uploader-save-draft-button'),
                 style: OutlinedButton.styleFrom(
@@ -5701,7 +5781,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                         color: AppTheme.successInk,
                         size: 17)
                     : const Icon(Icons.save_outlined, size: 17),
-                label: Text(_isSavingDraft
+                label: UploaderText(_isSavingDraft
                     ? 'กำลังบันทึก...'
                     : _draftSavedFeedback
                         ? 'บันทึกแล้ว'
@@ -5709,7 +5789,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           ]),
           if (_isRestoringInitialDraft) ...[
             const SizedBox(height: 8),
-            Text('กำลังเปิดฉบับร่าง...',
+            UploaderText('กำลังเปิดฉบับร่าง...',
                 key: const ValueKey('uploader-opening-draft'),
                 style: TextStyle(color: AppTheme.textSecondary)),
           ],
@@ -5759,8 +5839,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           ),
           child: Semantics(
             selected: isCurrent,
-            label:
-                '${_wizardStepLabel(index)}${isComplete ? ' เสร็จแล้ว' : ''}',
+            label: localizeUploaderMessage(context,
+                '${_wizardStepLabel(index)}${isComplete ? ' เสร็จแล้ว' : ''}'),
             child: ExcludeSemantics(
               child: Column(children: [
                 _UploaderDecorationTransition(
@@ -5800,9 +5880,13 @@ class _UploaderScreenState extends State<UploaderScreen>
                   ),
                 ),
                 const SizedBox(height: 5),
-                Text(['คลิป', 'แคปชัน', 'ช่องทาง', 'ตรวจทาน'][index],
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                UploaderText(['คลิป', 'แคปชัน', 'ช่องทาง', 'ตรวจทาน'][index],
+                    maxLines: MediaQuery.textScalerOf(context).scale(11) > 15
+                        ? null
+                        : 2,
+                    overflow: MediaQuery.textScalerOf(context).scale(11) > 15
+                        ? null
+                        : TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 11, fontWeight: FontWeight.w600)),
@@ -5820,8 +5904,8 @@ class _UploaderScreenState extends State<UploaderScreen>
             padding: EdgeInsets.zero,
             child: SwitchListTile.adaptive(
               key: const ValueKey('uploader-platform-captions-toggle'),
-              title: const Text('ตั้งค่าขั้นสูง'),
-              subtitle: Text(_platformSettings.usePlatformCaptions
+              title: const CaptionText('ตั้งค่าขั้นสูง'),
+              subtitle: CaptionText(_platformSettings.usePlatformCaptions
                   ? 'เขียนเอง หรือเลือกช่องทางที่ต้องการให้ AI เขียน'
                   : 'เขียนแคปชั่นแยกแต่ละช่องทาง'),
               secondary: const Icon(Icons.tune, color: AppTheme.accent),
@@ -5845,7 +5929,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                 onPressed: _formBusy || _isGeneratingCaption
                     ? null : _undoPlatformAiCaption,
                 icon: const Icon(Icons.undo),
-                label: const Text('คืนข้อความก่อนใช้ AI'),
+                label: const CaptionText('คืนข้อความก่อนใช้ AI'),
               ),
           ],
           if (!_platformSettings.usePlatformCaptions)
@@ -5863,24 +5947,26 @@ class _UploaderScreenState extends State<UploaderScreen>
                   minLines: 5,
                   maxLines: 8,
                   decoration: InputDecoration(
-                      labelText: 'แคปชั่น',
-                      hintText: 'เล่าเรื่องคลิปหรือสิ่งที่อยากบอกลูกค้า...',
+                      labelText: localizeCaptionMessage(context, 'แคปชั่น'),
+                      hintText: localizeCaptionMessage(context,
+                          'เล่าเรื่องคลิปหรือสิ่งที่อยากบอกลูกค้า...'),
                       error: _captionRequired
-                          ? const Text('เพิ่มแคปชันก่อนไปต่อ',
+                          ? const CaptionText('เพิ่มแคปชันก่อนไปต่อ',
                               key: ValueKey('uploader-caption-required-notice'))
                           : _captionLimitError == null ? null
                               : Semantics(liveRegion: true,
-                                  child: Text(_captionLimitError!)))),
+                                  child: CaptionText(_captionLimitError!)))),
             ),
           ),
           if (!_platformSettings.usePlatformCaptions && _captionLimits.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(_captionLimits.join('\n'),
+            Text(_captionLimits.map((limit) =>
+                    localizeCaptionMessage(context, limit)).join('\n'),
                 key: const ValueKey('uploader-caption-limits'),
                 style: TextStyle(fontSize: 12, height: 1.5,
                     color: AppTheme.textSecondary)),
             if (_selectedPlatforms.contains(SocialPlatform.youtubeShorts))
-              Text('YouTube นับความยาวเป็นไบต์ ภาษาไทยอาจใช้หลายไบต์ต่ออักษร',
+              CaptionText('YouTube นับความยาวเป็นไบต์ ภาษาไทยอาจใช้หลายไบต์ต่ออักษร',
                   style: TextStyle(fontSize: 11.5,
                       color: AppTheme.textMuted)),
           ],
@@ -5891,7 +5977,7 @@ class _UploaderScreenState extends State<UploaderScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
+                  child: CaptionText(
                     'กรุณาตรวจว่าแคปชั่นตรงกับคลิปที่เลือกก่อนใช้',
                     style: TextStyle(color: AppTheme.textSecondary),
                   ),
@@ -5901,14 +5987,14 @@ class _UploaderScreenState extends State<UploaderScreen>
                   onPressed: _formBusy
                       ? null
                       : () => setState(() => _captionNeedsReview = false),
-                  child: const Text('ตรวจแล้ว'),
+                  child: const CaptionText('ตรวจแล้ว'),
                 ),
               ],
             ),
           ],
           if (_aiCaptionFallbackMessage != null) ...[
             const SizedBox(height: 10),
-            Text(_aiCaptionFallbackMessage!,
+            CaptionText(_aiCaptionFallbackMessage!,
                 key: const ValueKey('uploader-ai-caption-fallback'),
                 style: TextStyle(color: AppTheme.textSecondary)),
           ],
@@ -5917,7 +6003,7 @@ class _UploaderScreenState extends State<UploaderScreen>
             ExpansionTile(
               key: const ValueKey('uploader-ai-seo-keywords'),
               tilePadding: EdgeInsets.zero,
-              title: const Text('คำค้นที่ AI แนะนำ'),
+              title: const CaptionText('คำค้นที่ AI แนะนำ'),
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
@@ -5933,13 +6019,13 @@ class _UploaderScreenState extends State<UploaderScreen>
           ExpansionTile(
               key: const ValueKey('uploader-templates-panel'),
               tilePadding: EdgeInsets.zero,
-              title: const Text('เทมเพลตแคปชัน'),
+              title: const CaptionText('เทมเพลตแคปชัน'),
               leading: const Icon(Icons.text_snippet_outlined),
               children: [
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
+                      child: CaptionText(
                         'เทมเพลต',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w700,
@@ -5949,7 +6035,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                     Flexible(
                       child: OutlinedButton(
                         onPressed: _isLoadingTemplates ? null : _loadTemplates,
-                        child: Text(_isLoadingTemplates
+                        child: CaptionText(_isLoadingTemplates
                             ? 'กำลังโหลดเทมเพลต...'
                             : 'โหลดเทมเพลต'),
                       ),
@@ -5958,7 +6044,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                 ),
                 if (_templateErrorMessage != null) ...[
                   const SizedBox(height: AppTheme.spaceSm),
-                  Text(
+                  CaptionText(
                     _templateErrorMessage!,
                     style:
                         TextStyle(color: Theme.of(context).colorScheme.error),
@@ -5994,7 +6080,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                           ),
                           TextButton(
                             onPressed: () => _insertTemplate(template),
-                            child: const Text('ใส่แคปชั่น'),
+                            child: const CaptionText('ใส่แคปชั่น'),
                           ),
                         ],
                       ),
@@ -6007,7 +6093,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Widget _buildPostQuota() {
     if (_isLoadingPostQuota) {
-      return Text('กำลังโหลดโควตาโพสต์...',
+      return UploaderText('กำลังโหลดโควตาโพสต์...',
           key: const ValueKey('uploader-post-quota-loading'),
           style: Theme.of(context)
               .textTheme
@@ -6017,7 +6103,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (_postQuotaLoadFailed) {
       return Row(children: [
         Expanded(
-          child: Text('โหลดโควตาโพสต์ไม่สำเร็จ',
+          child: UploaderText('โหลดโควตาโพสต์ไม่สำเร็จ',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -6025,7 +6111,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         ),
         IconButton(
           key: const ValueKey('uploader-post-quota-retry'),
-          tooltip: 'โหลดโควตาโพสต์ใหม่',
+          tooltip: localizeUploaderMessage(context, 'โหลดโควตาโพสต์ใหม่'),
           onPressed: _loadPostQuota,
           icon: const Icon(Icons.refresh_rounded),
         ),
@@ -6044,7 +6130,11 @@ class _UploaderScreenState extends State<UploaderScreen>
         captionReady: _aiCaptionReady,
         formBusy: _formBusy,
         errorMessage: _aiCaptionErrorMessage,
-        styleSummary: _captionWritingProfile.style.summary,
+        styleSummary: [
+          _captionWritingProfile.style.tone.label,
+          _captionWritingProfile.style.length.label,
+          _captionWritingProfile.style.emoji.label,
+        ].map((label) => localizeCaptionMessage(context, label)).join(' · '),
         styleError: _captionStyleError,
         isSavingStyle: _isSavingCaptionStyle,
         onOpenStyle: _openCaptionWritingStyle,
@@ -6073,7 +6163,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         OutlinedButton(
           key: const ValueKey('uploader-wizard-back'),
           onPressed: _formBusy ? null : () => _goToStep(_currentStep - 1),
-          child: const Text('ย้อนกลับ', textAlign: TextAlign.center),
+          child: const UploaderText('ย้อนกลับ', textAlign: TextAlign.center),
         ),
         enabled: !_formBusy);
     final primaryAction = SizedBox(
@@ -6095,7 +6185,7 @@ class _UploaderScreenState extends State<UploaderScreen>
             style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.actionBackground,
                 minimumSize: const Size.fromHeight(52)),
-            child: Text(
+            child: UploaderText(
               _formBusy
                   ? 'กำลังดำเนินการ...'
                   : _currentStep == 3
@@ -6130,7 +6220,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                   color: AppTheme.accentCyanInk),
               const SizedBox(width: 7),
               Expanded(
-                child: Text(
+                child: UploaderText(
                     _formBusy
                         ? 'กำลังดำเนินการ...'
                         : _currentStep == 0
@@ -6163,7 +6253,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                 key: const ValueKey('uploader-start-new-publish-attempt'),
                 onPressed: _formBusy ? null : _startNewSubmissionAttempt,
                 icon: const Icon(Icons.add_circle_outline_rounded),
-                label: const Text('เริ่มรายการโพสต์ใหม่')),
+                label: const UploaderText('เริ่มรายการโพสต์ใหม่')),
           LayoutBuilder(builder: (context, constraints) {
             final stackActions = _currentStep > 0 &&
                 constraints.maxWidth < 400 &&
@@ -6358,7 +6448,7 @@ class _UploadPageHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                UploaderText(
                   'สร้างโพสต์ใหม่',
                   style: TextStyle(
                     fontSize: 21,
@@ -6368,7 +6458,7 @@ class _UploadPageHeader extends StatelessWidget {
                 ),
                 if (!compact) ...[
                   const SizedBox(height: 2),
-                  Text(
+                  UploaderText(
                     'อัปโหลดครั้งเดียว แล้วเลือกช่องทางที่ต้องการ',
                     style: TextStyle(
                       fontSize: 12.5,
@@ -6430,9 +6520,13 @@ class _VideoPreviewCard extends StatelessWidget {
     final hasVideo = videoName != null;
 
     return Center(
-      child: SizedBox(
-        width: compact ? 72 : 174,
-        height: compact ? 108 : 260,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: compact ? 72 : 174,
+          maxWidth: compact ? 72 : 174,
+          minHeight: compact ? 108 : 260,
+          maxHeight: compact ? 108 : hasVideo ? 260 : double.infinity,
+        ),
         child: InkWell(
           key: ValueKey(hasVideo
               ? 'uploader-video-preview-open'
@@ -6463,6 +6557,7 @@ class _VideoPreviewCard extends StatelessWidget {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 54,
@@ -6478,8 +6573,9 @@ class _VideoPreviewCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
+            UploaderText(
               'เลือกวิดีโอ 9:16',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -6546,6 +6642,9 @@ class _VideoPreviewCard extends StatelessWidget {
           Center(
             child: Icon(
               Icons.play_circle_rounded,
+              semanticLabel: compact
+                  ? localizeCaptionMessage(context, 'ดูคลิป')
+                  : null,
               size: 46,
               color: Colors.white.withValues(alpha: 0.92),
             ),
@@ -6567,6 +6666,7 @@ class _VideoPreviewCard extends StatelessWidget {
                 ),
               ),
             ),
+          if (!compact)
           Positioned(
             bottom: 10,
             left: 10,
@@ -6582,7 +6682,7 @@ class _VideoPreviewCard extends StatelessWidget {
                   children: [
                     Icon(Icons.check, size: 13, color: Colors.white),
                     SizedBox(width: 4),
-                    Text(
+                    UploaderText(
                       'ดูคลิป',
                       style: TextStyle(
                         fontSize: 10,
@@ -6716,10 +6816,13 @@ class _PlatformSelectorSection extends StatelessWidget {
             .where(connectedPlatforms.contains)
             .toList(growable: false);
     final unavailableDraftMessage = isLoadingConnections
-        ? 'กำลังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้: '
+        ? channelText(context, 'กำลังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้: ',
+            'Checking channels selected in this draft: ')
         : hasConnectionError
-            ? 'ยังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้ไม่ได้: '
-            : 'ฉบับร่างเลือกไว้แต่ยังไม่ได้เชื่อม: ';
+            ? channelText(context, 'ยังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้ไม่ได้: ',
+                'Could not check channels selected in this draft: ')
+            : channelText(context, 'ฉบับร่างเลือกไว้แต่ยังไม่ได้เชื่อม: ',
+                'Selected in this draft but not connected: ');
     final statusColor = hasConnectedPlatforms
         ? AppTheme.accentCyanInk
         : const Color(0xFFB5740B);
@@ -6729,13 +6832,13 @@ class _PlatformSelectorSection extends StatelessWidget {
       children: [
         Semantics(
           button: true,
-          label: isLoadingConnections
+          label: localizeChannelMessage(context, isLoadingConnections
               ? 'กำลังตรวจสอบช่องทาง'
               : hasConnectionError
                   ? 'ตรวจสอบช่องทางไม่ได้ ลองใหม่'
                   : connectedPlatforms.isEmpty
                       ? 'ยังไม่ได้เชื่อมต่อช่องทาง'
-                      : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง',
+                      : 'เชื่อมต่อแล้ว ${connectedPlatforms.length} ช่องทาง'),
           child: GestureDetector(
             onTap: connectionsErrorMessage != null
                 ? onRetryConnections
@@ -6767,7 +6870,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        ChannelText(
                           isLoadingConnections
                               ? 'กำลังตรวจสอบช่องทาง...'
                               : connectionsErrorMessage ??
@@ -6785,7 +6888,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 1),
-                        Text(
+                        ChannelText(
                           isLoadingConnections
                               ? 'กรุณารอผลการตรวจสอบสถานะช่องทาง'
                               : hasConnectionError
@@ -6822,7 +6925,7 @@ class _PlatformSelectorSection extends StatelessWidget {
               key: const ValueKey('uploader-retry-connections'),
               onPressed: isLoadingConnections ? null : onRetryConnections,
               icon: const Icon(Icons.refresh),
-              label: const Text('ลองใหม่'),
+              label: const ChannelText('ลองใหม่'),
             ),
           ),
         ],
@@ -6833,7 +6936,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                 key: const ValueKey('uploader-refresh-publishing-readiness'),
                 onPressed: isLoadingConnections ? null : onRetryConnections,
                 icon: const Icon(Icons.refresh, size: 17),
-                label: const Text('ตรวจสิทธิ์อีกครั้ง'),
+                label: const ChannelText('ตรวจสิทธิ์อีกครั้ง'),
               )),
         if (unavailableDraftPlatforms.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -6862,7 +6965,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 9),
                 ),
-                child: Text(durationWarnings.isEmpty
+                child: ChannelText(durationWarnings.isEmpty
                     ? 'เลือกทั้งหมด'
                     : 'เลือกทั้งหมดที่รองรับ'),
               ),
@@ -6873,7 +6976,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 9),
                 ),
-                child: const Text('ล้างทั้งหมด'),
+                child: const ChannelText('ล้างทั้งหมด'),
               ),
             ],
           ),
@@ -6933,7 +7036,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Text(validationMessage!, style: TextStyle(
+                              UploaderText(validationMessage!, style: TextStyle(
                                   color: Theme.of(context).colorScheme.error)),
                               Align(
                                 alignment: Alignment.centerLeft,
@@ -6941,7 +7044,7 @@ class _PlatformSelectorSection extends StatelessWidget {
                                   key: ValueKey('uploader-platform-validation-edit-${visiblePlatforms[index].apiValue}'),
                                   onPressed: () => onOpenPlatformSettings(visiblePlatforms[index]),
                                   icon: const Icon(Icons.tune_rounded),
-                                  label: const Text('แก้การตั้งค่าช่องทางนี้'),
+                                  label: const ChannelText('แก้การตั้งค่าช่องทางนี้'),
                                 ),
                               ),
                             ],
@@ -7021,7 +7124,7 @@ class _PlatformRow extends StatelessWidget {
     final identity = connectionDisplayName?.trim();
     return Semantics(
       label: publishReviewPlatformLabel(platform),
-      hint: blockedReason ?? subLabel,
+      hint: localizeUploaderMessage(context, blockedReason ?? subLabel),
       button: true,
       enabled: blockedReason == null || isSelected,
       selected: isSelected,
@@ -7063,7 +7166,7 @@ class _PlatformRow extends StatelessWidget {
                             const SizedBox(height: 1),
                             Text(
                               identity == null || identity.isEmpty
-                                  ? 'ยังยืนยันบัญชีไม่ได้'
+                                  ? localizeChannelMessage(context, 'ยังยืนยันบัญชีไม่ได้')
                                   : identity,
                               key: ValueKey(
                                   'uploader-platform-account-${platform.apiValue}'),
@@ -7075,7 +7178,7 @@ class _PlatformRow extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 3),
-                            Text(
+                            ChannelText(
                                 blockedReason == null
                                     ? settingsSummary
                                     : 'โพสต์ช่องทางนี้ไม่ได้',
@@ -7084,7 +7187,7 @@ class _PlatformRow extends StatelessWidget {
                                     color: AppTheme.textSecondary)),
                             if (readinessLabel != null) ...[
                               const SizedBox(height: 3),
-                              Text(readinessLabel!,
+                              UploaderText(readinessLabel!,
                                   key: ValueKey(
                                       'uploader-channel-readiness-${platform.apiValue}'),
                                   style: TextStyle(
@@ -7095,7 +7198,7 @@ class _PlatformRow extends StatelessWidget {
                               const SizedBox(height: 4),
                               Semantics(
                                 liveRegion: true,
-                                child: Text(blockedReason!,
+                                child: UploaderText(blockedReason!,
                                     key: ValueKey('uploader-platform-duration-${platform.apiValue}'),
                                     style: TextStyle(
                                         fontSize: 12,
@@ -7145,7 +7248,7 @@ class _PlatformRow extends StatelessWidget {
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(
+                            child: ChannelText(
                               'ตั้งค่าช่องทาง',
                             ),
                           ),
@@ -7257,17 +7360,19 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text('ชื่อที่จะปรากฏบน YouTube Shorts'),
+                      const ChannelText('ชื่อที่จะปรากฏบน YouTube Shorts'),
                       const SizedBox(height: 6),
                       Text(
                         youtubeTitle.isEmpty
-                            ? 'เพิ่มแคปชันหรือชื่อคลิป YouTube'
+                            ? localizeChannelMessage(
+                                context, 'เพิ่มแคปชันหรือชื่อคลิป YouTube')
                             : youtubeTitle,
                         key: const ValueKey('uploader-youtube-title-preview'),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
-                      const Text('แคปชันฉบับเต็มและแฮชแท็กจะใช้เป็นคำอธิบาย'),
+                      const ChannelText(
+                          'แคปชันฉบับเต็มและแฮชแท็กจะใช้เป็นคำอธิบาย'),
                       if (!_isEditingYoutubeTitle)
                         Align(
                           alignment: Alignment.centerLeft,
@@ -7278,7 +7383,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               _isEditingYoutubeTitle = true;
                             }),
                             icon: const Icon(Icons.edit_outlined, size: 16),
-                            label: const Text('ปรับชื่อเฉพาะ YouTube'),
+                            label: const ChannelText('ปรับชื่อเฉพาะ YouTube'),
                           ),
                         ),
                       if (_isEditingYoutubeTitle) ...[
@@ -7290,15 +7395,26 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                             _hasCustomYoutubeTitle = value.trim().isNotEmpty;
                           }),
                           decoration: InputDecoration(
-                            labelText: 'ชื่อวิดีโอ YouTube',
-                            helperText: 'เว้นว่างเพื่อใช้ชื่อจากแคปชัน',
+                            labelText: localizeChannelMessage(
+                                context, 'ชื่อวิดีโอ YouTube'),
+                            helper: ChannelText(
+                                'เว้นว่างเพื่อใช้ชื่อจากแคปชัน',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    )),
                             counterText:
                                 '${_youtubeTitleController.text.trim().runes.length}/100',
-                            errorText: _hasCustomYoutubeTitle &&
+                            error: _hasCustomYoutubeTitle &&
                                     (youtubeTitle.runes.length > 100 ||
                                         youtubeTitle.contains('<') ||
                                         youtubeTitle.contains('>'))
-                                ? 'ชื่อ YouTube ต้องไม่เกิน 100 ตัวอักษร และห้ามมี < หรือ >'
+                                ? const ChannelText(
+                                    'ชื่อ YouTube ต้องไม่เกิน 100 ตัวอักษร และห้ามมี < หรือ >')
                                 : null,
                           ),
                         ),
@@ -7312,7 +7428,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               _hasCustomYoutubeTitle = false;
                               _isEditingYoutubeTitle = false;
                             }),
-                            child: const Text('ใช้ชื่อจากแคปชัน'),
+                            child: const ChannelText('ใช้ชื่อจากแคปชัน'),
                           ),
                         ),
                       ],
@@ -7321,20 +7437,21 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                         isExpanded: true,
                         key: const ValueKey('uploader-youtube-visibility'),
                         initialValue: current.youtubeVisibility,
-                        decoration:
-                            const InputDecoration(labelText: 'การมองเห็น'),
+                        decoration: InputDecoration(
+                            labelText: localizeChannelMessage(
+                                context, 'การมองเห็น')),
                         items: const [
                           DropdownMenuItem(
                             value: YouTubeVisibility.private,
-                            child: Text('ส่วนตัว (Private)'),
+                            child: ChannelText('ส่วนตัว (Private)'),
                           ),
                           DropdownMenuItem(
                             value: YouTubeVisibility.unlisted,
-                            child: Text('ไม่เป็นสาธารณะ (Unlisted)'),
+                            child: ChannelText('ไม่เป็นสาธารณะ (Unlisted)'),
                           ),
                           DropdownMenuItem(
                             value: YouTubeVisibility.public,
-                            child: Text('สาธารณะ (Public)'),
+                            child: ChannelText('สาธารณะ (Public)'),
                           ),
                         ],
                         onChanged: (value) {
@@ -7347,7 +7464,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                       if (current.youtubeVisibility !=
                           YouTubeVisibility.private) ...[
                         const SizedBox(height: 8),
-                        Text(
+                        ChannelText(
                           'การมองเห็นจริงขึ้นอยู่กับสถานะวิดีโอและบัญชี YouTube '
                           'กรุณาตรวจผลหลังเผยแพร่',
                           style: TextStyle(
@@ -7373,7 +7490,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               current.copyWith(youtubeMadeForKids: value),
                         ),
                       ),
-                      Text(
+                      ChannelText(
                           'พิจารณาว่าเด็กเป็นกลุ่มผู้ชมเป้าหมาย ไม่ใช่เพียงเด็กดูได้',
                           style: TextStyle(
                               fontSize: 12, color: AppTheme.textMuted)),
@@ -7390,7 +7507,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                           ),
                         ),
                       ),
-                      Text(
+                      ChannelText(
                           'หมายถึงภาพหรือเสียงที่สร้างหรือดัดแปลงให้ดูเหมือนจริง '
                           'การช่วยคิดแคปชั่นอย่างเดียวไม่ถือเป็นสื่อสังเคราะห์ในวิดีโอ',
                           style: TextStyle(
@@ -7407,7 +7524,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                             youtubeCommunityGuidelinesCertified: value ?? false,
                           ),
                         ),
-                        title: const Text(
+                        title: const ChannelText(
                           'ฉันยืนยันว่าวิดีโอเป็นไปตามกฎชุมชน YouTube',
                         ),
                         controlAffinity: ListTileControlAffinity.leading,
@@ -7432,8 +7549,8 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                       instagramShareToFeed: value,
                     ),
                   ),
-                  title: const Text('แชร์ Reels ไปยังฟีด'),
-                  subtitle: const Text('ปิดเพื่อแสดงเฉพาะใน Reels'),
+                  title: const ChannelText('แชร์ Reels ไปยังฟีด'),
+                  subtitle: const ChannelText('ปิดเพื่อแสดงเฉพาะใน Reels'),
                 )),
             const SizedBox(height: 12),
             _buildCoverSummary(),
@@ -7486,7 +7603,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
         );
       case SocialPlatform.shopeeVideo:
       case SocialPlatform.lazadaVideo:
-        return const Text('ช่องทางนี้ยังไม่รองรับการโพสต์');
+        return const ChannelText('ช่องทางนี้ยังไม่รองรับการโพสต์');
     }
   }
 
@@ -7513,7 +7630,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
         ),
         const SizedBox(height: 8),
         if (value == null)
-          Text('ยังไม่ระบุ (ไม่บังคับ)',
+          ChannelText('ยังไม่ระบุ (ไม่บังคับ)',
               style: TextStyle(fontSize: 12, color: AppTheme.textSecondary))
         else
           Align(
@@ -7521,7 +7638,7 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
               child: TextButton(
                   key: ValueKey('uploader-$prefix-ai-clear'),
                   onPressed: () => change(null),
-                  child: const Text('ล้างคำตอบ'))),
+                  child: const ChannelText('ล้างคำตอบ'))),
       ]),
     );
   }
@@ -7535,7 +7652,8 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
       title: 'ภาพปก',
       description: 'เปลี่ยนภาพปกได้ในขั้นตอนคลิป',
       child: cover == null
-          ? const Text('ยังไม่ได้เลือกปก · แพลตฟอร์มจะเลือกเฟรมจากวิดีโอ')
+          ? const ChannelText(
+              'ยังไม่ได้เลือกปก · แพลตฟอร์มจะเลือกเฟรมจากวิดีโอ')
           : Row(children: [
               ClipRRect(
                   borderRadius: BorderRadius.circular(8),
@@ -7551,10 +7669,14 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               errorBuilder: (_, __, ___) => imageFallback))),
               const SizedBox(width: 12),
               Expanded(
-                  child: Text(cover.sourceKind == CoverSourceKind.videoFrame
-                      ? 'ใช้ปกที่เลือกจากวิดีโอ '
-                          'วินาทีที่ ${(cover.coverFrameTimeMs / 1000).toStringAsFixed(1)}'
-                      : 'ใช้ภาพปกที่เลือกไว้')),
+                  child: cover.sourceKind == CoverSourceKind.videoFrame
+                      ? Text(channelText(
+                          context,
+                          'ใช้ปกที่เลือกจากวิดีโอ '
+                          'วินาทีที่ ${(cover.coverFrameTimeMs / 1000).toStringAsFixed(1)}',
+                          'Using the selected video frame at '
+                          '${(cover.coverFrameTimeMs / 1000).toStringAsFixed(1)} seconds'))
+                      : const ChannelText('ใช้ภาพปกที่เลือกไว้')),
             ]),
     );
   }
@@ -7580,7 +7702,7 @@ class _BinarySettingRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        ChannelText(
           title,
           style: TextStyle(
             color: AppTheme.textPrimary,
@@ -7654,9 +7776,9 @@ class _SettingsChoiceButton extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label),
+                ChannelText(label),
                 if (subtitle != null)
-                  Text(
+                  ChannelText(
                     subtitle!,
                     style: TextStyle(
                       color: AppTheme.textMuted,
@@ -7668,6 +7790,51 @@ class _SettingsChoiceButton extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CaptionInstructionsField extends StatelessWidget {
+  const _CaptionInstructionsField({
+    required this.controller,
+    required this.readOnly,
+    required this.hint,
+  });
+
+  final TextEditingController controller;
+  final bool readOnly;
+  final String hint;
+
+  @override
+  Widget build(BuildContext context) {
+    const label = 'คำแนะนำเพิ่มเติม (ถ้ามี)';
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (largeText) ...[
+          CaptionText(label, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 6),
+        ],
+        Semantics(
+          key: const ValueKey('uploader-ai-guidance-input'),
+          label: largeText ? localizeCaptionMessage(context, label) : null,
+          child: TextField(
+            key: const ValueKey('uploader-ai-guidance-field'),
+            controller: controller,
+            readOnly: readOnly,
+            minLines: 2,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: largeText
+                  ? null
+                  : localizeCaptionMessage(context, label),
+              hintText: localizeCaptionMessage(context, hint),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -7741,13 +7908,13 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleSmall),
+          CaptionText(title, style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 6),
           Wrap(spacing: 8, runSpacing: 4, children: [
             for (final item in values)
               ChoiceChip(
                 key: ValueKey('uploader-ai-style-$keyPrefix-${value(item)}'),
-                label: Text(label(item)),
+                label: CaptionText(label(item)),
                 selected: item == selected,
                 onSelected:
                     _saving ? null : (_) => setState(() => onSelected(item)),
@@ -7767,20 +7934,14 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('สไตล์การเขียน',
+              CaptionText('สไตล์การเขียน',
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 16),
               if (widget.initialGuidance != null) ...[
-                TextField(
-                  key: const ValueKey('uploader-ai-guidance-field'),
+                _CaptionInstructionsField(
                   controller: _guidanceController,
                   readOnly: _saving,
-                  minLines: 2,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'คำแนะนำเพิ่มเติม (ถ้ามี)',
-                    hintText: 'เช่น ขอข้อความสั้น / เน้นลูกค้าใหม่',
-                  ),
+                  hint: 'เช่น ขอข้อความสั้น / เน้นลูกค้าใหม่',
                 ),
                 const SizedBox(height: 16),
               ],
@@ -7817,8 +7978,8 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
               SwitchListTile(
                 key: const ValueKey('uploader-ai-style-remember'),
                 contentPadding: EdgeInsets.zero,
-                title: const Text('จำสไตล์จากข้อความที่ฉันแก้'),
-                subtitle: const Text('จำเมื่อแก้แคปชัน AI แล้วกดถัดไป '
+                title: const CaptionText('จำสไตล์จากข้อความที่ฉันแก้'),
+                subtitle: const CaptionText('จำเมื่อแก้แคปชัน AI แล้วกดถัดไป '
                     'เก็บในเครื่องนี้เฉพาะบัญชีของคุณ'),
                 value: _profile.rememberEdits,
                 onChanged: _saving
@@ -7827,7 +7988,7 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
                           _profile = _profile.copyWith(rememberEdits: value);
                         }),
               ),
-              Text('ตัวอย่างที่จำไว้ ${_profile.style.examples.length}/3',
+              CaptionText('ตัวอย่างที่จำไว้ ${_profile.style.examples.length}/3',
                   style: Theme.of(context).textTheme.bodySmall),
               TextButton.icon(
                 key: const ValueKey('uploader-ai-style-clear'),
@@ -7835,11 +7996,11 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
                     ? null
                     : () => _save(clearExamples: true),
                 icon: const Icon(Icons.delete_outline),
-                label: const Text('ลบข้อความตัวอย่างที่จำไว้'),
+                label: const CaptionText('ลบข้อความตัวอย่างที่จำไว้'),
               ),
               if (_error != null) ...[
                 PostDeeNotice(
-                    message: _error!,
+                    message: localizeCaptionMessage(context, _error!),
                     color: Theme.of(context).colorScheme.error,
                     icon: Icons.error_outline),
                 const SizedBox(height: 12),
@@ -7847,11 +8008,11 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
               FilledButton(
                 key: const ValueKey('uploader-ai-style-save'),
                 onPressed: _saving ? null : () => _save(),
-                child: Text(_saving ? 'กำลังบันทึก...' : 'บันทึกสไตล์'),
+                child: CaptionText(_saving ? 'กำลังบันทึก...' : 'บันทึกสไตล์'),
               ),
               TextButton(
                 onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                child: const Text('ยกเลิก'),
+                child: const CaptionText('ยกเลิก'),
               ),
             ],
           ),
@@ -7904,6 +8065,7 @@ class _AiCaptionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final clipName = selectedVideoName?.trim();
     final compact = platformTargets != null;
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
     final requiredCredits = selectedPlatformCount ?? 1;
     final insufficientCredits = quota?.isPaid == true &&
         quota!.availableCount < requiredCredits;
@@ -7936,7 +8098,7 @@ class _AiCaptionPanel extends StatelessWidget {
                     color: AppTheme.accent, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('ให้ AI ช่วยเขียน',
+                  child: CaptionText('ให้ AI ช่วยเขียน',
                       style: Theme.of(context)
                           .textTheme
                           .titleSmall
@@ -7948,11 +8110,11 @@ class _AiCaptionPanel extends StatelessWidget {
                       ? null
                       : onOpenStyle,
                   icon: const Icon(Icons.tune, size: 16),
-                  label: const Text('สไตล์'),
+                  label: const CaptionText('สไตล์'),
                 ),
               ]),
               const SizedBox(height: 4),
-              Text('เลือกช่องทางที่ต้องการ',
+              CaptionText('เลือกช่องทางที่ต้องการ',
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
@@ -7973,7 +8135,7 @@ class _AiCaptionPanel extends StatelessWidget {
                           color: AppTheme.accent, size: 18),
                       const SizedBox(width: AppTheme.spaceSm),
                       Expanded(
-                        child: Text('AI แคปชั่นจากคลิปจริง',
+                        child: CaptionText('AI แคปชั่นจากคลิปจริง',
                             key: const ValueKey('uploader-ai-real-clip-title'),
                             style: Theme.of(context)
                                 .textTheme
@@ -7997,8 +8159,10 @@ class _AiCaptionPanel extends StatelessWidget {
               const SizedBox(height: AppTheme.spaceSm),
               Text(
                 clipName == null || clipName.isEmpty
-                    ? 'เลือกคลิปก่อน แล้วให้ AI ฟังเสียงจริงในคลิปเพื่อทำ Hook, SEO และแฮชแท็ก'
-                    : 'คลิปที่เลือก: $clipName',
+                    ? localizeCaptionMessage(context,
+                        'เลือกคลิปก่อน แล้วให้ AI ฟังเสียงจริงในคลิปเพื่อทำ Hook, SEO และแฮชแท็ก')
+                    : captionText(context, 'คลิปที่เลือก: $clipName',
+                        'Selected video: $clipName'),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: AppTheme.textSecondary,
                       fontWeight: FontWeight.w600,
@@ -8010,13 +8174,13 @@ class _AiCaptionPanel extends StatelessWidget {
             ],
             if (styleError != null)
               PostDeeNotice(
-                  message: styleError!,
+                  message: localizeCaptionMessage(context, styleError!),
                   color: Theme.of(context).colorScheme.error,
                   icon: Icons.error_outline),
             if (errorMessage != null) ...[
               const SizedBox(height: AppTheme.spaceSm),
               PostDeeNotice(
-                message: errorMessage!,
+                message: localizeCaptionMessage(context, errorMessage!),
                 color: Theme.of(context).colorScheme.error,
                 icon: Icons.error_outline,
               ),
@@ -8027,19 +8191,19 @@ class _AiCaptionPanel extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             if (isLoadingQuota) ...[
-              Text('กำลังโหลดโควตา...',
+              CaptionText('กำลังโหลดโควตา...',
                   key: const ValueKey('uploader-ai-quota-loading'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppTheme.textSecondary)),
               const SizedBox(height: 8),
             ] else if (quotaLoadFailed) ...[
               Row(children: [
-                Expanded(child: Text('โหลดโควตาไม่สำเร็จ',
+                Expanded(child: CaptionText('โหลดโควตาไม่สำเร็จ',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppTheme.textSecondary))),
                 IconButton(
                   key: const ValueKey('uploader-ai-quota-retry'),
-                  tooltip: 'โหลดโควตาอีกครั้ง',
+                  tooltip: localizeCaptionMessage(context, 'โหลดโควตาอีกครั้ง'),
                   onPressed: isGenerating ? null : onRetryQuota,
                   icon: const Icon(Icons.refresh, size: 18)),
               ]),
@@ -8048,7 +8212,7 @@ class _AiCaptionPanel extends StatelessWidget {
               const SizedBox(height: 8),
             ],
             if (insufficientCredits) ...[
-              Text(compact
+              CaptionText(compact
                       ? 'เครดิตไม่พอ ลดช่องทางหรือเติมเครดิต'
                       : 'เครดิตไม่พอ เติมเครดิตเพื่อให้ AI ช่วยเขียน',
                   key: const ValueKey('uploader-ai-insufficient-credits'),
@@ -8065,9 +8229,9 @@ class _AiCaptionPanel extends StatelessWidget {
                   selectedPlatformCount != 0,
               child: PostDeeGradientButton(
                 key: const ValueKey('uploader-ai-generate-button'),
-                height: compact ? null : 48,
-                labelMaxLines: compact ? null : 1,
-                label: isGenerating
+                height: compact || largeText ? null : 48,
+                labelMaxLines: compact || largeText ? null : 1,
+                label: localizeCaptionMessage(context, isGenerating
                     ? 'กำลังเตรียมแคปชัน...'
                     : isSavingStyle
                         ? 'กำลังบันทึกสไตล์...'
@@ -8077,7 +8241,7 @@ class _AiCaptionPanel extends StatelessWidget {
                                 : 'สร้างแคปชั่น · $requiredCredits เครดิต'
                             : insufficientCredits
                                 ? 'เครดิต AI หมดแล้ว'
-                                : 'ให้ AI ช่วยเขียน',
+                                : 'ให้ AI ช่วยเขียน'),
                 icon: Icons.auto_awesome,
                 onPressed: formBusy ||
                         insufficientCredits ||
@@ -8115,7 +8279,7 @@ class _AiCaptionPanel extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
+                      child: CaptionText(
                         isGenerating
                             ? 'กำลังเตรียมแคปชันจากคลิปที่เลือก'
                             : 'แคปชันพร้อมแล้ว ตรวจข้อความก่อนใช้',
@@ -8135,7 +8299,7 @@ class _AiCaptionPanel extends StatelessWidget {
                 key: const ValueKey('uploader-ai-open-panel'),
                 tilePadding: EdgeInsets.zero,
                 childrenPadding: const EdgeInsets.only(bottom: 8),
-                title: const Text('ปรับสไตล์และคำแนะนำ',
+                title: const CaptionText('ปรับสไตล์และคำแนะนำ',
                     style: TextStyle(fontSize: 13)),
                 children: [
                   SizedBox(
@@ -8147,22 +8311,15 @@ class _AiCaptionPanel extends StatelessWidget {
                         onPressed:
                             isGenerating || isSavingStyle ? null : onOpenStyle,
                         icon: const Icon(Icons.tune),
-                        label: const Text('สไตล์การเขียน'),
+                        label: const CaptionText('สไตล์การเขียน'),
                       ),
                     ),
                   ),
                   const SizedBox(height: 10),
-                  TextField(
-                    key: const ValueKey('uploader-ai-guidance-field'),
+                  _CaptionInstructionsField(
                     controller: guidanceController,
                     readOnly: formBusy,
-                    minLines: 2,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'คำแนะนำเพิ่มเติม (ถ้ามี)',
-                      hintText:
-                          'เช่น ขอขายจริงใจ / อยากได้แนวตลก / เน้นลูกค้าแม่และเด็ก',
-                    ),
+                    hint: 'เช่น ขอขายจริงใจ / อยากได้แนวตลก / เน้นลูกค้าแม่และเด็ก',
                   ),
                 ],
               ),
@@ -8259,6 +8416,21 @@ class _SchedulePanel extends StatelessWidget {
     'ธ.ค.',
   ];
 
+  static const _englishMonths = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
   final DateTime Function() now;
   final TextEditingController scheduledAtController;
   final DateTime? selectedDate;
@@ -8306,18 +8478,19 @@ class _SchedulePanel extends StatelessWidget {
     return false;
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(BuildContext context, DateTime date) {
     final today = _todayDate();
 
     if (_isSameDate(date, today)) {
-      return 'วันนี้';
+      return reviewText(context, 'วันนี้', 'Today');
     }
 
     if (_isSameDate(date, today.add(const Duration(days: 1)))) {
-      return 'พรุ่งนี้';
+      return reviewText(context, 'พรุ่งนี้', 'Tomorrow');
     }
 
-    return '${date.day} ${_thaiMonths[date.month - 1]} ${date.year}';
+    final months = reviewUsesThai(context) ? _thaiMonths : _englishMonths;
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 
   String _formatTime(TimeOfDay time) {
@@ -8359,7 +8532,7 @@ class _SchedulePanel extends StatelessWidget {
             ),
             const SizedBox(width: AppTheme.spaceSm),
             Expanded(
-              child: Text(
+              child: ReviewText(
                 'ตั้งเวลาโพสต์',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -8395,7 +8568,10 @@ class _SchedulePanel extends StatelessWidget {
         if (!hasSchedule && selectedDate != null) ...[
           const SizedBox(height: 10),
           Text(
-            'วันที่จากปฏิทิน: ${_formatDate(selectedDate!)} · กดตั้งเวลาเพื่อเลือกเวลา',
+            reviewText(
+                context,
+                'วันที่จากปฏิทิน: ${_formatDate(context, selectedDate!)} · กดตั้งเวลาเพื่อเลือกเวลา',
+                'Calendar date: ${_formatDate(context, selectedDate!)} · Tap Schedule to choose a time.'),
             key: const ValueKey('uploader-calendar-date-hint'),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppTheme.textSecondary,
@@ -8425,7 +8601,10 @@ class _SchedulePanel extends StatelessWidget {
                   const SizedBox(width: AppTheme.spaceSm),
                   Expanded(
                     child: Text(
-                      'ลงโพสต์ ${_formatDate(selectedDate!)} เวลา ${_formatTime(selectedTime!)} น.',
+                      reviewText(
+                          context,
+                          'ลงโพสต์ ${_formatDate(context, selectedDate!)} เวลา ${_formatTime(selectedTime!)} น.',
+                          'Post ${_formatDate(context, selectedDate!)} at ${_formatTime(selectedTime!)}'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -8439,7 +8618,7 @@ class _SchedulePanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
+          ReviewText(
             'เลือกวัน',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: AppTheme.textSecondary,
@@ -8465,7 +8644,7 @@ class _SchedulePanel extends StatelessWidget {
                 key: const ValueKey('uploader-schedule-day-custom'),
                 label: selectedDate == null || quickSelectedDay != null
                     ? 'เลือกวัน'
-                    : _formatDate(selectedDate!),
+                    : _formatDate(context, selectedDate!),
                 icon: Icons.edit_calendar_outlined,
                 isSelected: selectedDate != null && quickSelectedDay == null,
                 onPressed: onPickCustomDate,
@@ -8473,7 +8652,7 @@ class _SchedulePanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
+          ReviewText(
             'เลือกเวลา',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: AppTheme.textSecondary,
@@ -8521,9 +8700,12 @@ class _SchedulePanel extends StatelessWidget {
                   Text(
                     switch (schedulePlan) {
                       'STARTER' =>
-                        'แพ็กเกจ Starter ตั้งเวลาล่วงหน้าได้สูงสุด 14 วัน',
-                      'PRO' => 'แพ็กเกจ Pro ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน',
-                      _ => schedulePlanSummary,
+                        localizeReviewMessage(context,
+                            'แพ็กเกจ Starter ตั้งเวลาล่วงหน้าได้สูงสุด 14 วัน'),
+                      'PRO' => localizeReviewMessage(context,
+                          'แพ็กเกจ Pro ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน'),
+                      _ => getSchedulePlanSummary(
+                          languageCode: reviewUsesThai(context) ? 'th' : 'en'),
                     },
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: AppTheme.textSecondary,
@@ -8583,7 +8765,7 @@ class _SchedulePickerChip extends StatelessWidget {
               ),
               const SizedBox(width: 5),
               Flexible(
-                  child: Text(
+                  child: ReviewText(
                 label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: isSelected
@@ -8623,11 +8805,7 @@ class _ScheduleModeButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 15),
-        label: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        label: ReviewText(label),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 10),
           minimumSize: const Size(0, 48),

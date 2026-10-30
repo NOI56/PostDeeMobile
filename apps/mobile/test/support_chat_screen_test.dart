@@ -62,11 +62,13 @@ class _FakeChat {
 }
 
 Widget _app(_FakeChat chat,
-    {Duration poll = const Duration(seconds: 5), DateTime? now}) {
+    {Duration poll = const Duration(seconds: 5),
+    DateTime? now,
+    Locale locale = const Locale('th')}) {
   var next = 0;
   return MaterialApp(
     theme: AppTheme.light,
-    locale: const Locale('th'),
+    locale: locale,
     supportedLocales: PostDeeLocalizations.supportedLocales,
     localizationsDelegates: const [
       PostDeeLocalizations.delegate,
@@ -87,6 +89,14 @@ Widget _app(_FakeChat chat,
 }
 
 void main() {
+  testWidgets('English chat localizes a generic loading failure', (tester) async {
+    final chat = _FakeChat()..loadError = StateError('internal diagnostic');
+    await tester.pumpWidget(_app(chat, locale: const Locale('en')));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load the chat. Please try again.'), findsOneWidget);
+    expect(find.text('โหลดแชทไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), findsNothing);
+  });
+
   test('newSupportMessageId makes random version-4 UUIDs', () {
     final pattern = RegExp(
         r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');

@@ -86,6 +86,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   String? _accountScope;
   bool _isEmailActionBusy = false;
 
+  String _text(String thai, String english) =>
+      _profileText(context, thai, english);
+
   String? get _currentAccountScope {
     final session = PostDeeAuthSessionStore.instance.session;
     if (!session.isSignedIn) return null;
@@ -215,27 +218,47 @@ class _ProfileScreenState extends State<ProfileScreen>
       isScrollControlled: true,
       builder: (sheetContext) => Padding(
         padding: const EdgeInsets.all(24),
-        child: SingleChildScrollView(child: Column(
+        child: SingleChildScrollView(
+            child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('เลือกร้านค้าที่สมัคร', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+                _profileText(sheetContext, 'เลือกร้านค้าที่สมัคร',
+                    'Choose your subscription store'),
+                style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
-            const Text('เลือกตามร้านค้าที่เคยชำระเงิน แม้ตอนนี้จะใช้เครื่องคนละระบบ '
-              'คุณตรวจสอบรายการได้ก่อนยกเลิกสมาชิก'),
+            Text(_profileText(
+                sheetContext,
+                'เลือกตามร้านค้าที่เคยชำระเงิน แม้ตอนนี้จะใช้เครื่องคนละระบบ '
+                    'คุณตรวจสอบรายการได้ก่อนยกเลิกสมาชิก',
+                'Choose the store you paid through, even if you now use a different device. You can review your subscription before canceling it.')),
             const SizedBox(height: 12),
             for (final choice in [
-              (id: 'google-play', name: 'Google Play', current: platform == TargetPlatform.android),
-              (id: 'app-store', name: 'App Store', current: platform == TargetPlatform.iOS),
+              (
+                id: 'google-play',
+                name: 'Google Play',
+                current: platform == TargetPlatform.android
+              ),
+              (
+                id: 'app-store',
+                name: 'App Store',
+                current: platform == TargetPlatform.iOS
+              ),
             ])
               ListTile(
                 key: ValueKey('manage-subscription-${choice.id}'),
                 title: Text(choice.name),
-                subtitle: choice.current ? const Text('ร้านค้าบนเครื่องนี้') : null,
+                subtitle: choice.current
+                    ? Text(_profileText(sheetContext, 'ร้านค้าบนเครื่องนี้',
+                        'Store on this device'))
+                    : null,
                 trailing: const Icon(Icons.open_in_new),
                 onTap: () => Navigator.of(sheetContext).pop(choice.id),
               ),
-            TextButton(onPressed: () => Navigator.of(sheetContext).pop(), child: const Text('กลับไป')),
+            TextButton(
+                onPressed: () => Navigator.of(sheetContext).pop(),
+                child: Text(_profileText(sheetContext, 'กลับไป', 'Back'))),
           ],
         )),
       ),
@@ -255,9 +278,10 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     if (!launched && mounted && binding.isCurrent) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'เปิดหน้าจัดการสมาชิกไม่ได้ กรุณาเปิดจาก App Store หรือ Google Play'),
+        SnackBar(
+          content: Text(_text(
+              'เปิดหน้าจัดการสมาชิกไม่ได้ กรุณาเปิดจาก App Store หรือ Google Play',
+              'Could not open subscription management. Open it from the App Store or Google Play.')),
         ),
       );
     }
@@ -355,7 +379,9 @@ class _ProfileScreenState extends State<ProfileScreen>
       MaterialPageRoute<ProfileDraft>(
         builder: (context) => EditProfileScreen(
           initialDraft: previous,
-          email: email.isEmpty ? 'ยังไม่ได้เชื่อมอีเมล' : email,
+          email: email.isEmpty
+              ? _text('ยังไม่ได้เชื่อมอีเมล', 'Email not connected')
+              : email,
           emailVerified: session.emailVerified,
         ),
       ),
@@ -371,7 +397,8 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     showPostDeeUndoToast(
       context,
-      message: 'บันทึกโปรไฟล์แล้ว',
+      message: _text('บันทึกโปรไฟล์แล้ว', 'Profile saved'),
+      undoLabel: _text('เลิกทำ', 'Undo'),
       onUndo: () async {
         if (scope != _currentAccountScope) return;
         if (previous.displayName.isEmpty && previous.storeName.isEmpty) {
@@ -431,12 +458,15 @@ class _ProfileScreenState extends State<ProfileScreen>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
       !success
-          ? 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่'
+          ? _text('ดำเนินการไม่สำเร็จ กรุณาลองใหม่',
+              'Could not complete this action. Please try again.')
           : refresh
               ? (PostDeeAuthSessionStore.instance.session.emailVerified
-                  ? 'ยืนยันอีเมลแล้ว'
-                  : 'อีเมลยังไม่ยืนยัน กรุณาเปิดลิงก์ในอีเมลก่อน')
-              : 'ส่งลิงก์ยืนยันแล้ว กรุณาตรวจสอบกล่องอีเมลและจดหมายขยะ',
+                  ? _text('ยืนยันอีเมลแล้ว', 'Email verified')
+                  : _text('อีเมลยังไม่ยืนยัน กรุณาเปิดลิงก์ในอีเมลก่อน',
+                      'Your email is not verified yet. Open the link in your email first.'))
+              : _text('ส่งลิงก์ยืนยันแล้ว กรุณาตรวจสอบกล่องอีเมลและจดหมายขยะ',
+                  'Verification link sent. Check your inbox and spam folder.'),
     )));
   }
 
@@ -458,17 +488,20 @@ class _ProfileScreenState extends State<ProfileScreen>
         ? savedDisplayName
         : session.isSignedIn
             ? session.displayLabel
-            : 'ยังไม่ได้เชื่อมบัญชี';
+            : _text('ยังไม่ได้เชื่อมบัญชี', 'Account not connected');
     final accountEmail = session.email?.trim();
     final accountDetail = accountEmail == null || accountEmail.isEmpty
-        ? 'เชื่อมอีเมลก่อนใช้งานจริง'
+        ? _text('เชื่อมอีเมลก่อนใช้งานจริง',
+            'Connect your email before using live features.')
         : accountEmail;
     final phoneVerified = _subscription?.phoneVerified ?? false;
     final connectedLabel = _isConnectedCountLoading
-        ? 'กำลังโหลดช่องทาง...'
+        ? _text('กำลังโหลดช่องทาง...', 'Loading channels...')
         : _connectedCountLoadError != null
-            ? 'โหลดข้อมูลช่องทางไม่สำเร็จ'
-            : '${_connectedCount!}/${connectablePlatforms.length} เชื่อมต่อ';
+            ? _text('โหลดข้อมูลช่องทางไม่สำเร็จ', 'Could not load channels')
+            : _text(
+                '${_connectedCount!}/${connectablePlatforms.length} เชื่อมต่อ',
+                '${_connectedCount!}/${connectablePlatforms.length} connected');
 
     return AccountUiMotionScope(
       enabled: widget.isActive,
@@ -480,7 +513,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             padding: const EdgeInsets.fromLTRB(20, 12, 20, AppTheme.navOverlap),
             children: [
               Text(
-                'บัญชีและโปรไฟล์',
+                _text('บัญชีและโปรไฟล์', 'Account and profile'),
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
@@ -489,11 +522,12 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
               const SizedBox(height: 4),
               Text(
-                'จัดการบัญชีและการตั้งค่า',
+                _text('จัดการบัญชีและการตั้งค่า',
+                    'Manage your account and settings'),
                 style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
               ),
               _ProfileSection(
-                title: 'บัญชีของฉัน',
+                title: _text('บัญชีของฉัน', 'My account'),
                 children: [
                   _ProfileHeaderCard(
                     name: accountName,
@@ -517,7 +551,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                             onPressed: _isEmailActionBusy
                                 ? null
                                 : () => _emailAction(refresh: false),
-                            child: const Text('ส่งอีเมลยืนยัน'),
+                            child: Text(_text(
+                                'ส่งอีเมลยืนยัน', 'Send verification email')),
                           ),
                         ),
                         AccountUiPress(
@@ -528,7 +563,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                             onPressed: _isEmailActionBusy
                                 ? null
                                 : () => _emailAction(refresh: true),
-                            child: const Text('ตรวจสอบการยืนยัน'),
+                            child: Text(_text(
+                                'ตรวจสอบการยืนยัน', 'Check verification')),
                           ),
                         ),
                       ],
@@ -539,7 +575,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     rows: [
                       _ProfileMenuRow(
                         icon: Icons.phone_outlined,
-                        label: 'ยืนยันเบอร์โทร',
+                        label: _text('ยืนยันเบอร์โทร', 'Verify phone number'),
                         trailing: _isSubscriptionLoading &&
                                 _subscription == null
                             ? const SizedBox.square(
@@ -550,7 +586,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                             : _subscriptionLoadError != null &&
                                     _subscription == null
                                 ? Text(
-                                    'โหลดไม่สำเร็จ',
+                                    _text('โหลดไม่สำเร็จ', 'Could not load'),
                                     style: TextStyle(
                                         color: AppTheme.textSecondary),
                                   )
@@ -558,8 +594,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     ? null
                                     : _StatusPill(
                                         label: phoneVerified
-                                            ? 'ยืนยันแล้ว'
-                                            : 'ยังไม่ยืนยัน',
+                                            ? _text('ยืนยันแล้ว', 'Verified')
+                                            : _text(
+                                                'ยังไม่ยืนยัน', 'Not verified'),
                                         background: phoneVerified
                                             ? AppTheme.mint
                                             : AppTheme.glassDeep,
@@ -574,14 +611,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ],
               ),
               _ProfileSection(
-                title: 'ช่องทางและเครื่องมือ',
+                title: _text('ช่องทางและเครื่องมือ', 'Channels and tools'),
                 children: [
                   _ProfileMenuCard(
                     rows: [
                       _ProfileMenuRow(
                         key: const ValueKey('profile-connections-row'),
                         icon: Icons.hub_outlined,
-                        label: 'เชื่อมต่อช่องทาง',
+                        label: _text('เชื่อมต่อช่องทาง', 'Connect channels'),
                         detail: connectedLabel,
                         onTap: _openConnections,
                       ),
@@ -591,7 +628,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                     const SizedBox(height: 10),
                     _ProfileDataStatusCard(
                       key: const ValueKey('profile-connections-error'),
-                      message: 'โหลดข้อมูลช่องทางไม่สำเร็จ',
+                      message: _text('โหลดข้อมูลช่องทางไม่สำเร็จ',
+                          'Could not load channels'),
                       retryKey: const ValueKey('profile-retry-connections'),
                       onRetry: _loadConnectedCount,
                     ),
@@ -599,18 +637,20 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ],
               ),
               _ProfileSection(
-                title: 'แพ็กเกจของฉัน',
+                title: _text('แพ็กเกจของฉัน', 'My plan'),
                 children: [
                   if (_isSubscriptionLoading)
-                    const _ProfileDataStatusCard(
-                      key: ValueKey('profile-subscription-loading'),
-                      message: 'กำลังโหลดข้อมูลแพ็กเกจ...',
+                    _ProfileDataStatusCard(
+                      key: const ValueKey('profile-subscription-loading'),
+                      message:
+                          _text('กำลังโหลดข้อมูลแพ็กเกจ...', 'Loading plan...'),
                       isLoading: true,
                     )
                   else if (_subscriptionLoadError != null)
                     _ProfileDataStatusCard(
                       key: const ValueKey('profile-subscription-error'),
-                      message: 'โหลดข้อมูลแพ็กเกจไม่สำเร็จ',
+                      message: _text(
+                          'โหลดข้อมูลแพ็กเกจไม่สำเร็จ', 'Could not load plan'),
                       retryKey: const ValueKey('profile-retry-subscription'),
                       onRetry: _loadSubscription,
                     )
@@ -626,12 +666,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                       _ProfileMenuRow(
                         key: const ValueKey('profile-view-plans'),
                         icon: Icons.workspace_premium_outlined,
-                        label: 'ดูแพ็กเกจทั้งหมด',
+                        label: _text('ดูแพ็กเกจทั้งหมด', 'View all plans'),
                         onTap: _openPaywall,
                       ),
                       _ProfileMenuRow(
                         icon: Icons.credit_card_outlined,
-                        label: 'จัดการสมาชิก',
+                        label: _text('จัดการสมาชิก', 'Manage subscription'),
                         onTap: widget.onManageSubscription ??
                             _openSubscriptionManagement,
                       ),
@@ -640,7 +680,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ],
               ),
               _ProfileSection(
-                title: 'ตั้งค่าและช่วยเหลือ',
+                title: _text('ตั้งค่าและช่วยเหลือ', 'Settings and help'),
                 children: [
                   AnimatedBuilder(
                     animation: Listenable.merge([
@@ -667,34 +707,38 @@ class _ProfileScreenState extends State<ProfileScreen>
                           _ProfileMenuRow(
                             key: const ValueKey('profile-theme-row'),
                             icon: Icons.contrast_outlined,
-                            label: 'โหมดการแสดงผล',
+                            label: _profileText(
+                                context, 'โหมดการแสดงผล', 'Display mode'),
                             trailing: Text(
                               widget.themeController.isLightMode
-                                  ? 'สว่าง'
-                                  : 'มืด',
+                                  ? _profileText(context, 'สว่าง', 'Light')
+                                  : _profileText(context, 'มืด', 'Dark'),
                             ),
                             onTap: () => _chooseTheme(motionContext),
                           ),
                           _ProfileMenuRow(
                             icon: Icons.security_outlined,
-                            label: 'ความปลอดภัย',
+                            label: _profileText(
+                                context, 'ความปลอดภัย', 'Security'),
                             onTap: () => _openLegal(context, _securityInfo),
                           ),
                           _ProfileMenuRow(
                             key: const ValueKey('profile-support-chat-row'),
                             icon: Icons.chat_bubble_outline,
-                            label: 'แชทกับทีมงาน',
+                            label: _profileText(
+                                context, 'แชทกับทีมงาน', 'Chat with the team'),
                             onTap: widget.onOpenSupportChat ??
                                 () => _openSupportChat(context),
                           ),
                           _ProfileMenuRow(
                             icon: Icons.help_outline,
-                            label: 'ช่วยเหลือ',
+                            label: _profileText(context, 'ช่วยเหลือ', 'Help'),
                             onTap: () => _openLegal(context, _helpInfo),
                           ),
                           _ProfileMenuRow(
                             icon: Icons.privacy_tip_outlined,
-                            label: 'นโยบายความเป็นส่วนตัว',
+                            label: _profileText(context,
+                                'นโยบายความเป็นส่วนตัว', 'Privacy policy'),
                             onTap: () => _openLegal(
                               context,
                               PostDeeLegalDocuments.privacyPolicy,
@@ -702,7 +746,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                           ),
                           _ProfileMenuRow(
                             icon: Icons.description_outlined,
-                            label: 'ข้อกำหนดการใช้งาน',
+                            label: _profileText(context, 'ข้อกำหนดการใช้งาน',
+                                'Terms of service'),
                             onTap: () => _openLegal(
                               context,
                               PostDeeLegalDocuments.termsOfService,
@@ -720,7 +765,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   rows: [
                     _ProfileMenuRow(
                       icon: Icons.logout,
-                      label: 'ออกจากระบบ',
+                      label: _text('ออกจากระบบ', 'Sign out'),
                       onTap: widget.onSignOut,
                     ),
                   ],
@@ -732,8 +777,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                 onManageSubscription:
                     widget.onManageSubscription ?? _openSubscriptionManagement,
                 isDeleting: widget.isDeletingAccount,
-                subscription: _subscriptionLoadError == null && !_isSubscriptionLoading
-                    ? _subscription : null,
+                subscription:
+                    _subscriptionLoadError == null && !_isSubscriptionLoading
+                        ? _subscription
+                        : null,
               ),
             ],
           ),
@@ -743,16 +790,19 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _chooseLanguage(BuildContext motionContext) async {
-    final l10n = PostDeeLocalizations.of(context);
     final locale = await _showSettingChoices<Locale>(
       motionContext,
-      title: l10n.profileLanguageTitle,
+      titleBuilder: (sheetContext) =>
+          PostDeeLocalizations.of(sheetContext).profileLanguageTitle,
       current:
           widget.languageController.locale ?? Localizations.localeOf(context),
-      choices: [
-        (value: const Locale('th'), label: l10n.languageThai),
-        (value: const Locale('en'), label: l10n.languageEnglish),
-      ],
+      choicesBuilder: (sheetContext) {
+        final l10n = PostDeeLocalizations.of(sheetContext);
+        return [
+          (value: const Locale('th'), label: l10n.languageThai),
+          (value: const Locale('en'), label: l10n.languageEnglish),
+        ];
+      },
     );
     if (locale != null && mounted) widget.languageController.setLocale(locale);
   }
@@ -760,11 +810,18 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<void> _chooseTheme(BuildContext motionContext) async {
     final mode = await _showSettingChoices<ThemeMode>(
       motionContext,
-      title: 'โหมดการแสดงผล',
+      titleBuilder: (sheetContext) =>
+          _profileText(sheetContext, 'โหมดการแสดงผล', 'Display mode'),
       current: widget.themeController.themeMode,
-      choices: [
-        (value: ThemeMode.light, label: 'สว่าง'),
-        (value: ThemeMode.dark, label: 'มืด'),
+      choicesBuilder: (sheetContext) => [
+        (
+          value: ThemeMode.light,
+          label: _profileText(sheetContext, 'สว่าง', 'Light')
+        ),
+        (
+          value: ThemeMode.dark,
+          label: _profileText(sheetContext, 'มืด', 'Dark')
+        ),
       ],
     );
     if (mode != null && mounted) {
@@ -827,38 +884,43 @@ class _ProfileDataStatusCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (isLoading)
-            const SizedBox.square(
-              dimension: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 20,
-              color: AppTheme.textSecondary,
-            ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                fontSize: 12.5,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary,
+          Row(
+            children: [
+              if (isLoading)
+                const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(
+                  Icons.cloud_off_outlined,
+                  size: 20,
+                  color: AppTheme.textSecondary,
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
           if (onRetry != null) ...[
-            const SizedBox(width: 8),
+            const SizedBox(height: 4),
             AccountUiPress(
               child: TextButton(
                 key: retryKey,
                 onPressed: onRetry,
-                child: const Text('ลองใหม่'),
+                child: Text(_profileText(context, 'ลองใหม่', 'Try again')),
               ),
             ),
           ],
@@ -898,7 +960,7 @@ class _ProfileHeaderCard extends StatelessWidget {
         ),
         child: Semantics(
           button: true,
-          label: 'แก้ไขโปรไฟล์',
+          label: _profileText(context, 'แก้ไขโปรไฟล์', 'Edit profile'),
           child: InkWell(
             key: const ValueKey('profile-edit-button'),
             onTap: onEdit,
@@ -930,8 +992,6 @@ class _ProfileHeaderCard extends StatelessWidget {
                       children: [
                         Text(
                           name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -941,8 +1001,6 @@ class _ProfileHeaderCard extends StatelessWidget {
                         const SizedBox(height: 3),
                         Text(
                           email,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
                             color: AppTheme.textSecondary,
@@ -951,10 +1009,13 @@ class _ProfileHeaderCard extends StatelessWidget {
                         const SizedBox(height: 3),
                         Text(
                           emailVerified
-                              ? 'ยืนยันอีเมลแล้ว'
+                              ? _profileText(
+                                  context, 'ยืนยันอีเมลแล้ว', 'Email verified')
                               : hasEmail
-                                  ? 'อีเมลยังไม่ยืนยัน'
-                                  : 'ยังไม่เชื่อมอีเมล',
+                                  ? _profileText(context, 'อีเมลยังไม่ยืนยัน',
+                                      'Email not verified')
+                                  : _profileText(context, 'ยังไม่เชื่อมอีเมล',
+                                      'Email not connected'),
                           style: TextStyle(
                             fontSize: 11,
                             color: AppTheme.textSecondary,
@@ -962,7 +1023,7 @@ class _ProfileHeaderCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'แก้ไขโปรไฟล์',
+                          _profileText(context, 'แก้ไขโปรไฟล์', 'Edit profile'),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1158,18 +1219,21 @@ class _CurrentPlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final plan = subscription.plan.toUpperCase();
     final name = switch (plan) {
-      'BASIC' || 'FREE' => 'ฟรี',
+      'BASIC' || 'FREE' => _profileText(context, 'ฟรี', 'Free'),
       'STARTER' => 'Starter',
       'PRO' => 'Pro',
-      _ => 'ไม่รู้จักแพ็กเกจนี้',
+      _ => _profileText(context, 'ไม่รู้จักแพ็กเกจนี้', 'Unknown plan'),
     };
     final isPaid = plan == 'STARTER' || plan == 'PRO';
     final status = switch (subscription.status.toUpperCase()) {
-      'ACTIVE' => 'ใช้งานอยู่',
-      'INACTIVE' => 'ยังไม่เปิดใช้งาน',
-      'EXPIRED' => 'หมดอายุ',
-      'CANCELED' || 'CANCELLED' => 'ยกเลิกแล้ว',
-      _ => 'ตรวจสอบสถานะในหน้าจัดการสมาชิก',
+      'ACTIVE' => _profileText(context, 'ใช้งานอยู่', 'Active'),
+      'INACTIVE' => _profileText(context, 'ยังไม่เปิดใช้งาน', 'Inactive'),
+      'EXPIRED' => _profileText(context, 'หมดอายุ', 'Expired'),
+      'CANCELED' ||
+      'CANCELLED' =>
+        _profileText(context, 'ยกเลิกแล้ว', 'Canceled'),
+      _ => _profileText(context, 'ตรวจสอบสถานะในหน้าจัดการสมาชิก',
+          'Check status in Manage subscription'),
     };
     final remaining = subscription.remainingPostsThisMonth;
     final limit = subscription.monthlyPostLimit;
@@ -1202,7 +1266,7 @@ class _CurrentPlanCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'แพ็กเกจปัจจุบัน',
+                  _profileText(context, 'แพ็กเกจปัจจุบัน', 'Current plan'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                 ),
                 const SizedBox(height: 4),
@@ -1227,31 +1291,59 @@ class _CurrentPlanCard extends StatelessWidget {
                 if (remaining != null && limit != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'เหลือโพสต์ $remaining / $limit หน่วยเดือนนี้',
+                    _profileText(
+                        context,
+                        'เหลือโพสต์ $remaining / $limit หน่วยเดือนนี้',
+                        '$remaining / $limit post units left this month'),
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.textSecondary,
                     ),
                   ),
                 ],
-                if (subscription.addonPostUnits > 0 || subscription.addonAiCaptions > 0) ...[
+                if (subscription.addonPostUnits > 0 ||
+                    subscription.addonAiCaptions > 0) ...[
                   const SizedBox(height: 4),
-                  Text('เครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription.addonPostUnits} หน่วย · AI ${subscription.addonAiCaptions} เครดิต',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  Text(
+                      _profileText(
+                          context,
+                          'เครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription.addonPostUnits} หน่วย · AI ${subscription.addonAiCaptions} เครดิต',
+                          'Purchased credits remaining: ${subscription.addonPostUnits} post units · ${subscription.addonAiCaptions} AI caption credits'),
+                      style: TextStyle(
+                          fontSize: 11, color: AppTheme.textSecondary)),
                   const SizedBox(height: 4),
-                  Text(isPaid ? 'เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน'
-                      : 'เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  Text(
+                      isPaid
+                          ? _profileText(
+                              context,
+                              'เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน',
+                              'Purchased credits do not expire · Monthly quota is used first')
+                          : _profileText(
+                              context,
+                              'เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro',
+                              'Your credits are retained and become usable with Starter or Pro'),
+                      style: TextStyle(
+                          fontSize: 11, color: AppTheme.textSecondary)),
                   if (isPaid && subscription.availablePostUnits != null) ...[
                     const SizedBox(height: 4),
-                    Text('โพสต์ได้รวม ${subscription.availablePostUnits} หน่วย',
-                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                    Text(
+                        _profileText(
+                            context,
+                            'โพสต์ได้รวม ${subscription.availablePostUnits} หน่วย',
+                            'Total available: ${subscription.availablePostUnits} post units'),
+                        style: TextStyle(
+                            fontSize: 11, color: AppTheme.textSecondary)),
                   ],
                 ],
                 if (subscription.monthlyQuotaResetsAt case final reset?) ...[
                   const SizedBox(height: 4),
-                  Text('โควตารายเดือนเริ่มรอบใหม่ ${_quotaResetLabel(reset)} (เวลาท้องถิ่น)',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  Text(
+                      _profileText(
+                          context,
+                          'โควตารายเดือนเริ่มรอบใหม่ ${_quotaResetLabel(reset)} (เวลาท้องถิ่น)',
+                          'Monthly quota resets on ${_quotaResetLabel(reset, languageCode: 'en')} (local time)'),
+                      style: TextStyle(
+                          fontSize: 11, color: AppTheme.textSecondary)),
                 ],
               ],
             ),
@@ -1262,11 +1354,11 @@ class _CurrentPlanCard extends StatelessWidget {
   }
 }
 
-String _quotaResetLabel(DateTime value) {
+String _quotaResetLabel(DateTime value, {String languageCode = 'th'}) {
   final local = value.toLocal();
   final hour = local.hour.toString().padLeft(2, '0');
   final minute = local.minute.toString().padLeft(2, '0');
-  return '${local.day}/${local.month}/${local.year} เวลา $hour:$minute';
+  return '${local.day}/${local.month}/${local.year} ${languageCode == 'th' ? 'เวลา' : 'at'} $hour:$minute';
 }
 
 void _openSupportChat(BuildContext context) {
@@ -1283,7 +1375,6 @@ void _openLegal(BuildContext context, LegalDocument document) {
   );
 }
 
-
 const _securityInfo = LegalDocument(
   title: 'ความปลอดภัย',
   body: 'PostDee ดูแลความปลอดภัยของบัญชีและข้อมูลของคุณ\n\n'
@@ -1292,6 +1383,13 @@ const _securityInfo = LegalDocument(
       '- โทเคนการเชื่อมต่อบัญชีโซเชียลถูกเก็บอย่างปลอดภัยบนเซิร์ฟเวอร์\n'
       '- คีย์ลับของระบบ AI อยู่ฝั่งเซิร์ฟเวอร์เท่านั้น ไม่อยู่ในแอป\n\n'
       'หากพบกิจกรรมที่น่าสงสัย ติดต่อ postdee.support@gmail.com',
+  englishTitle: 'Security',
+  englishBody: 'PostDee protects your account and data.\n\n'
+      '- Email and Google sign-in are handled by Firebase Authentication. '
+      'The app does not store your password.\n'
+      '- Social account connection tokens are stored securely on the server.\n'
+      '- AI service secret keys stay on the server and are never included in the app.\n\n'
+      'If you notice suspicious activity, contact postdee.support@gmail.com.',
 );
 
 const _helpInfo = LegalDocument(
@@ -1306,6 +1404,17 @@ const _helpInfo = LegalDocument(
       '  1 ช่องทางใช้ 1 หน่วย เช่น 1 คลิปลง 3 ช่องทาง ใช้ 3 หน่วย\n'
       '- ตั้งเวลาโพสต์ได้ไหม? Starter ล่วงหน้าได้ 14 วัน และ Pro 30 วัน\n\n'
       'ติดต่อทีมงาน: กดแชทกับทีมงานในหน้าบัญชี หรืออีเมล postdee.support@gmail.com',
+  englishTitle: 'Help',
+  englishBody: 'Need help?\n\n'
+      'Getting started\n'
+      '1. Choose a vertical 9:16 video.\n'
+      '2. Select the platforms you want to post to.\n'
+      '3. Publish now or schedule your post in the calendar.\n\n'
+      'Frequently asked questions\n'
+      '- How does the free posting quota work? The Basic plan includes 3 post units per month after you verify your phone number.\n'
+      '  Each channel uses 1 post unit. For example, one video sent to 3 channels uses 3 units.\n'
+      '- Can I schedule posts? Starter lets you schedule up to 14 days ahead, and Pro up to 30 days.\n\n'
+      'Contact the team: Tap "Chat with the team" on the Account page, or email postdee.support@gmail.com.',
 );
 
 class _DeleteAccountButton extends StatelessWidget {
@@ -1372,7 +1481,8 @@ class _DeleteAccountButton extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'ก่อนลบบัญชี',
+                    _profileText(sheetContext, 'ก่อนลบบัญชี',
+                        'Before deleting your account'),
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -1381,10 +1491,13 @@ class _DeleteAccountButton extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'ระบบจะลบข้อมูลบัญชีที่อยู่บนบริการของ PostDee อย่างถาวร '
-                    'ฉบับร่างและไฟล์ในเครื่องนี้ รวมถึงสำเนาสำรองของระบบ '
-                    'อาจยังคงอยู่ หากต้องการลบ ให้ลบฉบับร่างก่อนลบบัญชี '
-                    'หรือล้างข้อมูลแอปและจัดการข้อมูลสำรองแยกต่างหาก',
+                    _profileText(
+                        sheetContext,
+                        'ระบบจะลบข้อมูลบัญชีที่อยู่บนบริการของ PostDee อย่างถาวร '
+                            'ฉบับร่างและไฟล์ในเครื่องนี้ รวมถึงสำเนาสำรองของระบบ '
+                            'อาจยังคงอยู่ หากต้องการลบ ให้ลบฉบับร่างก่อนลบบัญชี '
+                            'หรือล้างข้อมูลแอปและจัดการข้อมูลสำรองแยกต่างหาก',
+                        'Your account data on PostDee services will be permanently deleted. Drafts and files on this device, including system backups, may remain. To remove them, delete drafts before deleting your account, or clear app data and manage backups separately.'),
                     style: TextStyle(
                       fontSize: 13,
                       height: 1.55,
@@ -1393,12 +1506,21 @@ class _DeleteAccountButton extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    subscription != null && (subscription!.addonPostUnits > 0 || subscription!.addonAiCaptions > 0)
-                        ? 'คุณมีเครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription!.addonPostUnits} หน่วย · AI ${subscription!.addonAiCaptions} เครดิต '
-                          'หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้ กรุณาตรวจสอบก่อนยืนยัน'
-                        : 'หากมีเครดิตซื้อเพิ่มคงเหลือ หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้ '
-                          'กรุณาตรวจสอบยอดก่อนยืนยัน',
-                    style: TextStyle(fontSize: 13, height: 1.5, color: AppTheme.textPrimary),
+                    subscription != null &&
+                            (subscription!.addonPostUnits > 0 ||
+                                subscription!.addonAiCaptions > 0)
+                        ? _profileText(
+                            sheetContext,
+                            'คุณมีเครดิตซื้อเพิ่มคงเหลือ: โพสต์ ${subscription!.addonPostUnits} หน่วย · AI ${subscription!.addonAiCaptions} เครดิต '
+                                'หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้ กรุณาตรวจสอบก่อนยืนยัน',
+                            'You have purchased credits remaining: ${subscription!.addonPostUnits} post units · ${subscription!.addonAiCaptions} AI caption credits. These credits cannot be used after account deletion. Review them before confirming.')
+                        : _profileText(
+                            sheetContext,
+                            'หากมีเครดิตซื้อเพิ่มคงเหลือ หลังลบบัญชีจะใช้เครดิตเหล่านี้ไม่ได้ '
+                                'กรุณาตรวจสอบยอดก่อนยืนยัน',
+                            'Any purchased credits remaining cannot be used after account deletion. Check your balance before confirming.'),
+                    style: TextStyle(
+                        fontSize: 13, height: 1.5, color: AppTheme.textPrimary),
                   ),
                   const SizedBox(height: 14),
                   Container(
@@ -1408,21 +1530,24 @@ class _DeleteAccountButton extends StatelessWidget {
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: const Color(0xFFF2C66D)),
                     ),
-                    child: const Row(
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.info_outline_rounded,
                           size: 20,
                           color: Color(0xFF9A6700),
                         ),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'การลบบัญชี PostDee ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro '
-                            'ที่ซื้อผ่าน App Store หรือ Google Play หากไม่ต้องการให้ต่ออายุ '
-                            'กรุณายกเลิกสมาชิกในร้านค้าก่อนลบบัญชี',
-                            style: TextStyle(
+                            _profileText(
+                                sheetContext,
+                                'การลบบัญชี PostDee ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro '
+                                    'ที่ซื้อผ่าน App Store หรือ Google Play หากไม่ต้องการให้ต่ออายุ '
+                                    'กรุณายกเลิกสมาชิกในร้านค้าก่อนลบบัญชี',
+                                'Deleting your PostDee account does not cancel Starter/Pro subscriptions purchased through the App Store or Google Play. To stop renewal, cancel your subscription in the store before deleting your account.'),
+                            style: const TextStyle(
                               fontSize: 12.5,
                               height: 1.45,
                               color: Color(0xFF6B4F00),
@@ -1433,16 +1558,19 @@ class _DeleteAccountButton extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 46,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: double.infinity,
+                      minHeight: 46,
+                    ),
                     child: AccountUiPress(
                       child: OutlinedButton.icon(
                         onPressed: () async {
                           await onManageSubscription();
                         },
                         icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                        label: const Text('จัดการสมาชิก'),
+                        label: Text(_profileText(sheetContext, 'จัดการสมาชิก',
+                            'Manage subscription')),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.accentCyanInk,
                           side: BorderSide(color: AppTheme.border),
@@ -1471,7 +1599,8 @@ class _DeleteAccountButton extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              child: const Text('ยกเลิก'),
+                              child: Text(_profileText(
+                                  sheetContext, 'ยกเลิก', 'Cancel')),
                             ),
                           ),
                         ),
@@ -1500,7 +1629,10 @@ class _DeleteAccountButton extends StatelessWidget {
                                       child: CircularProgressIndicator(
                                           strokeWidth: 2),
                                     )
-                                  : const Text('ลบบัญชีถาวร'),
+                                  : Text(_profileText(
+                                      sheetContext,
+                                      'ลบบัญชีถาวร',
+                                      'Delete account permanently')),
                             ),
                           ),
                         ),
@@ -1528,13 +1660,13 @@ class _DeleteAccountButton extends StatelessWidget {
       enabled: !isDeleting,
       child: Semantics(
         button: true,
-        label: 'ลบบัญชี',
+        label: _profileText(context, 'ลบบัญชี', 'Delete account'),
         child: OutlinedButton.icon(
           onPressed: isDeleting ? null : () => _confirm(context),
           icon: const Icon(Icons.delete_outline, color: errorColor, size: 19),
-          label: const Text(
-            'ลบบัญชี',
-            style: TextStyle(
+          label: Text(
+            _profileText(context, 'ลบบัญชี', 'Delete account'),
+            style: const TextStyle(
               color: errorColor,
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -1555,9 +1687,10 @@ class _DeleteAccountButton extends StatelessWidget {
 
 Future<T?> _showSettingChoices<T>(
   BuildContext context, {
-  required String title,
+  required String Function(BuildContext) titleBuilder,
   required T current,
-  required List<({T value, String label})> choices,
+  required List<({T value, String label})> Function(BuildContext)
+      choicesBuilder,
 }) {
   final originTicker = TickerMode.getValuesNotifier(context);
   return showModalBottomSheet<T>(
@@ -1586,7 +1719,7 @@ Future<T?> _showSettingChoices<T>(
                       children: [
                         Expanded(
                           child: Text(
-                            title,
+                            titleBuilder(context),
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -1596,7 +1729,7 @@ Future<T?> _showSettingChoices<T>(
                         ),
                         AccountUiPress(
                           child: IconButton(
-                            tooltip: 'ปิด',
+                            tooltip: _profileText(context, 'ปิด', 'Close'),
                             onPressed: () => Navigator.pop(context),
                             icon: const Icon(Icons.close),
                           ),
@@ -1604,7 +1737,7 @@ Future<T?> _showSettingChoices<T>(
                       ],
                     ),
                   ),
-                  for (final choice in choices)
+                  for (final choice in choicesBuilder(context))
                     AccountUiPress(
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
@@ -1630,3 +1763,12 @@ Future<T?> _showSettingChoices<T>(
     ),
   );
 }
+
+String _profileText(BuildContext context, String thai, String english) =>
+    (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+                    ?.locale
+                    .languageCode ??
+                'th') ==
+            'th'
+        ? thai
+        : english;

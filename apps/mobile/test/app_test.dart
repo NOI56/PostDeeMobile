@@ -82,18 +82,18 @@ void main() {
 
     await tester.pumpWidget(const PostDeeApp(locale: Locale('en')));
 
-    expect(find.text('Sign in to PostDee'), findsOneWidget);
+    expect(find.text('Post once. Sell everywhere.'), findsOneWidget);
     expect(
-      find.text('Connect your email before using the app'),
+      find.text('Post one video to TikTok, Shorts,\nReels and Facebook at once.'),
       findsOneWidget,
     );
     expect(
-      find.text('Connect an email first so you can post and manage content.'),
+      find.text('Connect your account once. Sign in securely. PostDee does not store your password.'),
       findsOneWidget,
     );
     expect(find.text('Sign in with Google'), findsOneWidget);
     expect(
-      find.text('Firebase Auth is disabled. Enable Firebase Auth for sign-in.'),
+      find.text('Sign-in is not enabled. Please contact support.'),
       findsOneWidget,
     );
     expect(find.byType(BottomNavigationBar), findsNothing);
@@ -123,7 +123,7 @@ void main() {
     expect(find.text('Create a new post'), findsNothing);
     expect(find.text('Profile link'), findsOneWidget);
     expect(find.text('Store link'), findsOneWidget);
-    expect(find.text('Latest post status'), findsOneWidget);
+    expect(find.text('Latest posts'), findsOneWidget);
     expect(find.text('View all'), findsNothing);
     expect(find.text('Pro package'), findsNothing);
     expect(find.text('23 days left'), findsNothing);
@@ -588,7 +588,7 @@ void main() {
     }
     await tester.tap(themeRow);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('มืด'));
+    await tester.tap(find.text('Dark'));
     await tester.pumpAndSettle();
 
     expect(themeController.themeMode, ThemeMode.dark);
@@ -601,7 +601,7 @@ void main() {
 
     await tester.tap(themeRow);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('สว่าง'));
+    await tester.tap(find.text('Light'));
     await tester.pumpAndSettle();
 
     expect(themeController.themeMode, ThemeMode.light);

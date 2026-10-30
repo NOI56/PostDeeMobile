@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/postdee_card.dart';
+import 'caption_localizations.dart';
 
 const captionPlatforms = [
   SocialPlatform.tiktok,
@@ -160,6 +161,32 @@ class _PlatformCaptionFieldsState extends State<PlatformCaptionFields> {
     super.dispose();
   }
 
+  String? _validationMessage(BuildContext context, SocialPlatform platform) {
+    final message = widget.validationMessage(platform);
+    return message == null ? null : localizeCaptionMessage(context, message);
+  }
+
+  InputDecoration _decoration(BuildContext context, SocialPlatform platform) {
+    final error = _validationMessage(context, platform);
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 21;
+    final wrapError = !captionUsesThai(context) || largeText;
+    final label = localizeCaptionMessage(context,
+        platform == SocialPlatform.youtubeShorts
+            ? 'คำอธิบาย YouTube'
+            : 'แคปชั่น ${platform.shortLabel}');
+    return InputDecoration(
+      labelText: largeText ? null : label,
+      label: largeText ? Text(label, softWrap: true) : null,
+      hintText: localizeCaptionMessage(context, 'เขียนแคปชั่นสำหรับช่องทางนี้...'),
+      errorText: wrapError ? null : error,
+      error: wrapError && error != null
+          ? Text(error, softWrap: true,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.error))
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -190,16 +217,10 @@ class _PlatformCaptionFieldsState extends State<PlatformCaptionFields> {
                       minLines: 3,
                       maxLines: 7,
                       onChanged: (text) => widget.onChanged(platform, text),
-                      decoration: InputDecoration(
-                        labelText: platform == SocialPlatform.youtubeShorts
-                            ? 'คำอธิบาย YouTube'
-                            : 'แคปชั่น ${platform.shortLabel}',
-                        hintText: 'เขียนแคปชั่นสำหรับช่องทางนี้...',
-                        errorText: widget.validationMessage(platform),
-                      ),
+                      decoration: _decoration(context, platform),
                     ),
                     const SizedBox(height: 7),
-                    Text(
+                    CaptionText(
                       platform == SocialPlatform.youtubeShorts
                           ? '${utf8.encode((_controllers[platform]!.text).trim()).length} / 5,000 ไบต์ · ชื่อคลิปตั้งในช่องทาง'
                           : '${_controllers[platform]!.text.trim().length} ตัวอักษร',
@@ -241,21 +262,21 @@ class PlatformCaptionPreviewSheet extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
             child: Row(children: [
               Expanded(
-                child: Text(
+                child: CaptionText(
                     isFallback
                         ? 'ตรวจข้อความสำรอง${count == 4 ? countLabel : ' $countLabel'}'
                         : 'แคปชั่นจาก AI $countLabel',
                     style: Theme.of(context).textTheme.titleMedium),
               ),
               IconButton(
-                  tooltip: 'กลับไปเขียนเอง',
+                  tooltip: localizeCaptionMessage(context, 'กลับไปเขียนเอง'),
                   onPressed: () => Navigator.pop(context, false),
                   icon: const Icon(Icons.close)),
             ]),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: Text(
+            child: CaptionText(
                 isFallback
                     ? 'AI วิเคราะห์คลิปไม่สำเร็จ กรุณาตรวจข้อความ $count ช่องทางก่อนใช้'
                         '${charged ? '' : ' · ไม่หักโควตา AI'}'
@@ -298,7 +319,7 @@ class PlatformCaptionPreviewSheet extends StatelessWidget {
                 onPressed:
                     count > 0 ? () => Navigator.pop(context, true) : null,
                 icon: const Icon(Icons.check),
-                label: Text(
+                label: CaptionText(
                     count == 4 ? 'ใช้ทั้ง 4 แคปชั่น' : 'ใช้ $count แคปชั่น'),
               ),
             ),

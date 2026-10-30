@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/theme/app_theme.dart';
 
 class LegalDocument {
   const LegalDocument({
     required this.title,
     required this.body,
+    this.englishTitle,
+    this.englishBody,
   });
 
   final String title;
   final String body;
+  final String? englishTitle;
+  final String? englishBody;
 }
 
 /// In-app legal documents. The copy below is a working draft so the required
@@ -40,6 +45,27 @@ class PostDeeLegalDocuments {
         '- ลบบัญชีจากหน้าโปรไฟล์เพื่อลบข้อมูลฝั่งบริการ การลบนี้อาจไม่ลบไฟล์เฉพาะเครื่องหรือสำเนาในระบบสำรองข้อมูล จึงควรลบร่างหรือล้างข้อมูลแอปแยกต่างหาก\n\n'
         'ติดต่อ: postdee.support@gmail.com\n\n'
         '(เอกสารฉบับร่าง — จะอัปเดตเป็นฉบับสมบูรณ์ก่อนเผยแพร่จริง)',
+    englishTitle: 'Privacy policy',
+    englishBody:
+        'PostDee collects only the information needed to publish and schedule videos to your social platforms.\n\n'
+        'What we collect\n'
+        '- The account and email address you use to sign in\n'
+        '- Videos and captions you upload for publishing or scheduling\n'
+        '- Social account connection tokens (stored securely and not disclosed to others)\n\n'
+        'Drafts on this device\n'
+        '- When you save a draft, the app copies the video, cover image and draft details into its own storage, separately for each signed-in account.\n'
+        '- Saving a draft does not upload it to the API/R2, send it to a platform, add it to the queue or use any post quota.\n'
+        '- Drafts do not sync across devices, but may be included in operating system backups depending on your settings.\n'
+        '- The app deletes a draft after the API accepts the post into the queue. If a step fails before the post is accepted into the queue, the draft is kept. If a file cannot be deleted, the app warns you that it may still be on the device.\n\n'
+        'How we use your data\n'
+        '- Only to publish and schedule posts, and show you analytics\n'
+        '- We do not sell personal information to third parties\n\n'
+        'Your rights\n'
+        '- You can request access to, correction of or deletion of your data at any time.\n'
+        '- You can delete individual drafts from the drafts page.\n'
+        '- Delete your account from the Account page to delete data held by the service. This may not delete files stored only on your device or copies in backups, so you should delete drafts or clear app data separately.\n\n'
+        'Contact: postdee.support@gmail.com\n\n'
+        '(Draft document — this will be updated to the final version before release.)',
   );
 
   static const termsOfService = LegalDocument(
@@ -65,6 +91,28 @@ class PostDeeLegalDocuments {
         '- เราอาจปรับปรุงบริการและข้อกำหนด โดยจะแจ้งให้ทราบล่วงหน้าตามสมควร\n\n'
         'ติดต่อ: postdee.support@gmail.com\n\n'
         '(เอกสารฉบับร่าง — จะอัปเดตเป็นฉบับสมบูรณ์ก่อนเผยแพร่จริง)',
+    englishTitle: 'Terms of service',
+    englishBody: 'By using PostDee, you agree to the following terms.\n\n'
+        'Using the service\n'
+        '- Only use the app to post content you have the right to publish.\n'
+        '- Follow the policies of each connected social platform.\n'
+        '- You must choose the channels yourself and review the delivery mode for each channel before confirming.\n'
+        '- For TikTok, you can send a draft to continue editing in TikTok, or post directly using the latest audience options for your account. You must confirm music rights and the relevant terms before sending. Publishing results may take time while TikTok processes the post.\n'
+        '- For YouTube Shorts, you can choose visibility. Instagram uses the connected account. For Facebook Page Reels, you can choose to publish or save as a draft. If the delivery mode cannot be determined, confirmation is blocked.\n'
+        '- Scheduled posts must be set for a future time: Starter allows up to 14 days ahead, and Pro up to 30 days. Rescheduling uses the entitlements of your current plan. Posts already accepted into the queue are not automatically canceled.\n\n'
+        'Local drafts\n'
+        '- Post drafts are stored only in local app storage. They are not server posts and do not sync across devices.\n'
+        '- The operating system may back up draft files depending on your settings. Deleting your account may not delete copies stored only on your device or in backups.\n\n'
+        'Plans and payments\n'
+        '- Starter and Pro are monthly subscriptions through the Apple App Store or Google Play.\n'
+        '- You can manage or cancel your subscription from the store settings on your device.\n\n'
+        'Content and responsibility\n'
+        '- You are responsible for content posted through your account.\n'
+        '- Do not use the app for spam, scams or illegal activities.\n\n'
+        'Changes\n'
+        '- We may improve the service and update these terms. We will provide reasonable advance notice.\n\n'
+        'Contact: postdee.support@gmail.com\n\n'
+        '(Draft document — this will be updated to the final version before release.)',
   );
 }
 
@@ -75,10 +123,20 @@ class LegalDocumentScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final usesThai =
+        (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+                    ?.locale
+                    .languageCode ??
+                'th') ==
+            'th';
+    final title =
+        usesThai ? document.title : document.englishTitle ?? document.title;
+    final body =
+        usesThai ? document.body : document.englishBody ?? document.body;
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          document.title,
+          title,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
@@ -89,7 +147,7 @@ class LegalDocumentScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
             children: [
               Text(
-                document.body,
+                body,
                 style: TextStyle(
                   fontSize: 13.5,
                   height: 1.7,

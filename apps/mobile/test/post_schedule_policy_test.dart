@@ -1,8 +1,72 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/shared/post_schedule_policy.dart';
+import 'package:postdee_mobile/features/shared/publishing_availability.dart';
 
 void main() {
+  test('English scheduling copy keeps package prices and limits unchanged', () {
+    expect(getSchedulePaidPlanMessage(languageCode: 'en'),
+        'Scheduling requires Starter (199 THB) or Pro (299 THB).');
+    expect(getScheduleSubscriptionUnavailableMessage(languageCode: 'en'),
+        'Could not verify your plan. Try again before scheduling.');
+    expect(getSchedulePlanSummary(languageCode: 'en'),
+        'Starter: schedule up to 14 days ahead · Pro: 30 days');
+    expect(getPublishingUnavailableActionMessage(languageCode: 'en'),
+        'Publishing is temporarily unavailable. Please try again later.');
+    expect(getSchedulePaidPlanMessage(), schedulePaidPlanMessage);
+    expect(getScheduleSubscriptionUnavailableMessage(),
+        scheduleSubscriptionUnavailableMessage);
+    expect(getSchedulePlanSummary(), schedulePlanSummary);
+    expect(getPublishingUnavailableActionMessage(),
+        publishingUnavailableActionMessage);
+    expect(postScheduleLimitMessage('STARTER', languageCode: 'en'),
+        'You can schedule posts up to 14 days ahead. Choose another time.');
+    expect(
+        postScheduleLimitMessage('PRO', rescheduling: true, languageCode: 'en'),
+        'You can reschedule up to 30 days ahead. Choose another time.');
+    expect(postScheduleLimitMessage('BASIC', languageCode: 'en'),
+        getSchedulePaidPlanMessage(languageCode: 'en'));
+  });
+
+  test('English API schedule errors use authoritative bounds and fail closed',
+      () {
+    expect(
+        postScheduleApiErrorMessage(
+            const ApiException(
+                'Posts can be scheduled up to 14 days in advance',
+                code: 'SCHEDULE_LIMIT_EXCEEDED'),
+            plan: 'PRO',
+            rescheduling: true,
+            languageCode: 'en'),
+        'You can reschedule up to 14 days ahead. Choose another time.');
+    expect(
+        postScheduleApiErrorMessage(
+            const ApiException('up to 99 days',
+                code: 'SCHEDULE_LIMIT_EXCEEDED'),
+            languageCode: 'en'),
+        'Starter allows scheduling up to 14 days ahead and Pro up to 30 days. Choose another time.');
+    expect(
+        postScheduleApiErrorMessage(
+            const ApiException('paid', code: 'PAID_PLAN_REQUIRED'),
+            languageCode: 'en'),
+        getSchedulePaidPlanMessage(languageCode: 'en'));
+    expect(
+        postScheduleApiErrorMessage(
+            const ApiException('future', code: 'SCHEDULE_MUST_BE_FUTURE'),
+            rescheduling: true,
+            languageCode: 'en'),
+        'The rescheduled time must be in the future.');
+    expect(
+        postScheduleApiErrorMessage(
+            const ApiException('future', code: 'SCHEDULE_MUST_BE_FUTURE'),
+            languageCode: 'en'),
+        'The posting time must be in the future.');
+    expect(
+        postScheduleApiErrorMessage(const ApiException('unrelated'),
+            languageCode: 'en'),
+        isNull);
+  });
+
   for (final entry in {'STARTER': 14, 'PRO': 30}.entries) {
     test('${entry.key} includes its exact scheduling boundary', () {
       final now = DateTime.utc(2026, 10, 8, 9);

@@ -10,6 +10,7 @@ import '../platforms/social_platform_logo.dart';
 import 'cover_editor_screen.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
+import 'review_localizations.dart';
 import 'tiktok_publishing_settings_sheet.dart';
 
 String? publishReviewOutcomeFor(
@@ -209,15 +210,17 @@ class PublishReviewSummary extends StatelessWidget {
 
   bool get _isScheduled => scheduledAt != null;
 
-  String get _scheduleLabel {
+  String _scheduleLabel(BuildContext context) {
     final at = scheduledAt;
     if (at == null) {
-      return 'โพสต์ทันที';
+      return localizeReviewMessage(context, 'โพสต์ทันที');
     }
     final local = at.toLocal();
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
-    return '${local.day} ${_thaiMonthsShort[local.month - 1]} ${local.year} · $hour:$minute น.';
+    return reviewText(context,
+        '${local.day} ${_thaiMonthsShort[local.month - 1]} ${local.year} · $hour:$minute น.',
+        '${local.day} ${_englishMonthsShort[local.month - 1]} ${local.year} · $hour:$minute');
   }
 
   @override
@@ -257,7 +260,7 @@ class PublishReviewSummary extends StatelessWidget {
                     key: const ValueKey('publish-review-preview'),
                     onPressed: onPreview,
                     icon: const Icon(Icons.play_circle_outline, size: 16),
-                    label: const Text('พรีวิว', textAlign: TextAlign.center),
+                    label: const ReviewText('พรีวิว', textAlign: TextAlign.center),
                     style: TextButton.styleFrom(
                       foregroundColor: AppTheme.accentCyanInk,
                       padding: const EdgeInsets.symmetric(
@@ -274,7 +277,7 @@ class PublishReviewSummary extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  ReviewText(
                     'แคปชั่น',
                     style: TextStyle(
                       fontSize: 11.5,
@@ -285,9 +288,9 @@ class PublishReviewSummary extends StatelessWidget {
                   const SizedBox(height: 5),
                   Text(
                     platformSettings.usePlatformCaptions
-                        ? 'ใช้แคปชั่นแยกตามช่องทางด้านล่าง'
+                        ? localizeReviewMessage(context, 'ใช้แคปชั่นแยกตามช่องทางด้านล่าง')
                         : trimmedCaption.isEmpty
-                            ? '(ไม่มีแคปชั่น)'
+                            ? localizeReviewMessage(context, '(ไม่มีแคปชั่น)')
                             : trimmedCaption,
                     style: TextStyle(
                       fontSize: 13,
@@ -353,7 +356,7 @@ class PublishReviewSummary extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
+                child: ReviewText(
                   'หน้าปกเลือกจากวินาทีที่ '
                   '${(coverResult!.coverFrameTimeMs / 1000).toStringAsFixed(1)}',
                   key: const ValueKey('publish-review-cover-time'),
@@ -377,7 +380,7 @@ class PublishReviewSummary extends StatelessWidget {
           spacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(
+            ReviewText(
               'โพสต์ไปยัง ${platforms.length} ช่องทาง',
               style: TextStyle(
                 fontSize: 13.5,
@@ -431,7 +434,7 @@ class PublishReviewSummary extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
+                  child: ReviewText(
                     platforms.isEmpty
                         ? 'ยังไม่ได้เลือกช่องทาง กรุณากลับไปเลือกช่องทางก่อนโพสต์'
                         : hasMissingConnectionIdentity
@@ -468,7 +471,7 @@ class PublishReviewSummary extends StatelessWidget {
             child: _SummaryRow(
               icon: _isScheduled ? Icons.event : Icons.bolt,
               label: 'กำหนดเวลา',
-              value: _scheduleLabel,
+              value: _scheduleLabel(context),
               valueColor: AppTheme.textPrimary,
             ),
           ),
@@ -564,7 +567,7 @@ class _ReviewVideoThumbnail extends StatelessWidget {
     if (onPreview == null) return thumbnail;
     return Semantics(
       button: true,
-      label: 'พรีวิววิดีโอ',
+      label: localizeReviewMessage(context, 'พรีวิววิดีโอ'),
       child: InkWell(
         key: const ValueKey('publish-review-thumbnail'),
         onTap: onPreview,
@@ -595,7 +598,7 @@ class _ReviewEditButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
         ),
-        child: Text(label, textAlign: TextAlign.center),
+        child: ReviewText(label, textAlign: TextAlign.center),
       );
 }
 
@@ -637,7 +640,9 @@ class _PlatformOutcomeRow extends StatelessWidget {
             'นโยบายเนื้อหาที่มีผู้สนับสนุน: ${settings.tiktokBrandedContentPolicyConfirmed ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}',
         ],
       SocialPlatform.youtubeShorts => [
-          'ชื่อวิดีโอ: ${settings.youtubeTitle.trim().isEmpty ? 'ยังไม่ระบุ' : settings.youtubeTitle.trim()}',
+          reviewText(context,
+              'ชื่อวิดีโอ: ${settings.youtubeTitle.trim().isEmpty ? 'ยังไม่ระบุ' : settings.youtubeTitle.trim()}',
+              'Video title: ${settings.youtubeTitle.trim().isEmpty ? 'Not specified' : settings.youtubeTitle.trim()}'),
           'สำหรับเด็ก: ${_answerLabel(settings.youtubeMadeForKids, yes: 'ใช่', no: 'ไม่ใช่')}',
           'สื่อสังเคราะห์ที่ดูเหมือนจริง: ${_answerLabel(settings.youtubeContainsSyntheticMedia, yes: 'มี', no: 'ไม่มี')}',
           'กฎชุมชน YouTube: ${settings.youtubeCommunityGuidelinesCertified ? 'ยืนยันแล้ว' : 'ยังไม่ยืนยัน'}',
@@ -693,7 +698,7 @@ class _PlatformOutcomeRow extends StatelessWidget {
                   ),
                 ] else ...[
                   const SizedBox(height: 1),
-                  Text(
+                  ReviewText(
                     'ยังยืนยันบัญชีปลายทางไม่ได้',
                     style: TextStyle(
                       fontSize: 11,
@@ -703,7 +708,7 @@ class _PlatformOutcomeRow extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 2),
-                Text(
+                ReviewText(
                   outcome ?? 'ยังไม่ทราบรูปแบบเผยแพร่',
                   key: ValueKey(
                     'publish-review-outcome-${platform.apiValue}',
@@ -718,11 +723,13 @@ class _PlatformOutcomeRow extends StatelessWidget {
                 ),
                 if (details.isNotEmpty) ...[
                   const SizedBox(height: 5),
-                  for (final detail in details)
+                  for (var detailIndex = 0; detailIndex < details.length; detailIndex++)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
-                        detail,
+                        platform == SocialPlatform.youtubeShorts && detailIndex == 0
+                            ? details[detailIndex]
+                            : localizeReviewMessage(context, details[detailIndex]),
                         style: TextStyle(
                           fontSize: 11.5,
                           height: 1.4,
@@ -733,7 +740,7 @@ class _PlatformOutcomeRow extends StatelessWidget {
                 ],
                 if (platform == SocialPlatform.instagramReels) ...[
                   const SizedBox(height: 5),
-                  Text(
+                  ReviewText(
                     'Instagram ไม่มี Private รายโพสต์ วิดีโอจะเผยแพร่ตามบัญชีที่เชื่อม',
                     style: TextStyle(
                       fontSize: 11.5,
@@ -784,7 +791,7 @@ class YouTubeUploadNotice extends StatelessWidget {
     }
     if (!opened && context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-        content: Text(
+        content: ReviewText(
             'เปิดข้อกำหนด YouTube ไม่สำเร็จ ลองใหม่หรือเปิด m.youtube.com/terms ในเบราว์เซอร์'),
       ));
     }
@@ -802,7 +809,7 @@ class YouTubeUploadNotice extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            ReviewText(
               'เมื่อกดยืนยันโพสต์หรือตั้งเวลา คุณรับรองว่าเนื้อหาที่อัปโหลดเป็นไปตามข้อกำหนดการให้บริการ YouTube รวมถึงกฎชุมชน โปรดอย่าละเมิดลิขสิทธิ์หรือความเป็นส่วนตัวของผู้อื่น',
               style: TextStyle(
                 fontSize: 11.5,
@@ -813,7 +820,7 @@ class YouTubeUploadNotice extends StatelessWidget {
             TextButton(
               key: const ValueKey('publish-review-youtube-terms'),
               onPressed: () => _openTerms(context),
-              child: const Text('อ่านข้อกำหนด YouTube'),
+              child: const ReviewText('อ่านข้อกำหนด YouTube'),
             ),
           ],
         ),
@@ -856,7 +863,7 @@ class _SummaryRow extends StatelessWidget {
           const SizedBox(width: 11),
           Expanded(
             flex: 2,
-            child: Text(
+            child: ReviewText(
               label,
               style: TextStyle(
                 fontSize: 13,
@@ -897,3 +904,5 @@ const _thaiMonthsShort = [
   'พ.ย.',
   'ธ.ค.',
 ];
+
+const _englishMonthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

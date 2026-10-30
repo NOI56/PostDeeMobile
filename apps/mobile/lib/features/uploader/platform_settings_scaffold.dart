@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
+import 'channel_localizations.dart';
 
 /// Shared sheet chrome. Short forms shrink; long forms scroll above the actions.
 class PlatformSettingsScaffold extends StatelessWidget {
@@ -61,7 +62,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                               displayName.trim().isEmpty
-                                  ? 'ยังยืนยันบัญชีไม่ได้'
+                                  ? localizeChannelMessage(context, 'ยังยืนยันบัญชีไม่ได้')
                                   : displayName,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -70,7 +71,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
                         ],
                       )),
                       IconButton(
-                          tooltip: 'ปิด',
+                          tooltip: localizeChannelMessage(context, 'ปิด'),
                           onPressed: () => Navigator.of(context).pop(),
                           icon: const Icon(Icons.close_rounded)),
                     ]),
@@ -85,7 +86,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               if (memoryMessage != null) ...[
-                                Text(memoryMessage!,
+                                ChannelText(memoryMessage!,
                                     key: const ValueKey(
                                         'platform-settings-memory'),
                                     style: TextStyle(
@@ -102,7 +103,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
                         padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
                         child: Semantics(
                             liveRegion: true,
-                            child: Text(validationMessage!,
+                            child: ChannelText(validationMessage!,
                                 style: TextStyle(
                                     fontSize: 12,
                                     color:
@@ -115,7 +116,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
                                 key: const ValueKey(
                                     'uploader-platform-settings-cancel'),
                                 onPressed: () => Navigator.of(context).pop(),
-                                child: const Text('ยกเลิก',
+                                child: const ChannelText('ยกเลิก',
                                     textAlign: TextAlign.center))),
                         const SizedBox(width: 10),
                         Expanded(
@@ -123,7 +124,7 @@ class PlatformSettingsScaffold extends StatelessWidget {
                                 key: const ValueKey(
                                     'uploader-platform-settings-save'),
                                 onPressed: onSave,
-                                child: const Text('บันทึกการตั้งค่า',
+                                child: const ChannelText('บันทึกการตั้งค่า',
                                     textAlign: TextAlign.center))),
                       ])),
                 ],
@@ -153,14 +154,14 @@ class PlatformSettingsSection extends StatelessWidget {
             child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(title,
+                  ChannelText(title,
                       style: TextStyle(
                           color: AppTheme.textPrimary,
                           fontSize: 14,
                           fontWeight: FontWeight.w600)),
                   if (description != null) ...[
                     const SizedBox(height: 5),
-                    Text(description!,
+                    ChannelText(description!,
                         style: TextStyle(
                             fontSize: 12, color: AppTheme.textSecondary)),
                   ],

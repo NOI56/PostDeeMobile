@@ -26,6 +26,7 @@ import 'package:postdee_mobile/features/posts/post_detail_screen.dart';
 import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
+import 'package:postdee_mobile/features/notifications/notifications_screen.dart';
 import 'package:postdee_mobile/features/legal/legal_document_screen.dart';
 import 'package:postdee_mobile/features/templates/templates_screen.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_screen.dart';
@@ -101,6 +102,20 @@ PostDeeLanguageController _signInShell() {
   addTearDown(sessionStore.clear);
   addTearDown(languageController.dispose);
   return languageController;
+}
+
+Future<void> _confirmEnglishAccountDeletion(WidgetTester tester) async {
+  await tester.tap(_referenceNavButton('Account'));
+  await tester.pumpAndSettle();
+  final delete = find.widgetWithText(OutlinedButton, 'Delete account');
+  await tester.scrollUntilVisible(delete, 400,
+      scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
+  await tester.tap(delete);
+  await tester.pumpAndSettle();
+  tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Delete account permanently')).onPressed!();
+  await tester.pumpAndSettle();
 }
 
 class _ShellDraftStore implements PublishDraftStore {
@@ -773,7 +788,8 @@ void main() {
       tester.widget<UploaderScreen>(find.byType(UploaderScreen)).initialDraftId,
       draft.id,
     );
-    expect(find.textContaining('ไม่พบวิดีโอของฉบับร่าง'), findsWidgets);
+    expect(find.text("This draft's video could not be found on this device."),
+        findsWidgets);
     await tester.tap(find.byKey(const ValueKey('uploader-close')));
     await tester.pumpAndSettle();
     await resume;
@@ -800,29 +816,49 @@ void main() {
     expect(_referenceNav(), findsOneWidget);
   });
 
-  testWidgets('Home connections action pauses Home and refreshes on return',
+  testWidgets('English Home Manage opens connections and refreshes on return',
       (tester) async {
     final languageController = _signInShell();
+    var connectionReads = 0;
     await tester.pumpWidget(_shellApp(PostDeeShell(
       languageController: languageController,
       uploaderDraftStore: _ShellDraftStore(),
       loadRecentPosts: () async => const [],
       loadScheduledPosts: () async => const [],
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: () async {
+        connectionReads++;
+        return const [];
+      },
     )));
     await tester.pumpAndSettle();
-    tester.widget<HomeScreen>(find.byType(HomeScreen)).onOpenConnections!();
+    expect(connectionReads, 1);
+    final home = tester.widget<HomeScreen>(find.byType(HomeScreen));
+    final manage = find.byKey(const ValueKey('home-manage-connections'));
+    await tester.ensureVisible(manage);
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: manage, matching: find.text('Manage')),
+        findsOneWidget);
+    await tester.tap(manage);
     await tester.pumpAndSettle();
     expect(find.byType(ConnectionsScreen), findsOneWidget);
+    expect(find.text('Connect channels'), findsOneWidget);
     expect(
       tester
           .widget<HomeScreen>(find.byType(HomeScreen, skipOffstage: false))
           .isActive,
       isFalse,
     );
+    home.onOpenConnections!();
+    await home.onCreatePost!();
+    await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen, skipOffstage: false), findsOneWidget);
+    expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
+    expect(connectionReads, 1);
     await tester.pageBack();
     await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen), findsNothing);
     expect(tester.widget<HomeScreen>(find.byType(HomeScreen)).isActive, isTrue);
+    expect(connectionReads, 2);
     expect(tester.takeException(), isNull);
   });
 
@@ -932,7 +968,7 @@ void main() {
         expect(find.text('Pro package'), findsNothing);
       } else if (origin == 'Account') {
         expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
-        expect(find.text('เหลือโพสต์ 0 / 3 หน่วยเดือนนี้'), findsOneWidget);
+        expect(find.text('0 / 3 post units left this month'), findsOneWidget);
         expect(find.text('Pro package', skipOffstage: false), findsOneWidget);
       } else {
         expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 3);
@@ -987,7 +1023,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
-    expect(find.text('เหลือโพสต์ 0 / 3 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.text('0 / 3 post units left this month'), findsOneWidget);
 
     final loadsBeforePaywall = loadedPlans.length;
     await tester.tap(viewPlans);
@@ -1009,7 +1045,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-plan-pro')), findsOneWidget);
-    expect(find.text('เหลือโพสต์ 247 / 250 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.text('247 / 250 post units left this month'), findsOneWidget);
     expect(find.byKey(const ValueKey('profile-plan-free')), findsNothing);
 
     await tester.tap(_referenceNavButton('Home'));
@@ -1030,7 +1066,7 @@ void main() {
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-plan-free')), findsOneWidget);
-    expect(find.text('เหลือโพสต์ 2 / 3 หน่วยเดือนนี้'), findsOneWidget);
+    expect(find.text('2 / 3 post units left this month'), findsOneWidget);
     expect(find.byKey(const ValueKey('profile-plan-pro')), findsNothing);
     await tester.tap(_referenceNavButton('Home'));
     await tester.pumpAndSettle();
@@ -1062,7 +1098,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('email-forgot-password')));
     await tester.pumpAndSettle();
     expect(gateway.resets, ['seller@example.com']);
-    expect(find.textContaining('หากอีเมลนี้มีบัญชี'), findsOneWidget);
+    expect(
+      find.text(
+        'If an account exists for this email, you will receive a password reset link. Check your inbox and spam folder.',
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
   testWidgets('login legal links open the existing legal documents',
@@ -1083,6 +1124,11 @@ void main() {
             .widget<LegalDocumentScreen>(find.byType(LegalDocumentScreen))
             .document,
         PostDeeLegalDocuments.termsOfService);
+    expect(find.text('Terms of service'), findsOneWidget);
+    expect(find.textContaining('Facebook Page Reels'), findsOneWidget);
+    expect(find.textContaining('Draft document'), findsOneWidget);
+    expect(find.text('ข้อกำหนดการใช้งาน'), findsNothing);
+    expect(PostDeeAuthSessionStore.instance.session.isSignedIn, isFalse);
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('login-privacy')));
@@ -1093,6 +1139,14 @@ void main() {
             .widget<LegalDocumentScreen>(find.byType(LegalDocumentScreen))
             .document,
         PostDeeLegalDocuments.privacyPolicy);
+    expect(find.text('Privacy policy'), findsOneWidget);
+    expect(find.textContaining('Drafts on this device'), findsOneWidget);
+    expect(find.textContaining('Draft document'), findsOneWidget);
+    expect(find.text('นโยบายความเป็นส่วนตัว'), findsNothing);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('login-privacy')), findsOneWidget);
+    expect(PostDeeAuthSessionStore.instance.session.isSignedIn, isFalse);
   });
   testWidgets('a fresh sign-in for the same owner rebuilds the shop screen',
       (tester) async {
@@ -1125,7 +1179,7 @@ void main() {
         .signIn(const AuthSession(userId: 'b', idToken: 'b'));
     ready.complete();
     await tester.pumpAndSettle();
-    expect(find.text('การแจ้งเตือน'), findsNothing);
+    expect(find.byType(NotificationsScreen), findsNothing);
   });
 
   testWidgets('account transitions clear the shared notification history',
@@ -1157,7 +1211,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final button = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(button, 400,
         scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(button);
@@ -1165,7 +1219,8 @@ void main() {
     await tester.tap(button);
     await tester.pumpAndSettle();
     tester
-        .widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'))
+        .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Delete account permanently'))
         .onPressed!();
     await tester.pump();
     PostDeeAuthSessionStore.instance
@@ -1174,7 +1229,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(PostDeeAuthSessionStore.instance.session.userId, 'b');
     expect(cleanupCalls, 0);
-    expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets(
@@ -1195,7 +1250,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final button = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final button = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(button, 400,
         scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(button);
@@ -1203,7 +1258,8 @@ void main() {
     await tester.tap(button);
     await tester.pumpAndSettle();
     tester
-        .widget<FilledButton>(find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'))
+        .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Delete account permanently'))
         .onPressed!();
     await tester.pump();
     await cleanupStarted.future;
@@ -1593,7 +1649,111 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Notifications'));
     await tester.pumpAndSettle();
     expect(pushGateway.initializeCalls, 1);
-    expect(find.text('การแจ้งเตือน'), findsOneWidget);
+    expect(find.text('Notifications'), findsOneWidget);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+  });
+
+  testWidgets(
+      'English notification initialization failure shows translated toast',
+      (tester) async {
+    final language = _signInShell();
+    final initialization = Completer<void>();
+    final gateway = _FakePushMessagingGateway()
+      ..initialization = initialization.future;
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
+      pushMessagingGateway: gateway,
+    )));
+    await tester.pumpAndSettle();
+    expect(gateway.initializeCalls, 0);
+    await tester.tap(find.bySemanticsLabel('Notifications'));
+    await tester.pump();
+    initialization.completeError(StateError('opaque-notification-error'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not connect to notifications. Please try again.'),
+        findsOneWidget);
+    expect(find.textContaining('opaque-notification-error'), findsNothing);
+    expect(gateway.initializeCalls, 1);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'Thai notification initialization failure keeps the original toast',
+      (tester) async {
+    final language = _signInShell()..setLocale(const Locale('th'));
+    final initialization = Completer<void>();
+    final gateway = _FakePushMessagingGateway()
+      ..initialization = initialization.future;
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.dark,
+      locale: const Locale('th'),
+      localizationsDelegates: const [
+        PostDeeLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: PostDeeLocalizations.supportedLocales,
+      home: PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        pushMessagingGateway: gateway,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(gateway.initializeCalls, 0);
+    await tester.tap(find.bySemanticsLabel('แจ้งเตือน'));
+    await tester.pump();
+    initialization.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง'),
+        findsOneWidget);
+    expect(gateway.initializeCalls, 1);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('notification failure uses the locale when initialization finishes',
+      (tester) async {
+    final language = _signInShell()..setLocale(const Locale('th'));
+    final initialization = Completer<void>();
+    final gateway = _FakePushMessagingGateway()
+      ..initialization = initialization.future;
+    final shell = PostDeeShell(
+      languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
+      pushMessagingGateway: gateway,
+    );
+    await tester.pumpWidget(AnimatedBuilder(
+      animation: language,
+      builder: (context, _) => MaterialApp(
+        theme: AppTheme.dark,
+        locale: language.locale,
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: shell,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('แจ้งเตือน'));
+    await tester.pump();
+    language.setLocale(const Locale('en'));
+    await tester.pumpAndSettle();
+    initialization.completeError(StateError('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not connect to notifications. Please try again.'),
+        findsOneWidget);
+    expect(find.text('เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง'), findsNothing);
+    expect(gateway.initializeCalls, 1);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('opens the email sign-in form from the login gate',
@@ -2263,7 +2423,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Profile is now a tab, so its content shows with the nav still visible.
-    expect(find.text('บัญชีและโปรไฟล์'), findsOneWidget);
+    expect(find.text('Account and profile'), findsOneWidget);
     expect(find.text('PostDee Seller'), findsOneWidget);
     expect(_referenceNavButton('Account'), findsOneWidget);
   });
@@ -2374,7 +2534,7 @@ void main() {
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
 
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(
       deleteButton,
       400,
@@ -2386,7 +2546,7 @@ void main() {
 
     tester
         .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          find.widgetWithText(FilledButton, 'Delete account permanently'),
         )
         .onPressed!();
     await tester.pumpAndSettle();
@@ -2405,7 +2565,7 @@ void main() {
       'local-drafts',
     ]);
     // Back on the login gate after the account is removed.
-    expect(find.text('Sign in to PostDee'), findsOneWidget);
+    expect(find.text('Post once. Sell everywhere.'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('postdee-undo-toast')),
       findsOneWidget,
@@ -2425,8 +2585,9 @@ void main() {
     );
     expect(toast.behavior, SnackBarBehavior.floating);
     expect(toast.action, isNull);
-    expect(find.text('ลบบัญชีและออกจากระบบแล้ว'), findsOneWidget);
+    expect(find.text('Account deleted and signed out'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+    expect(find.text('Undo'), findsNothing);
     expect(find.text('เลิกทำ'), findsNothing);
   });
 
@@ -2476,7 +2637,7 @@ void main() {
 
       await tester.tap(_referenceNavButton('Account'));
       await tester.pumpAndSettle();
-      final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+      final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
       await tester.scrollUntilVisible(
         deleteButton,
         400,
@@ -2487,15 +2648,15 @@ void main() {
       await tester.pumpAndSettle();
       tester
           .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+            find.widgetWithText(FilledButton, 'Delete account permanently'),
           )
           .onPressed!();
       await tester.pumpAndSettle();
 
-      expect(find.text('Sign in to PostDee'), findsOneWidget);
+      expect(find.text('Post once. Sell everywhere.'), findsOneWidget);
       expect(
         find.text(
-          'ลบบัญชีแล้ว แต่ลบข้อมูลในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป',
+          'Account deleted, but some data remains on this device. Please clear app data.',
         ),
         findsOneWidget,
       );
@@ -2555,7 +2716,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(
       deleteButton,
       400,
@@ -2566,7 +2727,7 @@ void main() {
     await tester.pumpAndSettle();
     tester
         .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          find.widgetWithText(FilledButton, 'Delete account permanently'),
         )
         .onPressed!();
     await tester.pumpAndSettle();
@@ -2579,7 +2740,7 @@ void main() {
     );
     expect(preferences.getString(otherStyleKey), otherStyle);
     expect(
-      find.text('ลบวิดีโอยังไม่สำเร็จ บัญชีของคุณยังอยู่ กรุณาลองใหม่'),
+      find.text('Could not delete your videos. Your account still exists. Please try again.'),
       findsOneWidget,
     );
   });
@@ -2629,7 +2790,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(
       deleteButton,
       400,
@@ -2640,13 +2801,13 @@ void main() {
     await tester.pumpAndSettle();
     tester
         .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          find.widgetWithText(FilledButton, 'Delete account permanently'),
         )
         .onPressed!();
     await tester.pumpAndSettle();
 
     expect(deletionCalls, ['ready', 'delete']);
-    expect(find.text('Sign in to PostDee'), findsOneWidget);
+    expect(find.text('Post once. Sell everywhere.'), findsOneWidget);
   });
 
   for (final code in [
@@ -2704,7 +2865,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(_referenceNavButton('Account'));
       await tester.pumpAndSettle();
-      final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+      final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
       await tester.scrollUntilVisible(
         deleteButton,
         400,
@@ -2715,7 +2876,7 @@ void main() {
       await tester.pumpAndSettle();
       tester
           .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+            find.widgetWithText(FilledButton, 'Delete account permanently'),
           )
           .onPressed!();
       await tester.pumpAndSettle();
@@ -2723,7 +2884,7 @@ void main() {
       expect(deletionCalls, ['ready']);
       expect(sessionStore.session.isSignedIn, isTrue);
       if (code == 'ACCOUNT_DELETION_UNAVAILABLE') {
-        expect(find.text('ระบบลบบัญชียังไม่พร้อม กรุณาลองใหม่ภายหลัง'),
+        expect(find.text('Account deletion is unavailable. Please try again later.'),
             findsOneWidget);
       }
     });
@@ -2773,7 +2934,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Account'));
     await tester.pumpAndSettle();
-    final deleteButton = find.widgetWithText(OutlinedButton, 'ลบบัญชี');
+    final deleteButton = find.widgetWithText(OutlinedButton, 'Delete account');
     await tester.scrollUntilVisible(
       deleteButton,
       400,
@@ -2784,18 +2945,130 @@ void main() {
     await tester.pumpAndSettle();
     tester
         .widget<FilledButton>(
-          find.widgetWithText(FilledButton, 'ลบบัญชีถาวร'),
+          find.widgetWithText(FilledButton, 'Delete account permanently'),
         )
         .onPressed!();
     await tester.pumpAndSettle();
 
     expect(
       find.text(
-        'กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ จากนั้นลบบัญชีภายใน 5 นาที',
+        'Sign out and sign in again, then delete your account within 5 minutes.',
       ),
       findsOneWidget,
     );
     expect(sessionStore.session.isSignedIn, isTrue);
+  });
+
+  for (final failure in [
+    (code: 'ACCOUNT_MEDIA_CLEANUP_UNAVAILABLE',
+        text: 'Video deletion is unavailable. Please try again later.'),
+    (code: 'ACCOUNT_SOCIAL_CLEANUP_UNAVAILABLE',
+        text: 'Channel disconnection is unavailable. Please try again later.'),
+    (code: 'ACCOUNT_SOCIAL_CLEANUP_FAILED',
+        text: 'Could not disconnect all channels. Your account has not been deleted. Please try again.'),
+    (code: 'ACCOUNT_IDENTITY_DELETE_FAILED',
+        text: 'Your data was deleted, but sign-in access could not be closed. Please try deleting your account again.'),
+    (code: 'UNKNOWN_PROVIDER_CODE', text: 'Unrecognized provider detail'),
+  ]) {
+    testWidgets('English deletion failure preserves the account: ${failure.code}',
+        (tester) async {
+      final language = _signInShell();
+      var cleanupCalls = 0;
+      var deletes = 0;
+      await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        checkAccountDeletionReady: () async => true,
+        deleteAccount: () async {
+          deletes++;
+          throw ApiException('Unrecognized provider detail', code: failure.code);
+        },
+        deleteLocalPublishDrafts: () async => cleanupCalls++,
+      )));
+      await tester.pumpAndSettle();
+      await _confirmEnglishAccountDeletion(tester);
+      expect(find.text(failure.text), findsOneWidget);
+      expect(PostDeeAuthSessionStore.instance.session.stableUserId,
+          'firebase-user-shell');
+      expect(deletes, 1);
+      expect(cleanupCalls, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final failure in [
+    (raw: 'Apple ไม่ส่งรหัสยืนยัน กรุณาลองลบบัญชีอีกครั้ง',
+        text: 'Apple did not return a verification code. Please try deleting your account again.'),
+    (raw: 'ถอนสิทธิ์ Sign in with Apple ไม่สำเร็จ บัญชียังไม่ถูกลบ กรุณาลองใหม่',
+        text: 'Could not revoke Sign in with Apple access. Your account has not been deleted. Please try again.'),
+    (raw: 'Unrecognized revocation detail', text: 'Unrecognized revocation detail'),
+  ]) {
+    testWidgets('English deletion revocation failure preserves raw unknown detail: ${failure.raw}',
+        (tester) async {
+      final language = _signInShell();
+      var deletes = 0;
+      final calls = <String>[];
+      await tester.pumpWidget(_shellApp(PostDeeShell(
+        languageController: language,
+        uploaderDraftStore: _ShellDraftStore(),
+        checkAccountDeletionReady: () async => false,
+        accountAccessRevoker: _FailingAccountAccessRevoker(failure.raw, calls),
+        deleteAccount: () async => deletes++,
+        deleteLocalPublishDrafts: () async {},
+      )));
+      await tester.pumpAndSettle();
+      await _confirmEnglishAccountDeletion(tester);
+      expect(find.text(failure.text), findsOneWidget);
+      expect(deletes, 0);
+      expect(calls, ['revoke']);
+      expect(PostDeeAuthSessionStore.instance.session.stableUserId,
+          'firebase-user-shell');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('pending deletion failure uses the current locale', (tester) async {
+    final language = _signInShell()..setLocale(const Locale('th'));
+    final result = Completer<void>();
+    var deletes = 0;
+    final shell = PostDeeShell(
+      languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
+      checkAccountDeletionReady: () async => true,
+      deleteAccount: () {
+        deletes++;
+        return result.future;
+      },
+      deleteLocalPublishDrafts: () async {},
+    );
+    await tester.pumpWidget(AnimatedBuilder(
+      animation: language,
+      builder: (context, _) => MaterialApp(
+        locale: language.locale,
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: shell,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    tester.widget<ProfileScreen>(
+        find.byType(ProfileScreen, skipOffstage: false)).onDeleteAccount();
+    await tester.pumpAndSettle();
+    expect(deletes, 1);
+    language.setLocale(const Locale('en'));
+    await tester.pumpAndSettle();
+    result.completeError(StateError('opaque-delete-error'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not delete your account. Please try again.'),
+        findsOneWidget);
+    expect(find.textContaining('opaque-delete-error'), findsNothing);
+    expect(PostDeeAuthSessionStore.instance.session.isSignedIn, isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('keeps reference bottom nav buttons touch-friendly',
@@ -3099,7 +3372,8 @@ void main() {
 
     expect(createdPostRequest?.scheduledAt, isNotNull);
     expect(preparationCalls, 1);
-    expect(find.text('จัดคิวส่งตามเวลาแล้ว'), findsOneWidget);
+    expect(find.text('Post scheduled'), findsOneWidget);
+    expect(find.text('จัดคิวส่งตามเวลาแล้ว'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('publish-flow-finish')));
     await tester.pumpAndSettle();
     await tester.tap(_referenceNavButton('Calendar'));
@@ -3238,8 +3512,8 @@ void main() {
     await tester.tap(find.text('Published calendar clip'));
     await tester.pumpAndSettle();
 
-    expect(find.text('รายละเอียดโพสต์'), findsOneWidget);
-    expect(find.text('เผยแพร่สำเร็จ'), findsOneWidget);
+    expect(find.text('Post details'), findsOneWidget);
+    expect(find.text('Delivered'), findsNWidgets(2));
   });
 
   testWidgets('refreshes latest home posts whenever the user returns home',
@@ -3373,16 +3647,19 @@ void main() {
     await tester.pumpAndSettle();
 
     // First run: the three-step intro shows before the main shell.
-    expect(find.text('เชื่อมช่องทางครั้งเดียว'), findsOneWidget);
+    expect(find.text('Connect your channels once'), findsOneWidget);
+    expect(find.text('เชื่อมช่องทางครั้งเดียว'), findsNothing);
     expect(_referenceNav(), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('onboarding-next')));
     await tester.pumpAndSettle();
-    expect(find.text('คลิปเดียว โพสต์ได้ทุกที่'), findsOneWidget);
+    expect(find.text('One video. Every channel.'), findsOneWidget);
+    expect(find.text('คลิปเดียว โพสต์ได้ทุกที่'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('onboarding-next')));
     await tester.pumpAndSettle();
-    expect(find.text('ตั้งเวลา + ดูยอดที่เดียว'), findsOneWidget);
+    expect(find.text('Schedule and track in one place'), findsOneWidget);
+    expect(find.text('ตั้งเวลา + ดูยอดที่เดียว'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('onboarding-next')));
     await tester.pumpAndSettle();
@@ -3402,6 +3679,18 @@ class _RecordingAccountAccessRevoker implements AccountAccessRevoker {
   @override
   Future<void> revokeBeforeAccountDeletion() async {
     calls.add('revoke');
+  }
+}
+
+class _FailingAccountAccessRevoker implements AccountAccessRevoker {
+  _FailingAccountAccessRevoker(this.message, this.calls);
+  final String message;
+  final List<String> calls;
+
+  @override
+  Future<void> revokeBeforeAccountDeletion() async {
+    calls.add('revoke');
+    throw AccountAccessRevocationException(message);
   }
 }
 

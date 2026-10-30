@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_session.dart';
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'social_platform.dart';
@@ -138,11 +139,18 @@ class ConnectionsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.4;
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'เชื่อมต่อช่องทาง',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        toolbarHeight: largeText
+            ? kToolbarHeight * MediaQuery.textScalerOf(context).scale(16) / 16
+            : null,
+        title: Text(
+          _connectionsText(context, 'เชื่อมต่อช่องทาง', 'Connect channels'),
+          maxLines: largeText ? 2 : 1,
+          softWrap: largeText,
+          overflow: largeText ? TextOverflow.visible : TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       body: SafeArea(
@@ -177,6 +185,8 @@ class ConnectedPlatformsCard extends StatefulWidget {
   State<ConnectedPlatformsCard> createState() => _ConnectedPlatformsCardState();
 }
 
+enum _ConnectionStatusFailure { ownerChanged, unavailable }
+
 class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     with WidgetsBindingObserver {
   late final PostDeeApiClient _apiClient =
@@ -186,7 +196,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
 
   Map<String, SocialConnectionResult> _statuses = {};
   bool _loading = true;
-  String? _statusError;
+  Object? _statusFailure;
   String? _busyPlatform;
   bool _isDisconnectConfirmationOpen = false;
   bool _waitingForOAuthReturn = false;
@@ -198,6 +208,20 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   String? _ownerUserId;
   int _loadGeneration = 0;
   int _operationGeneration = 0;
+
+  String _text(String thai, String english) =>
+      _connectionsText(context, thai, english);
+
+  String? get _statusError => switch (_statusFailure) {
+        _ConnectionStatusFailure.ownerChanged => _text(
+            'กรุณาเข้าสู่ระบบใหม่เพื่อตรวจสอบช่องทาง',
+            'Please sign in again to check your channels.'),
+        _ConnectionStatusFailure.unavailable => _text(
+            'โหลดสถานะช่องทางไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่',
+            'Could not load channel status. Check your internet connection and try again.'),
+        ApiException error => _connectAttemptErrorMessage(error),
+        _ => null,
+      };
 
   @override
   void initState() {
@@ -252,7 +276,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       _busyPlatform = null;
       _isDisconnectConfirmationOpen = false;
       _loading = false;
-      _statusError = 'กรุณาเข้าสู่ระบบใหม่เพื่อตรวจสอบช่องทาง';
+      _statusFailure = _ConnectionStatusFailure.ownerChanged;
     });
     if (owner != null) unawaited(_loadConnections());
   }
@@ -284,7 +308,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     final owner = _ownerUserId;
     setState(() {
       _loading = true;
-      _statusError = null;
+      _statusFailure = null;
     });
     try {
       final results = await _apiClient.listSocialConnections();
@@ -311,8 +335,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     setState(() {
       _statuses = {};
       _loading = false;
-      _statusError =
-          'โหลดสถานะช่องทางไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
+      _statusFailure = _ConnectionStatusFailure.unavailable;
     });
   }
 
@@ -337,15 +360,23 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
   String? _connectAttemptErrorMessage(ApiException error) {
     switch (error.code) {
       case 'SOCIAL_ACCOUNT_ALREADY_LINKED':
-        return 'บัญชีช่องทางนี้เชื่อมกับบัญชี PostDee อื่นแล้ว กรุณาตัดการเชื่อมต่อจากบัญชีเดิมก่อน หรือเลือกบัญชีช่องทางอื่น';
+        return _text(
+            'บัญชีช่องทางนี้เชื่อมกับบัญชี PostDee อื่นแล้ว กรุณาตัดการเชื่อมต่อจากบัญชีเดิมก่อน หรือเลือกบัญชีช่องทางอื่น',
+            'This social account is linked to another PostDee account. Disconnect it from the original account first, or choose a different social account.');
       case 'SOCIAL_CONNECTION_ATTEMPT_INVALID':
       case 'SOCIAL_CONNECTION_ATTEMPT_EXPIRED':
-        return 'คำขอเชื่อมต่อหมดอายุหรือใช้ไปแล้ว กรุณากดเชื่อมต่อช่องทางอีกครั้ง';
+        return _text(
+            'คำขอเชื่อมต่อหมดอายุหรือใช้ไปแล้ว กรุณากดเชื่อมต่อช่องทางอีกครั้ง',
+            'This connection request has expired or has already been used. Connect the channel again.');
       case 'SOCIAL_CONNECTION_COMPLETION_AMBIGUOUS':
-        return 'พบหลายบัญชีที่เพิ่งเชื่อมต่อ กรุณากดเชื่อมต่อใหม่ทีละบัญชี';
+        return _text(
+            'พบหลายบัญชีที่เพิ่งเชื่อมต่อ กรุณากดเชื่อมต่อใหม่ทีละบัญชี',
+            'More than one account was recently connected. Connect one account at a time.');
       default:
         return error.statusCode == 409
-            ? 'ตรวจสอบการเชื่อมต่อไม่สำเร็จ กรุณากดเชื่อมต่อช่องทางอีกครั้ง'
+            ? _text(
+                'ตรวจสอบการเชื่อมต่อไม่สำเร็จ กรุณากดเชื่อมต่อช่องทางอีกครั้ง',
+                'Could not verify this connection. Connect the channel again.')
             : null;
     }
   }
@@ -357,18 +388,20 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     _clearConnectAttempt();
     setState(() => _busyPlatform = platform.apiValue);
     try {
-      final returnTarget = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-          ? kDebugMode
-              ? 'android-staging'
-              : 'android'
-          : null;
+      final returnTarget =
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+              ? kDebugMode
+                  ? 'android-staging'
+                  : 'android'
+              : null;
       final link = await _apiClient.createSocialConnectionLink(
         platform.apiValue,
         returnTarget: returnTarget,
       );
       if (!_operationIsCurrent(generation, owner)) return;
       if (!isTrustedSocialConnectUrl(link.connectUrl, platform)) {
-        _showMessage('ลิงก์เชื่อมบัญชีไม่ปลอดภัย กรุณาลองใหม่อีกครั้ง');
+        _showMessage(_text('ลิงก์เชื่อมบัญชีไม่ปลอดภัย กรุณาลองใหม่อีกครั้ง',
+            'This connection link is not safe. Please try again.'));
         return;
       }
       final nonce = link.nonce;
@@ -377,8 +410,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
           !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(nonce) ||
           expiresAt == null ||
           !expiresAt.isAfter(DateTime.now())) {
-        _showMessage(
-            'เริ่มเชื่อมต่ออย่างปลอดภัยไม่ได้ กรุณาลองใหม่ หรือติดต่อผู้ดูแลให้อัปเดตระบบ');
+        _showMessage(_text(
+            'เริ่มเชื่อมต่ออย่างปลอดภัยไม่ได้ กรุณาลองใหม่ หรือติดต่อผู้ดูแลให้อัปเดตระบบ',
+            'Could not start a secure connection. Try again, or ask the administrator to update the system.'));
         return;
       }
       _pendingConnectNonce = nonce;
@@ -395,7 +429,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       // Returning is only a hint to reconcile via the authenticated API. The
       // browser and callback never prove that an account was connected.
       _showMessage(
-        'เปิดหน้าล็อกอินด้วยเบราว์เซอร์ของระบบแล้ว เมื่อเชื่อมเสร็จให้กดเปิด PostDee หากไม่กลับอัตโนมัติให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วกดรีเฟรชสถานะได้',
+        _text(
+            'เปิดหน้าล็อกอินด้วยเบราว์เซอร์ของระบบแล้ว เมื่อเชื่อมเสร็จให้กดเปิด PostDee หากไม่กลับอัตโนมัติให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วกดรีเฟรชสถานะได้',
+            'Sign-in opened in your system browser. When finished, tap Open PostDee. If you do not return automatically, close the window or return to the app, then refresh the status.'),
       );
     } on ApiException catch (error) {
       if (!_operationIsCurrent(generation, owner)) return;
@@ -410,7 +446,8 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       _leftAppForOAuth = false;
       _pendingOAuthRefresh = false;
       _clearConnectAttempt();
-      _showMessage('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง');
+      _showMessage(_text('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง',
+          'Could not connect your account. Please try again.'));
     } finally {
       if (_operationIsCurrent(generation, owner)) {
         setState(() => _busyPlatform = null);
@@ -425,13 +462,15 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     final owner = _ownerUserId;
     setState(() {
       _loading = true;
-      _statusError = null;
+      _statusFailure = null;
     });
     try {
       if (_pendingConnectNonce != null &&
           !(_pendingConnectExpiresAt?.isAfter(DateTime.now()) ?? false)) {
         _clearConnectAttempt();
-        _showMessage('คำขอเชื่อมต่อหมดอายุ กรุณากดเชื่อมต่อช่องทางอีกครั้ง');
+        _showMessage(_text(
+            'คำขอเชื่อมต่อหมดอายุ กรุณากดเชื่อมต่อช่องทางอีกครั้ง',
+            'This connection request has expired. Connect the channel again.'));
       }
       final nonce = _pendingConnectNonce;
       final List<SocialConnectionResult> results;
@@ -461,7 +500,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         setState(() {
           _statuses = {};
           _loading = false;
-          _statusError = message;
+          _statusFailure = error;
         });
       }
     } catch (_) {
@@ -486,22 +525,28 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         context: context,
         builder: (dialogContext) => AlertDialog(
           scrollable: true,
-          title: Text('ตัดการเชื่อมต่อ ${platform.label}?'),
+          title: Text(_connectionsText(
+              dialogContext,
+              'ตัดการเชื่อมต่อ ${platform.label}?',
+              'Disconnect ${platform.label}?')),
           content: Text(
             '${name == null || name.isEmpty ? platform.label : name}\n\n'
-            'PostDee จะส่งโพสต์ใหม่ไปช่องทางนี้ไม่ได้จนกว่าจะเชื่อมต่ออีกครั้ง '
-            'โพสต์ที่ตั้งเวลาไว้อาจส่งไม่สำเร็จ กรุณาตรวจและยกเลิกรายการที่ไม่ต้องการในปฏิทิน '
-            'การตัดการเชื่อมต่อไม่ได้ยกเลิกงานที่ส่งเข้าระบบแล้ว',
+            '${_connectionsText(dialogContext, 'PostDee จะส่งโพสต์ใหม่ไปช่องทางนี้ไม่ได้จนกว่าจะเชื่อมต่ออีกครั้ง '
+                'โพสต์ที่ตั้งเวลาไว้อาจส่งไม่สำเร็จ กรุณาตรวจและยกเลิกรายการที่ไม่ต้องการในปฏิทิน '
+                'การตัดการเชื่อมต่อไม่ได้ยกเลิกงานที่ส่งเข้าระบบแล้ว', 'PostDee cannot send new posts to this channel until you reconnect. Scheduled posts may fail. Review the calendar and cancel any posts you no longer need. Disconnecting does not cancel jobs already submitted.')}',
           ),
           actions: [
-            TextButton(key: const ValueKey('disconnect-cancel'),
-              style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('กลับไป')),
-            FilledButton(key: const ValueKey('disconnect-confirm'),
-              style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('ตัดการเชื่อมต่อ')),
+            TextButton(
+                key: const ValueKey('disconnect-cancel'),
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(_connectionsText(dialogContext, 'กลับไป', 'Back'))),
+            FilledButton(
+                key: const ValueKey('disconnect-confirm'),
+                style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(_connectionsText(
+                    dialogContext, 'ตัดการเชื่อมต่อ', 'Disconnect'))),
           ],
         ),
       );
@@ -513,7 +558,8 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       await _loadConnections();
     } catch (_) {
       if (!_operationIsCurrent(generation, owner)) return;
-      _showMessage('ยกเลิกการเชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง');
+      _showMessage(_text('ยกเลิกการเชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง',
+          'Could not disconnect. Please try again.'));
     } finally {
       if (_operationIsCurrent(generation, owner)) {
         setState(() {
@@ -537,7 +583,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         key: ValueKey('profile-platform-soon-${platform.apiValue}'),
         onPressed: null,
         style: _actionStyle,
-        child: const Text('เร็วๆ นี้'),
+        child: Text(_text('เร็วๆ นี้', 'Coming soon')),
       );
     }
 
@@ -556,7 +602,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         key: ValueKey('profile-platform-status-unknown-${platform.apiValue}'),
         onPressed: null,
         style: _actionStyle,
-        child: const Text('รอสถานะ'),
+        child: Text(_text('รอสถานะ', 'Awaiting status')),
       );
     }
 
@@ -565,14 +611,14 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         key: ValueKey('profile-platform-disconnect-${platform.apiValue}'),
         onPressed: _actionsLocked ? null : () => _disconnect(platform),
         style: _actionStyle,
-        child: Text('ตัดการเชื่อมต่อ', semanticsLabel:
-          'ตัดการเชื่อมต่อ ${platform.label}${_statusFor(platform)?.displayName == null ? '' : ' ${_statusFor(platform)!.displayName}'}'),
+        child: Text(_text('ตัดการเชื่อมต่อ', 'Disconnect'),
+            semanticsLabel:
+                '${_text('ตัดการเชื่อมต่อ', 'Disconnect')} ${platform.label}${_statusFor(platform)?.displayName == null ? '' : ' ${_statusFor(platform)!.displayName}'}'),
       );
     }
 
-    final foreground = AppTheme.isLightMode
-        ? const Color(0xFF087A55)
-        : AppTheme.accentCyan;
+    final foreground =
+        AppTheme.isLightMode ? const Color(0xFF087A55) : AppTheme.accentCyan;
     return FilledButton.icon(
       key: ValueKey('profile-platform-connect-${platform.apiValue}'),
       onPressed: _actionsLocked ? null : () => _connect(platform),
@@ -603,9 +649,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
             )
           : const Icon(Icons.link_rounded, size: 16),
       label: Text(
-        'เชื่อมต่อ',
+        _text('เชื่อมต่อ', 'Connect'),
         semanticsLabel:
-            '${busy ? 'กำลังเชื่อมต่อ' : 'เชื่อมต่อ'} ${platform.label}',
+            '${busy ? _text('กำลังเชื่อมต่อ', 'Connecting') : _text('เชื่อมต่อ', 'Connect')} ${platform.label}',
       ),
     );
   }
@@ -617,19 +663,26 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     final identity = Row(children: [
       SocialPlatformLogo(platform: platform, size: 30),
       const SizedBox(width: 12),
-      Expanded(child: Column(
+      Expanded(
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Flexible(child: Text(platform.label, style: TextStyle(
-              fontSize: 13.5, fontWeight: FontWeight.w700, color: AppTheme.textPrimary))),
+            Flexible(
+                child: Text(platform.label,
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary))),
             if (connected) ...[
               const SizedBox(width: 6),
               const Icon(Icons.check_circle, size: 16, color: AppTheme.accent),
             ],
           ]),
           if (displayName != null && displayName.isNotEmpty)
-            Text(displayName, style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
+            Text(displayName,
+                style:
+                    TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
         ],
       )),
     ]);
@@ -653,11 +706,15 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         final stacked = constraints.maxWidth < 280 ||
             MediaQuery.textScalerOf(context).scale(13.5) > 18;
         if (stacked) {
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            identity,
-            const SizedBox(height: 10),
-            Align(alignment: Alignment.centerRight, child: _buildAction(platform)),
-          ]);
+          return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                identity,
+                const SizedBox(height: 10),
+                Align(
+                    alignment: Alignment.centerRight,
+                    child: _buildAction(platform)),
+              ]);
         }
         return Row(children: [
           Expanded(child: identity),
@@ -712,10 +769,14 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                   children: [
                     Text(
                       _loading
-                          ? 'กำลังตรวจสอบช่องทาง...'
+                          ? _text(
+                              'กำลังตรวจสอบช่องทาง...', 'Checking channels...')
                           : _statusError != null
-                              ? 'ตรวจสอบช่องทางไม่ได้'
-                              : 'เชื่อมต่อแล้ว $_connectedCount/${connectablePlatforms.length} ช่องทาง',
+                              ? _text('ตรวจสอบช่องทางไม่ได้',
+                                  'Could not verify channels')
+                              : _text(
+                                  'เชื่อมต่อแล้ว $_connectedCount/${connectablePlatforms.length} ช่องทาง',
+                                  'Connected $_connectedCount/${connectablePlatforms.length} channels'),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -725,7 +786,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                     const SizedBox(height: 2),
                     Text(
                       _statusError ??
-                          'เชื่อมครั้งเดียว โพสต์คลิปเดียวไปได้ทุกช่องทาง',
+                          _text(
+                              'เชื่อมครั้งเดียว โพสต์คลิปเดียวไปได้ทุกช่องทาง',
+                              'Connect once. Post one video to all your channels.'),
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.white.withValues(alpha: 0.85),
@@ -744,7 +807,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
               key: const ValueKey('profile-platforms-retry'),
               onPressed: _loadConnections,
               icon: const Icon(Icons.refresh),
-              label: const Text('ลองใหม่'),
+              label: Text(_text('ลองใหม่', 'Try again')),
             ),
           ),
           const SizedBox(height: 8),
@@ -753,7 +816,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
           children: [
             Expanded(
               child: Text(
-                'ช่องทางโซเชียล',
+                _text('ช่องทางโซเชียล', 'Social channels'),
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
@@ -783,14 +846,16 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                 onPressed: _actionsLocked ? null : _refresh,
                 icon: const Icon(Icons.refresh, size: 20),
                 visualDensity: VisualDensity.compact,
-                tooltip: 'รีเฟรชสถานะการเชื่อม',
+                tooltip:
+                    _text('รีเฟรชสถานะการเชื่อม', 'Refresh connection status'),
               ),
             ],
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          'เชื่อมบัญชีโซเชียลของคุณเพื่อให้โพสต์ขึ้นบัญชีตัวเอง',
+          _text('เชื่อมบัญชีโซเชียลของคุณเพื่อให้โพสต์ขึ้นบัญชีตัวเอง',
+              'Connect your social accounts to post to your own channels.'),
           style: TextStyle(
             fontSize: 12.5,
             height: 1.4,
@@ -822,7 +887,7 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'เข้าสู่ระบบอย่างปลอดภัย',
+                      _text('เข้าสู่ระบบอย่างปลอดภัย', 'Secure sign-in'),
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
@@ -831,7 +896,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'เปิดด้วยเบราว์เซอร์ที่ระบบเชื่อถือ PostDee ไม่ได้รับรหัสผ่านของคุณ เมื่อเสร็จให้กดเปิด PostDee หากไม่กลับให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วรีเฟรชสถานะ',
+                      _text(
+                          'เปิดด้วยเบราว์เซอร์ที่ระบบเชื่อถือ PostDee ไม่ได้รับรหัสผ่านของคุณ เมื่อเสร็จให้กดเปิด PostDee หากไม่กลับให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วรีเฟรชสถานะ',
+                          'Opens in a trusted system browser. PostDee does not receive your password. When finished, tap Open PostDee. If you do not return automatically, close the window or return to the app, then refresh the status.'),
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.4,
@@ -851,3 +918,12 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     );
   }
 }
+
+String _connectionsText(BuildContext context, String thai, String english) =>
+    (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+                    ?.locale
+                    .languageCode ??
+                'th') ==
+            'th'
+        ? thai
+        : english;

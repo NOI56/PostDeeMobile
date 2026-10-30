@@ -1433,7 +1433,7 @@ void main() {
       (tester) async {
     // A fixed clock: with the real one, "two days ahead" falls in the next
     // month on the last days of a month and the post is not preselected.
-    final now = DateTime(2026, 8, 11, 12);
+    final now = DateTime(2026, 10, 14, 12);
     final scheduledAt = now.add(const Duration(days: 2));
     var rescheduleCalls = 0;
 

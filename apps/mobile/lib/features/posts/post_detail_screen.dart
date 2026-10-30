@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_session.dart';
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../analytics/analytics_screen.dart';
@@ -63,8 +64,21 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   bool _routeVisible = true;
   bool _hasRouteVisibility = false;
   bool _postUnavailable = false;
-  String? _readError;
+  bool _readFailed = false;
   DateTime? _lastChecked;
+
+  String get _languageCode => _postDetailLanguageCode(context);
+
+  String _text(String thai, String english) =>
+      _postDetailText(context, thai, english);
+
+  String? get _readError => _readFailed
+      ? _text('อัปเดตไม่สำเร็จ กำลังแสดงข้อมูลเดิม',
+          'Could not refresh. Showing previous information.')
+      : null;
+
+  String _formatDate(DateTime value) =>
+      _formatPostDetailDateTime(value, languageCode: _languageCode);
 
   bool get _hasPendingPost =>
       const {'QUEUED', 'PUBLISHING'}.contains(_post.status.toUpperCase());
@@ -168,7 +182,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
       setState(() {
         if (latest != null) _post = latest;
         _postUnavailable = latest == null;
-        _readError = null;
+        _readFailed = false;
         _lastChecked = DateTime.now();
         if (includeMedia || latest == null) {
           _previewVideoUrl = latest?.videoUrl;
@@ -178,7 +192,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
       return true;
     } catch (_) {
       if (_ownerStillCurrent && generation == _readGeneration) {
-        setState(() => _readError = 'อัปเดตไม่สำเร็จ กำลังแสดงข้อมูลเดิม');
+        setState(() => _readFailed = true);
       }
       return false;
     }
@@ -210,7 +224,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
       _post.status.toUpperCase() == 'PUBLISHING' && !_hasUnconfirmedOutcome;
 
   String? get _deliveryLabel =>
-      aggregatePostDeliveryOutcomeLabel(_post.platformResults);
+      aggregatePostDeliveryOutcomeLabel(_post.platformResults,
+          languageCode: _languageCode);
 
   bool get _hasUnconfirmedOutcome =>
       hasUnconfirmedDeliveryOutcome(_post.platformResults);
@@ -235,7 +250,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   ({String label, IconData icon, Color bg, Color ink}) get _statusMeta {
     if (_hasUnconfirmedOutcome) {
       return (
-        label: 'ผลยังไม่ยืนยัน',
+        label: _text('ผลยังไม่ยืนยัน', 'Delivery unconfirmed'),
         icon: Icons.help_outline,
         bg: const Color(0xFFEEF2EF),
         ink: const Color(0xFF778276),
@@ -243,37 +258,37 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     }
     return switch (_post.status.toUpperCase()) {
       'PUBLISHED' => (
-          label: _deliveryLabel ?? 'เผยแพร่แล้ว',
+          label: _deliveryLabel ?? _text('เผยแพร่แล้ว', 'Delivered'),
           icon: Icons.check_circle,
           bg: const Color(0xFFE2F3EA),
           ink: const Color(0xFF0E9F6E),
         ),
       'QUEUED' when _post.scheduledAt != null => (
-          label: 'รอส่งตามเวลา',
+          label: _text('รอส่งตามเวลา', 'Scheduled'),
           icon: Icons.schedule,
           bg: const Color(0xFFFBEFD7),
           ink: const Color(0xFFB5740B),
         ),
       'PUBLISHING' => (
-          label: 'กำลังส่ง',
+          label: _text('กำลังส่ง', 'Sending'),
           icon: Icons.sync,
           bg: const Color(0xFFE2F3EA),
           ink: const Color(0xFF0E9F6E),
         ),
       'PARTIAL_PUBLISHED' => (
-          label: 'ส่งสำเร็จบางช่องทาง',
+          label: _text('ส่งสำเร็จบางช่องทาง', 'Partially delivered'),
           icon: Icons.info_outline,
           bg: const Color(0xFFFBEFD7),
           ink: const Color(0xFFB5740B),
         ),
       'FAILED' => (
-          label: 'ส่งไม่สำเร็จ',
+          label: _text('ส่งไม่สำเร็จ', 'Failed'),
           icon: Icons.error_outline,
           bg: const Color(0xFFFDE4E4),
           ink: const Color(0xFFDC2626),
         ),
       _ => (
-          label: 'รอส่ง',
+          label: _text('รอส่ง', 'Queued'),
           icon: Icons.hourglass_top,
           bg: const Color(0xFFEEF2EF),
           ink: const Color(0xFF778276),
@@ -286,18 +301,18 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     if (_isPublished && post.publishedAt != null) {
       final deliveryLabel = _deliveryLabel;
       if (deliveryLabel != null) {
-        return '$deliveryLabel ${_formatThaiDateTime(post.publishedAt!)}';
+        return '$deliveryLabel ${_formatDate(post.publishedAt!)}';
       }
-      return 'เผยแพร่ ${_formatThaiDateTime(post.publishedAt!)}';
+      return '${_text('เผยแพร่', 'Delivered')} ${_formatDate(post.publishedAt!)}';
     }
     if (post.status.toUpperCase() == 'PARTIAL_PUBLISHED' &&
         post.publishedAt != null) {
-      return 'ส่งสำเร็จบางช่องทาง ${_formatThaiDateTime(post.publishedAt!)}';
+      return '${_text('ส่งสำเร็จบางช่องทาง', 'Partially delivered')} ${_formatDate(post.publishedAt!)}';
     }
     if (post.scheduledAt != null) {
-      return 'ตั้งเวลา ${_formatThaiDateTime(post.scheduledAt!)}';
+      return '${_text('ตั้งเวลา', 'Scheduled')} ${_formatDate(post.scheduledAt!)}';
     }
-    return 'สร้างเมื่อ ${_formatThaiDateTime(post.createdAt)}';
+    return '${_text('สร้างเมื่อ', 'Created')} ${_formatDate(post.createdAt)}';
   }
 
   List<SocialPlatform> get _platforms =>
@@ -315,18 +330,20 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     if (result != null) {
       if (result.status.toUpperCase() == 'PUBLISHED' &&
           result.deliveryOutcome == null) {
-        return 'เผยแพร่สำเร็จ';
+        return _text('เผยแพร่สำเร็จ', 'Delivered');
       }
-      return postPlatformDeliveryLabel(result);
+      return postPlatformDeliveryLabel(result, languageCode: _languageCode);
     }
-    if (_isScheduled) return 'รอส่งตามเวลา';
+    if (_isScheduled) return _text('รอส่งตามเวลา', 'Scheduled');
     if (_isPublished ||
         _post.status.toUpperCase() == 'PUBLISHING' ||
         _post.status.toUpperCase() == 'PARTIAL_PUBLISHED') {
-      return postPlatformDeliveryLabel(null);
+      return postPlatformDeliveryLabel(null, languageCode: _languageCode);
     }
-    if (_post.status.toUpperCase() == 'FAILED') return 'ส่งไม่สำเร็จ';
-    return 'รอส่ง';
+    if (_post.status.toUpperCase() == 'FAILED') {
+      return _text('ส่งไม่สำเร็จ', 'Failed');
+    }
+    return _text('รอส่ง', 'Queued');
   }
 
   Color _platformStatusColor(SocialPlatform platform) {
@@ -354,18 +371,27 @@ class _PostDetailScreenState extends State<PostDetailScreen>
 
   String _localizedPlatformError(String message) {
     return switch (message) {
-      _paidPlanRequiredError =>
-        'แพ็กเกจหมดอายุก่อนถึงเวลาโพสต์ จึงยังไม่ได้ส่งโพสต์นี้ ต่ออายุแพ็กเกจ Starter หรือ Pro แล้วสร้างโพสต์ใหม่',
+      _paidPlanRequiredError => _text(
+          'แพ็กเกจหมดอายุก่อนถึงเวลาโพสต์ จึงยังไม่ได้ส่งโพสต์นี้ ต่ออายุแพ็กเกจ Starter หรือ Pro แล้วสร้างโพสต์ใหม่',
+          'Your paid plan expired before the scheduled time, so this post was not sent. Renew Starter or Pro and create a new post.'),
       'Publishing to this platform failed. Please try again later.' =>
-        'โพสต์ไปยังช่องทางนี้ไม่สำเร็จ กรุณาลองใหม่ภายหลัง',
+        _text('โพสต์ไปยังช่องทางนี้ไม่สำเร็จ กรุณาลองใหม่ภายหลัง', message),
       'TikTok rejected this video because its frame rate validation failed. Export the video again before retrying.' =>
-        'TikTok ตรวจสอบอัตราเฟรมของคลิปนี้ไม่ผ่าน กรุณาส่งออกวิดีโอใหม่ก่อนลองอีกครั้ง',
+        _text(
+            'TikTok ตรวจสอบอัตราเฟรมของคลิปนี้ไม่ผ่าน กรุณาส่งออกวิดีโอใหม่ก่อนลองอีกครั้ง',
+            message),
       'TikTok publishing options changed. Review the account and publishing settings before trying again.' =>
-        'สิทธิ์หรือตัวเลือกการโพสต์ TikTok เปลี่ยนไป กรุณาเปิดการตั้งค่าช่องทางและทบทวนก่อนลองอีกครั้ง',
+        _text(
+            'สิทธิ์หรือตัวเลือกการโพสต์ TikTok เปลี่ยนไป กรุณาเปิดการตั้งค่าช่องทางและทบทวนก่อนลองอีกครั้ง',
+            message),
       'TikTok publishing options could not be checked. No video was sent to TikTok. Review the settings before trying again.' =>
-        'ตรวจสอบสิทธิ์การโพสต์ TikTok ไม่ได้ ยังไม่ได้ส่งคลิปไปยัง TikTok กรุณาทบทวนการตั้งค่าแล้วลองใหม่',
+        _text(
+            'ตรวจสอบสิทธิ์การโพสต์ TikTok ไม่ได้ ยังไม่ได้ส่งคลิปไปยัง TikTok กรุณาทบทวนการตั้งค่าแล้วลองใหม่',
+            message),
       'Publishing result could not be confirmed. Check the platform before trying again.' =>
-        'ยังยืนยันผลการโพสต์ไม่ได้ กรุณาตรวจสอบช่องทางนี้ก่อนลองใหม่ เพื่อป้องกันโพสต์ซ้ำ',
+        _text(
+            'ยังยืนยันผลการโพสต์ไม่ได้ กรุณาตรวจสอบช่องทางนี้ก่อนลองใหม่ เพื่อป้องกันโพสต์ซ้ำ',
+            message),
       _ => message,
     };
   }
@@ -385,7 +411,9 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!opened && mounted && _ownerStillCurrent) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('เปิดลิงก์โพสต์ไม่สำเร็จ')),
+        SnackBar(
+            content: Text(_text(
+                'เปิดลิงก์โพสต์ไม่สำเร็จ', 'Could not open the post link.'))),
       );
     }
   }
@@ -393,7 +421,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   Widget _buildPlatformCard(SocialPlatform platform) {
     final result = _resultFor(platform);
     final statusLabel = _platformStatLine(platform);
-    final sending = _isSending && statusLabel == 'กำลังส่ง';
+    final sending =
+        _isSending && result?.status.trim().toUpperCase() == 'PUBLISHING';
     final errorMessage = result?.errorMessage?.trim();
     final externalReference = result?.externalPostId?.trim();
     final hasError = errorMessage != null && errorMessage.isNotEmpty;
@@ -463,7 +492,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                 if (hasError) ...[
                   const SizedBox(height: 4),
                   Text(
-                    'สาเหตุ: ${_localizedPlatformError(errorMessage)}',
+                    '${_text('สาเหตุ', 'Reason')}: ${_localizedPlatformError(errorMessage)}',
                     style: const TextStyle(
                       fontSize: 11.5,
                       height: 1.35,
@@ -479,7 +508,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                     key: ValueKey('post-detail-review-${platform.apiValue}'),
                     onPressed: () => _reviewFailedChannel(platform),
                     icon: const Icon(Icons.fact_check_outlined, size: 16),
-                    label: const Text('ทบทวนช่องทางนี้'),
+                    label:
+                        Text(_text('ทบทวนช่องทางนี้', 'Review this channel')),
                   ),
                 if (hasReference) ...[
                   const SizedBox(height: 4),
@@ -492,8 +522,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                       padding: const EdgeInsets.symmetric(vertical: 2),
                       child: Text(
                         referenceIsLink
-                            ? 'ลิงก์โพสต์: $externalReference'
-                            : 'รหัสโพสต์: $externalReference',
+                            ? '${_text('ลิงก์โพสต์', 'Post link')}: $externalReference'
+                            : '${_text('รหัสโพสต์', 'Post ID')}: $externalReference',
                         style: TextStyle(
                           fontSize: 11.5,
                           height: 1.35,
@@ -525,8 +555,12 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     }
     final confirmed = await _confirm(
       title: 'โพสต์เลยตอนนี้?',
+      englishTitle: 'Publish now?',
       body: 'โพสต์นี้จะถูกส่งไปทุกช่องทางที่เลือกทันที',
+      englishBody:
+          'This post will be sent to all selected channels immediately.',
       confirmLabel: 'โพสต์เลย',
+      englishConfirmLabel: 'Publish now',
     );
     if (confirmed != true ||
         !mounted ||
@@ -557,7 +591,9 @@ class _PostDetailScreenState extends State<PostDetailScreen>
       if (!mounted || !_ownerStillCurrent) return;
       setState(() => _isWorking = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง')),
+        SnackBar(
+            content: Text(_text('โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง',
+                'Could not publish now. Please try again.'))),
       );
     } finally {
       _syncRefreshTimer();
@@ -566,15 +602,18 @@ class _PostDetailScreenState extends State<PostDetailScreen>
 
   String _publishNowErrorMessage(ApiException error) {
     if (isPublishingUnavailable(error)) {
-      return publishingUnavailableActionMessage;
+      return getPublishingUnavailableActionMessage(languageCode: _languageCode);
     }
 
     return switch (error.code) {
-      scheduledPostNotFoundCode =>
-        'ไม่พบโพสต์ที่ตั้งเวลาไว้ กรุณากลับไปตรวจสอบรายการโพสต์',
-      publishQueueUnavailableCode =>
-        'ระบบคิวโพสต์ยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
-      _ => 'โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง',
+      scheduledPostNotFoundCode => _text(
+          'ไม่พบโพสต์ที่ตั้งเวลาไว้ กรุณากลับไปตรวจสอบรายการโพสต์',
+          'Scheduled post not found. Return to All posts to check.'),
+      publishQueueUnavailableCode => _text(
+          'ระบบคิวโพสต์ยังไม่พร้อม กรุณาลองใหม่ภายหลัง',
+          'The posting queue is temporarily unavailable. Please try again later.'),
+      _ => _text('โพสต์เลยไม่สำเร็จ ลองใหม่อีกครั้ง',
+          'Could not publish now. Please try again.'),
     };
   }
 
@@ -587,8 +626,11 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     }
     final confirmed = await _confirm(
       title: 'ยกเลิกโพสต์นี้?',
+      englishTitle: 'Cancel this post?',
       body: 'โพสต์ที่ตั้งเวลาไว้จะถูกนำออกจากคิว',
+      englishBody: 'The scheduled post will be removed from the queue.',
       confirmLabel: 'ยกเลิกโพสต์',
+      englishConfirmLabel: 'Cancel post',
       destructive: true,
     );
     if (confirmed != true ||
@@ -616,14 +658,21 @@ class _PostDetailScreenState extends State<PostDetailScreen>
       final checked = await _refresh();
       if (!mounted || !_ownerStillCurrent) return;
       final message = !checked
-          ? 'ยังยืนยันผลการยกเลิกไม่ได้ กรุณาตรวจสถานะอีกครั้งเมื่อเชื่อมต่อได้'
+          ? _text(
+              'ยังยืนยันผลการยกเลิกไม่ได้ กรุณาตรวจสถานะอีกครั้งเมื่อเชื่อมต่อได้',
+              'Cancellation is not confirmed. Check the status again when you are connected.')
           : _postUnavailable
-              ? 'ไม่พบโพสต์นี้ในรายการแล้ว อาจถูกยกเลิกหรือถูกนำออก'
+              ? _text('ไม่พบโพสต์นี้ในรายการแล้ว อาจถูกยกเลิกหรือถูกนำออก',
+                  'This post is no longer in the list. It may have been canceled or removed.')
               : _post.status.toUpperCase() == 'PUBLISHING'
-                  ? 'โพสต์เริ่มส่งแล้ว จึงยกเลิกคิวไม่ได้ กรุณาติดตามผลล่าสุด'
+                  ? _text(
+                      'โพสต์เริ่มส่งแล้ว จึงยกเลิกคิวไม่ได้ กรุณาติดตามผลล่าสุด',
+                      'This post has started sending and cannot be removed from the queue. Check its latest status.')
                   : !_isScheduled
-                      ? 'สถานะโพสต์เปลี่ยนแล้ว กำลังแสดงผลล่าสุด'
-                      : 'รายการยังรอส่งตามเวลา ยังยืนยันการยกเลิกไม่ได้';
+                      ? _text('สถานะโพสต์เปลี่ยนแล้ว กำลังแสดงผลล่าสุด',
+                          'The post status has changed. Showing the latest information.')
+                      : _text('รายการยังรอส่งตามเวลา ยังยืนยันการยกเลิกไม่ได้',
+                          'This post is still scheduled. Cancellation is not confirmed.');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );
@@ -634,8 +683,11 @@ class _PostDetailScreenState extends State<PostDetailScreen>
 
   Future<bool?> _confirm({
     required String title,
+    required String englishTitle,
     required String body,
+    required String englishBody,
     required String confirmLabel,
+    required String englishConfirmLabel,
     bool destructive = false,
   }) async {
     _confirming = true;
@@ -644,12 +696,12 @@ class _PostDetailScreenState extends State<PostDetailScreen>
       return await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text(title),
-          content: Text(body),
+          title: Text(_postDetailText(dialogContext, title, englishTitle)),
+          content: Text(_postDetailText(dialogContext, body, englishBody)),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('ไม่'),
+              child: Text(_postDetailText(dialogContext, 'ไม่', 'No')),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -659,7 +711,8 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                           Theme.of(dialogContext).colorScheme.error,
                     )
                   : null,
-              child: Text(confirmLabel),
+              child: Text(_postDetailText(
+                  dialogContext, confirmLabel, englishConfirmLabel)),
             ),
           ],
         ),
@@ -675,22 +728,30 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     final openConnections = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-              title: Text('ทบทวน ${platform.label}'),
-              content: const SingleChildScrollView(
-                  child: Text(
+              title: Text(_postDetailText(context, 'ทบทวน ${platform.label}',
+                  'Review ${platform.label}')),
+              content: SingleChildScrollView(
+                  child: Text(_postDetailText(
+                context,
                 'ตรวจสอบช่องทางก่อนสร้างโพสต์ใหม่\n\n'
-                '1. เปิดแอปปลายทางเพื่อตรวจว่ามีคลิปนี้แล้วหรือไม่\n'
-                '2. ตรวจสิทธิ์และการเชื่อมต่อของบัญชี หากมีคำเตือนเรื่องคลิป ให้ส่งออกไฟล์ใหม่ตามคำแนะนำ\n'
-                '3. เมื่อตรวจแล้ว หากต้องสร้างโพสต์ใหม่ ให้เลือกเฉพาะช่องทางที่ต้องการส่งอีกครั้ง\n\n'
-                'การทบทวนนี้ไม่ส่งคลิป ช่องทางที่ส่งสำเร็จแล้วจะไม่ถูกส่งซ้ำ',
-              )),
+                    '1. เปิดแอปปลายทางเพื่อตรวจว่ามีคลิปนี้แล้วหรือไม่\n'
+                    '2. ตรวจสิทธิ์และการเชื่อมต่อของบัญชี หากมีคำเตือนเรื่องคลิป ให้ส่งออกไฟล์ใหม่ตามคำแนะนำ\n'
+                    '3. เมื่อตรวจแล้ว หากต้องสร้างโพสต์ใหม่ ให้เลือกเฉพาะช่องทางที่ต้องการส่งอีกครั้ง\n\n'
+                    'การทบทวนนี้ไม่ส่งคลิป ช่องทางที่ส่งสำเร็จแล้วจะไม่ถูกส่งซ้ำ',
+                'Check this channel before creating a new post.\n\n'
+                    '1. Open the destination app and check whether this video is already there.\n'
+                    '2. Check the account permissions and connection. If there is a video warning, export a new file as instructed.\n'
+                    '3. If you need a new post after checking, select only the channels you want to send again.\n\n'
+                    'This review does not send your video. Successful channels will not be sent again.',
+              ))),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('รับทราบ')),
+                    child: Text(_postDetailText(context, 'รับทราบ', 'Got it'))),
                 TextButton(
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('ตรวจการเชื่อมต่อ')),
+                    child: Text(_postDetailText(
+                        context, 'ตรวจการเชื่อมต่อ', 'Check connections'))),
               ],
             ));
     if (!mounted || !_ownerStillCurrent) return;
@@ -716,15 +777,18 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     if (!mounted || !_ownerStillCurrent) return;
     final videoUrl = _previewVideoUrl;
     if (!checked || _postUnavailable || !_safePreviewUrl(videoUrl)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('ตัวอย่างคลิปยังไม่พร้อม กรุณาลองตรวจสถานะอีกครั้ง')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_text(
+              'ตัวอย่างคลิปยังไม่พร้อม กรุณาลองตรวจสถานะอีกครั้ง',
+              'The video preview is not ready. Please refresh the status and try again.'))));
       return;
     }
     await Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (_) => PostVideoPreviewScreen.network(
               videoUrl: videoUrl!,
-              videoName:
-                  _post.caption.isEmpty ? 'คลิปที่ส่งแล้ว' : _post.caption,
+              videoName: _post.caption.isEmpty
+                  ? _text('คลิปที่ส่งแล้ว', 'Submitted video')
+                  : _post.caption,
             )));
   }
 
@@ -735,38 +799,40 @@ class _PostDetailScreenState extends State<PostDetailScreen>
         borderRadius: BorderRadius.circular(14),
         child: Container(
           width: 104,
-          height: 140,
+          constraints: const BoxConstraints(minHeight: 140),
           color: const Color(0xFFE7EFE9),
-          child: Stack(fit: StackFit.expand, children: [
+          child: Stack(alignment: Alignment.center, children: [
             if (_safePreviewUrl(cover))
-              Image.network(cover.toString(),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(
-                      Icons.videocam_off_outlined,
-                      color: Color(0xFF8FA197))),
+              Positioned.fill(
+                  child: Image.network(cover.toString(),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.videocam_off_outlined,
+                          color: Color(0xFF8FA197)))),
             if (canPlay)
-              const Center(
-                  child: Icon(Icons.play_circle_fill_rounded,
-                      size: 38, color: Color(0xFF0E9F6E)))
+              const SizedBox(
+                  height: 140,
+                  child: Center(
+                      child: Icon(Icons.play_circle_fill_rounded,
+                          size: 38, color: Color(0xFF0E9F6E))))
             else
-              Center(
-                  child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        if (!_safePreviewUrl(cover))
-                          const Icon(Icons.videocam_off_outlined,
-                              color: Color(0xFF8FA197)),
-                        const SizedBox(height: 6),
-                        const Text('ตัวอย่างยังไม่พร้อม',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 11)),
-                      ]))),
+              Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    if (!_safePreviewUrl(cover))
+                      const Icon(Icons.videocam_off_outlined,
+                          color: Color(0xFF8FA197)),
+                    const SizedBox(height: 6),
+                    Text(_text('ตัวอย่างยังไม่พร้อม', 'Preview unavailable'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 11)),
+                  ])),
           ]),
         ));
     return canPlay
         ? Semantics(
             button: true,
-            label: 'ดูคลิปที่ส่งแล้ว',
+            label: _text('ดูคลิปที่ส่งแล้ว', 'View submitted video'),
             child: InkWell(
               key: const ValueKey('post-detail-preview'),
               onTap: _openPreview,
@@ -784,9 +850,9 @@ class _PostDetailScreenState extends State<PostDetailScreen>
       MaterialPageRoute<void>(
         builder: (context) => Scaffold(
           appBar: AppBar(
-            title: const Text(
-              'วิเคราะห์',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            title: Text(
+              _postDetailText(context, 'วิเคราะห์', 'Analytics'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
           ),
           body: DecoratedBox(
@@ -800,17 +866,46 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     );
   }
 
+  Widget _buildDetailNotice({
+    Key? key,
+    required IconData icon,
+    required String message,
+    required String actionLabel,
+    required VoidCallback onAction,
+  }) {
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PostDeeNotice(
+          key: key,
+          icon: icon,
+          message: message,
+          actionLabel: largeText ? null : actionLabel,
+          onAction: onAction,
+        ),
+        if (largeText)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: onAction, child: Text(actionLabel)),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_ownerStillCurrent) {
       return Scaffold(
-        appBar: AppBar(title: const Text('รายละเอียดโพสต์')),
-        body: const Center(
+        appBar: AppBar(title: Text(_text('รายละเอียดโพสต์', 'Post details'))),
+        body: Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: Text(
-              'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายละเอียดโพสต์ใหม่',
-              key: ValueKey('post-detail-owner-changed'),
+              _text('บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายละเอียดโพสต์ใหม่',
+                  'Your account has changed. Reopen Post details.'),
+              key: const ValueKey('post-detail-owner-changed'),
               textAlign: TextAlign.center,
             ),
           ),
@@ -819,31 +914,50 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     }
     if (_postUnavailable) {
       return Scaffold(
-        appBar: AppBar(title: const Text('รายละเอียดโพสต์')),
+        appBar: AppBar(title: Text(_text('รายละเอียดโพสต์', 'Post details'))),
         body: Padding(
             padding: const EdgeInsets.all(24),
-            child: PostDeeNotice(
+            child: SingleChildScrollView(
+                child: _buildDetailNotice(
               key: const ValueKey('post-detail-post-unavailable'),
               icon: Icons.info_outline,
-              message: 'ไม่พบโพสต์นี้ในบัญชี อาจถูกยกเลิกหรือถูกนำออกแล้ว',
-              actionLabel: 'ตรวจอีกครั้ง',
+              message: _text(
+                  'ไม่พบโพสต์นี้ในบัญชี อาจถูกยกเลิกหรือถูกนำออกแล้ว',
+                  'This post is not available in your account. It may have been canceled or removed.'),
+              actionLabel: _text('ตรวจอีกครั้ง', 'Check again'),
               onAction: () => unawaited(_refresh(includeMedia: true)),
-            )),
+            ))),
       );
     }
     final status = _statusMeta;
     final caption = _post.caption.trim();
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.4;
+    final statusBadge = PostDeePublishingBadge(
+      label: status.label,
+      background: status.bg,
+      foreground: status.ink,
+      sending: _isSending,
+      icon: status.icon,
+      fontSize: 12,
+      wrapLabel: largeText,
+    );
+    final dateText = Text(
+      _dateLabel,
+      maxLines: largeText ? null : 1,
+      overflow: largeText ? null : TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'รายละเอียดโพสต์',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        title: Text(
+          _text('รายละเอียดโพสต์', 'Post details'),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         actions: [
           IconButton(
             key: const ValueKey('post-detail-refresh'),
-            tooltip: 'ตรวจสถานะล่าสุด',
+            tooltip: _text('ตรวจสถานะล่าสุด', 'Refresh status'),
             onPressed: _readOperation != null || _isWorking
                 ? null
                 : () => unawaited(_refresh(includeMedia: true)),
@@ -860,10 +974,10 @@ class _PostDetailScreenState extends State<PostDetailScreen>
               padding: const EdgeInsets.all(16),
               children: [
                 if (_readError != null) ...[
-                  PostDeeNotice(
+                  _buildDetailNotice(
                       message: _readError!,
                       icon: Icons.cloud_off,
-                      actionLabel: 'ลองใหม่',
+                      actionLabel: _text('ลองใหม่', 'Try again'),
                       onAction: () => unawaited(_refresh(includeMedia: true))),
                   const SizedBox(height: 12),
                 ],
@@ -871,33 +985,28 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                   Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Text(
-                          'ตรวจล่าสุด ${_formatThaiDateTime(_lastChecked!)}',
+                          '${_text('ตรวจล่าสุด', 'Last checked')} ${_formatDate(_lastChecked!)}',
                           style: TextStyle(
                               fontSize: 11, color: AppTheme.textMuted))),
-                Row(
-                  children: [
-                    PostDeePublishingBadge(
-                      label: status.label,
-                      background: status.bg,
-                      foreground: status.ink,
-                      sending: _isSending,
-                      icon: status.icon,
-                      fontSize: 12,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _dateLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: AppTheme.textMuted,
-                        ),
+                if (largeText)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      statusBadge,
+                      const SizedBox(height: 8),
+                      dateText
+                    ],
+                  )
+                else
+                  Row(
+                    children: [
+                      statusBadge,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: dateText,
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 if (_isSending) ...[
                   const SizedBox(height: 12),
                   const KeyedSubtree(
@@ -916,7 +1025,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'แคปชั่น',
+                            _text('แคปชั่น', 'Caption'),
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
@@ -925,7 +1034,9 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            caption.isEmpty ? '(ไม่มีแคปชั่น)' : caption,
+                            caption.isEmpty
+                                ? _text('(ไม่มีแคปชั่น)', 'No caption')
+                                : caption,
                             style: TextStyle(
                               fontSize: 13.5,
                               height: 1.55,
@@ -941,7 +1052,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  'ช่องทางที่โพสต์',
+                  _text('ช่องทางที่โพสต์', 'Posting channels'),
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w700,
@@ -954,12 +1065,13 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                 ],
                 if (hasConfirmedTikTokDraft(_post.platformResults)) ...[
                   const SizedBox(height: 8),
-                  const TikTokDraftNextStepCard(
-                      key: ValueKey('tiktok-draft-next-step')),
+                  TikTokDraftNextStepCard(
+                      key: const ValueKey('tiktok-draft-next-step'),
+                      languageCode: _languageCode),
                 ],
                 if (_platforms.isEmpty)
                   Text(
-                    'ไม่พบข้อมูลช่องทาง',
+                    _text('ไม่พบข้อมูลช่องทาง', 'No channel information'),
                     style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
                   ),
               ],
@@ -990,7 +1102,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
               if (_isScheduled) ...[
                 Semantics(
                   button: true,
-                  label: 'ยกเลิกโพสต์',
+                  label: _text('ยกเลิกโพสต์', 'Cancel post'),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(14),
                     onTap: _isWorking ? null : _cancelPost,
@@ -1014,7 +1126,9 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                 Expanded(
                   child: _PrimaryActionButton(
                     key: const ValueKey('post-detail-publish-now'),
-                    label: _isWorking ? 'กำลังส่ง...' : 'โพสต์เลย',
+                    label: _isWorking
+                        ? _text('กำลังส่ง...', 'Sending...')
+                        : _text('โพสต์เลย', 'Publish now'),
                     icon: Icons.bolt,
                     onPressed: _isWorking ? null : _publishNow,
                   ),
@@ -1023,7 +1137,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                 Expanded(
                   child: _PrimaryActionButton(
                     key: const ValueKey('post-detail-open-analytics'),
-                    label: 'ดูสถิติ',
+                    label: _text('ดูสถิติ', 'View analytics'),
                     icon: Icons.bar_chart_rounded,
                     onPressed: _openAnalytics,
                   ),
@@ -1050,8 +1164,8 @@ class _PrimaryActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 50,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 50),
       child: FilledButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 19),
@@ -1099,9 +1213,35 @@ const _thaiMonthsShort = [
   'ธ.ค.',
 ];
 
-String _formatThaiDateTime(DateTime value) {
+const _englishMonthsShort = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _formatPostDetailDateTime(DateTime value, {String languageCode = 'th'}) {
   final local = value.toLocal();
   final hour = local.hour.toString().padLeft(2, '0');
   final minute = local.minute.toString().padLeft(2, '0');
-  return '${local.day} ${_thaiMonthsShort[local.month - 1]} ${local.year} · $hour:$minute น.';
+  final months = languageCode == 'th' ? _thaiMonthsShort : _englishMonthsShort;
+  final suffix = languageCode == 'th' ? ' น.' : '';
+  return '${local.day} ${months[local.month - 1]} ${local.year} · $hour:$minute$suffix';
 }
+
+String _postDetailLanguageCode(BuildContext context) =>
+    Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+        ?.locale
+        .languageCode ??
+    'th';
+
+String _postDetailText(BuildContext context, String thai, String english) =>
+    _postDetailLanguageCode(context) == 'th' ? thai : english;

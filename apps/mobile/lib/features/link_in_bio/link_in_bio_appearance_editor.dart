@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/link_in_bio_appearance.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_color_picker.dart';
+import 'link_in_bio_localizations.dart';
 import 'link_in_bio_preview.dart';
 import 'link_in_bio_theme_picker.dart';
 import 'link_in_bio_ui_motion.dart';
@@ -74,14 +75,18 @@ class _BioColorFieldState extends State<BioColorField> {
       maxLength: 7,
       autocorrect: false,
       decoration: InputDecoration(
-          labelText: widget.label,
+          labelText: MediaQuery.textScalerOf(context).scale(14) > 18
+              ? null : localizeLinkInBioMessage(context, widget.label),
+          label: MediaQuery.textScalerOf(context).scale(14) > 18
+              ? Text(localizeLinkInBioMessage(context, widget.label), softWrap: true) : null,
           hintText: '#123456',
           counterText: '',
           suffixIcon: BioUiPress(
               child: IconButton(
                   key: ValueKey(
                       '${(widget.key as ValueKey?)?.value ?? widget.label}-picker'),
-                  tooltip: 'เลือกสี${widget.label}',
+                  tooltip: linkInBioText(context, 'เลือกสี${widget.label}',
+                      'Choose ${localizeLinkInBioMessage(context, widget.label).toLowerCase()}'),
                   onPressed: _pickColor,
                   icon: const Icon(Icons.color_lens_outlined))),
           prefixIcon: Padding(
@@ -99,7 +104,7 @@ class _BioColorFieldState extends State<BioColorField> {
       validator: (value) => (widget.allowEmpty && (value ?? '').isEmpty) ||
               validBioColor(value ?? '')
           ? null
-          : 'กรอกสีแบบ #RRGGBB',
+          : linkInBioText(context, 'กรอกสีแบบ #RRGGBB', 'Enter a color as #RRGGBB'),
       onChanged: (value) {
         setState(() {});
         if (widget.allowEmpty && value.isEmpty) {
@@ -126,15 +131,26 @@ class BioFontField extends StatelessWidget {
       key: ValueKey('$label:$value'),
       initialValue: value ?? (allowDefault ? '' : 'anuphan'),
       isExpanded: true,
-      decoration: InputDecoration(labelText: label),
+      isDense: MediaQuery.textScalerOf(context).scale(14) <= 18,
+      itemHeight: MediaQuery.textScalerOf(context).scale(14) > 18 ? null : kMinInteractiveDimension,
+      decoration: InputDecoration(
+          labelText: MediaQuery.textScalerOf(context).scale(14) > 18
+              ? null : localizeLinkInBioMessage(context, label),
+          label: MediaQuery.textScalerOf(context).scale(14) > 18
+              ? Text(localizeLinkInBioMessage(context, label), softWrap: true) : null),
       items: [
         if (allowDefault)
-          const DropdownMenuItem(value: '', child: Text('ใช้ฟอนต์ของธีม')),
+          DropdownMenuItem(value: '', child: Text(linkInBioText(context,
+              'ใช้ฟอนต์ของธีม', 'Use theme font'))),
         for (final option in bioFontOptions.entries)
           DropdownMenuItem(
               value: option.key,
-              child: Text(option.value,
-                  overflow: TextOverflow.ellipsis,
+              child: Text(linkInBioText(context, option.value, switch (option.key) {
+                'anuphan' => 'Anuphan • Sample text',
+                'prompt' => 'Prompt • Sample text',
+                _ => 'System • Sample text',
+              }),
+                  overflow: MediaQuery.textScalerOf(context).scale(14) > 18 ? TextOverflow.visible : TextOverflow.ellipsis,
                   style:
                       TextStyle(fontFamily: bioFont(option.key), fontSize: 13)))
       ],
@@ -274,23 +290,36 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
           ]);
 
   Widget _style(String id, String label, LinkInBioTextStyle value,
-          ValueChanged<LinkInBioTextStyle> onChanged) =>
-      _section('style-$id', label, [
+          ValueChanged<LinkInBioTextStyle> onChanged) {
+    final translatedLabel = linkInBioText(context, label, switch (id) {
+      'name' => 'Store name',
+      'description' => 'Store description',
+      'category' => 'Category heading',
+      'button' => 'Button text',
+      _ => 'Footer text',
+    });
+    return _section('style-$id', translatedLabel, [
         BioColorField(
             key: ValueKey('link-in-bio-$id-color'),
-            label: 'สี$label',
+            label: linkInBioText(context, 'สี$label', '$translatedLabel color'),
             value: value.color,
             onChanged: (color) => onChanged(value.copyWith(color: color!))),
         const SizedBox(height: 8),
         BioFontField(
             key: ValueKey('link-in-bio-$id-font'),
-            label: 'ฟอนต์$label',
+            label: linkInBioText(context, 'ฟอนต์$label', '$translatedLabel font'),
             value: value.font,
             onChanged: (font) => onChanged(value.copyWith(font: font!))),
       ]);
+  }
 
-  Widget _media(String slot, String label, String? key, VoidCallback remove) =>
-      Padding(
+  Widget _media(String slot, String label, String? key, VoidCallback remove) {
+    final englishLabel = switch (slot) {
+      'logo' => 'logo',
+      'cover' => 'cover image',
+      _ => 'background image',
+    };
+    return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Wrap(spacing: 8, children: [
             BioUiPress(
@@ -300,37 +329,40 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                     onPressed: _uploading ? null : () => _upload(slot),
                     icon: const Icon(Icons.photo_library_outlined),
                     label:
-                        Text(key == null ? 'เพิ่ม$label' : 'เปลี่ยน$label'))),
+                        Text(linkInBioText(context,
+                            key == null ? 'เพิ่ม$label' : 'เปลี่ยน$label',
+                            '${key == null ? 'Add' : 'Change'} $englishLabel')))),
             if (key != null)
               BioUiPress(
                   enabled: !_uploading,
                   child: TextButton(
                       onPressed: _uploading ? null : remove,
-                      child: Text('ลบ$label')))
+                      child: Text(linkInBioText(context, 'ลบ$label', 'Remove $englishLabel'))))
           ]));
+  }
 
   Widget _effects() => _section(
       'effects',
-      'ลูกเล่น',
+      linkInBioText(context, 'ลูกเล่น', 'Effects'),
       [
         SwitchListTile.adaptive(
             key: const ValueKey('link-in-bio-effect-background'),
             contentPadding: EdgeInsets.zero,
-            title: const Text('พื้นหลังเคลื่อนไหว'),
+            title: Text(linkInBioText(context, 'พื้นหลังเคลื่อนไหว', 'Animated background')),
             value: _value.effects.background,
             onChanged: (value) => _change(_value.copyWith(
                 effects: _value.effects.copyWith(background: value)))),
         SwitchListTile.adaptive(
             key: const ValueKey('link-in-bio-effect-entrance'),
             contentPadding: EdgeInsets.zero,
-            title: const Text('ลิงก์ค่อย ๆ ปรากฏ'),
+            title: Text(linkInBioText(context, 'ลิงก์ค่อย ๆ ปรากฏ', 'Fade in links')),
             value: _value.effects.entrance,
             onChanged: (value) => _change(_value.copyWith(
                 effects: _value.effects.copyWith(entrance: value)))),
         SwitchListTile.adaptive(
             key: const ValueKey('link-in-bio-effect-featured'),
             contentPadding: EdgeInsets.zero,
-            title: const Text('ปุ่มเด่นขยับเบา ๆ'),
+            title: Text(linkInBioText(context, 'ปุ่มเด่นขยับเบา ๆ', 'Gently animate the featured button')),
             value: _value.effects.featured,
             onChanged: (value) => _change(_value.copyWith(
                 effects: _value.effects.copyWith(featured: value)))),
@@ -340,25 +372,26 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                 'link-in-bio-effect-stickers-${_value.effects.stickers}'),
             initialValue: _value.effects.stickers,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'สติกเกอร์ลอย'),
-            items: const [
-              DropdownMenuItem(value: 'none', child: Text('ไม่มี')),
-              DropdownMenuItem(value: 'hearts', child: Text('หัวใจ')),
-              DropdownMenuItem(value: 'flowers', child: Text('ดอกไม้')),
-              DropdownMenuItem(value: 'sparkles', child: Text('ประกาย')),
+            decoration: InputDecoration(labelText: linkInBioText(context, 'สติกเกอร์ลอย', 'Floating stickers')),
+            items: [
+              DropdownMenuItem(value: 'none', child: Text(linkInBioText(context, 'ไม่มี', 'None'))),
+              DropdownMenuItem(value: 'hearts', child: Text(linkInBioText(context, 'หัวใจ', 'Hearts'))),
+              DropdownMenuItem(value: 'flowers', child: Text(linkInBioText(context, 'ดอกไม้', 'Flowers'))),
+              DropdownMenuItem(value: 'sparkles', child: Text(linkInBioText(context, 'ประกาย', 'Sparkles'))),
             ],
             onChanged: (value) => _change(_value.copyWith(
                 effects: _value.effects.copyWith(stickers: value!)))),
         const SizedBox(height: 12),
-        const Text('ดูการเคลื่อนไหวในตัวอย่างด้านบน และเปิด–ปิดแต่ละลูกเล่นได้',
-            style: TextStyle(fontSize: 12)),
+        Text(linkInBioText(context, 'ดูการเคลื่อนไหวในตัวอย่างด้านบน และเปิด–ปิดแต่ละลูกเล่นได้',
+            'Preview animations above and turn each effect on or off.'),
+            style: const TextStyle(fontSize: 12)),
       ],
       icon: Icons.auto_awesome_outlined);
 
   List<Widget> _advancedGroups() => [
         _section(
             'images',
-            'ภาพและพื้นหลัง',
+            linkInBioText(context, 'ภาพและพื้นหลัง', 'Images and background'),
             [
               TextFormField(
                   key: const ValueKey('link-in-bio-description'),
@@ -366,10 +399,10 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                   maxLength: 280,
                   minLines: 2,
                   maxLines: 4,
-                  decoration: const InputDecoration(labelText: 'คำแนะนำร้าน'),
+                  decoration: InputDecoration(labelText: linkInBioText(context, 'คำแนะนำร้าน', 'Store description')),
                   autovalidateMode: AutovalidateMode.onUserInteraction,
                   validator: (value) => (value ?? '').length > 280
-                      ? 'คำแนะนำร้านยาวเกิน 280 ตัวอักษร'
+                      ? linkInBioText(context, 'คำแนะนำร้านยาวเกิน 280 ตัวอักษร', 'Your store description must be no longer than 280 characters.')
                       : null,
                   onChanged: (value) {
                     if (value.length <= 280) {
@@ -395,19 +428,19 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                   initialValue: _value.background.mode,
                   isExpanded: true,
                   decoration:
-                      const InputDecoration(labelText: 'รูปแบบพื้นหลัง'),
-                  items: const [
-                    DropdownMenuItem(value: 'solid', child: Text('สีเดียว')),
-                    DropdownMenuItem(value: 'gradient', child: Text('ไล่สี')),
+                      InputDecoration(labelText: linkInBioText(context, 'รูปแบบพื้นหลัง', 'Background style')),
+                  items: [
+                    DropdownMenuItem(value: 'solid', child: Text(linkInBioText(context, 'สีเดียว', 'Solid color'))),
+                    DropdownMenuItem(value: 'gradient', child: Text(linkInBioText(context, 'ไล่สี', 'Gradient'))),
                     DropdownMenuItem(
-                        value: 'image', child: Text('รูปภาพพร้อมปรับความมืด'))
+                        value: 'image', child: Text(linkInBioText(context, 'รูปภาพพร้อมปรับความมืด', 'Image with dimming')))
                   ],
                   onChanged: (mode) => _change(_value.copyWith(
                       background: _value.background.copyWith(mode: mode!)))),
               const SizedBox(height: 10),
               BioColorField(
                   key: const ValueKey('link-in-bio-background-color'),
-                  label: 'สีพื้นหลัง',
+                  label: linkInBioText(context, 'สีพื้นหลัง', 'Background color'),
                   value: _value.background.color,
                   onChanged: (color) => _change(_value.copyWith(
                       background: _value.background.copyWith(color: color!)))),
@@ -415,7 +448,7 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                 const SizedBox(height: 10),
                 BioColorField(
                     key: const ValueKey('link-in-bio-gradient-color'),
-                    label: 'สีปลายทาง',
+                    label: linkInBioText(context, 'สีปลายทาง', 'Gradient end color'),
                     value: _value.background.gradientColor,
                     onChanged: (color) => _change(_value.copyWith(
                         background: _value.background
@@ -424,8 +457,9 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
               if (_value.background.mode == 'image') ...[
                 const SizedBox(height: 10),
                 if (_value.background.imageKey == null)
-                  const Text('เพิ่มภาพพื้นหลังก่อนเผยแพร่'),
-                Text('ความมืดของพื้นหลัง ${_value.background.overlay}%'),
+                  Text(linkInBioText(context, 'เพิ่มภาพพื้นหลังก่อนเผยแพร่', 'Add a background image before publishing')),
+                Text(linkInBioText(context, 'ความมืดของพื้นหลัง ${_value.background.overlay}%',
+                    'Background dimming ${_value.background.overlay}%')),
                 Slider(
                     min: 0,
                     max: 80,
@@ -439,18 +473,18 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
             icon: Icons.image_outlined),
         _section(
             'buttons',
-            'สีและรูปทรงปุ่ม',
+            linkInBioText(context, 'สีและรูปทรงปุ่ม', 'Button colors and shape'),
             [
               BioColorField(
                   key: const ValueKey('link-in-bio-surface-color'),
-                  label: 'สีพื้นที่เนื้อหา',
+                  label: linkInBioText(context, 'สีพื้นที่เนื้อหา', 'Content area color'),
                   value: _value.surfaceColor,
                   onChanged: (color) =>
                       _change(_value.copyWith(surfaceColor: color!))),
               const SizedBox(height: 10),
               BioColorField(
                   key: const ValueKey('link-in-bio-button-color'),
-                  label: 'สีพื้นปุ่ม',
+                  label: linkInBioText(context, 'สีพื้นปุ่ม', 'Button background color'),
                   value: _value.buttonColor,
                   onChanged: (color) =>
                       _change(_value.copyWith(buttonColor: color!))),
@@ -459,12 +493,12 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                   key: ValueKey('link-in-bio-radius-${_value.buttonRadius}'),
                   initialValue: _value.buttonRadius,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'รูปทรงปุ่ม'),
-                  items: const [
-                    DropdownMenuItem(value: 'rounded', child: Text('มุมมน')),
-                    DropdownMenuItem(value: 'pill', child: Text('โค้งเต็ม')),
+                  decoration: InputDecoration(labelText: linkInBioText(context, 'รูปทรงปุ่ม', 'Button shape')),
+                  items: [
+                    DropdownMenuItem(value: 'rounded', child: Text(linkInBioText(context, 'มุมมน', 'Rounded'))),
+                    DropdownMenuItem(value: 'pill', child: Text(linkInBioText(context, 'โค้งเต็ม', 'Pill'))),
                     DropdownMenuItem(
-                        value: 'square', child: Text('มุมเหลี่ยม')),
+                        value: 'square', child: Text(linkInBioText(context, 'มุมเหลี่ยม', 'Square'))),
                   ],
                   onChanged: (value) =>
                       _change(_value.copyWith(buttonRadius: value!))),
@@ -472,7 +506,7 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
             icon: Icons.palette_outlined),
         _section(
             'styles',
-            'สีและฟอนต์รายส่วน',
+            linkInBioText(context, 'สีและฟอนต์รายส่วน', 'Section colors and fonts'),
             [
               _style('name', 'ชื่อร้าน', _value.nameStyle,
                   (style) => _change(_value.copyWith(nameStyle: style))),
@@ -488,24 +522,28 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
             icon: Icons.text_fields),
         _section(
             'featured',
-            'โปรโมชันเด่น',
+            linkInBioText(context, 'โปรโมชันเด่น', 'Featured promotion'),
             [
               TextFormField(
                   key: const ValueKey('link-in-bio-featured-label'),
                   controller: _featuredLabel,
                   maxLength: 40,
                   decoration:
-                      const InputDecoration(labelText: 'หัวข้อโปรโมชันเด่น'),
+                      InputDecoration(
+                          labelText: MediaQuery.textScalerOf(context).scale(14) > 18
+                              ? null : linkInBioText(context, 'หัวข้อโปรโมชันเด่น', 'Featured promotion heading'),
+                          label: MediaQuery.textScalerOf(context).scale(14) > 18
+                              ? Text(linkInBioText(context, 'หัวข้อโปรโมชันเด่น', 'Featured promotion heading'), softWrap: true) : null),
                   autovalidateMode: AutovalidateMode.onUserInteraction,
                   validator: (value) => (value ?? '').length > 40
-                      ? 'หัวข้อโปรโมชันยาวเกิน 40 ตัวอักษร'
+                      ? linkInBioText(context, 'หัวข้อโปรโมชันยาวเกิน 40 ตัวอักษร', 'Your promotion heading must be no longer than 40 characters.')
                       : null,
                   onChanged: (value) {
                     if (value.length <= 40) {
                       _change(_value.copyWith(featuredLabel: value));
                     }
                   }),
-              const Text('เลือกลิงก์เด่นได้จากเมนูของลิงก์'),
+              Text(linkInBioText(context, 'เลือกลิงก์เด่นได้จากเมนูของลิงก์', 'Choose a featured link from its link menu')),
             ],
             icon: Icons.star_border),
       ];
@@ -548,15 +586,15 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                           Expanded(
                               child: Text(
                                   widget.showThemePicker
-                                      ? 'ตกแต่งหน้าโปรไฟล์'
-                                      : 'ตกแต่งเพิ่มเติม',
+                                      ? linkInBioText(context, 'ตกแต่งหน้าโปรไฟล์', 'Customize profile page')
+                                      : linkInBioText(context, 'ตกแต่งเพิ่มเติม', 'More customization'),
                                   style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700))),
                           BioUiPress(
                               enabled: !_uploading,
                               child: IconButton(
-                                  tooltip: 'ปิด',
+                                  tooltip: linkInBioText(context, 'ปิด', 'Close'),
                                   onPressed: _uploading
                                       ? null
                                       : () => Navigator.pop(context),
@@ -577,8 +615,8 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                       _preview(),
                                       const SizedBox(height: 16),
                                       if (widget.showThemePicker) ...[
-                                        const Text('เลือกธีมเริ่มต้น',
-                                            style: TextStyle(
+                                        Text(linkInBioText(context, 'เลือกธีมเริ่มต้น', 'Choose a starting theme'),
+                                            style: const TextStyle(
                                                 fontWeight: FontWeight.w700)),
                                         const SizedBox(height: 10),
                                         BioThemePicker(
@@ -591,12 +629,13 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                             enabled: !_uploading,
                                             onChanged: _change),
                                         const SizedBox(height: 8),
-                                        const Text(
+                                        Text(linkInBioText(context,
                                             'เปลี่ยนธีมจะตั้งสีและฟอนต์ใหม่ ข้อความ รูป และลิงก์เดิมยังอยู่',
-                                            style: TextStyle(fontSize: 12)),
+                                            'Changing the theme resets colors and fonts. Your text, images and links are kept.'),
+                                            style: const TextStyle(fontSize: 12)),
                                         const SizedBox(height: 8),
                                         _effects(),
-                                        _section('advanced', 'ตกแต่งเพิ่มเติม',
+                                        _section('advanced', linkInBioText(context, 'ตกแต่งเพิ่มเติม', 'More customization'),
                                             _advancedGroups()),
                                       ] else ...[
                                         _effects(),
@@ -610,7 +649,7 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                     if (_error != null)
                       Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(_error!,
+                          child: Text(localizeLinkInBioMessage(context, _error!),
                               style: TextStyle(
                                   color: Theme.of(context).colorScheme.error))),
                     Padding(
@@ -624,6 +663,6 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                         'link-in-bio-decoration-done'),
                                     onPressed: _uploading ? null : _apply,
                                     child:
-                                        const Text('ใช้แบบนี้กับแบบร่าง'))))),
+                                        Text(linkInBioText(context, 'ใช้แบบนี้กับแบบร่าง', 'Apply to draft')))))),
                   ])))));
 }

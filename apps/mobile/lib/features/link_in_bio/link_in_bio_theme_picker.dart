@@ -7,6 +7,7 @@ import 'link_in_bio_color_picker.dart' show BioOwnedModalScope;
 import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_draft_store.dart';
+import 'link_in_bio_localizations.dart';
 import 'link_in_bio_preview.dart';
 import 'link_in_bio_template_preview.dart';
 import 'link_in_bio_ui_motion.dart';
@@ -77,19 +78,20 @@ class _BioThemePickerState extends State<BioThemePicker> {
                             child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                              Text(template.name,
+                              Text(localizeLinkInBioMessage(context, template.name),
                                   style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700)),
                               Text(
-                                  profileTemplateCategories[template.category]!,
+                                  localizeLinkInBioMessage(context,
+                                      profileTemplateCategories[template.category]!),
                                   style: const TextStyle(fontSize: 13)),
                             ])),
                         BioUiPress(
                             child: IconButton(
                                 key: const ValueKey(
                                     'link-in-bio-template-preview-close'),
-                                tooltip: 'ปิดตัวอย่าง',
+                                tooltip: linkInBioText(context, 'ปิดตัวอย่าง', 'Close preview'),
                                 onPressed: () => Navigator.pop(context),
                                 icon: const Icon(Icons.close))),
                       ])),
@@ -115,7 +117,7 @@ class _BioThemePickerState extends State<BioThemePicker> {
                                           'link-in-bio-template-use'),
                                       onPressed: () =>
                                           Navigator.pop(context, candidate),
-                                      child: const Text('ใช้กับแบบร่าง')))))),
+                                      child: Text(linkInBioText(context, 'ใช้กับแบบร่าง', 'Apply to draft'))))))),
                 ])));
         });
     if (!mounted || result == null || !widget.enabled) return;
@@ -139,17 +141,22 @@ class _BioThemePickerState extends State<BioThemePicker> {
         profileTemplates.where((item) => item.category == _category).toList();
     final current = getProfileTemplate(widget.appearance.templateId);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('${profileTemplateCategories[_category]} · ${templates.length} แบบ',
+      Text(linkInBioText(context,
+          '${profileTemplateCategories[_category]} · ${templates.length} แบบ',
+          'Minimal · ${templates.length} templates'),
           key: const ValueKey('link-in-bio-category-minimal'),
           style: const TextStyle(fontWeight: FontWeight.w700)),
       const SizedBox(height: 4),
-      const Text('ภาพย่อเป็นตัวอย่าง แตะเพื่อดูร้านของคุณก่อนเลือก',
-          style: TextStyle(fontSize: 12)),
+      Text(linkInBioText(context, 'ภาพย่อเป็นตัวอย่าง แตะเพื่อดูร้านของคุณก่อนเลือก',
+          'Thumbnails are examples. Tap to preview your store before choosing.'),
+          style: const TextStyle(fontSize: 12)),
       if (current != null || widget.appearance.themeId != 'minimal')
         Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-                'กำลังใช้ ${current?.name ?? linkInBioThemeNames[widget.appearance.themeId]}',
+                linkInBioText(context,
+                    'กำลังใช้ ${current?.name ?? linkInBioThemeNames[widget.appearance.themeId]}',
+                    'Currently using ${localizeLinkInBioMessage(context, current?.name ?? linkInBioThemeNames[widget.appearance.themeId] ?? '')}'),
                 style: TextStyle(fontSize: 12, color: colors.primary))),
       const SizedBox(height: 12),
       LayoutBuilder(
@@ -162,7 +169,8 @@ class _BioThemePickerState extends State<BioThemePicker> {
                   children: [
                     for (final template in templates)
                       SizedBox(
-                          width: (size.maxWidth - 12) / 2,
+                          width: MediaQuery.textScalerOf(context).scale(12) > 18 && size.maxWidth < 560
+                              ? size.maxWidth : (size.maxWidth - 12) / 2,
                           child: BioUiPress(
                               enabled: widget.enabled,
                               child: Material(
@@ -189,8 +197,8 @@ class _BioThemePickerState extends State<BioThemePicker> {
                                       enabled: widget.enabled,
                                       selected: widget.appearance.templateId ==
                                           template.id,
-                                      label: template.name,
-                                      hint: 'ดูตัวอย่างก่อนใช้',
+                                      label: localizeLinkInBioMessage(context, template.name),
+                                      hint: linkInBioText(context, 'ดูตัวอย่างก่อนใช้', 'Preview before applying'),
                                       excludeSemantics: true,
                                       onTap: widget.enabled
                                           ? () => _preview(template)
@@ -209,15 +217,15 @@ class _BioThemePickerState extends State<BioThemePicker> {
                                                 const SizedBox(height: 8),
                                                 Row(children: [
                                                   Expanded(
-                                                      child: Text(template.name,
+                                                      child: Text(localizeLinkInBioMessage(context, template.name),
                                                           style: const TextStyle(
                                                               fontSize: 12,
                                                               fontWeight:
                                                                   FontWeight
                                                                       .w600),
-                                                          maxLines: 2,
-                                                          overflow: TextOverflow
-                                                              .ellipsis)),
+                                                          maxLines: MediaQuery.textScalerOf(context).scale(12) > 18 ? null : 2,
+                                                          overflow: MediaQuery.textScalerOf(context).scale(12) > 18
+                                                              ? TextOverflow.visible : TextOverflow.ellipsis)),
                                                   if (widget.appearance
                                                           .templateId ==
                                                       template.id)

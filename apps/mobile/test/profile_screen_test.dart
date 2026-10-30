@@ -411,6 +411,71 @@ void main() {
     expect(opened, 1);
   });
 
+  for (final initialLocale in [const Locale('en'), const Locale('th')]) {
+    testWidgets(
+        'support chat follows a ${initialLocale.languageCode} locale roundtrip and opens once',
+        (tester) async {
+      final locale = ValueNotifier(initialLocale);
+      final language = PostDeeLanguageController(initialLocale: initialLocale);
+      final theme = PostDeeThemeController();
+      final apiClient = _FakeSocialApiClient(connections: const []);
+      addTearDown(locale.dispose);
+      addTearDown(language.dispose);
+      addTearDown(theme.dispose);
+      var opened = 0;
+      await tester.pumpWidget(
+        ValueListenableBuilder<Locale>(
+          valueListenable: locale,
+          builder: (context, currentLocale, child) => MaterialApp(
+            locale: currentLocale,
+            localizationsDelegates: const [
+              PostDeeLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: PostDeeLocalizations.supportedLocales,
+            home: Scaffold(
+              body: ProfileScreen(
+                languageController: language,
+                themeController: theme,
+                onOpenTemplates: () {},
+                onDeleteAccount: () {},
+                apiClient: apiClient,
+                onOpenSupportChat: () => opened++,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final profileState = tester.state(find.byType(ProfileScreen));
+      final row = find.byKey(const ValueKey('profile-support-chat-row'),
+          skipOffstage: false);
+      await tester.scrollUntilVisible(row, 300,
+          scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+      final otherLocale = initialLocale.languageCode == 'en'
+          ? const Locale('th')
+          : const Locale('en');
+      for (final nextLocale in [initialLocale, otherLocale, initialLocale]) {
+        locale.value = nextLocale;
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(row);
+        final label = nextLocale.languageCode == 'th'
+            ? 'แชทกับทีมงาน'
+            : 'Chat with the team';
+        expect(find.descendant(of: row, matching: find.text(label)),
+            findsOneWidget);
+        expect(tester.state(find.byType(ProfileScreen)), same(profileState));
+        expect(opened, 0);
+      }
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(opened, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('groups account menus and shows only the current package', (
     tester,
   ) async {
@@ -474,7 +539,12 @@ void main() {
         await tester.pumpWidget(_hostProfile(locale: locale));
         await tester.pumpAndSettle();
 
-        expect(find.text('ยืนยันเบอร์โทร'), findsOneWidget);
+        expect(
+          find.text(locale.languageCode == 'en'
+              ? 'Verify phone number'
+              : 'ยืนยันเบอร์โทร'),
+          findsOneWidget,
+        );
         final connections =
             find.byKey(const ValueKey('profile-connections-row'));
         await tester.scrollUntilVisible(
@@ -484,8 +554,18 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('เชื่อมต่อช่องทาง'), findsOneWidget);
-        expect(find.text('ช่องทางและเครื่องมือ'), findsOneWidget);
+        expect(
+          find.text(locale.languageCode == 'en'
+              ? 'Connect channels'
+              : 'เชื่อมต่อช่องทาง'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(locale.languageCode == 'en'
+              ? 'Channels and tools'
+              : 'ช่องทางและเครื่องมือ'),
+          findsOneWidget,
+        );
         expect(find.text('เทมเพลตแคปชั่น', skipOffstage: false), findsNothing);
         expect(find.text('ลิงก์หน้าโปรไฟล์', skipOffstage: false), findsNothing);
 
@@ -792,6 +872,11 @@ void main() {
       );
       await tester.pump();
 
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('profile-connections-row')),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('กำลังโหลดช่องทาง...'), findsWidgets);
       expect(tester.takeException(), isNull);
 
@@ -1041,6 +1126,41 @@ void main() {
     );
     expect(find.text('@seller_one'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsWidgets);
+  });
+
+  testWidgets('English profile connection entry refreshes its count on return',
+      (tester) async {
+    final apiClient = _FakeSocialApiClient(
+      connections: const [],
+      refreshedConnections: const [
+        SocialConnectionResult(
+            platform: 'TIKTOK', connected: true, displayName: '@seller_one'),
+      ],
+    );
+    await tester.pumpWidget(
+        _hostProfile(locale: const Locale('en'), apiClient: apiClient));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('profile-connections-row'));
+    expect(row, findsOneWidget);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen), findsOneWidget);
+    expect(find.text('Connect channels'), findsOneWidget);
+    expect(find.text('Connected 0/4 channels'), findsOneWidget);
+    expect(find.text('Social channels'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('profile-platforms-refresh')));
+    await tester.pumpAndSettle();
+    expect(find.text('Connected 1/4 channels'), findsOneWidget);
+    expect(find.text('@seller_one'), findsOneWidget);
+    expect(find.text('Disconnect'), findsOneWidget);
+    expect(apiClient.refreshCalls, 1);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byType(ConnectionsScreen), findsNothing);
+    expect(find.text('1/4 connected'), findsOneWidget);
+    expect(apiClient.connectCalls, isEmpty);
+    expect(apiClient.disconnectCalls, isEmpty);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('shows the live connected count once in the connection menu', (

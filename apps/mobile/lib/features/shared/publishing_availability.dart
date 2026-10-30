@@ -8,5 +8,10 @@ const publishingUnavailableAfterUploadMessage =
 const publishingUnavailableActionMessage =
     'ระบบรับงานโพสต์ยังไม่เปิดใช้งาน กรุณาลองใหม่ภายหลัง';
 
+String getPublishingUnavailableActionMessage({String languageCode = 'th'}) =>
+    languageCode == 'th'
+        ? publishingUnavailableActionMessage
+        : 'Publishing is temporarily unavailable. Please try again later.';
+
 bool isPublishingUnavailable(ApiException error) =>
     error.code == socialPublishingUnavailableCode;

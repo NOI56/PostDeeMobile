@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_session.dart';
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/theme/app_theme.dart';
@@ -32,6 +33,8 @@ typedef ScheduledPostCanceller = Future<void> Function(String postId);
 typedef CalendarTimeConverter = DateTime Function(DateTime value);
 typedef CalendarSubscriptionLoader = Future<SubscriptionStatusResult>
     Function();
+
+enum _CalendarPendingAction { checkingPlan, rescheduling, canceling }
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({
@@ -106,7 +109,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   Future<void>? _activeLoad;
   int _postMutationGeneration = 0;
   bool _appIsResumed = true;
-  String? _errorMessage;
+  Object? _loadError;
   List<CalendarPostResult> _posts = const [];
   Timer? _queuedRefreshTimer;
   late DateTime _visibleMonth;
@@ -115,7 +118,55 @@ class _CalendarScreenState extends State<CalendarScreen>
   DateTime? _selectedDay;
   String _platformFilter = 'all';
   String? _pendingActionPostId;
-  String? _pendingActionLabel;
+  _CalendarPendingAction? _pendingAction;
+
+  String get _languageCode => _calendarLanguageCode(context);
+
+  String _text(String thai, String english) =>
+      _calendarText(context, thai, english);
+
+  String? get _errorMessage {
+    final error = _loadError;
+    if (error == null) return null;
+    if (error is SocketException) {
+      return _text(
+          'เชื่อมต่อ PostDee API ไม่ได้', 'Cannot connect to PostDee API');
+    }
+    return apiErrorMessage(
+      error,
+      languageCode: _languageCode,
+      fallbackMessage: error is ApiException
+          ? _text('โหลดปฏิทินโพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+              'Could not load your post calendar. Please try again.')
+          : _text(
+              'โหลดปฏิทินโพสต์ไม่สำเร็จ', 'Could not load the post calendar'),
+    );
+  }
+
+  String? get _pendingActionLabel => switch (_pendingAction) {
+        _CalendarPendingAction.checkingPlan =>
+          _text('กำลังตรวจสอบแพ็กเกจ...', 'Checking plan...'),
+        _CalendarPendingAction.rescheduling =>
+          _text('กำลังเลื่อนเวลา...', 'Rescheduling...'),
+        _CalendarPendingAction.canceling =>
+          _text('กำลังยกเลิก...', 'Canceling...'),
+        null => null,
+      };
+
+  List<String> get _monthNames =>
+      _languageCode == 'th' ? _thaiMonthsFull : _englishMonthsFull;
+
+  List<String> get _shortMonthNames =>
+      _languageCode == 'th' ? _thaiMonthsShort : _englishMonthsShort;
+
+  List<String> get _weekdayLabels =>
+      _languageCode == 'th' ? _thaiWeekdayLabels : _englishWeekdayLabels;
+
+  String _formatDate(DateTime date) =>
+      _formatCalendarDate(date, languageCode: _languageCode);
+
+  String _postCount(int count) =>
+      _text('$count โพสต์', '$count post${count == 1 ? '' : 's'}');
 
   @override
   void initState() {
@@ -222,9 +273,9 @@ class _CalendarScreenState extends State<CalendarScreen>
       _isLoading = widget.isActive;
       _isRefreshing = false;
       _lastUpdated = null;
-      _errorMessage = null;
+      _loadError = null;
       _pendingActionPostId = null;
-      _pendingActionLabel = null;
+      _pendingAction = null;
     });
   }
 
@@ -284,7 +335,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     setState(() {
       _isLoading = !_hasLoaded;
       _isRefreshing = _hasLoaded;
-      _errorMessage = null;
+      _loadError = null;
     });
 
     try {
@@ -308,7 +359,7 @@ class _CalendarScreenState extends State<CalendarScreen>
             _posts = sorted;
             _hasLoaded = true;
             _lastUpdated = _now();
-            _errorMessage = null;
+            _loadError = null;
             // Prefer upcoming posts in the visible month. Old scheduled
             // history must never pull the initial calendar into a past month.
             final today = _now();
@@ -323,17 +374,9 @@ class _CalendarScreenState extends State<CalendarScreen>
               _selectedDay = DateTime(first.year, first.month, first.day);
             }
           });
-        } on ApiException catch (error) {
+        } catch (error) {
           if (!_loadStillOwned(generation, sessionOwner)) return;
-          setState(() => _errorMessage = apiErrorMessage(error,
-              fallbackMessage:
-                  'โหลดปฏิทินโพสต์ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
-        } on SocketException {
-          if (!_loadStillOwned(generation, sessionOwner)) return;
-          setState(() => _errorMessage = 'เชื่อมต่อ PostDee API ไม่ได้');
-        } catch (_) {
-          if (!_loadStillOwned(generation, sessionOwner)) return;
-          setState(() => _errorMessage = 'โหลดปฏิทินโพสต์ไม่สำเร็จ');
+          setState(() => _loadError = error);
         }
       } while (_reloadRequested && _loadStillOwned(generation, sessionOwner));
     } finally {
@@ -475,7 +518,9 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   void _addPostForDay() {
     if (_isPastDay) {
-      _showScheduleMessage('วันที่ผ่านมาแล้ว กรุณาเลือกวันนี้หรือวันถัดไป');
+      _showScheduleMessage(_text(
+          'วันที่ผ่านมาแล้ว กรุณาเลือกวันนี้หรือวันถัดไป',
+          'This date has passed. Choose today or a later date.'));
       return;
     }
     if (widget.onAddPostForDate != null) {
@@ -531,7 +576,7 @@ class _CalendarScreenState extends State<CalendarScreen>
             ),
             ListTile(
               leading: Icon(Icons.schedule, color: AppTheme.accentCyanInk),
-              title: const Text('เลื่อนเวลา'),
+              title: Text(_calendarText(context, 'เลื่อนเวลา', 'Reschedule')),
               onTap: () {
                 Navigator.of(context).pop();
                 if (!_loadStillOwned(generation, owner)) return;
@@ -541,8 +586,8 @@ class _CalendarScreenState extends State<CalendarScreen>
             ListTile(
               leading:
                   const Icon(Icons.delete_outline, color: Colors.redAccent),
-              title: const Text('ยกเลิกโพสต์',
-                  style: TextStyle(color: Colors.redAccent)),
+              title: Text(_calendarText(context, 'ยกเลิกโพสต์', 'Cancel post'),
+                  style: const TextStyle(color: Colors.redAccent)),
               onTap: () {
                 Navigator.of(context).pop();
                 if (!_loadStillOwned(generation, owner)) return;
@@ -563,27 +608,29 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     setState(() {
       _pendingActionPostId = post.id;
-      _pendingActionLabel = 'กำลังตรวจสอบแพ็กเกจ...';
+      _pendingAction = _CalendarPendingAction.checkingPlan;
     });
     try {
       final subscription = await _loadScheduleSubscription();
       if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
       final limit = postScheduleLimitForPlan(subscription.plan);
       if (!subscription.canSchedule || limit == null) {
-        _showScheduleMessage(schedulePaidPlanMessage);
+        _showScheduleMessage(
+            getSchedulePaidPlanMessage(languageCode: _languageCode));
         return;
       }
-      setState(() => _pendingActionLabel = null);
+      setState(() => _pendingAction = null);
       await _rescheduleWhileLocked(post, limit, ownerUserId, generation);
     } catch (_) {
       if (mounted && _loadStillOwned(generation, ownerUserId)) {
-        _showScheduleMessage(scheduleSubscriptionUnavailableMessage);
+        _showScheduleMessage(getScheduleSubscriptionUnavailableMessage(
+            languageCode: _languageCode));
       }
     } finally {
       if (mounted && _loadStillOwned(generation, ownerUserId)) {
         setState(() {
           _pendingActionPostId = null;
-          _pendingActionLabel = null;
+          _pendingAction = null;
         });
       }
     }
@@ -625,6 +672,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
       date: date,
+      languageCode: _languageCode,
     );
     if (time == null || !mounted || !_loadStillOwned(generation, ownerUserId)) {
       return;
@@ -636,14 +684,17 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
     if (!subscription.canSchedule ||
         postScheduleLimitForPlan(subscription.plan) == null) {
-      _showScheduleMessage(schedulePaidPlanMessage);
+      _showScheduleMessage(
+          getSchedulePaidPlanMessage(languageCode: _languageCode));
       return;
     }
     final validationNow = _now();
 
     if (!next.isAfter(validationNow)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('เวลาที่เลื่อนต้องเป็นเวลาในอนาคต')),
+        SnackBar(
+            content: Text(_text('เวลาที่เลื่อนต้องเป็นเวลาในอนาคต',
+                'The rescheduled time must be in the future.'))),
       );
       return;
     }
@@ -656,14 +707,14 @@ class _CalendarScreenState extends State<CalendarScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(postScheduleLimitMessage(subscription.plan,
-                rescheduling: true))),
+                rescheduling: true, languageCode: _languageCode))),
       );
       return;
     }
 
     setState(() {
       _pendingActionPostId = post.id;
-      _pendingActionLabel = 'กำลังเลื่อนเวลา...';
+      _pendingAction = _CalendarPendingAction.rescheduling;
     });
 
     try {
@@ -714,10 +765,14 @@ class _CalendarScreenState extends State<CalendarScreen>
           SnackBar(
             content: Text(
               isPublishingUnavailable(error)
-                  ? publishingUnavailableActionMessage
+                  ? getPublishingUnavailableActionMessage(
+                      languageCode: _languageCode)
                   : postScheduleApiErrorMessage(error,
-                          plan: subscription.plan, rescheduling: true) ??
-                      'เลื่อนเวลาไม่สำเร็จ ลองใหม่อีกครั้ง',
+                          plan: subscription.plan,
+                          rescheduling: true,
+                          languageCode: _languageCode) ??
+                      _text('เลื่อนเวลาไม่สำเร็จ ลองใหม่อีกครั้ง',
+                          'Could not reschedule. Please try again.'),
             ),
           ),
         );
@@ -726,7 +781,9 @@ class _CalendarScreenState extends State<CalendarScreen>
     } catch (_) {
       if (mounted && _loadStillOwned(generation, ownerUserId)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('เลื่อนเวลาไม่สำเร็จ ลองใหม่อีกครั้ง')),
+          SnackBar(
+              content: Text(_text('เลื่อนเวลาไม่สำเร็จ ลองใหม่อีกครั้ง',
+                  'Could not reschedule. Please try again.'))),
         );
       }
       return;
@@ -735,14 +792,15 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
     // Keep the action locked until refresh finishes, but stop the spinner
     // once the mutation itself has completed.
-    setState(() => _pendingActionLabel = null);
+    setState(() => _pendingAction = null);
     await _loadPosts();
     if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content:
-              Text('เลื่อนเป็น ${_formatThaiDate(next)} ${_formatTime(next)}')),
+          content: Text(_text(
+              'เลื่อนเป็น ${_formatDate(next)} ${_formatTime(next)}',
+              'Rescheduled to ${_formatDate(next)} ${_formatTime(next)}'))),
     );
   }
 
@@ -755,17 +813,21 @@ class _CalendarScreenState extends State<CalendarScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.charcoal,
-        title: const Text('ยกเลิกโพสต์นี้?'),
-        content: const Text('โพสต์ที่ตั้งเวลาไว้จะถูกนำออกจากปฏิทิน'),
+        title: Text(
+            _calendarText(context, 'ยกเลิกโพสต์นี้?', 'Cancel this post?')),
+        content: Text(_calendarText(
+            context,
+            'โพสต์ที่ตั้งเวลาไว้จะถูกนำออกจากปฏิทิน',
+            'The scheduled post will be removed from the calendar.')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('ไม่'),
+            child: Text(_calendarText(context, 'ไม่', 'Keep post')),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('ยกเลิกโพสต์',
-                style: TextStyle(color: Colors.redAccent)),
+            child: Text(_calendarText(context, 'ยกเลิกโพสต์', 'Cancel post'),
+                style: const TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -779,7 +841,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     setState(() {
       _pendingActionPostId = post.id;
-      _pendingActionLabel = 'กำลังยกเลิก...';
+      _pendingAction = _CalendarPendingAction.canceling;
     });
 
     try {
@@ -831,15 +893,22 @@ class _CalendarScreenState extends State<CalendarScreen>
             _lastUpdated = _now();
           });
           message = latest == null
-              ? 'ไม่พบโพสต์นี้ในรายการแล้ว อาจถูกยกเลิกหรือถูกนำออก'
+              ? _text('ไม่พบโพสต์นี้ในรายการแล้ว อาจถูกยกเลิกหรือถูกนำออก',
+                  'This post is no longer listed. It may have been canceled or removed.')
               : latest.status.toUpperCase() == 'PUBLISHING'
-                  ? 'โพสต์เริ่มส่งแล้ว จึงยกเลิกคิวไม่ได้ กรุณาติดตามผลล่าสุด'
+                  ? _text(
+                      'โพสต์เริ่มส่งแล้ว จึงยกเลิกคิวไม่ได้ กรุณาติดตามผลล่าสุด',
+                      'This post has started sending and cannot be canceled. Check its latest status.')
                   : latest.status.toUpperCase() != 'QUEUED'
-                      ? 'สถานะโพสต์เปลี่ยนแล้ว กำลังแสดงผลล่าสุด'
-                      : 'รายการยังรอส่งตามเวลา ยังยืนยันการยกเลิกไม่ได้';
+                      ? _text('สถานะโพสต์เปลี่ยนแล้ว กำลังแสดงผลล่าสุด',
+                          'The post status has changed. Showing the latest result.')
+                      : _text('รายการยังรอส่งตามเวลา ยังยืนยันการยกเลิกไม่ได้',
+                          'This post is still scheduled. Cancellation is not confirmed.');
           _syncQueuedRefresh();
         } catch (_) {
-          message = 'ยังยืนยันผลการยกเลิกไม่ได้ กรุณารีเฟรชเมื่อเชื่อมต่อได้';
+          message = _text(
+              'ยังยืนยันผลการยกเลิกไม่ได้ กรุณารีเฟรชเมื่อเชื่อมต่อได้',
+              'Cancellation is not confirmed. Refresh when you are connected.');
         }
         if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
         ScaffoldMessenger.of(context)
@@ -850,7 +919,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       if (mounted && _loadStillOwned(generation, ownerUserId)) {
         setState(() {
           _pendingActionPostId = null;
-          _pendingActionLabel = null;
+          _pendingAction = null;
         });
       }
     }
@@ -858,7 +927,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (!mounted || !_loadStillOwned(generation, ownerUserId)) return;
     setState(() => _posts = _posts.where((p) => p.id != post.id).toList());
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('ยกเลิกโพสต์แล้ว')),
+      SnackBar(content: Text(_text('ยกเลิกโพสต์แล้ว', 'Post canceled'))),
     );
   }
 
@@ -884,7 +953,7 @@ class _CalendarScreenState extends State<CalendarScreen>
               Wrap(spacing: 5, runSpacing: 6, children: [
                 _FilterChip(
                     key: const ValueKey('calendar-week-view'),
-                    label: 'สัปดาห์',
+                    label: _text('สัปดาห์', 'Week'),
                     animate: _motionEnabled,
                     selected: _isWeekView,
                     onTap: () {
@@ -893,7 +962,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                     }),
                 _FilterChip(
                     key: const ValueKey('calendar-month-view'),
-                    label: 'เดือน',
+                    label: _text('เดือน', 'Month'),
                     animate: _motionEnabled,
                     selected: !_isWeekView,
                     onTap: () {
@@ -906,7 +975,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                     key: const ValueKey('calendar-today'),
                     onPressed: () => _selectDay(_now().toLocal()),
                     icon: const Icon(Icons.today_outlined, size: 18),
-                    label: const Text('วันนี้'),
+                    label: Text(_text('วันนี้', 'Today')),
                     style: TextButton.styleFrom(
                         minimumSize: const Size(48, 48),
                         foregroundColor: AppTheme.accentCyanInk),
@@ -928,10 +997,14 @@ class _CalendarScreenState extends State<CalendarScreen>
                   liveRegion: true,
                   child: Text(
                       _isRefreshing
-                          ? 'กำลังอัปเดต · ข้อมูลเดิมยังแสดงอยู่'
+                          ? _text('กำลังอัปเดต · ข้อมูลเดิมยังแสดงอยู่',
+                              'Updating · Showing previous data')
                           : _lastUpdated == null
-                              ? 'ยังไม่ได้อัปเดตข้อมูล'
-                              : 'อัปเดตล่าสุด ${_formatTime(_lastUpdated!)}',
+                              ? _text(
+                                  'ยังไม่ได้อัปเดตข้อมูล', 'Not updated yet')
+                              : _text(
+                                  'อัปเดตล่าสุด ${_formatTime(_lastUpdated!)}',
+                                  'Last updated ${_formatTime(_lastUpdated!)}'),
                       key: const ValueKey('calendar-update-status'),
                       style:
                           TextStyle(fontSize: 11, color: AppTheme.textMuted)),
@@ -943,7 +1016,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                     onPressed:
                         _isLoading || _isRefreshing ? null : () => _loadPosts(),
                     icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('รีเฟรช'),
+                    label: Text(_text('รีเฟรช', 'Refresh')),
                   ),
                 ),
               ]),
@@ -956,8 +1029,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                       key: const ValueKey('calendar-create-selected-day'),
                       onPressed: _addPostForDay,
                       icon: const Icon(Icons.add_outlined),
-                      label:
-                          Text('สร้างโพสต์ · ${_formatThaiDate(_activeDay)}'),
+                      label: Text(_text(
+                          'สร้างโพสต์ · ${_formatDate(_activeDay)}',
+                          'Create post · ${_formatDate(_activeDay)}')),
                       style: FilledButton.styleFrom(
                           backgroundColor: AppTheme.accent,
                           minimumSize: const Size(48, 48)),
@@ -991,13 +1065,15 @@ class _CalendarScreenState extends State<CalendarScreen>
   Widget _buildHeader() {
     final title =
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('ปฏิทินโพสต์',
+      Text(_text('ปฏิทินโพสต์', 'Post calendar'),
           style: TextStyle(
               fontSize: 21,
               fontWeight: FontWeight.w700,
               color: AppTheme.textPrimary)),
       const SizedBox(height: 2),
-      Text('เห็นคิวชัด วางแผนได้ง่ายขึ้น',
+      Text(
+          _text('เห็นคิวชัด วางแผนได้ง่ายขึ้น',
+              'See your queue. Plan your next post.'),
           style: TextStyle(fontSize: 12.5, color: AppTheme.textSecondary)),
     ]);
     if (MediaQuery.textScalerOf(context).scale(14) >= 21) {
@@ -1018,7 +1094,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   Widget _buildAddPostButton() {
     return Semantics(
       key: const ValueKey('calendar-add-post'),
-      label: 'สร้างโพสต์สำหรับ ${_formatThaiDate(_activeDay)}',
+      label: _text('สร้างโพสต์สำหรับ ${_formatDate(_activeDay)}',
+          'Create post for ${_formatDate(_activeDay)}'),
       button: true,
       enabled: !_isPastDay,
       onTap: _isPastDay ? null : _addPostForDay,
@@ -1034,14 +1111,15 @@ class _CalendarScreenState extends State<CalendarScreen>
             decoration: BoxDecoration(
                 color: _isPastDay ? AppTheme.border : AppTheme.accent,
                 borderRadius: BorderRadius.circular(12)),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.add_rounded, color: Colors.white, size: 21),
-              SizedBox(width: 4),
-              Text('สร้างโพสต์',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.add_rounded, color: Colors.white, size: 21),
+              const SizedBox(width: 4),
+              Flexible(
+                  child: Text(_text('สร้างโพสต์', 'Create post'),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700))),
             ]),
           ),
         )),
@@ -1068,11 +1146,13 @@ class _CalendarScreenState extends State<CalendarScreen>
               key: const ValueKey('calendar-previous-period'),
               animate: _motionEnabled,
               icon: Icons.chevron_left,
-              label: _isWeekView ? 'สัปดาห์ก่อนหน้า' : 'เดือนก่อนหน้า',
+              label: _isWeekView
+                  ? _text('สัปดาห์ก่อนหน้า', 'Previous week')
+                  : _text('เดือนก่อนหน้า', 'Previous month'),
               onTap: () => _changePeriod(-1)),
           Expanded(
               child: Column(children: [
-            Text('${_thaiMonthsFull[_activeDay.month - 1]} ${_activeDay.year}',
+            Text('${_monthNames[_activeDay.month - 1]} ${_activeDay.year}',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 15,
@@ -1080,7 +1160,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                     color: AppTheme.textPrimary)),
             if (_isWeekView)
               Text(
-                  '${start.day} ${_thaiMonthsShort[start.month - 1]} – ${end.day} ${_thaiMonthsShort[end.month - 1]}',
+                  '${start.day} ${_shortMonthNames[start.month - 1]} – ${end.day} ${_shortMonthNames[end.month - 1]}',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
           ])),
@@ -1088,7 +1168,9 @@ class _CalendarScreenState extends State<CalendarScreen>
               key: const ValueKey('calendar-next-period'),
               animate: _motionEnabled,
               icon: Icons.chevron_right,
-              label: _isWeekView ? 'สัปดาห์ถัดไป' : 'เดือนถัดไป',
+              label: _isWeekView
+                  ? _text('สัปดาห์ถัดไป', 'Next week')
+                  : _text('เดือนถัดไป', 'Next month'),
               onTap: () => _changePeriod(1)),
         ]),
         const SizedBox(height: 6),
@@ -1131,8 +1213,9 @@ class _CalendarScreenState extends State<CalendarScreen>
     return Semantics(
       key: ValueKey(
           'calendar-day-${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'),
-      label:
-          '${_formatThaiDate(date)}${today ? ' วันนี้' : ''} มี $count โพสต์',
+      label: _text(
+          '${_formatDate(date)}${today ? ' วันนี้' : ''} มี $count โพสต์',
+          '${_formatDate(date)}${today ? ' Today' : ''}, ${_postCount(count)}'),
       button: true,
       selected: selected,
       onTap: () => _selectDay(date),
@@ -1174,7 +1257,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                         ? ''
                         : shortCount
                             ? '$count'
-                            : '$count โพสต์',
+                            : _postCount(count),
                     style: TextStyle(
                         fontSize: 11,
                         color: selected ? Colors.white : AppTheme.textMuted)),
@@ -1208,10 +1291,14 @@ class _CalendarScreenState extends State<CalendarScreen>
             now.isBefore(_periodEnd.add(const Duration(days: 1)))
         : now.year == _activeDay.year && now.month == _activeDay.month;
     final label = _isWeekView
-        ? (current ? 'สัปดาห์นี้' : 'สัปดาห์ที่เลือก')
-        : (current ? 'เดือนนี้' : 'เดือนที่เลือก');
+        ? (current
+            ? _text('สัปดาห์นี้', 'This week')
+            : _text('สัปดาห์ที่เลือก', 'Selected week'))
+        : (current
+            ? _text('เดือนนี้', 'This month')
+            : _text('เดือนที่เลือก', 'Selected month'));
     return Text(
-        '$label ${period.length} โพสต์ · รอส่ง $queued${review > 0 ? ' · ต้องตรวจสอบ $review' : ''}',
+        '$label ${_postCount(period.length)} · ${_text('รอส่ง', 'Queued')} $queued${review > 0 ? ' · ${_text('ต้องตรวจสอบ', 'Needs review')} $review' : ''}',
         key: const ValueKey('calendar-period-summary'),
         style: TextStyle(fontSize: 12, color: AppTheme.textSecondary));
   }
@@ -1220,7 +1307,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     final buttons = [
       _PlatformFilterButton(
           key: const ValueKey('calendar-filter-all'),
-          label: 'ทั้งหมด',
+          label: _text('ทั้งหมด', 'All'),
           animate: _motionEnabled,
           selected: _platformFilter == 'all',
           onTap: () => setState(() => _platformFilter = 'all')),
@@ -1259,7 +1346,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       return [
         Semantics(
           key: const ValueKey('calendar-loading'),
-          label: 'กำลังโหลดปฏิทินโพสต์...',
+          label: _text('กำลังโหลดปฏิทินโพสต์...', 'Loading post calendar...'),
           liveRegion: true,
           child: ExcludeSemantics(
             child: Column(
@@ -1290,22 +1377,23 @@ class _CalendarScreenState extends State<CalendarScreen>
             key: const ValueKey('calendar-error'),
             icon: Icons.error_outline,
             message: _hasLoaded
-                ? 'อัปเดตไม่สำเร็จ กำลังแสดงข้อมูลเดิม\n$_errorMessage'
+                ? _text('อัปเดตไม่สำเร็จ กำลังแสดงข้อมูลเดิม\n$_errorMessage',
+                    'Could not update. Showing previous data.\n$_errorMessage')
                 : _errorMessage!,
             color: Theme.of(context).colorScheme.error,
-            actionLabel: 'ลองใหม่',
+            actionLabel: _text('ลองใหม่', 'Try again'),
             onAction: _loadPosts),
         const SizedBox(height: 10),
       ],
       if (_hasLoaded) ...[
         Row(children: [
           Expanded(
-              child: Text(_formatThaiDate(_activeDay),
+              child: Text(_formatDate(_activeDay),
                   style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary))),
-          Text('${dayPosts.length} โพสต์',
+          Text(_postCount(dayPosts.length),
               style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
         ]),
         const SizedBox(height: 10),
@@ -1314,9 +1402,12 @@ class _CalendarScreenState extends State<CalendarScreen>
             key: const ValueKey('calendar-empty'),
             animate: _motionEnabled,
             title: _platformFilter == 'all'
-                ? 'วันที่เลือกยังไม่มีโพสต์'
-                : 'ไม่มีโพสต์สำหรับช่องทางนี้',
-            actionLabel: _isPastDay ? 'กลับไปวันนี้' : 'สร้างโพสต์วันที่นี้',
+                ? _text('วันที่เลือกยังไม่มีโพสต์', 'No posts on this day')
+                : _text(
+                    'ไม่มีโพสต์สำหรับช่องทางนี้', 'No posts for this channel'),
+            actionLabel: _isPastDay
+                ? _text('กลับไปวันนี้', 'Back to today')
+                : _text('สร้างโพสต์วันที่นี้', 'Create post for this day'),
             onTap: _isPastDay
                 ? () => _selectDay(_now().toLocal())
                 : _hasAddAction
@@ -1726,15 +1817,17 @@ class _DayPostRow extends StatelessWidget {
         .map(_platformFor)
         .whereType<SocialPlatform>()
         .toList();
-    final status = busyLabel ?? _statusLabel(post);
-    final sending =
-        post.status.toUpperCase() == 'PUBLISHING' && status == 'กำลังส่ง';
+    final languageCode = _calendarLanguageCode(context);
+    final status = busyLabel ?? _statusLabel(post, languageCode: languageCode);
+    final sending = busyLabel == null &&
+        post.status.toUpperCase() == 'PUBLISHING' &&
+        !hasUnconfirmedDeliveryOutcome(post.platformResults);
     final channelSummary = sending
         ? post.platforms.toSet().map((value) {
             final result = post.platformResults
                 .where((result) => result.platform == value)
                 .firstOrNull;
-            return '${_platformFor(value)?.shortLabel ?? value} ${postPlatformDeliveryLabel(result)}';
+            return '${_platformFor(value)?.shortLabel ?? value} ${postPlatformDeliveryLabel(result, languageCode: languageCode)}';
           }).join(', ')
         : platforms.map((platform) => platform.shortLabel).join(', ');
     final failed = post.status.toUpperCase() == 'FAILED';
@@ -1822,6 +1915,7 @@ class _DayPostRow extends StatelessWidget {
                           child: PostDeePlatformDeliveryRow(
                             platforms: post.platforms,
                             results: post.platformResults,
+                            languageCode: languageCode,
                           ),
                         ),
                       ] else ...[
@@ -2076,7 +2170,17 @@ bool _needsStatusRefresh(CalendarPostResult post) {
 String _formatTime(DateTime date) =>
     '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 
-const _weekdayLabels = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+String _calendarLanguageCode(BuildContext context) =>
+    Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+        ?.locale
+        .languageCode ??
+    'th';
+
+String _calendarText(BuildContext context, String thai, String english) =>
+    _calendarLanguageCode(context) == 'th' ? thai : english;
+
+const _thaiWeekdayLabels = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+const _englishWeekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const _thaiMonthsFull = [
   'มกราคม',
@@ -2108,32 +2212,68 @@ const _thaiMonthsShort = [
   'ธ.ค.',
 ];
 
-String _formatThaiDate(DateTime date) =>
-    '${date.day} ${_thaiMonthsShort[date.month - 1]} ${date.year}';
+const _englishMonthsFull = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
-String _statusLabel(CalendarPostResult post) {
+const _englishMonthsShort = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _formatCalendarDate(DateTime date, {String languageCode = 'th'}) {
+  final months = languageCode == 'th' ? _thaiMonthsShort : _englishMonthsShort;
+  return '${date.day} ${months[date.month - 1]} ${date.year}';
+}
+
+String _statusLabel(CalendarPostResult post, {String languageCode = 'th'}) {
+  final isThai = languageCode == 'th';
   if (post.status.toUpperCase() == 'PUBLISHING') {
     return hasUnconfirmedDeliveryOutcome(post.platformResults)
-        ? 'ผลยังไม่ยืนยัน'
-        : 'กำลังส่ง';
+        ? (isThai ? 'ผลยังไม่ยืนยัน' : 'Delivery unconfirmed')
+        : (isThai ? 'กำลังส่ง' : 'Sending');
   }
   final deliveryLabel = aggregatePostDeliveryOutcomeLabel(
     post.platformResults,
     compact: true,
+    languageCode: languageCode,
   );
   if (deliveryLabel != null) return deliveryLabel;
 
   switch (post.status.toUpperCase()) {
     case 'QUEUED':
-      return post.scheduledAt == null ? 'รอส่ง' : 'รอส่งตามเวลา';
+      return post.scheduledAt == null
+          ? (isThai ? 'รอส่ง' : 'Queued')
+          : (isThai ? 'รอส่งตามเวลา' : 'Scheduled');
     case 'PUBLISHING':
-      return 'กำลังส่ง';
+      return isThai ? 'กำลังส่ง' : 'Sending';
     case 'PUBLISHED':
-      return 'ส่งสำเร็จ';
+      return isThai ? 'ส่งสำเร็จ' : 'Delivered';
     case 'PARTIAL_PUBLISHED':
-      return 'ส่งสำเร็จบางช่องทาง';
+      return isThai ? 'ส่งสำเร็จบางช่องทาง' : 'Partially delivered';
     case 'FAILED':
-      return 'ส่งไม่สำเร็จ';
+      return isThai ? 'ส่งไม่สำเร็จ' : 'Failed';
     default:
       return post.status;
   }

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
+import 'review_localizations.dart';
 
 @immutable
 class PublishPostPreviewChannel {
@@ -167,7 +168,7 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
         if (channel?.publishingNote?.trim().isNotEmpty ?? false)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(channel!.publishingNote!,
+            child: ReviewText(channel!.publishingNote!,
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -182,24 +183,24 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
               icon: Icon(
                   _showCover ? Icons.play_circle_outline : Icons.image_outlined,
                   size: 18),
-              label: Text(_showCover ? 'ดูคลิป' : 'ดูปก'),
+              label: ReviewText(_showCover ? 'ดูคลิป' : 'ดูปก'),
             ),
           ),
         if (_showCover) ...[
-          const Text('ปกที่เลือกใน PostDee',
+          const ReviewText('ปกที่เลือกใน PostDee',
               style: TextStyle(fontWeight: FontWeight.w600)),
-          Text(_coverNote(channel?.platform),
+          ReviewText(_coverNote(channel?.platform),
               style: Theme.of(context).textTheme.bodySmall),
         ],
         if (widget.data.watermarkEnabled)
-          Text('ลายน้ำจริงจะถูกใส่ตอนส่งโพสต์',
+          ReviewText('ลายน้ำจริงจะถูกใส่ตอนส่งโพสต์',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
                   ?.copyWith(color: colors.onSurfaceVariant)),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Text('ภาพตัวอย่างก่อนส่ง · หน้าตาจริงอาจต่างตามแพลตฟอร์ม',
+          child: ReviewText('ภาพตัวอย่างก่อนส่ง · หน้าตาจริงอาจต่างตามแพลตฟอร์ม',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
@@ -307,7 +308,7 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
                           onPressed: () =>
                               setState(() => _expanded = !_expanded),
                           style: TextButton.styleFrom(foregroundColor: ink),
-                          child: Text(
+                          child: ReviewText(
                               _expanded ? 'ย่อแคปชั่น' : 'ดูแคปชั่นทั้งหมด'),
                         )),
                 ]);
@@ -322,7 +323,7 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
                       color: AppTheme.onDarkPrimary, size: 16),
                   const SizedBox(width: 5),
                   Flexible(
-                      child: Text('เสียงจากคลิป',
+                      child: ReviewText('เสียงจากคลิป',
                           style: style.copyWith(fontSize: 12))),
                 ],
               ),
@@ -335,7 +336,7 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
   Widget _poster() {
     Widget unavailable(BuildContext context, Object error, StackTrace? stack) =>
         const Center(
-            child: Text('ยังแสดงปกไม่ได้',
+            child: ReviewText('ยังแสดงปกไม่ได้',
                 style: TextStyle(color: AppTheme.onDarkPrimary)));
     final bytes = widget.data.coverImageBytes;
     return ColoredBox(
@@ -393,7 +394,7 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
             IconButton(
               key: const ValueKey('preview-cover-toggle'),
               onPressed: _toggleCover,
-              tooltip: _showCover ? 'ดูคลิป' : 'ดูปก',
+              tooltip: localizeReviewMessage(context, _showCover ? 'ดูคลิป' : 'ดูปก'),
               icon: Icon(
                   _showCover ? Icons.play_circle_outline : Icons.image_outlined,
                   color: Colors.white,
@@ -401,7 +402,7 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
             ),
           IconButton(
             key: const ValueKey('preview-info-toggle'),
-            tooltip: 'ข้อมูลพรีวิว',
+            tooltip: localizeReviewMessage(context, 'ข้อมูลพรีวิว'),
             onPressed: () {
               widget.onShowInformation?.call();
               setState(() => _showInformation = true);
@@ -426,36 +427,36 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
             ),
             Center(
               child: AlertDialog(
-                title: const Text('ข้อมูลพรีวิว'),
+                title: const ReviewText('ข้อมูลพรีวิว'),
                 scrollable: true,
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    const ReviewText(
                         'ภาพตัวอย่างก่อนส่ง · หน้าตาจริงอาจต่างตามแพลตฟอร์ม'),
                     if (channel?.publishingNote?.trim().isNotEmpty ??
                         false) ...[
                       const SizedBox(height: 12),
-                      Text(channel!.publishingNote!),
+                      ReviewText(channel!.publishingNote!),
                     ],
                     if (_hasCover) ...[
                       const SizedBox(height: 12),
-                      Text(_coverNote(channel?.platform)),
+                      ReviewText(_coverNote(channel?.platform)),
                     ],
                     if (widget.data.watermarkEnabled) ...[
                       const SizedBox(height: 12),
-                      const Text('ลายน้ำจริงจะถูกใส่ตอนส่งโพสต์'),
+                      const ReviewText('ลายน้ำจริงจะถูกใส่ตอนส่งโพสต์'),
                     ],
                     const SizedBox(height: 12),
-                    const Text('หัวใจและความคิดเห็นเป็นภาพตัวอย่าง'),
+                    const ReviewText('หัวใจและความคิดเห็นเป็นภาพตัวอย่าง'),
                   ],
                 ),
                 actions: [
                   TextButton(
                     key: const ValueKey('preview-info-close'),
                     onPressed: () => setState(() => _showInformation = false),
-                    child: const Text('ปิด'),
+                    child: const ReviewText('ปิด'),
                   ),
                 ],
               ),
@@ -569,7 +570,7 @@ class _PublishPostPreviewPaneState extends State<PublishPostPreviewPane> {
                   if (_showCover)
                     const Padding(
                       padding: EdgeInsets.only(left: 4, top: 4),
-                      child: Text('ปกที่เลือกใน PostDee',
+                      child: ReviewText('ปกที่เลือกใน PostDee',
                           style: TextStyle(color: Colors.white, fontSize: 12)),
                     ),
                 ],

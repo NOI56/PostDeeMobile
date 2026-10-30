@@ -8,7 +8,9 @@ import '../../core/theme/app_theme.dart';
 import '../ai_editing/review_video_timeline.dart';
 import '../ai_editing/video_duration_probe.dart';
 import '../platforms/social_platform.dart';
+import 'cover_editor_localizations.dart';
 import 'cover_image_processor.dart';
+import 'review_localizations.dart';
 
 class CoverEditorRequest {
   const CoverEditorRequest({
@@ -226,7 +228,7 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: const CoverEditorText(
           'แต่งหน้าปก',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
@@ -242,7 +244,7 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
               const SizedBox(height: 12),
               _buildPreview(),
               const SizedBox(height: 12),
-              Text(
+              CoverEditorText(
                 'เลื่อนเลือกภาพจากคลิป',
                 key: const ValueKey('cover-frame-instruction'),
                 style: TextStyle(
@@ -252,7 +254,7 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
                 ),
               ),
               const SizedBox(height: 3),
-              Text(
+              CoverEditorText(
                 'ภาพตัวอย่างจะเปลี่ยนตามตำแหน่งเวลา แล้วใช้ภาพนั้นเป็นหน้าปก',
                 style: TextStyle(
                   color: AppTheme.textMuted,
@@ -263,6 +265,13 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
               const SizedBox(height: 8),
               ReviewVideoTimeline(
                 sliderKey: const ValueKey('cover-frame-slider'),
+                positionLabel:
+                    coverEditorText(context, 'ตำแหน่งวิดีโอ', 'Video position'),
+                semanticValueFormatter: (elapsed, duration, remaining) =>
+                    coverTimelineSemantics(
+                        context, elapsed, duration, remaining),
+                remainingLabelFormatter: (seconds) =>
+                    coverRemainingTime(context, seconds),
                 position: Duration(milliseconds: _design.coverFrameTimeMs),
                 duration: Duration(milliseconds: _durationMs),
                 maxPosition: Duration(milliseconds: _maximumFrameTimeMs),
@@ -278,19 +287,35 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
                 },
               ),
               const SizedBox(height: 14),
-              TextField(
-                key: const ValueKey('cover-text-field'),
-                controller: _textController,
-                maxLength: 48,
-                enabled: !_isSaving,
-                decoration: const InputDecoration(
-                  labelText: 'ข้อความบนหน้าปก (ไม่ใส่ก็ได้)',
-                  hintText: 'เช่น ลดวันนี้เท่านั้น',
-                  prefixIcon: Icon(Icons.title_rounded),
-                ),
-                onChanged: (value) => setState(() {
-                  _design = _design.copyWith(text: value);
-                }),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ExcludeSemantics(
+                    child: CoverEditorText(
+                      'ข้อความบนหน้าปก (ไม่ใส่ก็ได้)',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Semantics(
+                    label: coverEditorText(context,
+                        'ข้อความบนหน้าปก (ไม่ใส่ก็ได้)', 'Cover text (optional)'),
+                    child: TextField(
+                      key: const ValueKey('cover-text-field'),
+                      controller: _textController,
+                      maxLength: 48,
+                      enabled: !_isSaving,
+                      decoration: InputDecoration(
+                        hintText: coverEditorText(
+                            context, 'เช่น ลดวันนี้เท่านั้น', 'e.g. Today only'),
+                        prefixIcon: const Icon(Icons.title_rounded),
+                      ),
+                      onChanged: (value) => setState(() {
+                        _design = _design.copyWith(text: value);
+                      }),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               _sectionLabel('ฟอนต์'),
@@ -391,7 +416,7 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFFFCC80)),
                   ),
-                  child: Text(
+                  child: CoverEditorText(
                     _errorMessage!,
                     style: const TextStyle(
                       color: Color(0xFF8A4B08),
@@ -428,7 +453,7 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
                         ),
                       )
                     : const Icon(Icons.check_rounded),
-                label: Text(
+                label: CoverEditorText(
                   _isSaving ? 'กำลังสร้างหน้าปก...' : 'ใช้หน้าปกนี้',
                 ),
               ),
@@ -583,7 +608,7 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
     );
   }
 
-  Widget _sectionLabel(String label) => Text(
+  Widget _sectionLabel(String label) => CoverEditorText(
         label,
         style: TextStyle(
           color: AppTheme.textPrimary,
@@ -600,7 +625,7 @@ class _CoverEditorScreenState extends State<CoverEditorScreen> {
   }) {
     return ChoiceChip(
       key: key,
-      label: Text(label),
+      label: CoverEditorText(label),
       selected: selected,
       onSelected: _isSaving ? null : (_) => onSelected(),
     );
@@ -711,9 +736,11 @@ class CoverPlatformCapabilityNotice extends StatelessWidget {
       key: const ValueKey('cover-platform-capability-notice'),
       padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F8F5),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? AppTheme.glassDeep : const Color(0xFFF2F8F5),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFB9DCCB)),
+        border: Border.all(color: Theme.of(context).brightness == Brightness.dark
+            ? AppTheme.border : const Color(0xFFB9DCCB)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -726,7 +753,7 @@ class CoverPlatformCapabilityNotice extends StatelessWidget {
                 color: AppTheme.accentCyanInk,
               ),
               const SizedBox(width: 7),
-              Text(
+              ReviewText(
                 'การรองรับหน้าปก',
                 style: TextStyle(
                   color: AppTheme.textPrimary,
@@ -741,7 +768,7 @@ class CoverPlatformCapabilityNotice extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 3),
               child: Text(
-                '• $message',
+                '• ${localizeReviewMessage(context, message)}',
                 style: TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: compact ? 10.5 : 11.5,

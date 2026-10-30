@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_session.dart';
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
@@ -11,6 +12,8 @@ import '../shared/postdee_notice.dart';
 import 'post_detail_screen.dart';
 
 typedef PostsLoader = Future<List<PostSummaryResult>> Function();
+
+enum _PostsLoadError { ownerChanged, loadFailed }
 
 /// Searchable owned activity, including both immediate and scheduled posts.
 class PostsScreen extends StatefulWidget {
@@ -28,13 +31,32 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
   final _search = TextEditingController();
   List<PostSummaryResult> _posts = const [];
   bool _loading = true;
-  String? _error;
+  _PostsLoadError? _error;
   late String? _owner;
   int _generation = 0;
   bool _ownerInvalidated = false;
   String _status = 'ALL';
   String _platform = 'ALL';
   String _dateRange = 'ALL';
+
+  String get _languageCode =>
+      Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+          ?.locale
+          .languageCode ??
+      'th';
+
+  String _text(String thai, String english) =>
+      _languageCode == 'th' ? thai : english;
+
+  String? get _errorMessage => switch (_error) {
+        _PostsLoadError.ownerChanged => _text(
+            'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายการโพสต์ใหม่',
+            'Your account has changed. Reopen All posts.'),
+        _PostsLoadError.loadFailed => _text(
+            'โหลดรายการโพสต์ไม่สำเร็จ กรุณาลองใหม่',
+            'Could not load your posts. Please try again.'),
+        null => null,
+      };
 
   @override
   void initState() {
@@ -62,7 +84,7 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
     setState(() {
       _posts = const [];
       _loading = false;
-      _error = 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายการโพสต์ใหม่';
+      _error = _PostsLoadError.ownerChanged;
     });
   }
 
@@ -94,7 +116,7 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
     } catch (_) {
       if (mounted && !_ownerInvalidated && generation == _generation) {
-        setState(() => _error = 'โหลดรายการโพสต์ไม่สำเร็จ กรุณาลองใหม่');
+        setState(() => _error = _PostsLoadError.loadFailed);
       }
     } finally {
       if (mounted && generation == _generation) {
@@ -173,12 +195,13 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
             controller: _search,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              labelText: 'ค้นหาแคปชั่นหรือรหัสโพสต์',
+              labelText: _text(
+                  'ค้นหาแคปชั่นหรือรหัสโพสต์', 'Search caption or post ID'),
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _search.text.isEmpty
                   ? null
                   : IconButton(
-                      tooltip: 'ล้างคำค้นหา',
+                      tooltip: _text('ล้างคำค้นหา', 'Clear search'),
                       icon: const Icon(Icons.close),
                       onPressed: () {
                         _search.clear();
@@ -187,8 +210,8 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
             )),
         const SizedBox(height: 12),
         LayoutBuilder(builder: (context, constraints) {
-          final fullWidth = constraints.maxWidth < 330 ||
-              MediaQuery.textScalerOf(context).scale(1) > 1.4;
+          final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.4;
+          final fullWidth = constraints.maxWidth < 330 || largeText;
           final width = fullWidth
               ? constraints.maxWidth
               : (constraints.maxWidth - 12) / 2;
@@ -198,15 +221,19 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
                 child: DropdownButtonFormField<String>(
                   key: const ValueKey('posts-status-filter'),
                   initialValue: _status,
+                  isDense: !largeText,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'สถานะ'),
-                  items: const {
-                    'ALL': 'ทุกสถานะ',
-                    'PENDING': 'รอส่ง / กำลังส่ง',
-                    'PUBLISHED': 'ส่งสำเร็จ',
-                    'PARTIAL_PUBLISHED': 'สำเร็จบางช่องทาง',
-                    'FAILED': 'ส่งไม่สำเร็จ',
-                    'UNCONFIRMED': 'ผลยังไม่ยืนยัน'
+                  decoration:
+                      InputDecoration(labelText: _text('สถานะ', 'Status')),
+                  items: {
+                    'ALL': _text('ทุกสถานะ', 'All statuses'),
+                    'PENDING': _text('รอส่ง / กำลังส่ง', 'Queued / Sending'),
+                    'PUBLISHED': _text('ส่งสำเร็จ', 'Delivered'),
+                    'PARTIAL_PUBLISHED':
+                        _text('สำเร็จบางช่องทาง', 'Partially delivered'),
+                    'FAILED': _text('ส่งไม่สำเร็จ', 'Failed'),
+                    'UNCONFIRMED':
+                        _text('ผลยังไม่ยืนยัน', 'Delivery unconfirmed')
                   }
                       .entries
                       .map((entry) => DropdownMenuItem(
@@ -220,11 +247,14 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
                 child: DropdownButtonFormField<String>(
                   key: const ValueKey('posts-platform-filter'),
                   initialValue: _platform,
+                  isDense: !largeText,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'ช่องทาง'),
+                  decoration:
+                      InputDecoration(labelText: _text('ช่องทาง', 'Channel')),
                   items: [
-                    const DropdownMenuItem(
-                        value: 'ALL', child: Text('ทุกช่องทาง')),
+                    DropdownMenuItem(
+                        value: 'ALL',
+                        child: Text(_text('ทุกช่องทาง', 'All channels'))),
                     for (final platform in const [
                       SocialPlatform.tiktok,
                       SocialPlatform.youtubeShorts,
@@ -242,13 +272,15 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
                 child: DropdownButtonFormField<String>(
                   key: const ValueKey('posts-date-filter'),
                   initialValue: _dateRange,
+                  isDense: !largeText,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'วันที่สร้าง'),
-                  items: const {
-                    'ALL': 'ทุกวัน',
-                    'TODAY': 'วันนี้',
-                    '7D': '7 วันล่าสุด',
-                    '30D': '30 วันล่าสุด'
+                  decoration: InputDecoration(
+                      labelText: _text('วันที่สร้าง', 'Created date')),
+                  items: {
+                    'ALL': _text('ทุกวัน', 'All dates'),
+                    'TODAY': _text('วันนี้', 'Today'),
+                    '7D': _text('7 วันล่าสุด', 'Last 7 days'),
+                    '30D': _text('30 วันล่าสุด', 'Last 30 days')
                   }
                       .entries
                       .map((entry) => DropdownMenuItem(
@@ -266,7 +298,7 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final visible = _filteredPosts;
     return Scaffold(
-      appBar: AppBar(title: const Text('โพสต์ทั้งหมด')),
+      appBar: AppBar(title: Text(_text('โพสต์ทั้งหมด', 'All posts'))),
       body: RefreshIndicator(
           onRefresh: _load,
           child: ListView.builder(
@@ -292,15 +324,18 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
                       ? Icons.error_outline
                       : Icons.video_library_outlined),
                   title: Text(
-                      post.caption.isEmpty ? 'โพสต์วิดีโอ' : post.caption,
+                      post.caption.isEmpty
+                          ? _text('โพสต์วิดีโอ', 'Video post')
+                          : post.caption,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis),
                   subtitle: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_statusLabel(post)),
-                        Text(_postDateLabel(post.createdAt)),
+                        Text(_statusLabel(post, languageCode: _languageCode)),
+                        Text(_postDateLabel(post.createdAt,
+                            languageCode: _languageCode)),
                         Text(platforms,
                             style: TextStyle(color: AppTheme.textMuted)),
                       ]),
@@ -314,9 +349,9 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
                     if (_error != null)
                       PostDeeNotice(
                           icon: Icons.cloud_off,
-                          message: _error!,
+                          message: _errorMessage!,
                           color: Theme.of(context).colorScheme.error,
-                          actionLabel: 'ลองใหม่',
+                          actionLabel: _text('ลองใหม่', 'Try again'),
                           onAction: _ownerInvalidated ? null : _load),
                     if (_loading && _posts.isEmpty)
                       Center(
@@ -327,11 +362,14 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
                       PostDeeNotice(
                           icon: Icons.video_library_outlined,
                           message: _posts.isEmpty
-                              ? 'ยังไม่มีโพสต์'
-                              : 'ไม่พบโพสต์ที่ตรงกับตัวกรอง',
+                              ? _text('ยังไม่มีโพสต์', 'No posts yet')
+                              : _text('ไม่พบโพสต์ที่ตรงกับตัวกรอง',
+                                  'No posts match your filters'),
                           color: AppTheme.accent)
                     else if (!_ownerInvalidated)
-                      Text('${visible.length} โพสต์',
+                      Text(
+                          _text('${visible.length} โพสต์',
+                              '${visible.length} post${visible.length == 1 ? '' : 's'}'),
                           style: TextStyle(color: AppTheme.textMuted)),
                     const SizedBox(height: 8),
                   ]);
@@ -341,34 +379,52 @@ class _PostsScreenState extends State<PostsScreen> with WidgetsBindingObserver {
   }
 }
 
-String _postDateLabel(DateTime value) {
+String _postDateLabel(DateTime value, {String languageCode = 'th'}) {
   final local = value.toLocal();
-  const months = [
-    'ม.ค.',
-    'ก.พ.',
-    'มี.ค.',
-    'เม.ย.',
-    'พ.ค.',
-    'มิ.ย.',
-    'ก.ค.',
-    'ส.ค.',
-    'ก.ย.',
-    'ต.ค.',
-    'พ.ย.',
-    'ธ.ค.'
-  ];
+  final months = languageCode == 'th'
+      ? const [
+          'ม.ค.',
+          'ก.พ.',
+          'มี.ค.',
+          'เม.ย.',
+          'พ.ค.',
+          'มิ.ย.',
+          'ก.ค.',
+          'ส.ค.',
+          'ก.ย.',
+          'ต.ค.',
+          'พ.ย.',
+          'ธ.ค.'
+        ]
+      : const [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec'
+        ];
   return '${local.day} ${months[local.month - 1]} ${local.year} · ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
 }
 
-String _statusLabel(PostSummaryResult post) =>
-    aggregatePostDeliveryOutcomeLabel(post.platformResults, compact: true) ??
+String _statusLabel(PostSummaryResult post, {String languageCode = 'th'}) =>
+    aggregatePostDeliveryOutcomeLabel(post.platformResults,
+        compact: true, languageCode: languageCode) ??
     switch (post.status) {
-      'PUBLISHED' => 'ส่งสำเร็จ',
-      'PARTIAL_PUBLISHED' => 'ส่งสำเร็จบางช่องทาง',
-      'FAILED' => 'ส่งไม่สำเร็จ',
-      'PUBLISHING' => 'กำลังส่ง',
-      'QUEUED' when post.scheduledAt != null => 'รอส่งตามเวลา',
-      _ => 'รอส่ง',
+      'PUBLISHED' => languageCode == 'th' ? 'ส่งสำเร็จ' : 'Delivered',
+      'PARTIAL_PUBLISHED' =>
+        languageCode == 'th' ? 'ส่งสำเร็จบางช่องทาง' : 'Partially delivered',
+      'FAILED' => languageCode == 'th' ? 'ส่งไม่สำเร็จ' : 'Failed',
+      'PUBLISHING' => languageCode == 'th' ? 'กำลังส่ง' : 'Sending',
+      'QUEUED' when post.scheduledAt != null =>
+        languageCode == 'th' ? 'รอส่งตามเวลา' : 'Scheduled',
+      _ => languageCode == 'th' ? 'รอส่ง' : 'Queued',
     };
 
 /// Resolves a notification directly through an authenticated owned-post read.
@@ -396,6 +452,15 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
   late String? _owner;
   bool _ownerInvalidated = false;
   bool _loadFailed = false;
+
+  String get _languageCode =>
+      Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+          ?.locale
+          .languageCode ??
+      'th';
+
+  String _text(String thai, String english) =>
+      _languageCode == 'th' ? thai : english;
 
   Future<PostSummaryResult?> _readPost(String id) async {
     if (widget.loadPost != null) return widget.loadPost!(id);
@@ -476,26 +541,40 @@ class _PostDetailLoaderScreenState extends State<PostDetailLoaderScreen> {
               : null,
           refreshOnOpen: false);
     }
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final retry = !_ownerInvalidated && _owner == _sessions.session.stableUserId
+        ? _load
+        : null;
     return Scaffold(
-        appBar: AppBar(title: const Text('รายละเอียดโพสต์')),
+        appBar: AppBar(title: Text(_text('รายละเอียดโพสต์', 'Post details'))),
         body: Center(
             child: _loading
                 ? const CircularProgressIndicator()
                 : Padding(
                     padding: const EdgeInsets.all(16),
-                    child: PostDeeNotice(
-                        key: const ValueKey('post-detail-unavailable'),
-                        icon: Icons.info_outline,
-                        message: _ownerInvalidated
-                            ? 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายละเอียดใหม่'
-                            : _loadFailed
-                                ? 'โหลดโพสต์ไม่สำเร็จ กรุณาลองใหม่เมื่อเชื่อมต่อได้'
-                                : 'ไม่พบโพสต์นี้ในบัญชีที่ใช้งาน อาจถูกยกเลิกหรือถูกนำออก',
-                        color: AppTheme.accent,
-                        actionLabel: 'ลองใหม่',
-                        onAction: !_ownerInvalidated &&
-                                _owner == _sessions.session.stableUserId
-                            ? _load
-                            : null))));
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      PostDeeNotice(
+                          key: const ValueKey('post-detail-unavailable'),
+                          icon: Icons.info_outline,
+                          message: _ownerInvalidated
+                              ? _text(
+                                  'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดรายละเอียดใหม่',
+                                  'Your account has changed. Reopen Post details.')
+                              : _loadFailed
+                                  ? _text(
+                                      'โหลดโพสต์ไม่สำเร็จ กรุณาลองใหม่เมื่อเชื่อมต่อได้',
+                                      'Could not load this post. Please try again when connected.')
+                                  : _text(
+                                      'ไม่พบโพสต์นี้ในบัญชีที่ใช้งาน อาจถูกยกเลิกหรือถูกนำออก',
+                                      'This post was not found in your account. It may have been canceled or removed.'),
+                          color: AppTheme.accent,
+                          actionLabel:
+                              largeText ? null : _text('ลองใหม่', 'Try again'),
+                          onAction: retry),
+                      if (largeText && retry != null)
+                        TextButton(
+                            onPressed: retry,
+                            child: Text(_text('ลองใหม่', 'Try again'))),
+                    ]))));
   }
 }

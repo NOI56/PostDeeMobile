@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 void showPostDeeUndoToast(
   BuildContext context, {
   required String message,
+  String undoLabel = 'เลิกทำ',
   FutureOr<void> Function()? onUndo,
 }) {
   final messenger = ScaffoldMessenger.of(context);
@@ -45,7 +46,7 @@ void showPostDeeUndoToast(
         action: onUndo == null
             ? null
             : SnackBarAction(
-                label: 'เลิกทำ',
+                label: undoLabel,
                 textColor: const Color(0xFF5FE3A1),
                 onPressed: () => unawaited(Future.sync(onUndo)),
               ),

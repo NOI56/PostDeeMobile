@@ -12,6 +12,7 @@ import '../shared/postdee_card.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/postdee_skeleton.dart';
 import 'analytics_error_message.dart';
+import 'analytics_localizations.dart';
 
 typedef AnalyticsLoader = Future<AnalyticsSummaryResult> Function();
 typedef AnalyticsRangeLoader = Future<AnalyticsSummaryResult> Function(
@@ -184,7 +185,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'วิเคราะห์',
+                    localizeAnalyticsMessage(context, 'วิเคราะห์'),
                     style: TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w700,
@@ -203,7 +204,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ),
             const SizedBox(height: 2),
             Text(
-              _rangeLabel(_selectedRange, DateTime.now()),
+              _rangeLabel(context, _selectedRange, DateTime.now()),
               style: TextStyle(
                 fontSize: 12.5,
                 color: AppTheme.textSecondary,
@@ -235,46 +236,62 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           else if (_errorMessage != null)
             PostDeeNotice(
               key: const ValueKey('analytics-load-error'),
-              message: _errorMessage!,
+              message: localizeAnalyticsMessage(context, _errorMessage!),
               icon: Icons.error_outline,
-              actionLabel: 'ลองใหม่',
+              actionLabel: localizeAnalyticsMessage(context, 'ลองใหม่'),
               onAction: _loadAnalytics,
             )
           else if (!_hasAnalyticsData)
             PostDeeNotice(
-              message: !_screenSession.isCurrent
-                  ? 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดหน้าวิเคราะห์ใหม่'
-                  : _isProLocked
-                  ? 'ข้อมูลวิเคราะห์รวมเปิดให้ใช้ในแพ็กเกจ Pro'
-                  : 'ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด',
+              message: localizeAnalyticsMessage(
+                  context,
+                  !_screenSession.isCurrent
+                      ? 'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดหน้าวิเคราะห์ใหม่'
+                      : _isProLocked
+                          ? 'ข้อมูลวิเคราะห์รวมเปิดให้ใช้ในแพ็กเกจ Pro'
+                          : 'ยังไม่มีข้อมูลวิเคราะห์ กลับมาดูหลังคลิปเริ่มมียอด'),
               color: AppTheme.accentCyanInk,
               icon: _isProLocked ? Icons.lock_outline : Icons.hourglass_empty,
             )
           else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
-                    label: 'ยอดวิวรวม',
-                    value: _fmtNumber(views),
-                  ),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: _StatCard(
-                    label: 'เอนเกจเมนต์',
-                    value: views == 0
-                        ? '0%'
-                        : '${(likes * 100 / views).toStringAsFixed(1)}%',
-                  ),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final viewsCard = _StatCard(
+                  label: localizeAnalyticsMessage(context, 'ยอดวิวรวม'),
+                  value: _fmtNumber(views),
+                );
+                final engagementCard = _StatCard(
+                  label: localizeAnalyticsMessage(context, 'เอนเกจเมนต์'),
+                  value: views == 0
+                      ? '0%'
+                      : '${(likes * 100 / views).toStringAsFixed(1)}%',
+                );
+                if (constraints.maxWidth < 400 &&
+                    MediaQuery.textScalerOf(context).scale(22) > 33) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      viewsCard,
+                      const SizedBox(height: 11),
+                      engagementCard,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: viewsCard),
+                    const SizedBox(width: 11),
+                    Expanded(child: engagementCard),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 13),
             if ((_summary?.daily ?? const []).isNotEmpty) ...[
               _DailyViewsChart(
                 metrics: _summary!.daily,
-                rangeLabel: _selectedRange.label,
+                rangeLabel:
+                    localizeAnalyticsMessage(context, _selectedRange.label),
               ),
               const SizedBox(height: 13),
             ],
@@ -284,7 +301,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ],
           const SizedBox(height: 15),
           Text(
-            'เครื่องมือวิเคราะห์ด้วย AI',
+            localizeAnalyticsMessage(context, 'เครื่องมือวิเคราะห์ด้วย AI'),
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -345,8 +362,12 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final largeText = MediaQuery.textScalerOf(context).scale(22) > 33;
     return Container(
-      padding: const EdgeInsets.all(13),
+      padding: EdgeInsets.symmetric(
+        horizontal: largeText ? 10 : 13,
+        vertical: 13,
+      ),
       decoration: BoxDecoration(
         color: AppTheme.glass,
         borderRadius: BorderRadius.circular(16),
@@ -411,7 +432,7 @@ class _RangeChip extends StatelessWidget {
           border: selected ? null : Border.all(color: AppTheme.border),
         ),
         child: Text(
-          range.label,
+          localizeAnalyticsMessage(context, range.label),
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w600,
@@ -480,7 +501,7 @@ class _DailyViewsChart extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'ยอดวิวรายวัน',
+                  localizeAnalyticsMessage(context, 'ยอดวิวรายวัน'),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -496,21 +517,65 @@ class _DailyViewsChart extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           SizedBox(
-            height: 142,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (var index = 0; index < points.length; index += 1) ...[
-                  if (index > 0) const SizedBox(width: 7),
-                  Expanded(
-                    child: _DailyBar(
-                      metric: points[index],
-                      maxViews: maxViews,
-                      highlighted: index == points.length - 1,
+            height: 142 +
+                (MediaQuery.textScalerOf(context).scale(10) - 10)
+                        .clamp(0, double.infinity) *
+                    3,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Keep every count readable at large text sizes. When the
+                // labels need more room, scroll the same buckets horizontally.
+                var minimumBarWidth = 0.0;
+                for (final point in points) {
+                  for (final label in [
+                    (_fmtCompact(point.views), 9.5, FontWeight.w600),
+                    ('${point.date.day}', 10.0, FontWeight.normal),
+                  ]) {
+                    final painter = TextPainter(
+                      text: TextSpan(
+                        text: label.$1,
+                        style: DefaultTextStyle.of(context).style.copyWith(
+                              fontSize: label.$2,
+                              fontWeight: label.$3,
+                            ),
+                      ),
+                      textDirection: Directionality.of(context),
+                      textScaler: MediaQuery.textScalerOf(context),
+                    )..layout();
+                    if (painter.width + 4 > minimumBarWidth) {
+                      minimumBarWidth = painter.width + 4;
+                    }
+                    painter.dispose();
+                  }
+                }
+                final contentWidth =
+                    minimumBarWidth * points.length + 7 * (points.length - 1);
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: contentWidth > constraints.maxWidth
+                        ? contentWidth
+                        : constraints.maxWidth,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        for (var index = 0;
+                            index < points.length;
+                            index += 1) ...[
+                          if (index > 0) const SizedBox(width: 7),
+                          Expanded(
+                            child: _DailyBar(
+                              metric: points[index],
+                              maxViews: maxViews,
+                              highlighted: index == points.length - 1,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ],
-              ],
+                );
+              },
             ),
           ),
         ],
@@ -605,7 +670,7 @@ class _PlatformPerformanceCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'ช่องทางที่ทำผลงานดีสุด',
+            localizeAnalyticsMessage(context, 'ช่องทางที่ทำผลงานดีสุด'),
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -642,6 +707,25 @@ class _PlatformPerfRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = platform?.displayColor ?? AppTheme.textMuted;
     final factor = (metric.views / maxViews).clamp(0.04, 1.0).toDouble();
+    final largeText = MediaQuery.textScalerOf(context).scale(12.5) > 18;
+    final label = Text(
+      metric.label,
+      maxLines: largeText ? null : 1,
+      overflow: largeText ? null : TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        color: AppTheme.textPrimary,
+      ),
+    );
+    final viewCount = Text(
+      '${metric.views}',
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        color: AppTheme.textPrimary,
+      ),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -653,25 +737,14 @@ class _PlatformPerfRow extends StatelessWidget {
               const SizedBox(width: 8),
             ],
             Expanded(
-              child: Text(
-                metric.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
+              child: largeText
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [label, viewCount],
+                    )
+                  : label,
             ),
-            Text(
-              '${metric.views}',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary,
-              ),
-            ),
+            if (!largeText) viewCount,
           ],
         ),
         const SizedBox(height: 6),
@@ -698,7 +771,7 @@ class _PlatformPerfRow extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '${metric.likes} ไลก์',
+          analyticsLikesLabel(context, metric.likes),
           style: TextStyle(
             fontSize: 11,
             color: AppTheme.textMuted,
@@ -732,9 +805,10 @@ class _AiToolCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final largeText = MediaQuery.textScalerOf(context).scale(13.5) > 18;
     return Semantics(
       button: true,
-      label: title,
+      label: localizeGrowthToolMessage(context, title),
       child: GestureDetector(
         onTap: () => showGrowthToolDetailSheet(
           context,
@@ -785,23 +859,38 @@ class _AiToolCard extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                          localizeGrowthToolMessage(context, title),
+                          maxLines: largeText ? null : 2,
+                          overflow: largeText ? null : TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700,
                             color: AppTheme.textPrimary,
                           ),
                         ),
-                        PostDeeSoftPill(label: status, color: color),
+                        if (largeText)
+                          Text(
+                            localizeGrowthToolMessage(context, status),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelMedium
+                                ?.copyWith(
+                                  color: color,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          )
+                        else
+                          PostDeeSoftPill(
+                            label: localizeGrowthToolMessage(context, status),
+                            color: color,
+                          ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      localizeGrowthToolMessage(context, subtitle),
+                      maxLines: largeText ? null : 2,
+                      overflow: largeText ? null : TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.4,
@@ -881,7 +970,11 @@ String _fmtNumber(int n) {
 
 String _fmtCompact(int n) => _fmtNumber(n).replaceAll('.0', '');
 
-String _rangeLabel(AnalyticsRangeOption range, DateTime now) {
+String _rangeLabel(
+  BuildContext context,
+  AnalyticsRangeOption range,
+  DateTime now,
+) {
   final today = DateTime(now.year, now.month, now.day);
   final start = switch (range) {
     AnalyticsRangeOption.today => today,
@@ -890,7 +983,7 @@ String _rangeLabel(AnalyticsRangeOption range, DateTime now) {
     AnalyticsRangeOption.ninetyDays => today.subtract(const Duration(days: 89)),
     AnalyticsRangeOption.year => DateTime(today.year),
   };
-  const months = [
+  const thaiMonths = [
     'ม.ค.',
     'ก.พ.',
     'มี.ค.',
@@ -904,6 +997,21 @@ String _rangeLabel(AnalyticsRangeOption range, DateTime now) {
     'พ.ย.',
     'ธ.ค.',
   ];
+  const englishMonths = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final months = analyticsUsesThai(context) ? thaiMonths : englishMonths;
 
   if (range == AnalyticsRangeOption.today) {
     return '${today.day} ${months[today.month - 1]} ${today.year}';

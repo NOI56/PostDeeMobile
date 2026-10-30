@@ -1124,6 +1124,11 @@ void main() {
             .widget<LegalDocumentScreen>(find.byType(LegalDocumentScreen))
             .document,
         PostDeeLegalDocuments.termsOfService);
+    expect(find.text('Terms of service'), findsOneWidget);
+    expect(find.textContaining('Facebook Page Reels'), findsOneWidget);
+    expect(find.textContaining('Draft document'), findsOneWidget);
+    expect(find.text('ข้อกำหนดการใช้งาน'), findsNothing);
+    expect(PostDeeAuthSessionStore.instance.session.isSignedIn, isFalse);
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('login-privacy')));

@@ -91,6 +91,28 @@ class PostDeeLegalDocuments {
         '- เราอาจปรับปรุงบริการและข้อกำหนด โดยจะแจ้งให้ทราบล่วงหน้าตามสมควร\n\n'
         'ติดต่อ: postdee.support@gmail.com\n\n'
         '(เอกสารฉบับร่าง — จะอัปเดตเป็นฉบับสมบูรณ์ก่อนเผยแพร่จริง)',
+    englishTitle: 'Terms of service',
+    englishBody: 'By using PostDee, you agree to the following terms.\n\n'
+        'Using the service\n'
+        '- Only use the app to post content you have the right to publish.\n'
+        '- Follow the policies of each connected social platform.\n'
+        '- You must choose the channels yourself and review the delivery mode for each channel before confirming.\n'
+        '- For TikTok, you can send a draft to continue editing in TikTok, or post directly using the latest audience options for your account. You must confirm music rights and the relevant terms before sending. Publishing results may take time while TikTok processes the post.\n'
+        '- For YouTube Shorts, you can choose visibility. Instagram uses the connected account. For Facebook Page Reels, you can choose to publish or save as a draft. If the delivery mode cannot be determined, confirmation is blocked.\n'
+        '- Scheduled posts must be set for a future time: Starter allows up to 14 days ahead, and Pro up to 30 days. Rescheduling uses the entitlements of your current plan. Posts already accepted into the queue are not automatically canceled.\n\n'
+        'Local drafts\n'
+        '- Post drafts are stored only in local app storage. They are not server posts and do not sync across devices.\n'
+        '- The operating system may back up draft files depending on your settings. Deleting your account may not delete copies stored only on your device or in backups.\n\n'
+        'Plans and payments\n'
+        '- Starter and Pro are monthly subscriptions through the Apple App Store or Google Play.\n'
+        '- You can manage or cancel your subscription from the store settings on your device.\n\n'
+        'Content and responsibility\n'
+        '- You are responsible for content posted through your account.\n'
+        '- Do not use the app for spam, scams or illegal activities.\n\n'
+        'Changes\n'
+        '- We may improve the service and update these terms. We will provide reasonable advance notice.\n\n'
+        'Contact: postdee.support@gmail.com\n\n'
+        '(Draft document — this will be updated to the final version before release.)',
   );
 }
 

@@ -3009,6 +3009,14 @@ Requires Starter or Pro.
   At most two clip-caption requests per API instance hold media at once; extra
   requests get `503` with `code: "AI_MEDIA_BUSY"` and `Retry-After: 1`, after
   the quota pre-check but before any download or quota reservation.
+- Admission follow-up (2026-10-30, local implementation): the same two-slot
+  budget covers the legacy transcription fallback as well as Gemini. Once
+  admitted, Gemini atomically reserves the existing caption-credit cost before
+  downloading media, so a request that loses a quota race returns `429` without
+  downloading. Existing media-error refunds and local-template fallback remain
+  unchanged; refunds still depend on the usage store being available.
+  `AI_MEDIA_BUSY` releases the owner-operation ticket because no provider work
+  was admitted; unknown/provider `5xx` outcomes keep their existing blocker.
 - The active customer flow should not require manual language or market
   selection. Spoken language is inferred from the clip, while `guidance`
   remains the simple override path when a seller wants a specific language,

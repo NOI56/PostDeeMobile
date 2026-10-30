@@ -351,9 +351,29 @@ DB integration ที่ข้ามผ่านบน local fixture แล้�
 ```powershell
 # ตรวจตำแหน่งอย่างเดียว: ไม่เปิดแอป ไม่ build ไม่ install และไม่เรียก adb
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tool\launch-postdee-android.ps1 -ResolveOnly
-# เปิดรุ่นที่ build จาก main; ใช้ AVD ที่เปิดอยู่หรือเลือกชื่อที่มีอยู่จริง
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tool\launch-postdee-android.ps1 -AvdName PostDee_Pixel
+# Open the existing Pixel_8 app without build/install/force-stop or Flutter
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tool\launch-postdee-android.ps1 -AvdName Pixel_8 -OpenOnly
+# Build and update Staging from main for a new delivery
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tool\launch-postdee-android.ps1 -AvdName Pixel_8
 ```
+
+The launcher defaults to AVD `Pixel_8` and reads each serial's actual name with
+`adb emu avd name` during selection and boot polling. It stops if identity cannot
+be verified or multiple emulators use that name. After a build it revalidates
+the same name and serial immediately before installation, force-stop and app
+launch; a reused or changed serial stops the workflow. Only a window clearly
+matching the selected serial's port may be focused; an unknown window leaves
+other windows untouched. `-OpenOnly` requires an existing Staging package and
+stops without installing if it is missing. It opens the installed APK without
+certifying that APK's source against latest `main`; use update mode for a new
+delivery. Both modes retain the existing AVD, keystore and application data.
+
+The 2026-10-30 follow-up adds `tool/test-android-launcher.ps1`, which exercises
+the workflow with fake bridge/process operations only. It covers named-AVD
+selection, boot polling, duplicate/missing devices, serial reuse during a build
+or before app actions, opening without updating, and forwarding the installed
+versionCode through update mode. These tests do not open an emulator or install
+an actual application.
 
 Launcher ไม่ fetch/push/deploy และไม่รับรองว่า main ที่ checkout เท่ากับ remote
 ล่าสุด ต้องตรวจ SHA ก่อนเริ่ม QA ใช้ `install -r` โดยคง AVD/keystore เดิม;

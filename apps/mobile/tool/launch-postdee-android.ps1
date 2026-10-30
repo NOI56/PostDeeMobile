@@ -1,8 +1,10 @@
 param(
   [ValidateRange(10, 900)]
   [int]$EmulatorBootTimeoutSeconds = 180,
-  [string]$AvdName = '',
-  [switch]$ResolveOnly
+  [ValidateNotNullOrEmpty()]
+  [string]$AvdName = 'Pixel_8',
+  [switch]$ResolveOnly,
+  [switch]$OpenOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -73,10 +75,13 @@ $stagingDefines = Join-Path $mobileRoot 'staging.local.json'
 if (-not (Test-Path -LiteralPath $stagingDefines)) {
   $stagingDefines = Join-Path $mobileRoot 'staging.local.example.json'
 }
-foreach ($requiredPath in @($mobileRoot, $stagingHelper, $stagingDefines)) {
+$resolveBuildPaths = -not $OpenOnly -or $ResolveOnly
+$requiredPaths = @($mobileRoot)
+if ($resolveBuildPaths) { $requiredPaths += @($stagingHelper, $stagingDefines) }
+foreach ($requiredPath in $requiredPaths) {
   if (-not (Test-Path -LiteralPath $requiredPath)) { throw "Required main-worktree path was not found: $requiredPath" }
 }
-$flutter = Resolve-WorkspaceFlutter
+$flutter = if ($resolveBuildPaths) { Resolve-WorkspaceFlutter } else { $null }
 $androidSdk = Resolve-AndroidSdk
 $adb = Join-Path $androidSdk 'platform-tools\adb.exe'
 $emulator = Join-Path $androidSdk 'emulator\emulator.exe'
@@ -100,14 +105,49 @@ if ($ResolveOnly) {
 . (Join-Path $mobileRoot 'tool\android-install-volume.ps1')
 
 function Get-ReadyEmulatorId {
+  param([Parameter(Mandatory = $true)][string]$TargetAvdName)
+  if ([string]::IsNullOrWhiteSpace($TargetAvdName)) { throw 'An exact Android AVD name is required.' }
   $lines = @(& $adb devices 2>$null)
+  if ($LASTEXITCODE -ne 0) { throw 'Android emulator inventory could not be inspected.' }
+  $headerCount = 0
+  $readyEmulators = @()
+  $seenDevices = @()
   foreach ($line in $lines) {
-    if ($line -match '^(emulator-\d+)\s+device$') { return $Matches[1] }
+    $line = ([string]$line).Trim()
+    if (-not $line) { continue }
+    if ($line -ceq 'List of devices attached') { $headerCount++; continue }
+    if ($line -notmatch '^(\S+)\s+(device|offline|unauthorized)$') {
+      throw 'Android returned invalid emulator inventory.'
+    }
+    $serial = $Matches[1]
+    $state = $Matches[2]
+    if ($seenDevices -ccontains $serial) { throw 'Android returned duplicate device identifiers.' }
+    $seenDevices += $serial
+    if ($serial -match '^emulator-\d+$' -and $state -ceq 'device') { $readyEmulators += $serial }
   }
+  if ($headerCount -ne 1) { throw 'Android emulator inventory could not be verified.' }
+  $matchingDevices = @()
+  foreach ($serial in $readyEmulators) {
+    $nameOutput = @(& $adb -s $serial emu avd name 2>$null)
+    if ($LASTEXITCODE -ne 0) { throw "Could not verify the AVD name for $serial." }
+    $names = @($nameOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -and $_ -cne 'OK' })
+    if ($names.Count -ne 1 -or $names[0] -match '^(KO:|error:)') {
+      throw "Android returned an invalid AVD name for $serial."
+    }
+    if ($names[0] -ceq $TargetAvdName) { $matchingDevices += $serial }
+  }
+  if ($matchingDevices.Count -gt 1) { throw "More than one running emulator uses AVD $TargetAvdName. Close the duplicate before continuing." }
+  if ($matchingDevices.Count -eq 1) { return $matchingDevices[0] }
   return $null
 }
 
 function Show-EmulatorWindow {
+  param([string]$DeviceId)
+  if ($DeviceId -notmatch '^emulator-(\d+)$') { return }
+  $port = $Matches[1]
+  $windows = @(Get-Process emulator, qemu-system-x86_64 -ErrorAction SilentlyContinue |
+    Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -match "(?:^|\D)$port(?:\D|$)" })
+  if ($windows.Count -ne 1) { return }
   if (-not ('PostDeeWindowFocus' -as [type])) {
     Add-Type @'
 using System;
@@ -118,12 +158,8 @@ public static class PostDeeWindowFocus {
 }
 '@
   }
-  $window = Get-Process emulator, qemu-system-x86_64 -ErrorAction SilentlyContinue |
-    Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-  if ($window) {
-    [PostDeeWindowFocus]::ShowWindow($window.MainWindowHandle, 9) | Out-Null
-    [PostDeeWindowFocus]::SetForegroundWindow($window.MainWindowHandle) | Out-Null
-  }
+  [PostDeeWindowFocus]::ShowWindow($windows[0].MainWindowHandle, 9) | Out-Null
+  [PostDeeWindowFocus]::SetForegroundWindow($windows[0].MainWindowHandle) | Out-Null
 }
 
 $createdNew = $false
@@ -150,24 +186,20 @@ try {
   }
   & $adb start-server | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Could not start the Android device bridge.' }
-  $deviceId = Get-ReadyEmulatorId
+  $deviceId = Get-ReadyEmulatorId -TargetAvdName $AvdName
   if (-not $deviceId) {
     $availableAvds = @(& $emulator -list-avds 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-    $selectedAvd = $AvdName
-    if ([string]::IsNullOrWhiteSpace($selectedAvd)) {
-      $selectedAvd = $availableAvds | Select-Object -First 1
-    }
-    if (-not $selectedAvd -or $availableAvds -cnotcontains $selectedAvd) {
+    if ($LASTEXITCODE -ne 0 -or @($availableAvds | Where-Object { $_ -ceq $AvdName }).Count -ne 1) {
       throw 'No matching Android virtual device was found. Create an AVD or pass its exact name with -AvdName.'
     }
-    Write-Host "Starting Android Emulator $selectedAvd..."
-    Start-Process -FilePath $emulator -ArgumentList @('-avd', ('"{0}"' -f $selectedAvd)) -WindowStyle Hidden | Out-Null
+    Write-Host "Starting Android Emulator $AvdName..."
+    Start-Process -FilePath $emulator -ArgumentList @('-avd', ('"{0}"' -f $AvdName)) -WindowStyle Hidden | Out-Null
   }
   $packageName = 'com.postdee.postdee_mobile.staging'
   $deadline = (Get-Date).AddSeconds($EmulatorBootTimeoutSeconds)
   $deviceId = $null
   do {
-    $candidateId = Get-ReadyEmulatorId
+    $candidateId = Get-ReadyEmulatorId -TargetAvdName $AvdName
     if ($candidateId) {
       $bootCompleted = @(& $adb -s $candidateId shell getprop sys.boot_completed 2>$null)
       if ($LASTEXITCODE -ne 0) { throw 'Android boot state could not be inspected.' }
@@ -181,18 +213,37 @@ try {
   } while ((Get-Date) -lt $deadline)
   if (-not $deviceId) { throw "Android storage and its existing PostDee package did not finish starting within $EmulatorBootTimeoutSeconds seconds. No installation was started; wait for storage and retry." }
 
-  $buildNumber = Get-PostDeeAndroidBuildNumber -Adb $adb -DeviceId $deviceId -PackageName $packageName
-  Write-Host "Building main $sourceCommit through the validated Staging helper (build $buildNumber)..."
-  & $stagingHelper -Command build-apk "--build-number=$buildNumber"
-  if ($LASTEXITCODE -ne 0) { throw "The Staging build failed (exit $LASTEXITCODE)." }
-  $apk = Join-Path $mobileRoot 'build\app\outputs\flutter-apk\app-debug.apk'
-  if (-not (Test-Path -LiteralPath $apk)) { throw 'The Staging APK was not created.' }
-  Invoke-PostDeeAndroidApkUpdate -Adb $adb -DeviceId $deviceId -PackageName $packageName -Apk $apk | Out-Null
-  & $adb -s $deviceId shell am force-stop $packageName | Out-Null
+  if ($OpenOnly) {
+    $installed = Get-PostDeeAndroidPackageState -Adb $adb -DeviceId $deviceId -PackageName $packageName
+    if (-not $installed.Exists) { throw "PostDee Staging is not installed on $AvdName. OpenOnly will not build or install it; use the update command explicitly." }
+  } else {
+    $buildNumber = Get-PostDeeAndroidBuildNumber -Adb $adb -DeviceId $deviceId -PackageName $packageName
+    Write-Host "Building main $sourceCommit through the validated Staging helper (build $buildNumber)..."
+    & $stagingHelper -Command build-apk "--build-number=$buildNumber"
+    if ($LASTEXITCODE -ne 0) { throw "The Staging build failed (exit $LASTEXITCODE)." }
+    $apk = Join-Path $mobileRoot 'build\app\outputs\flutter-apk\app-debug.apk'
+    if (-not (Test-Path -LiteralPath $apk)) { throw 'The Staging APK was not created.' }
+    # A long build can outlive an emulator; serials may be reused by another AVD.
+    if ((Get-ReadyEmulatorId -TargetAvdName $AvdName) -cne $deviceId) {
+      throw 'The selected Android emulator changed. No installation was started.'
+    }
+    Invoke-PostDeeAndroidApkUpdate -Adb $adb -DeviceId $deviceId -PackageName $packageName -Apk $apk | Out-Null
+    if ((Get-ReadyEmulatorId -TargetAvdName $AvdName) -cne $deviceId) {
+      throw 'The selected Android emulator changed after installation. No app was force-stopped.'
+    }
+    & $adb -s $deviceId shell am force-stop $packageName | Out-Null
+  }
+  if ((Get-ReadyEmulatorId -TargetAvdName $AvdName) -cne $deviceId) {
+    throw 'The selected Android emulator changed. The app was not opened.'
+  }
   & $adb -s $deviceId shell am start -n "$packageName/com.postdee.postdee_mobile.MainActivity"
-  if ($LASTEXITCODE -ne 0) { throw 'Android installed PostDee but could not open it.' }
-  Show-EmulatorWindow
-  Write-Host 'PostDee Staging is ready. The update kept the existing package UID and storage volume; no data was cleared.'
+  if ($LASTEXITCODE -ne 0) { throw 'Android could not open PostDee Staging.' }
+  Show-EmulatorWindow -DeviceId $deviceId
+  if ($OpenOnly) {
+    Write-Host "Opened existing PostDee Staging on $AvdName without building, installing or force-stopping the app."
+  } else {
+    Write-Host 'PostDee Staging is ready. The update kept the existing package UID and storage volume; no data was cleared.'
+  }
 } catch {
   $launcherExitCode = 1
   Write-Error -Message $_.Exception.Message -ErrorAction Continue

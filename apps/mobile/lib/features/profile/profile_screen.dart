@@ -1404,6 +1404,17 @@ const _helpInfo = LegalDocument(
       '  1 ช่องทางใช้ 1 หน่วย เช่น 1 คลิปลง 3 ช่องทาง ใช้ 3 หน่วย\n'
       '- ตั้งเวลาโพสต์ได้ไหม? Starter ล่วงหน้าได้ 14 วัน และ Pro 30 วัน\n\n'
       'ติดต่อทีมงาน: กดแชทกับทีมงานในหน้าบัญชี หรืออีเมล postdee.support@gmail.com',
+  englishTitle: 'Help',
+  englishBody: 'Need help?\n\n'
+      'Getting started\n'
+      '1. Choose a vertical 9:16 video.\n'
+      '2. Select the platforms you want to post to.\n'
+      '3. Publish now or schedule your post in the calendar.\n\n'
+      'Frequently asked questions\n'
+      '- How does the free posting quota work? The Basic plan includes 3 post units per month after you verify your phone number.\n'
+      '  Each channel uses 1 post unit. For example, one video sent to 3 channels uses 3 units.\n'
+      '- Can I schedule posts? Starter lets you schedule up to 14 days ahead, and Pro up to 30 days.\n\n'
+      'Contact the team: Tap "Chat with the team" on the Account page, or email postdee.support@gmail.com.',
 );
 
 class _DeleteAccountButton extends StatelessWidget {

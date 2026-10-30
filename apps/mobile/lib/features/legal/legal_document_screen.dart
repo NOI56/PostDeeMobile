@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../core/localization/postdee_localizations.dart';
 import '../../core/theme/app_theme.dart';
 
 class LegalDocument {
   const LegalDocument({
     required this.title,
     required this.body,
+    this.englishTitle,
+    this.englishBody,
   });
 
   final String title;
   final String body;
+  final String? englishTitle;
+  final String? englishBody;
 }
 
 /// In-app legal documents. The copy below is a working draft so the required
@@ -75,10 +80,20 @@ class LegalDocumentScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final usesThai =
+        (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
+                    ?.locale
+                    .languageCode ??
+                'th') ==
+            'th';
+    final title =
+        usesThai ? document.title : document.englishTitle ?? document.title;
+    final body =
+        usesThai ? document.body : document.englishBody ?? document.body;
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          document.title,
+          title,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
@@ -89,7 +104,7 @@ class LegalDocumentScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
             children: [
               Text(
-                document.body,
+                body,
                 style: TextStyle(
                   fontSize: 13.5,
                   height: 1.7,

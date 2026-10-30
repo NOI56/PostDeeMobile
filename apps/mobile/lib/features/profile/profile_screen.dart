@@ -1383,6 +1383,13 @@ const _securityInfo = LegalDocument(
       '- โทเคนการเชื่อมต่อบัญชีโซเชียลถูกเก็บอย่างปลอดภัยบนเซิร์ฟเวอร์\n'
       '- คีย์ลับของระบบ AI อยู่ฝั่งเซิร์ฟเวอร์เท่านั้น ไม่อยู่ในแอป\n\n'
       'หากพบกิจกรรมที่น่าสงสัย ติดต่อ postdee.support@gmail.com',
+  englishTitle: 'Security',
+  englishBody: 'PostDee protects your account and data.\n\n'
+      '- Email and Google sign-in are handled by Firebase Authentication. '
+      'The app does not store your password.\n'
+      '- Social account connection tokens are stored securely on the server.\n'
+      '- AI service secret keys stay on the server and are never included in the app.\n\n'
+      'If you notice suspicious activity, contact postdee.support@gmail.com.',
 );
 
 const _helpInfo = LegalDocument(

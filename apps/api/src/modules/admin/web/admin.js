@@ -143,7 +143,8 @@ function table() {
  audit:[['createdAt','เมื่อ'],['actorId','รหัสผู้ดูแล'],['email','สมาชิก'],['action','การจัดการ'],['plan','แพ็กเกจ'],['reason','เหตุผล'],['before','ก่อนเปลี่ยน'],['after','หลังเปลี่ยน']],
  deletions:[['createdAt','เริ่มเมื่อ'],['userId','รหัสบัญชี (UID)'],['status','สถานะ'],['lastErrorCode','ผลล่าสุด'],['completedAt','ลบเสร็จเมื่อ'],['actorId','รหัสผู้ดูแล'],['reason','เหตุผล']],
  support:[['status','สถานะ'],['supportMember','สมาชิก'],['lastPreview','ข้อความล่าสุด'],['lastSender','ล่าสุดจาก'],['lastMessageAt','เมื่อ'],['supportAction','']],
- incidents:[['stage','สถานะ'],['title','หัวข้อ'],['message','ข้อความถึงลูกค้า'],['platforms','ช่องทางที่กระทบ'],['startedAt','เริ่มเมื่อ'],['updatedAt','อัปเดตล่าสุด'],['resolvedAt','ปิดเมื่อ'],...(session.role==='OWNER'?[['incidentAction','จัดการ']]:[])]};
+ // Actions come first: the notices table is wide, and closing must never need a sideways scroll.
+ incidents:[...(session.role==='OWNER'?[['incidentAction','จัดการ']]:[]),['stage','สถานะ'],['title','หัวข้อ'],['message','ข้อความถึงลูกค้า'],['platforms','ช่องทางที่กระทบ'],['startedAt','เริ่มเมื่อ'],['updatedAt','อัปเดตล่าสุด'],['resolvedAt','ปิดเมื่อ']]};
  const cols=definitions[view]||[];
  if(!page.rows.length)return emptyState();
  const cell=(row,key)=> { if(key==='member')return button(h('span',{},h('span',{class:'member-name'},row.displayName||row.email),h('div',{class:'member-email'},row.email)),()=>openMember(row),'text');
@@ -153,7 +154,7 @@ function table() {
    if(view==='support'&&key==='status')return h('span',{},translate(row.status),row.teamRequested?h('div',{class:'team-flag'},'ลูกค้าขอคุยกับทีมงาน'):null);
    if(view==='incidents'&&(key==='title'||key==='message'))return h('span',{class:'pre-line'},row[key]);
    if(key==='platforms')return platformsText(row.platforms); if(key==='resolvedAt'&&!row.resolvedAt)return 'ยังเปิดอยู่';
-   if(key==='incidentAction')return row.resolvedAt?'—':button('อัปเดต / ปิดประกาศ',()=>openIncident(row));
+   if(key==='incidentAction')return row.resolvedAt?'—':h('div',{class:'incident-actions'},button('ปิดประกาศ',()=>openIncident(row,null,true),'danger'),button('แก้ไข',()=>openIncident(row)));
    if(key==='trial')return trialText(row.trial); if(key==='estimatedUsd')return row[key]==null?'ยังไม่ได้ตั้งอัตรา':Number(row[key]).toFixed(4);
    if(['createdAt','updatedAt','scheduledAt','connectedAt','startsAt','expiresAt','completedAt','startedAt','resolvedAt','lastMessageAt'].includes(key))return when(row[key]);
    if(key==='lastErrorCode')return row[key]?messages[row[key]]||row[key]:'—';
@@ -276,21 +277,23 @@ function signalsPanel(snapshot) {
      rows.length?'Dot ใช้ชื่อส่วนที่มีปัญหาเพื่อแจ้งลูกค้าว่าระบบตรวจพบข้อผิดพลาด (ไม่ส่งรายละเอียด error) ยืนยันกับลูกค้าด้วยการสร้างประกาศ':
      'ไม่พบข้อผิดพลาดใหม่ในช่วงล่าสุด'),...rows);
 }
-function openIncident(row, draft) { if(busy||csvBusy||pending||editing||session.role!=='OWNER')return;
- editing=row?{action:'UPDATE',id:row.id,expectedVersion:row.version,title:row.title,message:row.message,platforms:[...row.platforms],stage:row.stage}
+// `resolve` opens straight on the close confirmation, keeping the notice text as it is.
+function openIncident(row, draft, resolve=false) { if(busy||csvBusy||pending||editing||session.role!=='OWNER')return;
+ editing=row?{action:'UPDATE',id:row.id,expectedVersion:row.version,title:row.title,message:row.message,platforms:[...row.platforms],stage:resolve?'RESOLVED':row.stage,closing:resolve}
    :{action:'CREATE',id:crypto.randomUUID(),title:draft?.title??'',message:'',platforms:draft?.platforms??[],stage:'INVESTIGATING'};
- reviewing=false;error='';success='';render(); }
+ reviewing=!!(row&&resolve);error='';success='';render(); }
 function closeIncident() { if(busy)return; editing=null;reviewing=false;error='';render(); }
 const incidentReady = () => { const t=editing.title.trim(),m=editing.message.trim(); return t.length>=3&&t.length<=80&&!/[\r\n]/.test(t)&&m.length>=3&&m.length<=500; };
 function renderIncidentDrawer() { const creating=editing.action==='CREATE';
- const title=reviewing?(creating?'ตรวจสอบก่อนประกาศ':'ตรวจสอบการเปลี่ยนแปลง'):creating?'สร้างประกาศใหม่':'อัปเดตประกาศ';
+ const title=reviewing?(creating?'ตรวจสอบก่อนประกาศ':editing.stage==='RESOLVED'?'ยืนยันการปิดประกาศ':'ตรวจสอบการเปลี่ยนแปลง'):creating?'สร้างประกาศใหม่':'อัปเดตประกาศ';
  const drawer=h('section',{class:'drawer',role:'dialog','aria-modal':'true','aria-label':title},h('header',{},h('h2',{},title),button('×',closeIncident,'close',{'aria-label':'ปิดหน้าต่างประกาศ',disabled:busy})));
  if(reviewing){drawer.append(h('span',{class:'label'},'ตัวอย่างที่ลูกค้าจะเห็นบนหน้าแรกของแอป'),
      h('div',{class:'review incident-preview'},h('p',{class:'muted'},translate(editing.stage)),h('p',{class:'incident-title'},editing.title.trim()),
        h('p',{class:'pre-line'},editing.message.trim()),h('p',{class:'muted'},`ช่องทางที่กระทบ: ${platformsText(editing.platforms)}`)));
    if(editing.stage==='RESOLVED')drawer.append(h('p',{class:'notice'},'เมื่อปิดประกาศ แถบแจ้งจะหายจากแอปของลูกค้า และแก้ไขประกาศนี้อีกไม่ได้'));
    if(error)drawer.append(h('p',{class:'error',role:'alert'},error));
-   drawer.append(h('div',{class:'drawer-actions'},button('กลับไปแก้ไข',()=>{reviewing=false;error='';render();},'',{disabled:busy}),
+   drawer.append(h('div',{class:'drawer-actions'},editing.closing?button('ยกเลิก',closeIncident,'',{disabled:busy})
+       :button('กลับไปแก้ไข',()=>{reviewing=false;error='';render();},'',{disabled:busy}),
      button(busy?'กำลังบันทึก…':creating?'ประกาศถึงลูกค้า':editing.stage==='RESOLVED'?'ปิดประกาศ':'บันทึกการเปลี่ยนแปลง',submitIncident,'primary',{disabled:busy})));}
  else {const review=button('ตรวจสอบก่อนบันทึก',()=>{if(!incidentReady())return;error='';reviewing=true;render();},'primary',{disabled:!incidentReady()});
    const sync=()=>{review.disabled=!incidentReady();};

@@ -119,6 +119,7 @@ async function browser(fixtureMember: Record<string, unknown> = member, role = '
       member: fixtureMember, messages: [], hasEarlier: false });
     if (path === 'support/reply') return reply({ message: { id: body.id, body: body.body, sender: 'TEAM', createdAt: new Date().toISOString() } });
     if (path === 'support/close') return reply({ thread: { status: 'CLOSED', lastMessageId: body.lastMessageId } });
+    if (path === 'incidents') return reply({ status: 'ok', incident: { ...body, resolvedAt: new Date().toISOString() } });
     if (path === 'view') return viewReply(body);
     throw new Error(`Unexpected fixture request ${path}`);
   });
@@ -452,5 +453,66 @@ describe('administrator account deletion presentation', () => {
     expect(ui.document.app.textContent).toContain('deleted-uid');
     expect(ui.document.app.textContent).toContain('ลบเรียบร้อย');
     expect(ui.document.app.querySelector('table')!.textContent).not.toContain('สมาชิก');
+  });
+});
+
+describe('administrator service notice actions', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-30T03:00:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
+  const notice = { id: 'notice-open', title: 'TikTok ส่งช้า', message: 'ทีมงานกำลังแก้ไข', platforms: ['TIKTOK'], stage: 'IDENTIFIED',
+    version: 2, startedAt: '2026-10-30T02:49:14.883Z', updatedAt: '2026-10-30T02:49:41.771Z', resolvedAt: null };
+  const resolved = { ...notice, id: 'notice-closed', stage: 'RESOLVED', version: 3, resolvedAt: '2026-10-29T01:00:00.000Z' };
+  const notices = async (role = 'OWNER') => {
+    const ui = await browser(member, role);
+    ui.setViewReply(async body => reply(body.view === 'incidents' ? page({ rows: [notice, resolved] }) : page()));
+    await ui.controls.navigate('incidents'); await flush();
+    return ui;
+  };
+  const drawerButton = (ui: Awaited<ReturnType<typeof browser>>, text: string) => {
+    const found = ui.document.app.querySelector('.drawer')!.querySelectorAll('button').find(item => item.textContent === text);
+    if (!found) throw new Error(`Missing drawer button: ${text}`); return found;
+  };
+
+  it('shows close and edit first in the notices table, only to owners and only for open notices', async () => {
+    const ui = await notices();
+    const table = ui.document.app.querySelector('table')!;
+    expect(table.querySelector('th')!.textContent).toBe('จัดการ');
+    const [, open, closed] = table.querySelectorAll('tr');
+    expect(open.querySelector('td')!.querySelectorAll('button').map(item => item.textContent)).toEqual(['ปิดประกาศ', 'แก้ไข']);
+    expect(closed.querySelector('td')!.textContent).toBe('—');
+
+    const viewer = await notices('VIEWER');
+    expect(viewer.document.app.querySelector('table')!.querySelectorAll('th').map(item => item.textContent)).not.toContain('จัดการ');
+    expect(viewer.document.app.querySelectorAll('button').some(item => item.textContent === 'ปิดประกาศ')).toBe(false);
+  });
+
+  it('closes an open notice after one confirmation without changing what it says', async () => {
+    const ui = await notices();
+    await ui.button('ปิดประกาศ').click();
+    const drawer = ui.document.app.querySelector('.drawer')!;
+    expect(drawer.querySelector('h2')!.textContent).toBe('ยืนยันการปิดประกาศ');
+    expect(drawer.querySelector('select')).toBeNull();
+    expect(drawer.querySelector('.review')!.textContent).toContain('TikTok ส่งช้า');
+    expect(ui.requests.some(request => request.path === 'incidents')).toBe(false);
+
+    await drawerButton(ui, 'ปิดประกาศ').click(); await flush();
+    expect(ui.requests.filter(request => request.path === 'incidents').map(request => request.body)).toEqual([
+      { action: 'UPDATE', id: 'notice-open', expectedVersion: 2, title: 'TikTok ส่งช้า', message: 'ทีมงานกำลังแก้ไข', platforms: ['TIKTOK'], stage: 'RESOLVED' }
+    ]);
+    expect(ui.document.app.querySelector('.drawer')).toBeNull();
+    expect(ui.document.app.textContent).toContain('ปิดประกาศแล้ว');
+  });
+
+  it('cancels a direct close without a request and keeps editing in its own form', async () => {
+    const ui = await notices();
+    await ui.button('ปิดประกาศ').click();
+    await drawerButton(ui, 'ยกเลิก').click();
+    expect(ui.document.app.querySelector('.drawer')).toBeNull();
+
+    await ui.button('แก้ไข').click();
+    const drawer = ui.document.app.querySelector('.drawer')!;
+    expect(drawer.querySelector('h2')!.textContent).toBe('อัปเดตประกาศ');
+    expect(drawer.querySelector('select')).not.toBeNull();
+    expect(ui.requests.some(request => request.path === 'incidents')).toBe(false);
   });
 });

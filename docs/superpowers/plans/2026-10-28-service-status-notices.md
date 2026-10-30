@@ -5,6 +5,28 @@ Status: review candidate on branch `claude/service-status`, cut from verified
 deployed. Phase 1 of the
 support chat plan (`ROADMAP.md`, "Support chat with an AI helper").
 
+## 2026-10-30 close action follow-up
+
+The Staging end-to-end check (notice → Mobile Home banner → update → close →
+banner gone) passed, but the owner could not find how to close the notice:
+the only action, "อัปเดต / ปิดประกาศ", sat in the last column of a 1400px
+table (off screen even at 1280px wide), and closing meant picking
+"ปิดประกาศแล้ว" in the status dropdown of the edit form.
+
+- The "จัดการ" column is now first for owners, with two buttons per open
+  notice: "ปิดประกาศ" and "แก้ไข". Closed notices still show "—"; viewers
+  still see no actions.
+- "ปิดประกาศ" opens straight on the confirmation ("ยืนยันการปิดประกาศ",
+  with "ยกเลิก" and the final "ปิดประกาศ"), sending the same
+  `UPDATE` with `stage: 'RESOLVED'`, the row's `expectedVersion` and its
+  unchanged text. Closing from the edit form's dropdown still works.
+- Admin web only: no API, schema, Mobile or environment change.
+
+Verified with admin page tests (actions first, owner-only, direct close
+request body, cancel sends nothing) and in the local preview at 1280px and
+390px (buttons visible without sideways scrolling, close succeeds, no console
+errors).
+
 ## Goal
 
 When the app has a problem, owners tell every customer what is happening from

@@ -1,5 +1,20 @@
 # PostDee Staging
 
+## Deploy API `e7fd926` ขึ้น Staging — 1 พฤศจิกายน 2026
+
+- Deploy `dep-dbjepsutlv9c73d139q0`
+  ([dashboard](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbjepsutlv9c73d139q0))
+  จาก `main` `e7fd926e` แทน `2a3a560` / `dep-dbjcpds9v7es739o1l1g` สั่งผ่าน API
+  CI และ Build iOS IPA ของ SHA นี้ผ่านก่อน deploy
+- เริ่ม 14:40:35 น. ไทย (07:40:35 UTC) Live 14:42:00 น. ไทย (07:42:00 UTC)
+  `prisma migrate deploy` พบ 28 migrations และ No pending migrations
+  startup log `mode=enabled; publisher=postpeer; emptyBacklogGuard=enforced` และ backlog guard ผ่าน
+- ตรวจ 14:58 น. ไทย: `/health` 200, `/ready` 200 database/queue `ok` พร้อม
+  `Cache-Control: no-store`, `/posts` ไม่ส่ง token ได้ 401 ไม่มี log ระดับ error/warn ตั้งแต่ Live
+- การรายงาน FCM failure เข้า Sentry (`notifications.delivery`) จากหัวข้อด้านล่างจึงอยู่บน Staging แล้ว
+  แต่ยังไม่ได้ทำให้ push ล้มเหลวจริงเพื่อยืนยันว่าเหตุการณ์ถึง Sentry
+- ไม่ได้แก้ env ไม่ได้แจก APK ใหม่ Production `postdee-api` ยัง suspended และไม่ได้แตะ
+
 ## แจ้งปัญหาระบบและทดสอบ push จริง — 1 พฤศจิกายน 2026
 
 - API ที่ Live ยังเป็น `2a3a560` / `dep-dbjcpds9v7es739o1l1g` ไม่ได้ deploy ใหม่

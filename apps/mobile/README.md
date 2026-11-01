@@ -2,6 +2,26 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## 3D storefront category (2026-11-01, local candidate)
+
+The decorator has separate Minimal (20 templates) and 3D (10 templates) choices.
+The new clay, paper-layer and frosted-glass designs use bundled header artwork
+with native, editable shop text, links and logos. Uploaded covers replace the
+artwork; custom colors, fonts, button shapes and saved drafts remain supported.
+Browsing and previewing do not publish or apply a design until confirmation.
+All 100 previous catalog entries remain available to existing saved profiles.
+
+Mobile sends `X-PostDee-Profile-Catalog: 2` on profile GET/POST/DELETE requests.
+Deliver the compatible API first; it preserves old installed clients with a
+response-only legacy appearance fallback. Package limits remain Basic 2 /
+Starter 7 / Pro 20 active links. Visitors can open a published shop link without
+login or the app; managing the shop still requires its owner.
+
+This is a local candidate, not an installed-build or hosted-delivery receipt.
+No Prisma migration is required. Full tests and visual/device checks must be
+recorded in the [3D implementation plan](../../docs/superpowers/plans/2026-11-01-3d-storefront-templates.md)
+before delivery.
+
 ## System failure recovery (2026-11-01, local candidate)
 
 An explicit bell tap now reports push-registration failure through the existing

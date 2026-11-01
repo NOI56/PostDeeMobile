@@ -13,6 +13,24 @@ Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 > Sections below that still describe them (including the AI editing notes under Mobile and Backend) are
 > history. The canonical list is in `AGENTS.md` under "Retired Features".
 
+## 3D storefront templates (2026-11-01, local candidate)
+
+The website decorator adds a separate **3D** category with ten designs: four
+clay, three paper-layer and three frosted-glass treatments. The visible picker
+contains Minimal (20) and 3D (10); all 100 previous catalog entries remain intact.
+Store names, links, logos, covers and custom colors remain editable content.
+
+Package rights are unchanged: Basic allows two active links, Starter seven and
+Pro twenty. Any visitor can open an already published `/p/:slug` link without
+signing in or installing PostDee; managing that page still requires its owner.
+The API must be delivered before Mobile so older installed apps receive a safe
+legacy appearance fallback. Ambiguous edited or stale legacy fallback writes
+return `409 LINK_IN_BIO_APPEARANCE_CONFLICT` rather than replacing the saved
+3D design; reload the page data or update the app before trying again.
+No Prisma migration is needed. This candidate has
+not been merged, pushed or deployed; final verification is recorded in the
+[3D implementation plan](docs/superpowers/plans/2026-11-01-3d-storefront-templates.md).
+
 ## System failure messages and owner alerts (2026-11-01)
 
 The Mobile candidate reports failed push registration on an explicit bell tap,

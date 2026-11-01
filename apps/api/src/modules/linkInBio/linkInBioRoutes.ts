@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import type { RequestHandler, Response, Router } from 'express';
+import type { Request, RequestHandler, Response, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
 import type { UserStore } from '../users/userStore.js';
@@ -11,6 +11,7 @@ import { linkInBioFonts, linkInBioIcons, normalizeStoredLinkInBioAppearance, rea
 import { renderLinkInBioPage } from './linkInBioRenderer.js';
 import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
 import { readLinkInBioUrl } from './linkInBioDestinations.js';
+import { getProfileTemplate, profileTemplateCatalogVersion, profileTemplates } from './profileTemplateCatalog.generated.js';
 
 export type LinkInBioRouteOptions = {
   subscriptionStore?: Pick<SubscriptionStore, 'getPlan'>;
@@ -78,11 +79,26 @@ const respondError = (response: Response, error: unknown) => {
   });
 };
 
+const profileCatalogHeader = 'X-PostDee-Profile-Catalog';
+const supportsCurrentProfileCatalog = (request: Request) =>
+  request.get(profileCatalogHeader) === String(profileTemplateCatalogVersion);
+
+// Older installed apps reject unknown template IDs. Give only those clients
+// the same editable colors/content with the existing legacy theme as fallback.
+// This is response serialization only; stored and public page styling is intact.
+const profileForClient = (profile: LinkInBioProfile | null, currentCatalog: boolean): LinkInBioProfile | null => {
+  const appearance = profile?.appearance;
+  if (currentCatalog || !profile || !appearance ||
+      getProfileTemplate(appearance.templateId)?.category !== 'dimensional') return profile;
+  return { ...profile, appearance: { ...appearance, templateId: null } };
+};
+
 export const registerLinkInBioRoutes = (
   router: Router, authMiddleware: RequestHandler, store: LinkInBioStore, userStore?: UserStore,
   options: LinkInBioRouteOptions = {}
 ) => {
-  const decorationFiles = ['botanical-frame.png', 'forest.png', 'meadow.png', 'paper.png', 'letter-frame.png', 'collage-tape.png', 'gold-seal.png', 'tag-cord.png'];
+  const decorationFiles = ['botanical-frame.png', 'forest.png', 'meadow.png', 'paper.png', 'letter-frame.png', 'collage-tape.png', 'gold-seal.png', 'tag-cord.png',
+    ...profileTemplates.filter((template) => template.category === 'dimensional').map((template) => `${template.id}.png`)];
   router.get('/profile-decorations/:file', (request, response) => {
     const file = request.params.file;
     if (typeof file !== 'string' || !decorationFiles.includes(file)) { response.status(404).end(); return; }
@@ -97,14 +113,15 @@ export const registerLinkInBioRoutes = (
   });
   router.use('/link-in-bio', (_request, response, next) => {
     response.set('Cache-Control', 'no-store');
+    response.vary(profileCatalogHeader);
     next();
   });
-  router.get('/link-in-bio', authMiddleware, async (_request, response) => {
+  router.get('/link-in-bio', authMiddleware, async (request, response) => {
     const user = readAuthUser(response.locals);
     if (!user) { response.status(401).json({ status: 'error', message: 'Authenticated user is required' }); return; }
     response.set('Cache-Control', 'no-store');
     try {
-      response.json({ status: 'ok', profile: await store.getForUser(user.id) });
+      response.json({ status: 'ok', profile: profileForClient(await store.getForUser(user.id), supportsCurrentProfileCatalog(request)) });
     } catch (error) { respondError(response, error); }
   });
   router.post('/link-in-bio/publish', authMiddleware, async (request, response) => {
@@ -134,7 +151,26 @@ export const registerLinkInBioRoutes = (
       await userStore?.ensure(user);
       const imageGuard: { release?: () => Promise<void> } = {};
       const commit = async () => {
-        const appearance = input.appearance ?? normalizeStoredLinkInBioAppearance((await store.getForUser(user.id))?.appearance, input.links);
+        let publishInput = input;
+        const legacyFallback = !supportsCurrentProfileCatalog(request) &&
+          input.appearance?.themeId === 'minimal' && input.appearance.templateId === null;
+        const previous = input.appearance === undefined || legacyFallback
+          ? await store.getForUser(user.id) : null;
+        const storedAppearance = normalizeStoredLinkInBioAppearance(previous?.appearance, input.links);
+        if (legacyFallback && getProfileTemplate(storedAppearance.templateId)?.category === 'dimensional') {
+          if (JSON.stringify(input.appearance) !== JSON.stringify({ ...storedAppearance, templateId: null })) {
+            // A legacy client cannot distinguish an edited fallback from a stale
+            // snapshot. Refuse both rather than silently removing a newer theme.
+            throw new LinkInBioError(409, 'LINK_IN_BIO_APPEARANCE_CONFLICT',
+              'รูปแบบหน้าเว็บเปลี่ยนไป กรุณาโหลดข้อมูลใหม่หรืออัปเดตแอปก่อนบันทึกอีกครั้ง');
+          }
+          // Exact fallback replay is a no-op on styling. Omit it from the atomic
+          // write just like a legacy request without appearance. Known classic
+          // IDs and distinct legacy themes remain explicit replacements;
+          // catalog 2 clients can explicitly clear templateId with null.
+          publishInput = { ...input, appearance: undefined };
+        }
+        const appearance = publishInput.appearance ?? storedAppearance;
         if (appearance.logoKey || appearance.coverKey || appearance.background.imageKey) {
           if (!options.validateImages) throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'ระบบรูปหน้าโปรไฟล์ยังไม่พร้อม กรุณานำรูปออกก่อนเผยแพร่');
         }
@@ -142,7 +178,7 @@ export const registerLinkInBioRoutes = (
         imageGuard.release = typeof releaseImages === 'function' ? releaseImages : undefined;
         // Omitted appearance remains omitted at the atomic store update, so an
         // older client cannot overwrite a concurrent appearance customization.
-        return store.publish({ ...input, userId: user.id });
+        return store.publish({ ...publishInput, userId: user.id });
       };
       // The same image-owner guard protects pruning and this validate/write
       // boundary. Cleanup below runs after release to avoid a nested lock.
@@ -154,15 +190,15 @@ export const registerLinkInBioRoutes = (
       try { await imageGuard.release?.(); } catch { /* Publication is already accepted. */ }
       // A cleanup failure after the commit cannot change publication success.
       try { await options.onPublished?.(user.id, profile); } catch { /* The page is already committed. */ }
-      response.json({ status: 'ok', profile });
+      response.json({ status: 'ok', profile: profileForClient(profile, supportsCurrentProfileCatalog(request)) });
     } catch (error) { respondError(response, error); }
   });
-  router.delete('/link-in-bio/publish', authMiddleware, async (_request, response) => {
+  router.delete('/link-in-bio/publish', authMiddleware, async (request, response) => {
     const user = readAuthUser(response.locals);
     if (!user) { response.status(401).json({ status: 'error', message: 'Authenticated user is required' }); return; }
     response.set('Cache-Control', 'no-store');
     try {
-      response.json({ status: 'ok', profile: await store.unpublish(user.id) });
+      response.json({ status: 'ok', profile: profileForClient(await store.unpublish(user.id), supportsCurrentProfileCatalog(request)) });
     } catch (error) { respondError(response, error); }
   });
   router.get('/p/:slug', async (request, response) => {

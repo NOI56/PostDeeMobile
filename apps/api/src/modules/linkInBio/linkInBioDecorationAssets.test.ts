@@ -7,7 +7,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { registerLinkInBioRoutes } from './linkInBioRoutes.js';
 import { createInMemoryLinkInBioStore } from './linkInBioStore.js';
 
-const files = ['botanical-frame', 'forest', 'meadow', 'paper', 'letter-frame', 'collage-tape', 'gold-seal', 'tag-cord'];
+const files = ['botanical-frame', 'forest', 'meadow', 'paper', 'letter-frame', 'collage-tape', 'gold-seal', 'tag-cord',
+  'dimensional-clay-mint', 'dimensional-clay-peach', 'dimensional-clay-cloud', 'dimensional-clay-sand',
+  'dimensional-paper-fold', 'dimensional-paper-stage', 'dimensional-paper-ribbon',
+  'dimensional-glass-lavender', 'dimensional-glass-mist', 'dimensional-glass-sage'];
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 describe('bundled profile decoration artwork', () => {

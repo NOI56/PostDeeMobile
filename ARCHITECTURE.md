@@ -2,6 +2,32 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## 3D storefront presentation (2026-11-01, local candidate)
+
+`shared/profile-templates.json` version 2 generates the API and Mobile catalogs.
+It appends ten `dimensional` templates using `clay`, `paper-stack` and `frosted`
+compositions, while preserving the original 100 entries. The picker exposes
+only Minimal (20) and 3D (10). Native widgets and public CSS apply material
+depth; fixed PNG header artwork is bundled identically for API and Mobile.
+Real store text, links, logos, covers, fonts and colors remain separate editable
+data. The rendering path needs no WebGL, external scripts or third-party fonts.
+
+Appearance persistence stays version 1 JSON with existing fallback theme IDs;
+there is no database migration. Exact catalog-header negotiation gives new
+clients dimensional IDs while legacy GET/POST/DELETE responses use a null ID
+fallback without rewriting storage or public rendering. Exact legacy fallback
+replay preserves 3D. An edited or stale ambiguous fallback returns
+`409 LINK_IN_BIO_APPEARANCE_CONFLICT` before profile/image writes, so an older
+app cannot silently remove a newer design. Known classic template IDs,
+distinct legacy themes and catalog 2 null selection remain explicit replacements.
+API delivery must precede Mobile.
+
+Basic/Starter/Pro keep their existing 2/7/20 active-link limits. Public published
+pages remain unauthenticated; owner management and image ownership checks remain
+authenticated. Fixed same-origin artwork and the existing script-free CSP remain
+the resource boundary. Final verification and delivery remain pending in the
+[3D implementation plan](docs/superpowers/plans/2026-11-01-3d-storefront-templates.md).
+
 ## System failure recovery (2026-11-01)
 
 The Mobile push gateway keeps a recovered serialized queue for background

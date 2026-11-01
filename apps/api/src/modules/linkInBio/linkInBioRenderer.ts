@@ -81,13 +81,18 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
     return `${heading}<li class="link-item${effects.entrance ? ' entrance' : ''}"${template ? ` data-position="${index + 1}" data-rhythm="${rhythm}"` : ''}><a class="link-${index}${featured ? ' featured' : ''}${animateFeatured ? ' motion-featured' : ''}${template && readLinkInBioColor(link.buttonColor) ? ' custom-button' : ''}${railOutlineLinks.has(index) ? ' rail-outline' : ''}${filledHairlineLinks.has(index) ? ' filled-button' : ''}" href="${escapeHtml(destination ?? link.url)}"${target}>${template ? `<span class="link-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>` : ''}<span class="platform-icon${isBrand ? ' brand-logo' : ''}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeHtml(link.title)}</span>${!template && appearance.themeId === 'cards' ? '<span class="link-cta">เปิดลิงก์</span>' : ''}</span><span class="arrow" aria-hidden="true">${decorated ? outboundArrow : '↗'}</span></a></li>`;
   }).join('');
   const customBackground = hasCustomProfileTemplateBackground(appearance);
-  const templateAttributes = template ? ` data-template="${template.id}" data-custom-background="${customBackground}"${(['header', 'links', 'button', 'decoration', 'avatar', 'composition'] as const).map((field) => ` data-${field}="${template.layout[field]}"`).join('')}` : '';
-  const cover = appearance.coverKey ? `<img class="cover" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">`
+  const dimensional = template?.category === 'dimensional';
+  const templateAttributes = template ? ` data-template="${template.id}"${dimensional ? ' data-template-category="dimensional"' : ''} data-custom-background="${customBackground}"${(['header', 'links', 'button', 'decoration', 'avatar', 'composition'] as const).map((field) => ` data-${field}="${template.layout[field]}"`).join('')}` : '';
+  const cover = appearance.coverKey ? `<img class="cover${dimensional ? ' profile-3d-cover' : ''}" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">`
     : template?.layout.composition === 'torn' ? '<div class="cover cover-fallback" aria-hidden="true"></div>' : '';
   const avatar = appearance.logoKey ? `<img class="logo" src="${imagePath('logo')}" alt="โลโก้ ${escapeHtml(profile.storeName)}">`
     : decorated ? `<div class="logo avatar-initial" aria-hidden="true">${escapeHtml(Array.from(profile.storeName.trim())[0] ?? 'ร')}</div>` : '';
   const arch = template?.layout.composition === 'arch';
-  const profileAvatar = arch ? `<div class="arch-hero">${cover}${avatar}</div>` : avatar;
+  // Artwork is catalog-owned decoration. The owner's avatar and all text stay
+  // native HTML, so changing a logo or theme never bakes content into an image.
+  const profileAvatar = dimensional
+    ? `<div class="profile-3d-hero">${cover || `<img class="profile-3d-art" src="/profile-decorations/${template.id}.png" alt="" aria-hidden="true">`}${avatar}</div>`
+    : arch ? `<div class="arch-hero">${cover}${avatar}</div>` : avatar;
   return `<!doctype html>
 <html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer"><title>${escapeHtml(profile.storeName)} | PostDee</title>
@@ -108,7 +113,7 @@ ${linkStyles}
 ${linkInBioThemeStyles(appearance)}
 ${linkInBioTemplateStyles(appearance)}
 .background-motion{${background}}
-</style></head><body data-theme="${appearance.themeId}"${templateAttributes}>${effects.background ? '<div class="background-motion"></div>' : ''}${renderLinkInBioDecorations(effects.stickers)}<main>${arch ? '' : cover}<header class="profile-header">${template ? '' : '<div class="brand">PostDee</div>'}${profileAvatar}${template ? '<div class="profile-copy">' : ''}<h1>${escapeHtml(profile.storeName)}</h1>
+</style></head><body data-theme="${appearance.themeId}"${templateAttributes}>${effects.background ? '<div class="background-motion"></div>' : ''}${renderLinkInBioDecorations(effects.stickers)}<main>${arch || dimensional ? '' : cover}<header class="profile-header">${template ? '' : '<div class="brand">PostDee</div>'}${profileAvatar}${template ? '<div class="profile-copy">' : ''}<h1>${escapeHtml(profile.storeName)}</h1>
 <p class="description">${escapeHtml(appearance.description || 'เลือกช่องทางที่ต้องการได้เลย')}</p>${template ? '</div>' : ''}</header><ul>${links}</ul>
 <footer>สร้างหน้าเว็บร้านค้าด้วย PostDee</footer></main></body></html>`;
 };

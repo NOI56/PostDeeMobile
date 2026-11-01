@@ -2,6 +2,47 @@
 
 PostDee backend API reference.
 
+## 3D storefront catalog compatibility (2026-11-01, local candidate)
+
+The shared profile-template catalog is version 2 with ten new `dimensional-*`
+IDs, alongside the unchanged 100 previous entries. The appearance JSON remains
+version 1 and retains the existing seven fallback theme IDs; no Prisma schema
+change or migration is needed. The package limits remain Basic 2, Starter 7 and
+Pro 20 active links, with no paid-only template gate.
+
+New Mobile requests send exactly `X-PostDee-Profile-Catalog: 2` on authenticated
+`GET /link-in-bio`, `POST /link-in-bio/publish` and
+`DELETE /link-in-bio/publish`. Those responses include the actual dimensional
+template ID. A missing or different header receives the same colors, images
+and content with `appearance.templateId: null` and the existing fallback theme.
+This is response serialization only: reads do not rewrite the saved selection,
+and the public `/p/:slug` page still renders the actual 3D design. Classic
+template responses remain unchanged. Profile responses retain `Cache-Control:
+no-store` and vary on the catalog header.
+
+If an older app republishes its exact current fallback appearance, the atomic
+write keeps the stored 3D selection, including a styling update after the
+compatibility read. If a legacy or unrecognized-catalog client instead sends
+a `minimal`/null-template fallback that differs from the current saved 3D
+fallback, publishing returns `409 LINK_IN_BIO_APPEARANCE_CONFLICT`. This covers
+both edited fallbacks and stale snapshots read before a newer design was saved;
+the API cannot distinguish their intent. It changes no profile/name, validates
+no images and runs no publication/image cleanup. Reload current page data or
+update the app before retrying.
+
+Known classic-template IDs and distinct legacy theme IDs remain explicit
+replacements. A version 2 client can explicitly clear its template with null.
+Omitting appearance continues to preserve the current stored appearance.
+
+Published public links remain readable without authentication. The new header
+does not grant ownership or change authenticated management/image-owner guards.
+Artwork filenames are fixed catalog IDs served through the same-origin PNG
+allowlist; no user-supplied asset URL or script is added, and CSP stays intact.
+
+Deliver the compatible API before the new Mobile build: the old API rejects
+unknown template IDs. No merge, push or deployment has been authorized for this
+feature. See the [implementation and verification checklist](docs/superpowers/plans/2026-11-01-3d-storefront-templates.md).
+
 ## Social post analytics retirement (2026-11-01, local candidate)
 
 Social post analytics was retired on 2026-11-01. The authenticated legacy

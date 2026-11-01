@@ -1,18 +1,20 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { profileTemplateCategories, profileTemplates, getProfileTemplate } from './profileTemplateCatalog.generated.js';
+import { profileTemplateCatalogVersion, profileTemplateCategories, profileTemplates, getProfileTemplate } from './profileTemplateCatalog.generated.js';
 import { createDefaultLinkInBioAppearance, createDefaultLinkInBioTemplateAppearance, readLinkInBioAppearance } from './linkInBioAppearance.js';
 
 describe('shared profile template catalog and appearance contract', () => {
-  it('contains five agreed categories with twenty distinct layouts each', () => {
-    expect(profileTemplateCategories.map((category) => category.id)).toEqual(['minimal', 'cute', 'nature', 'luxury', 'creative']);
-    expect(profileTemplates).toHaveLength(100);
-    expect(new Set(profileTemplates.map((template) => template.id)).size).toBe(100);
+  it('keeps five original categories and adds ten 3D templates', () => {
+    expect(profileTemplateCatalogVersion).toBe(2);
+    expect(profileTemplateCategories.map((category) => category.id)).toEqual(['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional']);
+    expect(profileTemplates).toHaveLength(110);
+    expect(new Set(profileTemplates.map((template) => template.id)).size).toBe(110);
     for (const category of profileTemplateCategories) {
       const templates = profileTemplates.filter((template) => template.category === category.id);
-      expect(templates).toHaveLength(20);
-      expect(new Set(templates.map((template) => template.layout.composition)).size).toBe(20);
-      expect(new Set(templates.map((template) => template.name)).size).toBe(20);
+      const dimensional = category.id === 'dimensional';
+      expect(templates).toHaveLength(dimensional ? 10 : 20);
+      expect(new Set(templates.map((template) => template.layout.composition)).size).toBe(dimensional ? 3 : 20);
+      expect(new Set(templates.map((template) => template.name)).size).toBe(dimensional ? 10 : 20);
     }
   });
 
@@ -24,9 +26,9 @@ describe('shared profile template catalog and appearance contract', () => {
       luxury: ['seal', 'tag', 'gallery'],
       creative: ['poster', 'window-grid', 'ticket'],
     };
-    for (const category of profileTemplateCategories) {
-      expect(profileTemplates.filter((template) => template.category === category.id).slice(0, 3)
-        .map((template) => template.layout.composition)).toEqual(representatives[category.id]);
+    for (const [category, expected] of Object.entries(representatives)) {
+      expect(profileTemplates.filter((template) => template.category === category).slice(0, 3)
+        .map((template) => template.layout.composition)).toEqual(expected);
     }
   });
 

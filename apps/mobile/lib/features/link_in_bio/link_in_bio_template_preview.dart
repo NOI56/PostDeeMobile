@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_composition_art.dart';
+import 'link_in_bio_3d_styles.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_link_defaults.dart';
 import 'link_in_bio_localizations.dart';
@@ -31,6 +32,7 @@ class BioTemplatePreview extends StatelessWidget {
   final bool staticPreview;
   final double cornerRadius;
   String get _composition => template.layout.composition;
+  bool get _is3d => template.category == 'dimensional';
   bool get _presetBackground =>
       appearance.background.imageKey == null &&
       appearance.background.mode ==
@@ -41,7 +43,8 @@ class BioTemplatePreview extends StatelessWidget {
   String _name(BuildContext context) => storeName.trim().isEmpty
       ? linkInBioText(context, 'ร้านของคุณ', 'Your store')
       : storeName.trim();
-  Color get _avatarColor => const {'seal', 'tag'}.contains(_composition)
+  Color get _avatarColor => _is3d ? bioColor(appearance.surfaceColor)
+      : const {'seal', 'tag'}.contains(_composition)
       ? Colors.transparent
       : _composition == 'portrait' ||
               (_presetBackground &&
@@ -67,40 +70,41 @@ class BioTemplatePreview extends StatelessWidget {
             : _avatarColor)
         .computeLuminance();
     final readable = (math.max(a, b) + .05) / (math.min(a, b) + .05) >= 4.5;
-    return Builder(builder: (context) => Center(
-        child: Text(String.fromCharCode(_name(context).runes.first),
-            style: bioTextStyle(appearance.nameStyle,
-                    size: const <String, double>{
-                          'editorial': 24,
-                          'bicolor': 36,
-                          'portrait': 36,
-                          'scallop': 32,
-                          'collage': 32,
-                          'window': 24,
-                          'botanical': 36,
-                          'glass': 18,
-                          'torn': 36,
-                          'seal': 26,
-                          'tag': 22,
-                          'gallery': 26,
-                          'poster': 16,
-                          'window-grid': 22,
-                          'ticket': 18,
-                          'rail': 26,
-                          'ribbon': 28,
-                          'notebook': 24,
-                          'arch': 32,
-                          'staircase': 22,
-                        }[_composition] ??
-                        size * .4,
-                    weight: FontWeight.w600)
-                .copyWith(
-                    height: 1,
-                    color: readable
-                        ? selected
-                        : b > .18
-                            ? Colors.black
-                            : Colors.white))));
+    return Builder(
+        builder: (context) => Center(
+            child: Text(String.fromCharCode(_name(context).runes.first),
+                style: bioTextStyle(appearance.nameStyle,
+                        size: const <String, double>{
+                              'editorial': 24,
+                              'bicolor': 36,
+                              'portrait': 36,
+                              'scallop': 32,
+                              'collage': 32,
+                              'window': 24,
+                              'botanical': 36,
+                              'glass': 18,
+                              'torn': 36,
+                              'seal': 26,
+                              'tag': 22,
+                              'gallery': 26,
+                              'poster': 16,
+                              'window-grid': 22,
+                              'ticket': 18,
+                              'rail': 26,
+                              'ribbon': 28,
+                              'notebook': 24,
+                              'arch': 32,
+                              'staircase': 22,
+                            }[_composition] ??
+                            size * .4,
+                        weight: FontWeight.w600)
+                    .copyWith(
+                        height: 1,
+                        color: readable
+                            ? selected
+                            : b > .18
+                                ? Colors.black
+                                : Colors.white))));
   }
 
   Widget _avatar(double size, {double? height, bool arch = false}) {
@@ -175,7 +179,8 @@ class BioTemplatePreview extends StatelessWidget {
                         textScaler: scaler);
                     double widthAt(double value) {
                       painter.text = TextSpan(
-                          text: _name(context), style: style.copyWith(fontSize: value));
+                          text: _name(context),
+                          style: style.copyWith(fontSize: value));
                       painter.layout();
                       return painter.width;
                     }
@@ -212,21 +217,36 @@ class BioTemplatePreview extends StatelessWidget {
                       .withValues(alpha: .45)),
               const SizedBox(height: 8),
             ],
-            Builder(builder: (context) => Text(
-                appearance.description.isEmpty
-                    ? linkInBioText(context, 'เลือกช่องทางที่ต้องการได้เลย',
-                        'Choose a channel below')
-                    : appearance.description,
-                textAlign: centered ? TextAlign.center : TextAlign.start,
-                style: bioTextStyle(appearance.descriptionStyle,
-                    size: _composition == 'poster' ? 16 : 15,
-                    weight: _composition == 'poster'
-                        ? FontWeight.w600
-                        : FontWeight.w400))),
+            Builder(
+                builder: (context) => Text(
+                    appearance.description.isEmpty
+                        ? linkInBioText(context, 'เลือกช่องทางที่ต้องการได้เลย',
+                            'Choose a channel below')
+                        : appearance.description,
+                    textAlign: centered ? TextAlign.center : TextAlign.start,
+                    style: bioTextStyle(appearance.descriptionStyle,
+                        size: _composition == 'poster' ? 16 : 15,
+                        weight: _composition == 'poster'
+                            ? FontWeight.w600
+                            : FontWeight.w400))),
           ]);
 
   Widget _header(double headingSize, double editorialSize) {
     final cover = appearance.coverKey;
+    if (_is3d) {
+      final geometry = bio3dGeometries[template.id]!;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Bio3dHero(
+            template: template,
+            appearance: appearance,
+            avatar: _avatar(geometry.avatar),
+            cover:
+                images[cover] == null ? null : _photo(cover!, geometry.height)),
+        const SizedBox(height: 16),
+        _copy(centered: true, headingSize: headingSize + 2, heavy: true),
+        const SizedBox(height: 28),
+      ]);
+    }
     Widget coverImage(double height, {String? fallback}) =>
         images[cover] == null
             ? Container(
@@ -530,66 +550,88 @@ class BioTemplatePreview extends StatelessWidget {
         .contains(_composition);
     final button = Container(
         key: ValueKey('link-in-bio-template-link-${link.id}'),
-        constraints: BoxConstraints(minHeight: grid ? 112 : 64),
+        constraints: BoxConstraints(
+            minHeight: grid
+                ? 112
+                : _is3d
+                    ? 76
+                    : 64),
         padding: grid
             ? const EdgeInsets.all(14)
-            : EdgeInsets.symmetric(horizontal: narrow ? 12 : 16, vertical: 12),
-        decoration: BoxDecoration(
-            color: transparent
-                ? Colors.transparent
-                : _composition == 'glass' &&
-                        link.buttonColor == null &&
-                        link.textColor == null &&
-                        appearance.buttonColor == template.palette.button &&
-                        appearance.buttonStyle.color ==
-                            template.palette.buttonText
-                    ? color.withValues(alpha: 235 / 255)
-                    : color,
-            borderRadius:
-                hairline && transparent ? null : BorderRadius.circular(radius),
-            border: hairline && transparent
-                ? Border(
-                    bottom: BorderSide(
-                        color: bioColor(appearance.categoryStyle.color)
-                            .withValues(alpha: .45)))
-                : raised
-                    ? Border.all(
-                        color: bioColor(appearance.nameStyle.color), width: 2)
-                    : outline || featured
+            : EdgeInsets.symmetric(
+                horizontal: narrow ? 12 : 16,
+                vertical: _is3d ? (narrow ? 14 : 16) : 12),
+        decoration: _is3d
+            ? bio3dLinkDecoration(
+                template: template,
+                appearance: appearance,
+                color: color,
+                textColor: textColor,
+                featured: featured,
+                customized: link.buttonColor != null ||
+                    link.textColor != null ||
+                    appearance.buttonColor != template.palette.button ||
+                    appearance.buttonStyle.color != template.palette.buttonText)
+            : BoxDecoration(
+                color: transparent
+                    ? Colors.transparent
+                    : _composition == 'glass' &&
+                            link.buttonColor == null &&
+                            link.textColor == null &&
+                            appearance.buttonColor == template.palette.button &&
+                            appearance.buttonStyle.color ==
+                                template.palette.buttonText
+                        ? color.withValues(alpha: 235 / 255)
+                        : color,
+                borderRadius: hairline && transparent
+                    ? null
+                    : BorderRadius.circular(radius),
+                border: hairline && transparent
+                    ? Border(
+                        bottom: BorderSide(
+                            color: bioColor(appearance.categoryStyle.color)
+                                .withValues(alpha: .45)))
+                    : raised
                         ? Border.all(
-                            color: outline
-                                ? color
-                                : textColor.withValues(alpha: .9),
-                            width: featured ? 2 : 1)
-                        : _composition == 'collage'
+                            color: bioColor(appearance.nameStyle.color),
+                            width: 2)
+                        : outline || featured
                             ? Border.all(
-                                color: bioColor(appearance.categoryStyle.color)
-                                    .withValues(alpha: .4))
-                            : _composition == 'glass'
+                                color: outline
+                                    ? color
+                                    : textColor.withValues(alpha: .9),
+                                width: featured ? 2 : 1)
+                            : _composition == 'collage'
                                 ? Border.all(
-                                    color: Colors.white.withValues(alpha: .6))
-                                : null,
-            boxShadow: raised
-                ? [
-                    BoxShadow(
-                        color: bioColor(appearance.nameStyle.color),
-                        offset: const Offset(4, 4))
-                  ]
-                : _composition == 'collage'
+                                    color:
+                                        bioColor(appearance.categoryStyle.color)
+                                            .withValues(alpha: .4))
+                                : _composition == 'glass'
+                                    ? Border.all(
+                                        color:
+                                            Colors.white.withValues(alpha: .6))
+                                    : null,
+                boxShadow: raised
                     ? [
                         BoxShadow(
-                            color: bioColor(appearance.categoryStyle.color)
-                                .withValues(alpha: 53 / 255),
-                            offset: const Offset(3, 4))
+                            color: bioColor(appearance.nameStyle.color),
+                            offset: const Offset(4, 4))
                       ]
-                    : const {'torn', 'glass'}.contains(_composition)
+                    : _composition == 'collage'
                         ? [
-                            const BoxShadow(
-                                color: Color(0x19000000),
-                                blurRadius: 7,
-                                offset: Offset(0, 3))
+                            BoxShadow(
+                                color: bioColor(appearance.categoryStyle.color)
+                                    .withValues(alpha: 53 / 255),
+                                offset: const Offset(3, 4))
                           ]
-                        : null),
+                        : const {'torn', 'glass'}.contains(_composition)
+                            ? [
+                                const BoxShadow(
+                                    color: Color(0x19000000),
+                                    blurRadius: 7,
+                                    offset: Offset(0, 3))
+                              ]
+                            : null),
         child: grid
             ? Stack(children: [
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -630,6 +672,12 @@ class BioTemplatePreview extends StatelessWidget {
                 Icon(Icons.north_east, size: 18, color: textColor)
               ]));
     Widget decorated = button;
+    if (template.id == 'dimensional-paper-stage') {
+      decorated = Padding(
+          padding: EdgeInsets.only(
+              left: rhythm.isOdd ? 6 : 0, right: rhythm.isEven ? 6 : 0),
+          child: decorated);
+    }
     if (_composition == 'torn') {
       decorated = ClipPath(
           clipper: BioCompositionClipper(_composition), child: decorated);
@@ -660,9 +708,11 @@ class BioTemplatePreview extends StatelessWidget {
 
   Widget _linkGroups(double phase, double entrance, bool reduced, bool narrow) {
     if (links.isEmpty) {
-      return Builder(builder: (context) => Text(linkInBioText(context,
-          'เพิ่มลิงก์เพื่อแสดงตัวอย่าง', 'Add a link to see a preview'),
-          style: bioTextStyle(appearance.descriptionStyle)));
+      return Builder(
+          builder: (context) => Text(
+              linkInBioText(context, 'เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
+                  'Add a link to see a preview'),
+              style: bioTextStyle(appearance.descriptionStyle)));
     }
     final groups = <List<(int, LinkInBioCustomLink)>>[];
     var currentCategory = '';
@@ -684,16 +734,19 @@ class BioTemplatePreview extends StatelessWidget {
                   style: bioTextStyle(appearance.categoryStyle,
                       size: 14, weight: FontWeight.w600))),
         LayoutBuilder(
-            builder: (_, size) => Wrap(spacing: 12, runSpacing: 12, children: [
-                  for (final (rhythm, record) in group.indexed)
-                    SizedBox(
-                        width: _tileAt(rhythm)
-                            ? (size.maxWidth - 12) / 2
-                            : size.maxWidth,
-                        child: _link(record.$2, record.$1, phase, entrance,
-                            reduced, narrow,
-                            tile: _tileAt(rhythm), rhythm: rhythm))
-                ])),
+            builder: (_, size) => Wrap(
+                    spacing: 12,
+                    runSpacing: _is3d ? bio3dGeometries[template.id]!.gap : 12,
+                    children: [
+                      for (final (rhythm, record) in group.indexed)
+                        SizedBox(
+                            width: _tileAt(rhythm)
+                                ? (size.maxWidth - 12) / 2
+                                : size.maxWidth,
+                            child: _link(record.$2, record.$1, phase, entrance,
+                                reduced, narrow,
+                                tile: _tileAt(rhythm), rhythm: rhythm))
+                    ])),
         const SizedBox(height: 12),
       ]
     ]);
@@ -733,6 +786,43 @@ class BioTemplatePreview extends StatelessWidget {
       ]));
 
   Widget _panel(Widget child) {
+    if (_is3d) {
+      final paper = _composition == 'paper-stack';
+      final surface = bioColor(appearance.surfaceColor);
+      final line = bioColor(appearance.categoryStyle.color);
+      return Container(
+          key: ValueKey(
+              'link-in-bio-template-layout-${template.layout.header}-${template.layout.links}'),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+              color: appearance.surfaceColor == template.palette.surface
+                  ? Colors.transparent
+                  : surface,
+              borderRadius: BorderRadius.circular(paper ? 18 : 24),
+              border:
+                  Border.all(color: line.withValues(alpha: paper ? .17 : .08)),
+              boxShadow: paper
+                  ? [
+                      BoxShadow(color: surface, offset: const Offset(3, 4)),
+                      BoxShadow(
+                          color: line.withValues(alpha: .14),
+                          offset: const Offset(4, 5)),
+                      BoxShadow(color: surface, offset: const Offset(7, 8)),
+                      BoxShadow(
+                          color: line.withValues(alpha: .07),
+                          offset: const Offset(8, 9)),
+                    ]
+                  : const [
+                      BoxShadow(
+                          color: Color(0x08000000),
+                          blurRadius: 36,
+                          offset: Offset(0, 16))
+                    ]),
+          clipBehavior: Clip.antiAlias,
+          child: KeyedSubtree(
+              key: ValueKey('link-in-bio-composition-$_composition'),
+              child: child));
+    }
     final window = _composition == 'window' || _composition == 'window-grid';
     final clipped = const {'tag', 'scallop', 'ticket'}.contains(_composition);
     final open = const {
@@ -882,7 +972,9 @@ class BioTemplatePreview extends StatelessWidget {
                             painter: BioCompositionPattern(
                                 'window', Colors.white)))),
               Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 36, 20, 20),
+                  padding: _is3d
+                      ? const EdgeInsets.fromLTRB(12, 16, 12, 16)
+                      : const EdgeInsets.fromLTRB(20, 36, 20, 20),
                   child: Align(
                       alignment: Alignment.topCenter,
                       child: ConstrainedBox(
@@ -897,7 +989,11 @@ class BioTemplatePreview extends StatelessWidget {
                                 _linkGroups(phase, reduced ? 1 : entrance,
                                     reduced, narrow),
                                 SizedBox(
-                                    height: _composition == 'torn' ? 28 : 48),
+                                    height: _composition == 'torn'
+                                        ? 28
+                                        : _is3d
+                                            ? 36
+                                            : 48),
                                 Text('PostDee',
                                     textAlign: TextAlign.center,
                                     style: bioTextStyle(appearance.brandStyle,

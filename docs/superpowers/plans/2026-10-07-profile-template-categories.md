@@ -1,5 +1,30 @@
 # Profile template categories — 2026-10-07
 
+## Separate 3D category — 2026-11-01 (local candidate)
+
+The owner approved implementing ten 3D designs as a separate category, then
+clarified that package rights stay unchanged and published websites should
+remain open to every visitor. The visible gallery is now Minimal (20) plus
+3D (10); this does not expose the other four existing categories or remove any
+of the 100 legacy entries. Basic/Starter/Pro retain their 2/7/20 active-link limits.
+
+The shared catalog advances to version 2; appearance persistence remains
+version 1 with no Prisma migration. New clients negotiate catalog 2 through
+the profile header. Older clients receive response-only null-template fallback,
+while saved/public pages keep the actual 3D design. Exact fallback replay keeps
+3D; a changed or stale legacy fallback is rejected with
+`409 LINK_IN_BIO_APPEARANCE_CONFLICT` instead of overwriting the current design.
+Explicit classic template choices remain supported. Deliver API before
+Mobile. No WebGL, third-party scripts or remote artwork URLs are introduced.
+
+The candidate starts from verified main `e7fd926e` and includes the doc-only
+main update `3eee7a71`, on `codex/3d-storefront-templates-ready`, with the
+original dirty checkout preserved.
+There is no merge, push or deployment authorization for this new feature yet.
+The ten IDs, compatibility policy and pending final checks live in the
+[3D follow-up plan](2026-11-01-3d-storefront-templates.md). Earlier receipts below
+are historical evidence and do not verify this new category.
+
 ## Full-screen shop-page preview — 2026-10-26 (local candidate)
 
 Implemented follow-up from verified clean main

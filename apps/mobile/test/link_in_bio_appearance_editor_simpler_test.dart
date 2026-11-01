@@ -131,7 +131,7 @@ void main() {
       'starts with a bounded preview and themes while details are closed',
       (tester) async {
     await _openEditor(tester);
-    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byType(ChoiceChip), findsNWidgets(2));
     expect(find.text('เรียบง่าย · 20 แบบ'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-legacy-themes')), findsNothing);
     expect(find.byKey(const ValueKey('link-in-bio-template-grid')),

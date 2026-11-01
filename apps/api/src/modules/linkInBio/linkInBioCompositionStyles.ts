@@ -38,7 +38,7 @@ export const profileTemplateLinkFill = (appearance: LinkInBioAppearance, text: s
     const legible = linkInBioColorContrast(text, appearance.surfaceColor) >= 4.5 && (!openPage || linkInBioColorContrast(text, appearance.background.color) >= 4.5);
     return legible ? 'transparent' : appearance.buttonColor;
   }
-  if (template.layout.composition === 'glass' && !customText && appearance.buttonColor === template.palette.button && appearance.buttonStyle.color === template.palette.buttonText) return `${appearance.buttonColor}eb`;
+  if (['glass', 'frosted'].includes(template.layout.composition) && !customText && appearance.buttonColor === template.palette.button && appearance.buttonStyle.color === template.palette.buttonText) return `${appearance.buttonColor}eb`;
   if (!customText && ['poster', 'window', 'collage', 'window-grid'].includes(template.layout.composition) && appearance.buttonColor === template.palette.button && appearance.buttonStyle.color === template.palette.buttonText) {
     const colors = template.layout.composition === 'window' ? [appearance.buttonColor, '#fff9e6', '#d2bfff', '#bcf0bd'] : template.layout.composition === 'window-grid' ? [appearance.buttonColor, appearance.background.color, appearance.surfaceColor, '#f8d4e1'] : [appearance.buttonColor, '#bcf0bd', '#d2bfff', '#fff9e6'];
     const color = colors[rhythm]!;
@@ -279,7 +279,7 @@ export const linkInBioCompositionStyles = (appearance: LinkInBioAppearance) => {
     ...(appearance.surfaceColor === template.palette.surface ? [[' main', 'background-image:url("/profile-decorations/paper.png");background-size:360px auto;background-repeat:repeat;background-blend-mode:multiply']] as [string, string][] : []),
     [' .background-motion', 'display:none']
   ]) : '';
-  const initialFont = { editorial: 24, bicolor: 36, portrait: 36, scallop: 32, collage: 32, window: 24, botanical: 36, glass: 18, torn: 36, seal: 26, tag: 22, gallery: 26, poster: 16, 'window-grid': 22, ticket: 18, rail: 26, ribbon: 28, notebook: 24, arch: 32, staircase: 22 }[composition];
+  const initialFont = { editorial: 24, bicolor: 36, portrait: 36, scallop: 32, collage: 32, window: 24, botanical: 36, glass: 18, torn: 36, seal: 26, tag: 22, gallery: 26, poster: 16, 'window-grid': 22, ticket: 18, rail: 26, ribbon: 28, notebook: 24, arch: 32, staircase: 22, clay: 36, 'paper-stack': 34, frosted: 36 }[composition];
   return `${rules([
     ['', 'display:flow-root'],
     [' main', 'padding:32px 20px 28px;min-height:calc(100svh - 32px)'],

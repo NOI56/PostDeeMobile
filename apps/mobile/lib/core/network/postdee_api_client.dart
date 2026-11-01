@@ -7,6 +7,7 @@ import '../auth/auth_session.dart';
 import '../config/app_config.dart';
 import '../models/caption_writing_style.dart';
 import '../models/link_in_bio_appearance.dart';
+import '../models/profile_template_catalog.generated.dart';
 import '../monitoring/postdee_sentry_monitoring.dart';
 
 const socialPublishingUnavailableCode = 'SOCIAL_PUBLISHING_UNAVAILABLE';
@@ -4606,6 +4607,10 @@ class PostDeeApiClient {
 
       for (final header in headers.entries) {
         request.headers.set(header.key, header.value);
+      }
+      if (path == '/link-in-bio' || path == '/link-in-bio/publish') {
+        request.headers.set('X-PostDee-Profile-Catalog',
+            profileTemplateCatalogVersion.toString());
       }
       if (body != null) request.write(jsonEncode(body));
       _sessionBinding?.ensureCurrent();

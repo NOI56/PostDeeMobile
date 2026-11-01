@@ -185,7 +185,7 @@ void main() {
                     onChanged: (_) => changes++)))));
     await tester.pumpAndSettle();
     expect(find.byType(BioUiMotionScope), findsOneWidget);
-    expect(profileTemplates, hasLength(100));
+    expect(profileTemplates, hasLength(110));
     expect(find.byKey(const ValueKey('link-in-bio-category-motion-minimal')),
         findsOneWidget);
     for (final template in profileTemplates) {
@@ -254,7 +254,7 @@ void main() {
                     enabled: false,
                     onChanged: (_) => changes++)))));
     await tester.pumpAndSettle();
-    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byType(ChoiceChip), findsNWidgets(2));
     final first = profileTemplates.first;
     final card = find.byKey(ValueKey('link-in-bio-template-${first.id}'));
     expect(tester.widget<InkWell>(card).onTap, isNull);

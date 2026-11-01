@@ -452,8 +452,8 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-  test('each category offers twenty genuinely different compositions', () {
-    for (final category in profileTemplateCategories.keys) {
+  test('each legacy category retains twenty genuinely different compositions', () {
+    for (final category in profileTemplateCategories.keys.where((id) => id != 'dimensional')) {
       expect(
           profileTemplates
               .where((t) => t.category == category)

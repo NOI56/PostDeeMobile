@@ -2,6 +2,20 @@
 
 Build roadmap for PostDee.
 
+## 3D storefront category (2026-11-01, local candidate)
+
+- Add ten 3D designs as a separate category beside the twenty visible minimal
+  templates; preserve all 100 existing catalog entries and saved selections.
+- Keep package rights at Basic 2 / Starter 7 / Pro 20 active links. Published
+  shop links remain open to every visitor without login; owner editing stays private.
+- Use shared catalog version 2, native previews and matching public CSS with
+  bundled artwork. Keep real shop content and customization separate from art.
+- Preserve older apps with response-only appearance fallback and explicit
+  `X-PostDee-Profile-Catalog: 2` negotiation. Deliver API before Mobile; no migration.
+- Finish full suites, artwork parity and native/browser visual checks before
+  delivery. No merge, push or deployment is authorized for this new feature yet.
+  See the [implementation and verification checklist](docs/superpowers/plans/2026-11-01-3d-storefront-templates.md).
+
 ## System failure recovery (2026-11-01, Mobile candidate)
 
 - Report explicit push-registration errors and allow the next bell tap to retry;

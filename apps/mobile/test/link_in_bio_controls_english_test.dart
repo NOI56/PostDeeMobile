@@ -491,7 +491,8 @@ void main() {
                 onChanged: results.add)));
     await _tap(tester, _key('link-in-bio-template-minimal-white-editorial'));
     expect(find.text('Type and fine lines'), findsWidgets);
-    expect(find.text('Minimal'), findsOneWidget);
+    expect(find.descendant(of: find.byType(BottomSheet),
+        matching: find.text('Minimal')), findsOneWidget);
     await _tap(tester, _key('link-in-bio-template-preview-close'));
     expect(results, isEmpty);
     await _tap(tester, _key('link-in-bio-template-minimal-white-editorial'));

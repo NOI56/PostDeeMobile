@@ -39,6 +39,40 @@ Future<void> _withServer(
 }
 
 void main() {
+  for (final method in ['GET', 'POST', 'DELETE']) {
+    test('profile $method negotiates the 3D catalog before decoding', () async {
+      String? observedMethod;
+      String? observedCatalog;
+      await _withServer((client) async {
+        switch (method) {
+          case 'GET':
+            await client.loadLinkInBioProfile();
+          case 'POST':
+            await client.publishLinkInBioProfile(
+                storeName: 'ร้านมินา',
+                slug: 'mina-shop',
+                links: const [
+                  LinkInBioLinkResult(
+                      id: 'shop',
+                      title: 'ร้านค้า',
+                      url: 'https://example.com/shop')
+                ]);
+          case 'DELETE':
+            await client.unpublishLinkInBioProfile();
+        }
+      }, (request) async {
+        observedMethod = request.method;
+        observedCatalog = request.headers.value('X-PostDee-Profile-Catalog');
+        return {
+          'status': 'ok',
+          'profile': _profile(published: method != 'DELETE')
+        };
+      });
+      expect(observedMethod, method);
+      expect(observedCatalog, '2');
+    });
+  }
+
   test('older profile responses receive legacy appearance defaults', () {
     final profile = LinkInBioProfileResult.fromJson(_profile(),
         apiBaseUri: Uri.parse('https://api.example.com'));

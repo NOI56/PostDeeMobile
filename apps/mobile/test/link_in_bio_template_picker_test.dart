@@ -273,7 +273,7 @@ void main() {
           .id),
   ]) {
     testWidgets(
-        'picker offers only minimal templates for ${appearance.templateId ?? appearance.themeId}',
+        'picker offers minimal and 3D for ${appearance.templateId ?? appearance.themeId}',
         (tester) async {
       LinkInBioAppearance? selected;
       await tester.pumpWidget(MaterialApp(
@@ -285,22 +285,32 @@ void main() {
                       links: _links,
                       onChanged: (value) => selected = value)))));
       await tester.pumpAndSettle();
-      expect(find.text('เรียบง่าย · 20 แบบ'), findsOneWidget);
-      expect(find.byType(ChoiceChip), findsNothing);
+      final category =
+          getProfileTemplate(appearance.templateId)?.category == 'dimensional'
+              ? 'dimensional'
+              : 'minimal';
+      expect(
+          find.text(
+              category == 'dimensional' ? '3D · 10 แบบ' : 'เรียบง่าย · 20 แบบ'),
+          findsOneWidget);
+      expect(find.byType(ChoiceChip), findsNWidgets(2));
       expect(find.byKey(const ValueKey('link-in-bio-legacy-themes')),
           findsNothing);
       for (final category in profileTemplateCategories.keys) {
-        expect(find.byKey(ValueKey('link-in-bio-category-$category')),
-            category == 'minimal' ? findsOneWidget : findsNothing);
+        expect(
+            find.byKey(ValueKey('link-in-bio-category-$category')),
+            const {'minimal', 'dimensional'}.contains(category)
+                ? findsOneWidget
+                : findsNothing);
       }
       expect(find.byKey(const ValueKey('link-in-bio-template-grid')),
           findsOneWidget);
       for (final template in profileTemplates) {
         expect(find.byKey(ValueKey('link-in-bio-template-${template.id}')),
-            template.category == 'minimal' ? findsOneWidget : findsNothing);
+            template.category == category ? findsOneWidget : findsNothing);
       }
       final last =
-          profileTemplates.where((item) => item.category == 'minimal').last;
+          profileTemplates.where((item) => item.category == category).last;
       await tester.ensureVisible(
           find.byKey(ValueKey('link-in-bio-template-${last.id}')));
       expect(tester.takeException(), isNull);

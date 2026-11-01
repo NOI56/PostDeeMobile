@@ -5,7 +5,8 @@
 The owner approved ten 3D website designs as a separate category after reviewing
 clay, layered-paper and frosted-glass concepts. Package rights stay unchanged;
 any visitor should be able to open a published website without login or the app.
-This is a **local candidate**, not a hosted deployment or installed-build receipt.
+Implementation and APK verification were prepared locally. The later Staging
+API deployment is recorded in the final checklist; the APK remains uninstalled.
 
 Work starts from freshly verified `origin/main`
 `e7fd926ef06791f7a3c6cd984b3742558258c91e`, on

@@ -14,7 +14,6 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
 import 'package:postdee_mobile/features/auth/firebase_account_access_revoker.dart';
 import 'package:postdee_mobile/features/auth/auth_controller.dart';
-import 'package:postdee_mobile/features/analytics/analytics_screen.dart';
 import 'package:postdee_mobile/features/billing/paywall_screen.dart';
 import 'package:postdee_mobile/features/billing/addon_pending_store.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
@@ -1438,17 +1437,17 @@ void main() {
 
     await tester.tap(_referenceNavButton('Create post'));
     await tester.pumpAndSettle();
-    oldUploader.onViewAnalytics!();
+    oldUploader.onPublishFinished!();
     await tester.pumpAndSettle();
     expect(find.byType(UploaderScreen), findsOneWidget);
     expect(_referenceNav(), findsNothing);
     final activeUploader = tester.widget<UploaderScreen>(
       find.byType(UploaderScreen),
     );
-    activeUploader.onViewAnalytics!();
+    activeUploader.onPublishFinished!();
     await tester.pumpAndSettle();
     expect(_referenceNav(), findsOneWidget);
-    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 4);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
     expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
   });
 
@@ -1536,7 +1535,7 @@ void main() {
     expect(find.byType(UploaderScreen, skipOffstage: false), findsNothing);
     expect(find.text('Composer child route'), findsNothing);
     expect(_referenceNav(), findsOneWidget);
-    oldUploader.onViewAnalytics!();
+    oldUploader.onPublishFinished!();
     await tester.pumpAndSettle();
     expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
     expect(_referenceNav(), findsOneWidget);
@@ -2013,24 +2012,23 @@ void main() {
       );
     }
 
-    // Publishing can still open Analytics, which is not one of the five nav
-    // destinations. It must not incorrectly mark another destination selected.
+    // Finishing the composer returns to Home and its selected destination.
     await tester.tap(_referenceNavButton('Create post'));
     await tester.pumpAndSettle();
     expect(_referenceNav(), findsNothing);
     final uploader = tester.widget<UploaderScreen>(
       find.byType(UploaderScreen),
     );
-    expect(uploader.onViewAnalytics, isNotNull);
-    uploader.onViewAnalytics!();
+    expect(uploader.onPublishFinished, isNotNull);
+    uploader.onPublishFinished!();
     await tester.pumpAndSettle();
-    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 4);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
     expect(_referenceNav(), findsOneWidget);
-    expect(selectedIndicator, findsNothing);
+    expect(selectedIndicator, findsOneWidget);
     for (final label in [...tabIndices.keys, 'Create post']) {
       expect(
         tester.getSemantics(_referenceNavButton(label)),
-        isSemantics(isSelected: false),
+        isSemantics(isSelected: label == 'Home'),
       );
     }
     await tester.tap(_referenceNavButton('Home'));
@@ -2112,7 +2110,7 @@ void main() {
   });
 
   testWidgets(
-      'running dot stays absent in the composer and Analytics then returns',
+      'running dot stays absent in the composer and returns after finishing',
       (tester) async {
     await tester.pumpWidget(
       _shellApp(PostDeeShell(
@@ -2134,11 +2132,11 @@ void main() {
 
     tester
         .widget<UploaderScreen>(find.byType(UploaderScreen))
-        .onViewAnalytics!();
+        .onPublishFinished!();
     await tester.pumpAndSettle();
     expect(_referenceNav(), findsOneWidget);
-    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 4);
-    expect(indicator, findsNothing);
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+    expect(indicator, findsOneWidget);
     await tester.tap(_referenceNavButton('Store link'));
     await tester.pumpAndSettle();
     expect(tester.getSize(indicator), const Size(4, 4));
@@ -3570,7 +3568,7 @@ void main() {
     expect(recentPostsLoadCount, 2);
   });
 
-  testWidgets('analytics is built only after explicitly opening it',
+  testWidgets('retired analytics stays absent after publishing and fresh sign-in',
       (tester) async {
     final languageController = _signInShell();
     await tester.pumpWidget(_shellApp(PostDeeShell(
@@ -3587,25 +3585,27 @@ void main() {
       loadSocialConnections: () async => const [],
     )));
     await tester.pumpAndSettle();
-    expect(find.byType(AnalyticsScreen, skipOffstage: false), findsNothing);
+    expect(find.byKey(const ValueKey('analytics-scroll'), skipOffstage: false),
+        findsNothing);
     await tester.tap(_referenceNavButton('Create post'));
     await tester.pumpAndSettle();
     tester
         .widget<UploaderScreen>(find.byType(UploaderScreen))
-        .onViewAnalytics!();
+        .onPublishFinished!();
     await tester.pumpAndSettle();
-    expect(find.byType(AnalyticsScreen), findsOneWidget);
-    final previousAnalytics = tester.state(find.byType(AnalyticsScreen));
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+    expect(find.byKey(const ValueKey('analytics-scroll'), skipOffstage: false),
+        findsNothing);
     PostDeeAuthSessionStore.instance.signIn(
       const AuthSession(userId: 'firebase-user-shell', idToken: 'fresh-session'),
     );
     await tester.pumpAndSettle();
-    expect(identical(tester.state(find.byType(AnalyticsScreen)), previousAnalytics),
-        isFalse,
-        reason: 'A fresh sign-in must replace the previous analytics binding.');
+    expect(find.byKey(const ValueKey('analytics-scroll'), skipOffstage: false),
+        findsNothing);
     await tester.tap(_referenceNavButton('Home'));
     await tester.pumpAndSettle();
-    expect(find.byType(AnalyticsScreen, skipOffstage: false), findsNothing);
+    expect(find.byKey(const ValueKey('analytics-scroll'), skipOffstage: false),
+        findsNothing);
   });
 
   testWidgets('shows first-run onboarding once, then goes to home',
@@ -3658,8 +3658,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('onboarding-next')));
     await tester.pumpAndSettle();
-    expect(find.text('Schedule and track in one place'), findsOneWidget);
-    expect(find.text('ตั้งเวลา + ดูยอดที่เดียว'), findsNothing);
+    expect(find.text('Plan posts in one place'), findsOneWidget);
+    expect(find.text('วางแผนโพสต์ในที่เดียว'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('onboarding-next')));
     await tester.pumpAndSettle();

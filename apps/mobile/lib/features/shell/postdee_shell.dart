@@ -11,7 +11,6 @@ import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_controller.dart';
-import '../analytics/analytics_screen.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_message_localization.dart';
 import '../auth/firebase_apple_auth_gateway.dart';
@@ -232,18 +231,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
               unawaited(_openPostComposer(initialScheduleDate: date)),
           onOpenCalendarPostDetail: _openCalendarPostDetail,
         ),
-        // Do not start provider/statistics reads for an offstage dashboard.
-        // Recreating it on entry also prevents an old owner's summary lingering.
-        _selectedIndex == 4
-            ? AnalyticsScreen(
-                key: ValueKey((
-                  'analytics',
-                  _authController.session.stableUserId,
-                  _linkSessionGeneration,
-                )),
-                showTitle: true,
-              )
-            : const SizedBox.shrink(),
+        // Preserve existing tab indices after retiring post analytics.
+        const SizedBox.shrink(),
         // Profile is the 5th nav tab per the design handoff (no pushed route).
         ProfileScreen(
           isActive: _selectedIndex == 5 && _composerRoute == null,
@@ -475,7 +464,6 @@ class _PostDeeShellState extends State<PostDeeShell> {
                 }
               },
               onPublishFinished: () => _finishPostComposer(route, 0),
-              onViewAnalytics: () => _finishPostComposer(route, 4),
             ),
           ),
         ),

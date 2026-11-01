@@ -176,9 +176,9 @@ const _messages = <String, String>{
   'คลิปเดียว โพสต์ได้ทุกที่': 'One video. Every channel.',
   'เลือกวิดีโอ 9:16 หนึ่งคลิป แล้วส่งขึ้นทุกช่องทางพร้อมกัน พร้อม AI ช่วยใส่แคปชั่นภาษาไทย':
       'Choose one 9:16 video and send it to all your channels, with AI to help write Thai captions.',
-  'ตั้งเวลา + ดูยอดที่เดียว': 'Schedule and track in one place',
-  'วางแผนโพสต์ในปฏิทิน แล้วดูยอดวิว ไลก์ และเอนเกจเมนต์รวมทุกแพลตฟอร์มในหน้าเดียว':
-      'Plan posts in your calendar, then see views, likes, and engagement across platforms in one place.',
+  'วางแผนโพสต์ในที่เดียว': 'Plan posts in one place',
+  'วางแผนโพสต์ในปฏิทิน และตรวจสอบสถานะการส่งแต่ละช่องทางในที่เดียว':
+      'Plan posts in your calendar and check delivery status for each channel in one place.',
   'ข้าม': 'Skip',
   'ย้อนกลับ': 'Back',
   'ถัดไป': 'Next',

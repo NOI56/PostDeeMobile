@@ -321,7 +321,7 @@ void main() {
       final confirmedPublicType =
           const {'PRIVATE', 'UNLISTED', 'LIVE'}.contains(item.key);
       expect(find.byKey(const ValueKey('post-detail-open-analytics')),
-          confirmedPublicType ? findsOneWidget : findsNothing);
+          findsNothing);
       if (item.key == 'FUTURE_PROVIDER_OUTCOME') {
         expect(find.textContaining(reference), findsNothing);
         expect(find.byIcon(Icons.check_circle), findsNothing);
@@ -473,7 +473,7 @@ void main() {
             'Reason: Publishing to this platform failed. Please try again later.'),
         findsOneWidget);
     expect(find.byKey(const ValueKey('post-detail-open-analytics')),
-        findsOneWidget);
+        findsNothing);
     _expectEnglish(tester);
   });
 

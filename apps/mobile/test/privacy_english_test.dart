@@ -30,7 +30,7 @@ const _thaiBody =
     '- ร่างไม่ซิงก์ข้ามอุปกรณ์ แต่อาจรวมอยู่ในข้อมูลสำรองของระบบปฏิบัติการตามการตั้งค่า\n'
     '- แอปลบร่างหลัง API รับโพสต์เข้าคิว หากขั้นตอนก่อนรับเข้าคิวล้มเหลวจะเก็บร่างไว้ และหากลบไฟล์ไม่สำเร็จแอปจะแจ้งเตือนว่าไฟล์อาจยังอยู่\n\n'
     'การใช้ข้อมูล\n'
-    '- ใช้เพื่อโพสต์ ตั้งเวลา และแสดงผลวิเคราะห์ให้คุณเท่านั้น\n'
+    '- ใช้เพื่อโพสต์ ตั้งเวลา และแสดงสถานะการส่งให้คุณเท่านั้น\n'
     '- ไม่ขายข้อมูลส่วนบุคคลให้บุคคลที่สาม\n\n'
     'สิทธิของคุณ\n'
     '- ขอดู แก้ไข หรือลบข้อมูลของคุณได้ทุกเมื่อ\n'
@@ -223,7 +223,7 @@ void _expectEnglish(WidgetTester tester) {
     r'deletes? a draft after.*API.*queue',
     r'before.*accepted.*draft is kept',
     r'cannot be deleted.*warns.*may still',
-    r'only to publish and schedule.*analytics',
+    r'only to publish and schedule.*delivery status',
     r'do not sell personal information.*third parties',
     r'request access.*correction.*deletion.*any time',
     r'delete individual drafts.*drafts page',

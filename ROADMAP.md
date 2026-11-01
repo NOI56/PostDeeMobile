@@ -17,7 +17,7 @@ Build roadmap for PostDee.
   in `docs/superpowers/plans/2026-10-30-pending-work-reconciliation.md`.
 
 
-## Retired Features (2026-10-28)
+## Retired Features (2026-11-01)
 
 These features are out of the active product. They are not planned work or
 launch requirements, and sections below that still describe them are history.
@@ -31,9 +31,18 @@ The canonical table, with what code remains and why, is in `AGENTS.md` under
   unless the `AI_EDITING_ENABLED=true` rollback switch is set.
 - Groq as a transcription or planning provider.
 - AI Clip Review (`/clip-reviews`).
-- The Analytics bottom-navigation tab; analytics stays reachable from post
-  details and publish results.
-- Home monthly views/likes cards, removed from Home for now.
+- Social post analytics, including the dashboard, post-detail/publish-result
+  actions, onboarding promises and Pro package benefit. Authenticated
+  `GET /analytics/summary` returns `410 ANALYTICS_RETIRED`; the legacy
+  `canUseAnalytics` field remains `false` for every plan. Historical metric
+  data and account cleanup remain, as do publishing/delivery records and
+  Firebase app telemetry. No new metric provider is planned.
+- Home monthly views/likes cards and their analytics request.
+
+The analytics retirement needs no schema migration or environment change.
+Roll out the Mobile removal before or together with API retirement. Older
+clients can receive the explicit retired response until upgraded; this local
+candidate does not claim a hosted deployment or app-store release.
 
 ## Support chat with an AI helper (2026-10-28, phase 1 local candidate)
 
@@ -1528,7 +1537,8 @@ Core items:
 - Gemini caption generation through the backend.
 - API Hosting on Render (Node.js/Express) and Database on Render PostgreSQL.
 - Cloudflare R2 temporary video storage.
-- Upstash Serverless Redis and BullMQ for scheduling.
+- The current Blueprint uses one API instance with `PUBLISH_QUEUE=memory`;
+  Redis/BullMQ and a separate worker remain an optional scaling path.
 - Firebase Auth (Google Sign-In, Phone Auth) and Firebase Cloud Messaging (FCM) for Push Notifications.
 - RevenueCat for cross-platform subscription management (Apple App Store / Google Play).
 - Post/caption consumable add-on: target 49 THB once for 100 post units and 50
@@ -1544,22 +1554,23 @@ Core items:
   monitoring and automatic native crash collection pending separate privacy and
   device acceptance work.
 - Universal uploader for one 9:16 video.
-- Scheduling through Upstash Redis and BullMQ.
+- Scheduling runs inside the API in the current Blueprint. Verify Redis/BullMQ
+  and a separate worker before scaling beyond one API instance.
 - Unified social posting via PostPeer API (postpeer.dev) for TikTok, YouTube
   Shorts, Instagram Reels, and Facebook Page Reels. `FACEBOOK_REELS` always sends
   `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, with no
   Page feed fallback. Real-account E2E remains pending. Direct platform API
   integrations are deferred until post-launch.
-- Unified analytics summary for Pro users, with backend-backed date ranges and
-  a publish-date daily series.
+- Social post analytics is retired; retained persistence is for publishing
+  compatibility and historical account cleanup.
 
 Current status:
 
 - Mobile UI refresh has a first-pass shared dark theme, glass cards, Thai
   bottom navigation labels, auth bar copy, and Home dashboard direction.
   Upload, Calendar, AI Editing, Analytics, Profile, and package/paywall surfaces
-  have the approved design structure (AI Editing and the Analytics tab were
-  later retired from navigation; see Retired Features); final
+  have the historical approved design structure (AI Editing and all social
+  post analytics were later retired; see Retired Features); final
   device-specific visual polish
   remains.
 - Gemini backend smoke test passed.
@@ -1619,7 +1630,7 @@ Current status:
   first launch, but future screens and backend flows should avoid Thailand-only
   assumptions where the cost is low.
 - Firebase Auth, Render deployments, Upstash, RevenueCat webhooks, uploads,
-  analytics, real-clip caption provider hardening, production verification of
+  real-clip caption provider hardening, production verification of
   the Prisma AI caption usage ledger, and broader PostPeer social posting still
   need provider-level testing before production use. PostPeer profiles now satisfy
   the required name contract without exposing the Firebase UID/email and ensure
@@ -1835,9 +1846,8 @@ Reference direction:
   action hides its visible label while retaining the tooltip and accessible name.
   The separate 2026-10-06 link-manager revision uses the selected Pinterest
   mobile Links-manager reference while retaining this dock and its clearance.
-  The wider app redesign remains separate. Analytics remains reachable
-  from publish results and individual post details so the existing reporting
-  system is not removed.
+  The wider app redesign remains separate. The former publish-result and
+  post-detail analytics entry points are removed by the 2026-11-01 retirement.
 - Account uses four labeled groups: My account, Channels/tools, My package, and
   Settings/help. The current plan occupies one compact card; the existing
   paywall retains package comparison. Language/theme choices open on demand,
@@ -1846,9 +1856,9 @@ Reference direction:
   shortcuts are removed from Account.
   See `docs/superpowers/plans/2026-10-07-grouped-account-ui.md`.
 - Home keeps one direct Link in Bio shortcut followed by the latest posts.
-  Monthly views/likes cards are temporarily removed from Home along with their
-  analytics request; analytics stays available from post details and publish
-  results. Create post stays in the bottom navigation, while the future
+  Monthly views/likes cards and their analytics request are removed from Home.
+  Social post analytics is also retired from post details and publish results.
+  Create post stays in the bottom navigation, while the future
   viral-alert preview stays off Home until its real end-to-end flow is ready.
 - Keep AI captioning available from Upload after a clip is selected.
 - Create post opens above the shell as a full-screen four-step flow; the dock
@@ -1865,7 +1875,7 @@ Planned order:
    platform status chips, Thai navigation labels, and reusable mini chart/bar
    widgets.
 2. Finish Home dashboard: greeting, plan card, latest-post status rows, quick
-   actions, and platform performance summary.
+   actions, and connection summary.
 3. Redesign Upload: full-screen clip → caption → destinations → review/send
    steps, small local poster and full-screen player, manual AI, explicit draft
    save/changed-form exit, and a functional cover editor (video
@@ -1880,12 +1890,10 @@ Planned order:
    visible, polls live post states, and opens completed results read-only;
    real connected-account verification and real-clip AI captioning after video
    selection remain.
-5. Redesign Analytics: date filter chips, KPI cards, views trend chart,
-   platform comparison bars, and Thai labels for all visible metrics.
-6. Add Profile/navigation pass: replace the current Templates bottom tab with
+5. Add Profile/navigation pass: replace the current Templates bottom tab with
    Profile, keep Templates reachable from Upload or AI tools, and make sure no
    current template feature disappears.
-7. Verify each round on the Android emulator with Flutter analyze, widget
+6. Verify each round on the Android emulator with Flutter analyze, widget
    tests, debug APK build, install, and screenshots.
 
 ## Global Readiness Plan
@@ -1903,7 +1911,6 @@ Recommended order:
 2. Country, timezone, and schedule handling
    - Store schedule times in UTC on the backend.
    - Display and edit schedules in the user's local timezone.
-   - Make analytics date ranges locale-aware.
 
 3. Currency and store subscription markets
    - Keep backend plan ids provider-neutral: Basic, Starter, Pro.
@@ -1989,7 +1996,7 @@ removed so this package plan does not compete with a separate review feature.
 | --- | ---: | --- | --- |
 | Basic | Free | Try posting and publish a profile page | Phone verification required for 3 real-time test posts per month; one profile page with up to 2 links |
 | Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling up to 14 days ahead, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 7 links, and 50 real-clip AI caption credits/month |
-| Pro | 299 THB/month | Growth tools, analytics, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling up to 30 days ahead, calendar, templates, auto watermark, EP clip splitting, full analytics, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption credits/month |
+| Pro | 299 THB/month | Growth tools, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling up to 30 days ahead, calendar, templates, auto watermark, EP clip splitting, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption credits/month |
 
 Package rules:
 
@@ -2006,7 +2013,7 @@ Package rules:
 - Starter can schedule up to 14 days ahead; Pro can schedule up to 30 days.
   Previously accepted schedules retain their time after this policy change or
   a downgrade. New schedules and reschedules use the current plan's limit;
-  these limits do not define R2 file retention. Analytics, hashtag radar,
+  these limits do not define R2 file retention. Hashtag radar,
   AI comment center, viral alert, and team access stay Pro-only.
 - Starter AI captioning listens to the selected clip audio and returns SEO
   wording, hashtags, caption options, and hook ideas.
@@ -2021,7 +2028,8 @@ Package rules:
   can exist only as an optional extra after the user selects a clip.
 - Do not include a separate "AI audio clip review" feature in Starter or Pro
   package marketing for now.
-- AI auto editing minutes and top-ups are retired from current package marketing.
+- AI auto editing minutes/top-ups and social post analytics are retired from
+  current package marketing. `canUseAnalytics` remains false for all plans.
 - Secret AI keys must stay on the backend only. Team editors must never see the
   owner's social account passwords or tokens.
 
@@ -2142,8 +2150,9 @@ To ensure the app passes store review guidelines, the following must be implemen
    then pass real Redis/provider/Firebase, physical-device, slow-network, OAuth
    and R2 lifecycle/legacy-upload tests. Unresolved tickets never auto-expire.
    Apple Sign-In remains unavailable on Android/web until server-side token
-   revocation exists there. Production also remains in `dual` upload rollout;
-   retire signed-`PUT` clients before switching to strict `multipart` mode.
+   revocation exists there. The repository Blueprint already selects strict
+   `multipart` uploads; verify the deployed value and legacy-client rejection
+   before claiming the rollout is complete.
 4. **Content & Safety**: Rely on Gemini's built-in safety filters to prevent abusive or explicit AI generation.
 5. **Policies**: The in-app Privacy Policy and Terms are working drafts. Finalize
    and host reviewed HTTPS versions, including the local-draft/Application
@@ -2155,13 +2164,16 @@ To ensure the app passes store review guidelines, the following must be implemen
    Pro 299 positioning.
 2. Test real-clip captioning against R2/Gemini with real videos, then harden
    spoken-language detection and market-aware prompting.
-3. Run the Prisma migration and verify `CAPTION_USAGE_STORE=prisma` against a
-   real PostgreSQL database.
+3. Verify the caption-usage migrations are applied in each target database and
+   test persistent credit reservation, refunds, and quota enforcement against
+   real PostgreSQL. `render.yaml` already selects `CAPTION_USAGE_STORE=prisma`.
 4. Enable the Firebase providers/capabilities and run real-device auth tests;
    the project files are already present.
-5. Test managed R2 multipart uploads from the mobile app through the backend
-   and worker flow, then retire legacy clients and change production from
-   `dual` to strict `multipart` mode.
+5. Verify the deployed upload mode matches `render.yaml`, which already selects
+   `UPLOAD_PROTOCOL_MODE=multipart`. Test mobile multipart upload, retry,
+   completion, abort/account cleanup, and the `426 UPLOAD_CLIENT_UPGRADE_REQUIRED`
+   response for legacy clients against real R2. Cover publishing through the
+   current in-process API scheduler; a separate BullMQ worker is optional.
 6. Verify the per-user PostPeer connect/refresh flow while Staging remains
    disabled, cancel old queued/scheduled records, then run controlled real
    publishing with disposable connected accounts. Confirm readiness returns to

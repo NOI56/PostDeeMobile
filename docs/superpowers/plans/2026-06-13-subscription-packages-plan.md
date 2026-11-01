@@ -2,6 +2,12 @@
 
 > Status: planning source of truth for package positioning. Do not treat this as fully implemented behavior until the matching backend and mobile gates are updated.
 
+> Analytics retirement (2026-11-01): social post statistics are removed from all
+> plans, onboarding, post details and publish results. The compatibility field
+> `canUseAnalytics` is always `false`; authenticated `GET /analytics/summary`
+> returns `410 ANALYTICS_RETIRED`. Historical data cleanup and publishing
+> records remain, with no migration. Firebase app telemetry is separate.
+
 > Shop-link limits update (2026-10-26, implementation candidate): one page per
 > account remains. Basic/free allows 2 links, Starter 199 THB/month 7, and Pro
 > 299 THB/month 20. New draft additions count all stored links, including
@@ -103,13 +109,13 @@ view or cancel them but need a paid plan to submit a new schedule or reschedule.
 Keep the packages easy for Thai sellers to understand:
 
 - **Starter 199 THB/month**: practical daily posting and lightweight AI help.
-- **Pro 299 THB/month**: growth, analytics, advanced AI, and serious shop/team workflows.
+- **Pro 299 THB/month**: growth, advanced AI, and serious shop/team workflows.
 
 Avoid duplicate feature names that confuse users. In particular, **AI audio clip review is paused and should not be sold as a separate Starter or Pro package feature for now**.
 
 ## Starter 199 THB/month
 
-Starter should feel useful enough for a small shop to pay without needing analytics yet.
+Starter should feel useful enough for a small shop's daily posting work.
 
 - 120 post units per month.
 - Post unit counting: 1 platform = 1 unit.
@@ -133,7 +139,7 @@ Starter should feel useful enough for a small shop to pay without needing analyt
 - One hosted profile page with up to 7 links (Basic/free has 2; Pro has 20).
   These are the 2026-10-26 candidate limits; stored-link additions and enabled
   publication payloads follow the preservation rules above.
-- No Pro analytics dashboard.
+- Social post analytics is retired for every plan.
 - No hashtag radar.
 - No AI comment center.
 - No viral alert.
@@ -162,7 +168,6 @@ Pro should be the plan for serious sellers, creators, and shops that want to gro
   - Do not sell a separate prompt-only caption generator as the main package feature.
 - Auto watermark.
 - EP clip splitting.
-- Full analytics dashboard.
 - Hashtag radar.
 - AI comment center: sentiment summary and reply drafts.
 - Viral alert notification.

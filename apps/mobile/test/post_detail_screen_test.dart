@@ -441,7 +441,7 @@ void main() {
     });
   }
 
-  testWidgets('published post offers analytics instead of publish actions',
+  testWidgets('published post keeps delivery details without retired analytics',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -457,7 +457,7 @@ void main() {
 
     expect(find.text('เผยแพร่แล้ว'), findsWidgets);
     expect(find.byKey(const ValueKey('post-detail-open-analytics')),
-        findsOneWidget);
+        findsNothing);
     expect(find.byKey(const ValueKey('post-detail-publish-now')), findsNothing);
   });
 
@@ -648,6 +648,6 @@ void main() {
         scrollable: find.byType(Scrollable).first);
     expect(lowerFailure, findsOneWidget);
     expect(find.byKey(const ValueKey('post-detail-open-analytics')),
-        findsOneWidget);
+        findsNothing);
   });
 }

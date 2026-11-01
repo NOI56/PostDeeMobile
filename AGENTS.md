@@ -15,8 +15,8 @@ The owner removed these from the product. Code, tests, and older dated sections 
 | AI video editing / auto editing (editor, subtitle burn-in, music and sound effects, beat sync, editing minutes and top-ups) | Navigation entry removed 2026-10-05 (Store link took its place); API retired 2026-10-24 | Every `/ai-edits/*` request answers `410 AI_EDITING_RETIRED` unless the rollback switch `AI_EDITING_ENABLED=true` is set. `apps/api/src/modules/aiEdits` and `apps/mobile/lib/features/ai_editing` remain as compatibility code: Upload still uses `AiEditAudioExtractor` for AI-caption audio and the cover editor uses `ReviewVideoTimeline`, so the folder cannot simply be deleted. The `AiEditUsage` table stays so account deletion can clear historical rows. |
 | Groq transcription/planning provider | Retired | Runtime configuration rejects Groq. Transcription uses ElevenLabs; captions use Gemini. |
 | AI Clip Review | Removed | UI, `/clip-reviews` route, config, and provider code are gone; only false compatibility flags remain for older clients. |
-| Analytics bottom-navigation tab | Removed from navigation | Analytics stays reachable from post details and publish results. |
-| Home monthly views/likes cards | Removed from Home for now | Their analytics request was removed with them. |
+| Social post analytics / statistics | Retired 2026-11-01 | Mobile has no analytics screen, post-detail/publish-result entry point, onboarding promise, or package benefit. Authenticated `GET /analytics/summary` returns `410 ANALYTICS_RETIRED`; the legacy `canUseAnalytics` subscription field stays `false` for every plan. Historical analytics stores and `PlatformPublish` metric columns remain for account deletion and publishing compatibility; do not delete publishing status records. Firebase app telemetry and error monitoring are separate and retain their existing settings. |
+| Home monthly views/likes cards | Removed | Their analytics request was removed with them; social post analytics is now fully retired. |
 
 Dated sections in the other docs are a history log. When they conflict with this table, this table wins. When a feature is retired or restored, update this table in the same change.
 
@@ -143,8 +143,7 @@ Current Stack:
 - Flutter mobile app with light/dark themes (light is the default)
 - Bottom navigation: Home, Calendar, Create post, Store link, and Account
 - Full-screen create-post flow with AI captions and saved caption templates,
-  plus publishing, notifications, billing, and analytics reached from post
-  details and publish results
+  plus publishing, notifications, billing, and post delivery results
 - AI video editing is retired; see Retired Features above
 
 Note: In the current environment, Flutter might not be in `PATH` yet. Do not claim `flutter analyze` or `flutter test` passed if they haven't been actually run.

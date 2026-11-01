@@ -199,7 +199,6 @@ class UploaderScreen extends StatefulWidget {
     this.loadTikTokPublishingOptions,
     this.onScheduledPostCreated,
     this.onPublishFinished,
-    this.onViewAnalytics,
     this.onViewPost,
     this.analytics,
     this.watermarkVideo,
@@ -246,7 +245,6 @@ class UploaderScreen extends StatefulWidget {
   final UploaderTikTokOptionsLoader? loadTikTokPublishingOptions;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
-  final VoidCallback? onViewAnalytics;
   final ValueChanged<String>? onViewPost;
   final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
@@ -4020,8 +4018,6 @@ class _UploaderScreenState extends State<UploaderScreen>
     switch (action) {
       case PublishFlowAction.finish:
         widget.onPublishFinished?.call();
-      case PublishFlowAction.analytics:
-        widget.onViewAnalytics?.call();
       case null:
         break;
     }

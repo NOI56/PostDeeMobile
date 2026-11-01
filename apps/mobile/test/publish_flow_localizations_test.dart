@@ -103,7 +103,6 @@ void main() {
       'ลองใหม่': 'Try again',
       'กลับไปตรวจสอบ': 'Go back and check',
       'ดูโพสต์นี้': 'View this post',
-      'ดูสถิติโพสต์': 'View post analytics',
       'ส่งเป็นร่างแล้ว': 'Sent as draft',
       'ส่วนตัว': 'Private',
       'ไม่แสดงในรายการ': 'Unlisted',

@@ -2,14 +2,25 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-> **Retired features (2026-10-28):** AI video editing / auto editing (editor,
+> **Retired features (2026-11-01):** AI video editing / auto editing (editor,
 > subtitles, music and sound effects, beat sync, editing minutes), Groq, AI Clip
-> Review, the Analytics bottom-navigation tab, and the Home monthly views/likes
-> cards are out of the active product. `/ai-edits/*` answers
+> Review, social post analytics and its secondary entry points, and the Home
+> monthly views/likes cards are out of the active product. `/ai-edits/*` answers
 > `410 AI_EDITING_RETIRED` unless `AI_EDITING_ENABLED=true`; the retained
 > editing modules are compatibility code, not current architecture. Sections
 > below that describe them are history. The canonical list is in `AGENTS.md`
 > under "Retired Features" and wins when an older section disagrees.
+
+Social post analytics retirement removes Mobile dashboard routes/actions and
+Pro/onboarding claims. The legacy authenticated `GET /analytics/summary`
+returns `410 ANALYTICS_RETIRED` without reading subscription or metric stores;
+`canUseAnalytics` remains in subscription JSON as `false` for every plan.
+Retained stores and metric columns support historical account cleanup and
+existing `PlatformPublish` delivery records. Publishing, schedules, drafts,
+Firebase app telemetry and error reporting retain their existing behavior.
+No migration or environment change is needed. Roll out Mobile removal before
+or together with API retirement; older clients then receive the explicit
+retired response. This is a local candidate, not a deployment receipt.
 
 ## Dot support helper (2026-10-28, phase 3 local candidate)
 
@@ -698,7 +709,8 @@ same UTC month boundary as included quota. Mobile displays device-local time;
 it is neither the billing renewal date nor purchased-credit expiry. Purchased
 bank rules and checkout gates do not change. Local notification read markers
 remain session-only, with a route to owned post history instead of an implied
-persistent notification service. Hidden analytics is constructed only on entry.
+persistent notification service. The former lazy analytics entry is retired
+as of 2026-11-01.
 
 Deploy the API before Mobile. No migration, dependencies or environment changes.
 See the [work record](docs/superpowers/plans/2026-10-21-ux-review-fixes.md).
@@ -1509,8 +1521,9 @@ now opens `/create-post` above the shell instead of selecting a retained
 uploader. IndexedStack slot 2 is empty, so no hidden uploader initializes its
 draft/connection loads. The full-screen composer hides the dock; closing it
 retains the previous tab, and Calendar Add uses the same entry point.
-Analytics remains index 4, accessible from existing secondary flows without a
-selected navigation dot. Navigation labels are localized separately from screen
+The former Analytics index 4 is retained only as an empty compatibility slot
+after its 2026-11-01 retirement, with no secondary route or selected navigation
+dot. Navigation labels are localized separately from screen
 headings; the center Create post name remains accessible and in its tooltip,
 while a 15 dp spacer replaces its visible label. The corrected opaque dock is
 full width, paints through the bottom safe area, and has rounded 24 dp top corners
@@ -1872,24 +1885,35 @@ D:\PostDeeMobile
 
 ```mermaid
 flowchart LR
-  Mobile["Flutter Mobile App"] --> API["Express API (Render)"]
+  Mobile["Flutter Mobile App"] --> API["Express API (Render, 1 instance)"]
+  Mobile -->|"Support chat / service status"| API
+  Admin["Admin Web Console (when enabled)"] -->|"Verified owner / viewer"| API
   Mobile -.->|purchases_flutter| RC["RevenueCat"]
   RC -.->|Webhooks| API
   API -.->|Subscriber read for Restore| RC
   API --> Auth["Firebase Auth & FCM"]
   API --> DB["PostgreSQL (Render)"]
   API --> Storage["Cloudflare R2 Video Storage"]
-  API --> Queue["Upstash Redis / BullMQ"]
-  API --> Captions["Real-Clip Caption Provider"]
+  API --> Scheduler["In-process publish scheduler (PUBLISH_QUEUE=memory)"]
+  API --> Captions["Gemini Real-Clip Captions"]
+  API -.->|"Dot: configured provider + owner switch"| SupportBot["OpenAI Support Helper (off by default)"]
   Browser["Public Profile Page Visitor"] -->|"GET /p/:slug"| API
-  Queue --> Worker["Publish Worker"]
-  Worker --> Social["PostPeer API (Unified)"]
-  Worker --> Storage
-  Worker --> DB
+  Scheduler --> Social["PostPeer API (Unified)"]
+  Scheduler --> Storage
+  Scheduler --> DB
   Mobile -.->|"opt-in Dart errors only"| Sentry["Sentry (errors only)"]
   API -.->|"opt-in errors only"| Sentry
-  Worker -.->|"opt-in errors only"| Sentry
 ```
+
+`render.yaml` selects `PUBLISH_QUEUE=memory` and `numInstances: 1`.
+`server.ts` starts the scheduler attached by `app.ts`; there is no separate
+worker or Redis service in this Blueprint. Redis/BullMQ and
+`worker:publish` remain optional adapters for a future separately verified
+deployment. Scaling beyond one API instance requires that queue/worker change
+first. Support chat and service notices use the API's memory/Prisma stores;
+the optional admin console manages support, notices, trials and account
+deletion. Sentry reporting requires explicit configuration and is separate
+from the retired social post analytics feature.
 
 Production และ Staging ต้องเป็นคนละ data boundary: `render.yaml` ชี้ไป
 `postdee-api`/`postdee-postgres` ส่วน `render.staging.yaml` ชี้ไป
@@ -1996,7 +2020,7 @@ Current mobile pieces:
 - Legacy Clip Review UI, route, config, and internal mock/provider code have
   been removed from the active app path.
 - Saved templates screen.
-- Unified analytics screen gated by Pro status.
+- Social post analytics is retired; no dashboard or post-result statistics action.
 - Firebase/Google auth gateway with an isolated Android Debug Staging config;
   Google login/token/Staging API smoke passes on Emulator. Firebase Phone Auth,
   iOS, Production, and physical-device tests remain.
@@ -2021,7 +2045,9 @@ Current mobile pieces:
   the installed Staging APK; its production URI had no handler in the Staging-only
   installation. Real provider/browser handoff, Open App confirmation and cold
   callback remain unverified.
-- RevenueCat webhook scaffold for Starter and Pro entitlements, plus a legacy Store Subscription scaffold.
+- RevenueCat purchase/restore integration for Starter and Pro, with webhooks
+  and authenticated server resync; direct store verification remains a legacy
+  path.
 
 Important mobile services:
 
@@ -2055,17 +2081,19 @@ Important mobile services:
 Global readiness principles:
 
 - Store user-facing copy through localization-ready structures instead of hard-coded Thai-only strings when a screen is redesigned.
-- Use user locale and timezone for schedules, analytics dates, and billing display.
+- Use user locale and timezone for schedules and billing display.
 - Keep prices and plan names provider-neutral so App Store and Google Play can map products per country.
 - Accept international phone number formats for Firebase Phone Auth.
 - Keep country-specific legal, tax, platform-policy, and privacy requirements behind explicit launch checklists before opening each market.
 
 Design system:
 
-- Background: `#000000`.
-- Cards: dark charcoal such as `#121212`.
-- Minimal, professional, dark UI.
-- Social platform colors should be used only as small accents/icons.
+- Light is the default; the saved theme preference can select dark mode.
+- `AppTheme` supplies shared palettes, spacing and component tokens. Light
+  backgrounds use `#F2F5F2` with white cards; dark backgrounds use `#0E1411`
+  with `#19221D` cards.
+- Green is the shared action accent; social platform colors remain small
+  accents/icons.
 
 ## Backend API
 
@@ -2093,6 +2121,8 @@ Backend stack:
 
 Main route groups:
 
+This is a summary; `API.md` is the full route and payload contract.
+
 - `GET /health`
 - `GET /publishing/readiness`
 - `GET /auth/me`
@@ -2108,13 +2138,9 @@ Main route groups:
 - `DELETE /posts/:id`
 - `GET /captions/quota`
 - `POST /captions/generate`
-- `GET /ai-edits/quota`
-- `POST /ai-edits/transcribe`
-- `POST /ai-edits/prepare`
-- `POST /ai-edits/plan`
 - `GET /templates`
 - `POST /templates`
-- `GET /analytics/summary?range=today|7d|30d|90d|year`
+- `GET /analytics/summary` (authenticated legacy route; `410 ANALYTICS_RETIRED`)
 - `GET /billing/subscription`
 - `POST /billing/revenuecat/webhooks`
 - `POST /billing/revenuecat/resync`
@@ -2123,11 +2149,24 @@ Main route groups:
 - `POST /billing/google-play/notifications`
 - `POST /billing/apple/notifications`
 - `POST /devices`
+- `DELETE /devices`
 - `GET /social-connections`
 - `POST /social-connections/:platform/connect`
 - `POST /social-connections/refresh`
 - `DELETE /social-connections/:platform`
+- `GET /social-connections/publishing-readiness`
+- `GET /social-connections/TIKTOK/publishing-options`
+- Store-link profile, image and customization routes, including public `GET /p/:slug`
+- `GET /support/status` and authenticated support chat/message/handoff routes
+- Account deletion readiness and `DELETE /account`, with public `/account-deletion`
+- Optional `/admin` web console and role-protected `/admin/api/*` routes
 - `GET /queue/jobs`
+
+Retired compatibility routes: `/ai-edits/*` (including
+`POST /ai-edits/prepare`) return `410 AI_EDITING_RETIRED` unless the explicit
+rollback switch `AI_EDITING_ENABLED=true` is set. They are not current product
+features. The analytics compatibility route above always returns its retirement
+response after authentication.
 
 ## Module Layout
 
@@ -2136,23 +2175,40 @@ apps/api/src
   app.ts
   server.ts
   config
+  monitoring
+  readiness.ts
   modules
-    analytics
+    account
+    admin
     aiEdits
+    analytics
     auth
     billing
     captions
+    clipReviews  (empty local leftover; no tracked source or active routes)
+    devices
+    linkInBio
+    notifications
     platformPublishes
     posts
     queue
+    security
+    serviceStatus
+    socialConnections
     storage
     subscriptions
+    supportBot
+    supportChat
     templates
     uploads
     users
   routes
   workers
 ```
+
+The local modules directory contains 24 names above; `clipReviews` is an empty
+untracked leftover, so a clean checkout has 23 tracked module directories.
+`monitoring/` and `readiness.ts` are siblings of `modules/`, not feature modules.
 
 Key idea:
 
@@ -2177,7 +2233,8 @@ Important models:
   and an internal/redacted `platformTargets` snapshot. It has no local-draft
   API contract; the older Prisma `DRAFT` enum value is normalized to `QUEUED`.
 - `Template`: reusable text snippets.
-- `PlatformPublish`: per-platform publish/analytics record with public
+- `PlatformPublish`: per-platform publish record with retained historical metric
+  columns and public
   `deliveryOutcome` (`LIVE|PRIVATE|UNLISTED|DRAFT`) and internal/redacted
   `providerPostId`.
 - `Subscription`: Basic/Starter/Pro entitlement state.
@@ -2187,6 +2244,29 @@ Important models:
   kept so account deletion can clear historical rows.
 - `DeviceToken`: per-user FCM registration token.
 - `SocialConnection` and `PostPeerProfile`: per-user provider connection state.
+- `SocialConnectAttempt`: expiring per-user/platform connection admission state,
+  with a hashed nonce and baseline provider integration IDs.
+- `LinkInBioProfile`: store-link content, appearance and publication state.
+- `LinkInBioSlugReservation`: temporary protection for released slugs, retained
+  after account deletion without a `User` relation.
+- `LinkInBioImage`: owned R2 image metadata and draft-reference/deletion guards.
+- `SupportThread` and `SupportMessage`: a member's support conversation and
+  messages, cascading from `User` on deletion.
+- `SupportBotSetting`: the global owner-controlled Dot enablement switch;
+  no setting means off.
+- `ServiceIncident`: customer-facing service notices and their resolution state.
+- `AdminTrialAccess` and `AdminTrialAudit`: trial grants and the corresponding
+  operator audit records.
+- `AdminAccountDeletion`: durable operator deletion requests, retained without
+  a `User` relation.
+- `MonthlyAddonPurchase`: add-on purchase/revocation records; consumed
+  transaction tombstones survive account deletion to prevent reuse.
+- `ManagedUploadOwner`: durable account lifecycle and deletion-authorization
+  marker, separate from `User` so cleanup state can survive deletion.
+- `ManagedOwnerOperation` and `ManagedOwnerDeletionRun`: admitted operation
+  lifetimes and the exclusive deletion run used to drain work before cleanup.
+- `ManagedUploadSession`: owned multipart upload state, expiry and completion
+  metadata used by upload recovery and account deletion.
 
 Subscription fields are provider-neutral:
 
@@ -2209,8 +2289,9 @@ delivery visibility cannot be reconstructed.
 | Publish drafts | App-owned Application Support files scoped by stable authenticated user ID | The same local-only store; no backend record or cross-device sync |
 | Posts | `POST_STORE=memory` | `POST_STORE=prisma` |
 | Subscription | `SUBSCRIPTION_STORE=memory` | `SUBSCRIPTION_STORE=prisma` |
-| Analytics | `ANALYTICS_STORE=memory` | `ANALYTICS_STORE=prisma` |
-| Queue | `PUBLISH_QUEUE=memory` | `PUBLISH_QUEUE=bullmq` (Upstash) with `POST_STORE=prisma` and `DATABASE_URL` |
+| Platform publish records | Selected with `POST_STORE=memory` | Selected with `POST_STORE=prisma` in the API; retained for delivery status and account cleanup |
+| Retained analytics adapter | `ANALYTICS_STORE=memory` | `ANALYTICS_STORE=prisma`; the authenticated summary route stays retired with `410` |
+| Queue | `PUBLISH_QUEUE=memory` | Current Blueprint: `memory`, one API instance and its in-process scheduler. Optional `bullmq` requires Redis, Prisma posts and a separate publish worker. |
 | Video storage | `VIDEO_STORAGE=mock`, `UPLOAD_PROTOCOL_MODE=legacy` | `VIDEO_STORAGE=r2`, with strict `UPLOAD_PROTOCOL_MODE=multipart` (Staging keeps `dual`) |
 | Captions | `CAPTION_PROVIDER=mock` | Real-clip caption provider using backend AI |
 | Caption usage | `CAPTION_USAGE_STORE=memory` | `CAPTION_USAGE_STORE=prisma` |
@@ -2412,8 +2493,9 @@ existing owner-scoped draft store and automatic submission persistence remain:
 save the complete request ID/form before publishing side effects, reuse that
 ID on retry, and preserve uncertain/failed drafts. The shell tracks composer
 route identity and owner, prevents duplicate opens, and closes that route and
-its children on an account change. Finish/Analytics callbacks close only their
-own current composer after the publishing route has returned.
+its children on an account change. The Finish callback closes only its own
+current composer after the publishing route has returned. The former Analytics
+callback is retired.
 
 The inline summary reuses the standalone review's account-identity,
 `canSubmit` and known-outcome checks. Its optional schedule row is hidden when
@@ -2499,7 +2581,7 @@ sequenceDiagram
   opt Cleanup enabled or storage lifecycle policy
     W->>S: Delete temporary video and cover after success
   end
-  W->>A: Record publish/analytics result
+  W->>A: Record platform publish result
 ```
 
 Rules:
@@ -2597,9 +2679,10 @@ Rules:
   accepts old clients; strict `multipart` closes that remaining path.
 - Every route except `GET /health` sits behind a global per-IP rate limit (`RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`); auth, upload, AI, and social-connection routes add tighter fixed per-IP buckets.
 - Starter unlocks real-clip AI captioning from audio.
-- Pro unlocks analytics, hashtag radar, AI comment center, team/editor access,
-  AI captioning from audio plus selected frames, and ElevenLabs + Gemini auto
-  editing.
+- Pro unlocks AI captioning from audio plus selected frames, subject to its
+  release gates. Social post analytics and AI auto editing are retired;
+  hashtag radar, AI comment center and team/editor access remain planned
+  rather than active package promises.
 - A PostPeer `202 pending/publishing` response stays inside the publisher until
   `GET /v1/posts/{postId}` reaches a terminal result or the roughly two-minute
   bounded poll expires. Success requires a real platform URL/id; no synthetic
@@ -3396,28 +3479,25 @@ Advanced capability controls use local accordion state with at most one section
 open and no default expansion; this is presentation state only and is never sent
 to the backend recipe.
 
-## Analytics Flow
+## Analytics compatibility flow (retired 2026-11-01)
 
-Analytics is Pro-only.
+Mobile no longer opens or requests a social post analytics dashboard. Older
+clients retain an authenticated endpoint with an explicit retirement response:
 
 ```mermaid
 sequenceDiagram
-  participant M as Mobile
+  participant M as Older Mobile
   participant A as API
-  participant Sub as Subscription Store
-  participant Store as Analytics Store
 
   M->>A: GET /analytics/summary
-  A->>Sub: Check user plan
-  alt User is Pro
-    A->>Store: Read platform metrics
-    A-->>M: totalViews + totalLikes + platforms
-  else User is Basic
-    A-->>M: 402 PRO_REQUIRED
-  end
+  A->>A: Authenticate
+  A-->>M: 410 ANALYTICS_RETIRED
 ```
 
-When `ANALYTICS_STORE=prisma`, the backend can aggregate metrics from `PlatformPublish`.
+No plan lookup or metric aggregation runs on this route. `ANALYTICS_STORE`
+and existing `PlatformPublish` metric columns remain for historical account
+cleanup and publishing compatibility. Firebase app telemetry is separate from
+the retired customer statistics feature.
 
 ## Auth Flow
 
@@ -3582,7 +3662,7 @@ cd apps/mobile
   Play purchase, lifecycle tests, and physical Android verification remain. Play
   Console requires a physical Android device for account verification and does
   not accept an Emulator. The legacy direct store verifier remains a scaffold.
-- Analytics does not yet fetch real platform metrics.
+- Social post analytics is retired; real platform metric fetchers are not launch work.
 
 ## Recommended Next Steps
 
@@ -3595,8 +3675,10 @@ cd apps/mobile
 5. Keep the legacy store notification scaffold covered, but do not make it the
    preferred production billing path.
 6. Expand RevenueCat notification event coverage from sandbox evidence.
-7. Run the `RealClipCaptionUsage` migration in staging/production and set
-   `CAPTION_USAGE_STORE=prisma` before selling paid AI caption quotas.
+7. Verify deployed caption usage persistence and migration state in each target
+   environment before selling paid AI caption quotas. `render.yaml` already
+   sets `CAPTION_USAGE_STORE=prisma` and runs `prisma:migrate:deploy`; repository
+   configuration alone does not confirm a target database's migration or ledger state.
 8. Retired, not a next step: ~~Harden Pro ElevenLabs + Gemini job/session persistence, top-up, retry/recovery, and real-device review/export states.~~
 9. Test Firebase Google Sign-In and Phone Auth on real Android/iOS devices.
 10. Test video picker and 9:16 preview on real devices.

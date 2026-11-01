@@ -584,12 +584,15 @@ void main() {
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('paywall-retry-subscription')), -300,
         scrollable: find.byType(Scrollable));
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('paywall-retry-subscription')),
+    final retryButton =
+        find.byKey(const ValueKey('paywall-retry-subscription'));
+    await Scrollable.ensureVisible(
+      tester.element(retryButton),
+      alignment: 0.5,
     );
-    await tester.tap(
-      find.byKey(const ValueKey('paywall-retry-subscription')),
-    );
+    await tester.pumpAndSettle();
+    expect(retryButton.hitTestable(), findsOneWidget);
+    await tester.tap(retryButton);
     await tester.pumpAndSettle();
 
     expect(loadCalls, 2);

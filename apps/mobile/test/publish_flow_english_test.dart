@@ -495,7 +495,6 @@ void main() {
         'This button may open a website. If it does, open the TikTok app yourself. This does not send your video again.',
         'View this post',
         'Done',
-        'View post analytics'
       ]) {
         await readable(tester, value);
       }
@@ -505,13 +504,14 @@ void main() {
       await tester.tap(viewPost);
       await tester.pump();
       expect(fixture.viewedPosts, ['draft-fixture-id']);
-      final analytics = find.byKey(const ValueKey('publish-flow-analytics'));
-      await revealPublishEnglish(tester, analytics);
-      expect(analytics.hitTestable(), findsOneWidget);
+      expect(find.byKey(const ValueKey('publish-flow-analytics')), findsNothing);
+      final finish = find.byKey(const ValueKey('publish-flow-finish'));
+      await revealPublishEnglish(tester, finish);
+      expect(finish.hitTestable(), findsOneWidget);
       await fixture.capture(tester, 'draft-en-2x-${dark ? 'dark' : 'light'}');
-      await tester.tap(analytics);
+      await tester.tap(finish);
       await tester.pumpAndSettle();
-      expect(fixture.actions, [PublishFlowAction.analytics]);
+      expect(fixture.actions, [PublishFlowAction.finish]);
       expect(fixture.attempts, 1);
       expect(tester.takeException(), isNull);
     });

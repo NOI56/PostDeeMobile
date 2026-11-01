@@ -152,7 +152,6 @@ const _messages = <String, String>{
   'กลับไปตรวจสอบ': 'Go back and check',
   'ดูโพสต์นี้': 'View this post',
   'เสร็จสิ้น': 'Done',
-  'ดูสถิติโพสต์': 'View post analytics',
   'ส่งสำเร็จบางช่องทาง': 'Delivered to some channels',
   'กำลังส่ง': 'Sending post',
   'ส่งสำเร็จ': 'Post sent',

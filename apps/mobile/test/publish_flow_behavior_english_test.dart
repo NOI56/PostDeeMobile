@@ -439,20 +439,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final action in [
-    PublishFlowAction.finish,
-    PublishFlowAction.analytics
-  ]) {
+  for (final action in [PublishFlowAction.finish]) {
     testWidgets(
         'English ${action.name} exits with its action without publishing again',
         (tester) async {
       final fixture = _fixture(tester);
       await fixture.mount(tester);
-      await _tap(
-          tester,
-          action == PublishFlowAction.finish
-              ? 'publish-flow-finish'
-              : 'publish-flow-analytics');
+      expect(find.byKey(const ValueKey('publish-flow-analytics')), findsNothing);
+      await _tap(tester, 'publish-flow-finish');
       expect(fixture.actions, [action]);
       expect(fixture.attempts, 1);
       expect(fixture.viewedPosts, isEmpty);

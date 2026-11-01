@@ -2,8 +2,9 @@
 
 Most external integrations have a real adapter behind a config flag. A flag and
 credentials are not proof that the full feature is production-ready: each row
-below lists the remaining provider/device verification. Platform metric
-ingestion still needs code. Sentry error reporting is implemented but opt-in:
+below lists the remaining provider/device verification. Social post analytics
+is retired; platform metric ingestion is no longer a launch task.
+Sentry error reporting is implemented but opt-in:
 set `SENTRY_DSN` for the API and the Mobile Sentry define per environment, then
 verify delivery before relying on it. AI video editing (including beat/hook
 rendering, editing minutes, and top-ups) is retired; see the Retired Features
@@ -244,8 +245,12 @@ user-owned PostPeer connections.
   and `POSTPEER_LEGACY_RECOVERY_PROFILE_ID`, refresh that signed-in user once,
   verify the connection, then remove both variables. Never leave partial
   values configured or use the short legacy profile name as ownership proof.
-- PostPeer publishing does not currently fetch platform views/likes. Analytics
-  can remain zero until a separate metrics ingestion adapter is implemented.
+- Social post analytics is retired: authenticated `GET /analytics/summary`
+  returns `410 ANALYTICS_RETIRED`, and `canUseAnalytics` remains `false` for
+  every plan. Historical metric storage and publishing delivery-status records
+  remain for compatibility and account deletion; Firebase app telemetry and
+  error monitoring keep their existing settings. See
+  [Retired Features in AGENTS.md](../AGENTS.md#retired-features-do-not-revive).
 - The backend calls `POST /v1/posts` with the `x-access-key` header, sends
   `content`, `platforms`, `mediaItems`, and `publishNow`, and resolves uploaded
   video keys to signed R2/S3 download URLs before calling PostPeer.

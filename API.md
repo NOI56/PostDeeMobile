@@ -2,6 +2,17 @@
 
 PostDee backend API reference.
 
+## Social post analytics retirement (2026-11-01, local candidate)
+
+Social post analytics was retired on 2026-11-01. The authenticated legacy
+summary endpoint returns `410 ANALYTICS_RETIRED`, and the compatibility
+subscription field `canUseAnalytics` is always `false`. Publishing status,
+historical data cleanup and Firebase app telemetry remain separate.
+
+Deploy API before Mobile. Older clients receive the explicit retirement error;
+the compatibility subscription field and historical stores remain available.
+No schema migration, new feature flag or destructive cleanup is required.
+
 ## Dot, the AI support helper (2026-10-28, phase 3 local candidate)
 
 Dot answers most support chat messages (the team may be one person) when
@@ -1187,7 +1198,7 @@ and delivery limits.
 
 This document describes the current Express + TypeScript API in `apps/api`.
 Implemented adapters remain mock-safe for local development, while production
-readiness for social publishing, live analytics, Cloudflare R2, real-clip AI
+readiness for social publishing, Cloudflare R2, real-clip AI
 captioning, Firebase, Apple App Store, and
 Google Play still depends on the provider/device release gates listed below.
 
@@ -1646,7 +1657,7 @@ The backend currently supports:
   optional temporary AI media cleanup, and monthly quota reservation through
   memory or Prisma-backed usage storage.
 - Saved templates
-- Pro-only analytics summary
+- Authenticated retired-analytics compatibility response (`410 ANALYTICS_RETIRED`)
 - Store subscription verification scaffold for Apple App Store and Google Play
 - Store server notification routes for renewal, cancel, refund, and grace-period handoff
 
@@ -1737,7 +1748,7 @@ whose complete provider/device flow has passed its release gate.
 | AI caption from real clip | No | Audio-only, 50 credits/month; shared requests cost 1, advanced requests cost 1 per selected channel; production provider/device verification remains | Audio + selected frames, 120 credits/month; same per-channel rule; production provider/device verification remains |
 | Public profile link page | One page, up to 2 links | One page, up to 7 links | One page, up to 20 links |
 | AI audio review as a separate feature | No | No | No |
-| Unified Analytics | No | No | Yes |
+| Social post analytics (retired) | No | No | No |
 | Hashtag radar and AI comment center | No | No | Yes |
 | Team and editor access | No | No | Yes |
 
@@ -1756,9 +1767,9 @@ Important rules:
   existing drafts are retained rather than trimmed.
   AI video editing is retired from the active product; its internal legacy APIs
   do not grant an advertised package benefit.
-- Pro users currently unlock implemented analytics and visual-frame AI
-  captioning subject to their listed release gates. Hashtag radar, AI comment
-  center, and team/editor access remain planned
+- Pro users unlock visual-frame AI captioning subject to its listed release
+  gates. Social post analytics is retired for every plan. Hashtag radar, AI
+  comment center, and team/editor access remain planned
   package benefits and must not appear as active paywall promises yet.
 - Prompt-only caption generation may still exist in the API while the app
   transitions, but it should not be the main paid package promise.
@@ -3855,60 +3866,29 @@ slot. Returns `{ "status": "ok" }`, or `404` when the template does not exist or
 belongs to another user. The mobile Templates screen asks for confirmation
 before calling it. This endpoint takes no request body.
 
-## Analytics
+## Analytics (retired 2026-11-01)
 
 ### `GET /analytics/summary?range=30d`
 
-Returns a unified analytics summary for the authenticated user.
-
-Requires Pro.
-
-Supported `range` values are `today`, `7d`, `30d`, `90d`, and `year`.
-The default is `30d`. Platform publish metrics are filtered by their publish
-time (falling back to record creation time) and grouped into UTC date buckets.
-The `daily` series therefore attributes the current synchronized totals to the
-day each platform publish was created/published; it is not a provider-level
-hourly history or a synthetic trend.
-
-Response:
-
-```json
-{
-  "status": "ok",
-  "summary": {
-    "range": "30d",
-    "totalViews": 0,
-    "totalLikes": 0,
-    "platforms": [
-      {
-        "platform": "TIKTOK",
-        "label": "TikTok",
-        "views": 0,
-        "likes": 0
-      }
-    ],
-    "daily": [
-      {
-        "date": "2026-07-10",
-        "views": 0,
-        "likes": 0
-      }
-    ]
-  }
-}
-```
-
-If the user is not Pro:
+Authentication is still required. Every authenticated request receives HTTP
+`410`, regardless of subscription plan or `range` (including unsupported
+values), without reading subscription entitlements or analytics metrics:
 
 ```json
 {
   "status": "error",
-  "code": "PRO_REQUIRED",
-  "message": "Unified Analytics requires the Pro plan"
+  "code": "ANALYTICS_RETIRED",
+  "message": "Post analytics has been retired"
 }
 ```
 
-An unsupported range returns `400 INVALID_ANALYTICS_RANGE`.
+The route remains for older clients; it no longer serves metrics or a Pro
+upgrade gate. Roll out the Mobile entrypoint/package-copy removal before or
+together with API retirement. Older installed clients can receive this
+explicit error until upgraded. Existing `ANALYTICS_STORE` configuration,
+historical metric columns and account-deletion cleanup are retained; no schema
+migration or destructive cleanup is needed. Platform publishing and delivery
+status continue using their existing records.
 
 ## Billing And Subscriptions
 
@@ -4127,15 +4107,16 @@ Pro response sets:
   "remainingPostsThisMonth": 250,
   "canUseAiCaptions": true,
   "canSchedule": true,
-  "canUseAnalytics": true,
+  "canUseAnalytics": false,
   "canUseAiAudioReview": false,
   "canUseAiVideoReview": false
 }
 ```
 
-`canUseAiAudioReview` and `canUseAiVideoReview` are legacy compatibility flags
-for older clients, but the active API keeps them false. Package copy should use
-"AI caption from real clip" instead.
+`canUseAnalytics`, `canUseAiAudioReview` and `canUseAiVideoReview` are legacy
+compatibility flags for older clients; the active API keeps them `false` for
+every plan, including Pro and trial access. Package copy should use "AI caption
+from real clip" instead of retired features.
 
 ### `POST /billing/revenuecat/webhooks`
 
@@ -4609,9 +4590,9 @@ PostgreSQL.
 | `APPLE_APP_APPLE_ID` | `1234567890` | Apple app id |
 | `APPLE_APP_STORE_ENVIRONMENT` | `sandbox`, `production` | App Store environment |
 | `TEMPLATE_STORE` | `memory`, `prisma` | Template persistence |
-| `POST_STORE` | `memory`, `prisma` | Post persistence |
+| `POST_STORE` | `memory`, `prisma` | Post and platform publish record persistence in the API |
 | `SUBSCRIPTION_STORE` | `memory`, `prisma` | Subscription persistence |
-| `ANALYTICS_STORE` | `memory`, `prisma` | Analytics persistence |
+| `ANALYTICS_STORE` | `memory`, `prisma` | Retained historical analytics compatibility/cleanup; does not enable the retired summary route |
 | `CAPTION_USAGE_STORE` | `memory`, `prisma` | Real-clip AI caption monthly usage persistence |
 | `AI_EDIT_USAGE_STORE` | `memory`, `prisma` | AI editing monthly minute usage persistence |
 | `AI_EDITING_ENABLED` | `false` (default), `true` | Rollback switch for the retired `/ai-edits/*` routes. Leave unset in production and staging; when unset every `/ai-edits/*` request returns `410 AI_EDITING_RETIRED` without provider work |
@@ -4694,7 +4675,6 @@ The following work is still required before production launch:
   access is verified with a physical Android device; an Emulator is not accepted.
 - Add full RevenueCat renewal, cancel, refund, billing-issue, and notification
   replay coverage.
-- Replace mock analytics with real platform analytics fetchers.
 - Verify and activate the opt-in Sentry error reporter separately for each
   authorized API/worker environment. Audit logging and production monitoring
   beyond errors remain separate work (per-IP rate limiting is live via

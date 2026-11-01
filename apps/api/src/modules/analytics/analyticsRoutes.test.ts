@@ -1,84 +1,86 @@
+import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../app.js';
+import { readServerConfig } from '../../config/env.js';
+import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import { registerAnalyticsRoutes } from './analyticsRoutes.js';
 
-describe('analytics routes', () => {
-  it('rejects analytics for Basic users', async () => {
-    const app = createApp();
+const retiredResponse = {
+  status: 'error',
+  code: 'ANALYTICS_RETIRED',
+  message: 'Post analytics has been retired'
+};
 
-    const response = await request(app).get('/analytics/summary').expect(402);
-
-    expect(response.body).toEqual({
-      status: 'error',
-      code: 'PRO_REQUIRED',
-      message: 'Unified Analytics requires the Pro plan'
-    });
-  });
-
-  it('returns a unified zero-state analytics summary for Pro users', async () => {
+describe('retired analytics routes', () => {
+  it.each(['BASIC', 'STARTER', 'PRO'])('retires analytics for %s users', async (plan) => {
     const app = createApp();
 
     const response = await request(app)
       .get('/analytics/summary')
-      .set('x-postdee-subscription-plan', 'PRO')
-      .expect(200);
+      .set('x-postdee-subscription-plan', plan)
+      .expect(410);
 
-    expect(response.body).toEqual({
-      status: 'ok',
-      summary: {
-        range: '30d',
-        totalViews: 0,
-        totalLikes: 0,
-        platforms: [
-          { platform: 'TIKTOK', label: 'TikTok', views: 0, likes: 0 },
-          { platform: 'YOUTUBE_SHORTS', label: 'YouTube Shorts', views: 0, likes: 0 },
-          { platform: 'INSTAGRAM_REELS', label: 'Instagram Reels', views: 0, likes: 0 },
-          { platform: 'FACEBOOK_REELS', label: 'Facebook Reels', views: 0, likes: 0 }
-        ],
-        daily: []
-      }
-    });
+    expect(response.body).toEqual(retiredResponse);
   });
 
-  it('rejects an unsupported analytics range', async () => {
-    const app = createApp();
+  it.each(['today', '7d', '30d', '90d', 'year', 'forever', '7d&range=year'])(
+    'returns retirement instead of validating range %s',
+    async (range) => {
+      const app = createApp();
 
-    const response = await request(app)
-      .get('/analytics/summary?range=forever')
-      .set('x-postdee-subscription-plan', 'PRO')
-      .expect(400);
+      const response = await request(app)
+        .get(`/analytics/summary?range=${range}`)
+        .set('x-postdee-subscription-plan', 'PRO')
+        .expect(410);
 
-    expect(response.body.code).toBe('INVALID_ANALYTICS_RANGE');
+      expect(response.body).toEqual(retiredResponse);
+    }
+  );
+
+  it('does not read a subscription or metrics for an authenticated request', async () => {
+    const app = express();
+    const subscriptionStore = createSubscriptionStore();
+    const getPlan = vi.spyOn(subscriptionStore, 'getPlan');
+    const analyticsStore = { summaryForUser: vi.fn() };
+    registerAnalyticsRoutes(
+      app,
+      (_request, response, next) => {
+        response.locals.authUser = { id: 'seller-analytics', provider: 'mock' };
+        next();
+      },
+      subscriptionStore,
+      analyticsStore
+    );
+
+    const response = await request(app).get('/analytics/summary?range=7d').expect(410);
+
+    expect(response.body).toEqual(retiredResponse);
+    expect(getPlan).not.toHaveBeenCalled();
+    expect(analyticsStore.summaryForUser).not.toHaveBeenCalled();
   });
 
-  it('reads aggregated analytics for the authenticated Pro user', async () => {
-    const analyticsStore = {
-      summaryForUser: vi.fn().mockResolvedValue({
-        range: '7d',
-        totalViews: 150,
-        totalLikes: 15,
-        platforms: [
-          { platform: 'TIKTOK', label: 'TikTok', views: 100, likes: 10 },
-          { platform: 'YOUTUBE_SHORTS', label: 'YouTube Shorts', views: 50, likes: 5 },
-          { platform: 'INSTAGRAM_REELS', label: 'Instagram Reels', views: 0, likes: 0 },
-          { platform: 'FACEBOOK_REELS', label: 'Facebook Reels', views: 0, likes: 0 }
-        ],
-        daily: [{ date: '2026-07-10', views: 150, likes: 15 }]
-      })
-    };
-    const app = createApp({ analyticsStore });
+  it('still requires authentication before returning retirement', async () => {
+    const verifyIdToken = vi.fn().mockResolvedValue({ id: 'seller-analytics', provider: 'firebase' });
+    const analyticsStore = { summaryForUser: vi.fn() };
+    const app = createApp({
+      config: readServerConfig({ AUTH_PROVIDER: 'firebase', FIREBASE_PROJECT_ID: 'postdee-test' }),
+      firebaseVerifier: { verifyIdToken },
+      analyticsStore
+    });
+
+    await request(app).get('/analytics/summary').expect(401);
+    expect(verifyIdToken).not.toHaveBeenCalled();
+    expect(analyticsStore.summaryForUser).not.toHaveBeenCalled();
 
     const response = await request(app)
-      .get('/analytics/summary?range=7d')
-      .set('x-postdee-user-id', 'seller-analytics')
-      .set('x-postdee-subscription-plan', 'PRO')
-      .expect(200);
+      .get('/analytics/summary')
+      .set('Authorization', 'Bearer analytics-retirement-token')
+      .expect(410);
 
-    expect(analyticsStore.summaryForUser).toHaveBeenCalledWith('seller-analytics', '7d');
-    expect(response.body.summary).toMatchObject({
-      totalViews: 150,
-      totalLikes: 15
-    });
+    expect(response.body).toEqual(retiredResponse);
+    expect(verifyIdToken).toHaveBeenCalledWith('analytics-retirement-token');
+    expect(analyticsStore.summaryForUser).not.toHaveBeenCalled();
   });
 });

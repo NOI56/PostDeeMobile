@@ -242,6 +242,8 @@
       งานที่เหลือคือตั้ง `SENTRY_DSN` และ Mobile define ต่อ environment แล้วยืนยันว่ารายงานไปถึงจริง
 - [x] FCM backend sender + device token endpoint มีในโค้ดแล้ว; งานที่เหลือคือ
       ใส่ service account, ตั้ง `PUSH_SENDER=firebase`, ตั้ง APNs และทดสอบเครื่องจริง
-- [ ] Analytics: ตัวดึง views/likes จริงจากแพลตฟอร์ม (ตอนนี้แสดง 0)
+- ~~Analytics: ตัวดึง views/likes จริงจากแพลตฟอร์ม (ตอนนี้แสดง 0)~~ — **ยกเลิกแล้ว**
+  ตาม [Retired Features ใน AGENTS.md](AGENTS.md#retired-features-do-not-revive);
+  การดึงสถิติโพสต์โซเชียลไม่ใช่งานเปิดบริการที่เหลือ
 - [ ] PostPeer: รองรับ Shopee/Lazada + ยิงรวมหลายแพลตฟอร์มในคอลเดียว
 - [ ] รองรับ Shopee/Lazada ครบทั้ง backend (validation/Prisma enum) + โลโก้จริง

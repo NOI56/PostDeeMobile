@@ -1,5 +1,11 @@
 # Historical work reconciliation — 2026-10-30
 
+> Later product decision (2026-11-01): social post analytics is fully retired.
+> The Analytics classification below records what existed during this audit;
+> it is not an instruction to restore the dashboard or secondary actions.
+> Keep publishing records, historical account cleanup and Firebase app
+> telemetry. `AGENTS.md` defines the current retirement boundary.
+
 Status: local implementation and validation passed. This record does not
 claim a new main merge, push, hosted deployment or app-store publication.
 

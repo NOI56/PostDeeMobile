@@ -7,7 +7,6 @@ import '../../core/auth/auth_session.dart';
 import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
-import '../analytics/analytics_screen.dart';
 import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
@@ -22,8 +21,8 @@ typedef PostDetailReader = Future<PostSummaryResult?> Function(String postId);
 
 /// Post detail (design screen #12). Shows the caption, channels, and honest
 /// status-driven actions: scheduled posts can be published immediately through
-/// the dedicated backend command or cancelled; published posts link to analytics.
-/// Per-post stat tiles from the design are omitted until the API exposes them.
+/// the dedicated backend command or cancelled; delivered posts retain their
+/// per-channel status and platform links.
 class PostDetailScreen extends StatefulWidget {
   const PostDetailScreen(
       {super.key,
@@ -229,23 +228,6 @@ class _PostDetailScreenState extends State<PostDetailScreen>
 
   bool get _hasUnconfirmedOutcome =>
       hasUnconfirmedDeliveryOutcome(_post.platformResults);
-
-  bool get _hasPublishedChannel {
-    final resultsWithOutcome = _post.platformResults
-        .where((result) => result.deliveryOutcome != null)
-        .toList();
-    if (resultsWithOutcome.isNotEmpty) {
-      return resultsWithOutcome.any(
-        (result) =>
-            result.status.toUpperCase() == 'PUBLISHED' &&
-            isPublishedDeliveryOutcome(result.deliveryOutcome),
-      );
-    }
-    return _isPublished ||
-        _post.platformResults.any(
-          (result) => result.status.toUpperCase() == 'PUBLISHED',
-        );
-  }
 
   ({String label, IconData icon, Color bg, Color ink}) get _statusMeta {
     if (_hasUnconfirmedOutcome) {
@@ -844,28 +826,6 @@ class _PostDetailScreenState extends State<PostDetailScreen>
             child: content);
   }
 
-  void _openAnalytics() {
-    if (!_ownerStillCurrent) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => Scaffold(
-          appBar: AppBar(
-            title: Text(
-              _postDetailText(context, 'วิเคราะห์', 'Analytics'),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-          ),
-          body: DecoratedBox(
-            decoration: AppTheme.screenBackground,
-            child: const SafeArea(
-              child: AnalyticsScreen(showTitle: false),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildDetailNotice({
     Key? key,
     required IconData icon,
@@ -1084,7 +1044,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   }
 
   Widget? _buildActionBar(BuildContext context) {
-    if (!_isScheduled && !_hasPublishedChannel) {
+    if (!_isScheduled) {
       return null;
     }
 
@@ -1133,15 +1093,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                     onPressed: _isWorking ? null : _publishNow,
                   ),
                 ),
-              ] else if (_hasPublishedChannel)
-                Expanded(
-                  child: _PrimaryActionButton(
-                    key: const ValueKey('post-detail-open-analytics'),
-                    label: _text('ดูสถิติ', 'View analytics'),
-                    icon: Icons.bar_chart_rounded,
-                    onPressed: _openAnalytics,
-                  ),
-                ),
+              ],
             ],
           ),
         ),

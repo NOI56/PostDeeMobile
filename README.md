@@ -48,7 +48,9 @@ The Mobile candidate reports failed push registration on an explicit bell tap,
 keeps background startup non-blocking, and uses safe Thai/English recovery
 messages for channel requests and a failed publish after returning to the draft.
 The API candidate reports non-dead-token FCM failures to Sentry using a fixed
-operation label and no recipient or message data. Custom Sentry owner alerts
+operation label and no recipient or message data; an allowlisted `push_error`
+tag names the Firebase cause. A slow answer to the first-time permission prompt
+no longer shows the bell failure message. Custom Sentry owner alerts
 and a Staging readiness monitor are configured; the native test notification
 reached the owner's inbox. Staging's existing service account also needs FCM
 send permission; setting `PUSH_SENDER=firebase` alone does not establish it.

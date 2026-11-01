@@ -37,6 +37,9 @@ Build roadmap for PostDee.
   failed publishing when returning to the saved draft; preserve idempotent retry.
 - Report non-dead-token FCM failures through a sanitized Sentry operation,
   retaining the existing push result and dead-token cleanup behavior.
+- Follow-up: tag each report with an allowlisted Firebase error code
+  (`push_error`, else `other`), and stop counting the user's time on the
+  first-time permission prompt against the bell's 10-second budget.
 - Custom Sentry error alerts and a Staging `/ready` monitor are configured.
   A native test email reached the owner. Staging's missing FCM send permission
   was approved and granted; foreground delivery was then confirmed on build

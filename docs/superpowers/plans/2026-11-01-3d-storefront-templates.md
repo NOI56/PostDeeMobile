@@ -14,8 +14,9 @@ candidate branch is `codex/3d-storefront-templates-ready`, based on freshly
 fetched main `3eee7a71a79917b6dcc6d842e5d28cb0b053010e`. That intervening
 commit changes only the previous Staging deployment receipt in `docs/STAGING.md`;
 all feature code bytes are unchanged by the baseline update. The original
-dirty checkout and unrelated Store-link/dark-mode work remain preserved. No
-merge, push or deployment has been authorized for this new feature.
+dirty checkout and unrelated Store-link/dark-mode work remain preserved. The
+owner subsequently approved integrating feature commit `859d2a86` into main,
+pushing it and deploying only Staging. The delivery is recorded below.
 
 ## Catalog and presentation
 
@@ -146,5 +147,27 @@ IDs. Keep stored appearances intact; do not clear user designs as a rollback.
   `artifacts/3d-mobile-apk-receipt.json` and
   `artifacts/3d-combined-build-source-manifest.json`. No secret values are
   included in these receipts. The APK has not been installed.
-- [ ] Record exact delivery SHA/environment and retained device UID/data if an
-  installation is later authorized. No Staging or Production delivery is claimed here.
+- [x] Feature commit `859d2a86beb4adbfa6f89ef1338d1cc399359378` was fast-forwarded
+  into main and pushed with `[skip render]`. Its exact-SHA
+  [CI run 41304004522](https://github.com/NOI56/PostDeeMobile/actions/runs/41304004522)
+  passes Backend API (3,063 / 67 skipped), Flutter (4,480 / seven skipped),
+  analyze and 21 Staging configuration guard cases. The separate
+  [iOS no-codesign build 41304004516](https://github.com/NOI56/PostDeeMobile/actions/runs/41304004516)
+  also succeeds. No artifact from that iOS workflow was distributed or installed.
+- [x] Render Staging deploy `dep-dbjimstg1s2s73fs0q2g` is Live at that exact
+  source SHA from 2026-11-01 12:08:36 UTC / 19:08:36 Asia/Bangkok. It replaces
+  `e7fd926e` / `dep-dbjepsutlv9c73d139q0`. Startup finds 28 existing migrations
+  with none pending, and the publishing activation guard passes with an empty
+  backlog. No environment values were changed.
+- [x] Live read-only smoke at 12:08:50 UTC confirms health 200, ready 200 with
+  database/queue ok and no-store, posts 401 without a token, and private profile
+  401 with/without catalog 2 plus no-store/Vary. All ten new public PNG routes
+  return correct content/security/cache headers and exact approved source hashes
+  without login; an unknown artwork filename returns 404. No app error/warn logs
+  appear from 12:07:15 through 12:08:53 UTC. Local safe receipt:
+  `artifacts/3d-staging-live-receipt.json`. Deployment details are in
+  [STAGING.md](../../STAGING.md).
+- [ ] Install the prepared APK and record retained device UID/data if later
+  authorized. No APK/device installation, authenticated Staging profile mutation,
+  real published 3D profile, social publishing or iOS device test was performed
+  during this deployment. Production was not deployed, resumed or reconfigured.

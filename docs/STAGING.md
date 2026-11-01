@@ -1,5 +1,34 @@
 # PostDee Staging
 
+## ธีมหน้าเว็บ 3D 10 แบบ — 1 พฤศจิกายน 2026
+
+- เจ้าของอนุมัตินำ `859d2a86beb4adbfa6f89ef1338d1cc399359378` เข้า `main`, push
+  และ deploy เฉพาะ Staging รวมแบบ fast-forward จาก `3eee7a71` โดยรักษางานที่ยังไม่ commit
+  ใน checkout เดิมไว้ และคง `[skip render]` เพื่อไม่กระตุ้น Production
+- [CI 41304004522](https://github.com/NOI56/PostDeeMobile/actions/runs/41304004522)
+  ของ SHA นี้ผ่านก่อน deploy: Backend API 3,063 ผ่าน / 67 PostgreSQL opt-in ข้าม,
+  Flutter 4,480 ผ่าน / 7 visual preview ข้าม, analyze ไม่มีปัญหา และ Staging config
+  guards 21 ผ่าน; [Build iOS IPA 41304004516](https://github.com/NOI56/PostDeeMobile/actions/runs/41304004516)
+  ผ่านด้วย (no codesign, ไม่ได้แจกหรือติดตั้ง)
+- Deploy [`dep-dbjimstg1s2s73fs0q2g`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbjimstg1s2s73fs0q2g)
+  แทน `e7fd926e` / `dep-dbjepsutlv9c73d139q0`, เริ่ม 19:07:15 น. ไทย
+  (12:07:15 UTC), **Live 19:08:36 น. ไทย (12:08:36 UTC)** ที่ SHA ตรงกับที่อนุมัติ
+  Startup พบ 28 migrations และ `No pending migrations to apply.`
+  Publishing activation guard ผ่านโดย backlog ว่าง; ไม่เปลี่ยน env หรือสิทธิ์แพ็กเกจ
+- ตรวจสด 19:08:50 น. ไทย (12:08:50 UTC): `/health` 200, `/ready` 200 พร้อม
+  database/queue `ok` และ `Cache-Control: no-store`, `/posts` ไม่ส่ง token ได้ 401
+  รวมถึง `/link-in-bio` ทั้งมี/ไม่มี catalog header ได้ 401 พร้อม `no-store` และ `Vary`
+- ดาวน์โหลด `/profile-decorations/dimensional-*.png` ใหม่ทั้ง 10 แบบโดยไม่เข้าสู่ระบบ
+  ได้ 200, PNG / `nosniff` / public cache ถูกต้อง และ SHA-256 ตรงกับ source ทุกไฟล์
+  ชื่อภาพนอก allowlist ได้ 404; ไม่พบ app log ระดับ error/warn ในช่วง
+  12:07:15–12:08:53 UTC คำขอตรวจทั้งหมดเป็น GET ไม่มีการแก้โปรไฟล์หรือเผยแพร่เว็บจริง
+- API รองรับหมวด 3D ใหม่และ compatibility สำหรับแอปเก่าแล้ว โดยยังคงธีมเดิม
+  และโควตาแพ็กเกจเดิม ไม่เพิ่ม schema/migration/dependency หรือแก้ค่าบริการ
+- APK Staging 12091 ที่เตรียมไว้ยัง **ไม่ได้ติดตั้ง** แอปที่ติดตั้งเดิมจึงยังไม่เห็นหมวด 3D
+  ยังไม่ได้ยืนยันการบันทึก/เผยแพร่ธีม 3D ด้วยบัญชีจริงบน Staging, device smoke,
+  iOS device หรือ social publishing; Production `postdee-api` ไม่ถูก deploy/resume/แก้ค่า
+  หลักฐานและขอบเขตอยู่ใน [บันทึกธีม 3D](superpowers/plans/2026-11-01-3d-storefront-templates.md)
+
 ## Deploy API `e7fd926` ขึ้น Staging — 1 พฤศจิกายน 2026
 
 - Deploy `dep-dbjepsutlv9c73d139q0`

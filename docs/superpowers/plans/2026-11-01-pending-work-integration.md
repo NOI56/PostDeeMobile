@@ -106,6 +106,41 @@ and social publishing remain separate from routing-only acceptance checks.
   is removed after builds and the original configuration remains intact.
 - [ ] Native routing and visual QA, retained owner-device data and explicit
   provider/device limitations.
-- [ ] Final diff review against baseline: deletions, retired features, assets,
+- [x] Final diff review against baseline: deletions, retired features, assets,
   dependencies and environment flags.
 - [ ] Record delivery only when authorized and performed.
+
+## Native QA blocker and retained candidate
+
+The source candidate is `ac62a01a89ed99e7e4677f6c84f5ecc45d584bc9`
+(`abd6e29e` plus the reviewed PR #49 ancestry/documentation merge). A fresh
+fetch still finds `origin/main` at the baseline above. All 1,055 frozen source
+hashes match after that merge; the difference from the baseline is the 37
+intended files, with no deletion or dependency/schema/config/catalog/asset
+change. The six-file PR merge delta is documentation only. Diff checking passes.
+
+Native checks use the separate, visibly marked offline fixture APK on
+`PostDee_Account_QA_20261007`, not the owner's installed application. Some
+settled frames verify the 3D Thai initial/phone rendering and readable dark
+post-error text, but the overall interaction check does not pass: Android
+reports an input-dispatch ANR, including a repeat after restarting the same
+AVD headlessly with 4 GB RAM and software rendering. No userdata is cleared,
+and the QA package retains UID 10190 and version 12092. The owner Pixel_8
+installation remains version 12090/UID 10197; the actual application APK
+12092 has not been installed there.
+
+Read-only diagnostics also find ANRs/timeouts in Android system services,
+heavy guest I/O wait and host D: storage latency around 410 ms for reads and
+311 ms for writes while host memory has headroom. These observations support
+an environment/storage-pressure explanation but do not prove the exact cause
+of the application ANR. There is no successful native OAuth-routing acceptance
+check, real provider authorization, iOS-device check or live publishing test.
+Do not mark those flows verified from the automated tests or screenshots.
+
+Per the repository's no-regression policy, delivery is stopped at this gate:
+the four work groups remain committed locally, with no main integration,
+push or new Staging deploy from this candidate. Production is unchanged.
+Repeat the guarded native acceptance checks on a responsive Android device
+or emulator before advancing. No migration or environment change is needed.
+Local evidence is retained in `artifacts/pending-qa-native-diagnostic.json`,
+the full test/build logs, the source manifest and the APK receipts.

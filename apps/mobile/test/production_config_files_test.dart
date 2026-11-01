@@ -4,6 +4,19 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Android social app launch excludes browsers below a guarded API check',
+      () async {
+    final source = await File(
+      'android/app/src/main/kotlin/com/postdee/postdee_mobile/MainActivity.kt',
+    ).readAsString();
+    expect(source, contains('"launchApp"'));
+    expect(source, contains('Build.VERSION.SDK_INT < Build.VERSION_CODES.R'));
+    expect(source, contains('Intent.ACTION_VIEW'));
+    expect(source, contains('Intent.CATEGORY_BROWSABLE'));
+    expect(source, contains('Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER'));
+    expect(source, isNot(contains('WebViewActivity')));
+  });
+
   test('Android social OAuth uses a native Custom Tab with no WebView fallback',
       () async {
     final manifest = File('android/app/src/main/AndroidManifest.xml');

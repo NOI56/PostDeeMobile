@@ -90,6 +90,20 @@ describe('Sentry error monitoring', () => {
     expect(JSON.stringify(clean)).not.toMatch(/private|secret/);
   });
 
+  it('keeps only known push error codes and buckets anything else as other', () => {
+    const known = sanitizeSentryEvent({ type: undefined, tags: {
+      operation: 'notifications.delivery', push_error: 'messaging/mismatched-credential'
+    } });
+    expect(known.tags).toEqual({
+      operation: 'notifications.delivery', push_error: 'messaging/mismatched-credential'
+    });
+    for (const unknown of ['private-provider-token', 'messaging/private secret', 42]) {
+      const clean = sanitizeSentryEvent({ type: undefined, tags: { push_error: unknown } });
+      expect(clean.tags).toEqual({ push_error: 'other' });
+    }
+    expect(sanitizeSentryEvent({ type: undefined, tags: {} }).tags).toEqual({});
+  });
+
   it('drops untrusted source paths and dynamic function names while preserving fatal classification', () => {
     const clean = sanitizeSentryEvent({ type: undefined, level: 'fatal', exception: { values: [{
       type: 'TypeError', value: 'private-provider-message',

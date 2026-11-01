@@ -1,5 +1,15 @@
 # Sentry error reporting — 2026-10-22
 
+## Push diagnostic follow-up — 2026-11-01, local candidate
+
+PR #49 is ported onto the current 3D baseline. Sentry receives only allowlisted
+`push_error` categories (`initialization` for setup, `other` for unknown codes),
+never raw provider errors or recipient/message data. Mobile separates its
+ten-second initialization budget from a two-minute system permission prompt;
+owner/session guards and background best-effort behavior remain. See the
+[integration record](2026-11-01-pending-work-integration.md) for final tests and
+delivery; this section does not claim a new FCM/provider failure drill.
+
 ## Request, baseline and scope
 
 The user chose Sentry for PostDee Mobile and API, then confirmed that no Sentry

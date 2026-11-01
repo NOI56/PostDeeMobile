@@ -1,4 +1,4 @@
-import type { Messaging } from 'firebase-admin/messaging';
+import type { BatchResponse, Messaging } from 'firebase-admin/messaging';
 
 import { reportMonitoringError } from '../../monitoring/sentryMonitoring.js';
 import type { PushMessage, PushSender, PushSendResult } from './pushSender.js';
@@ -16,15 +16,17 @@ const invalidTokenErrorCodes = new Set([
   'messaging/invalid-registration-token'
 ]);
 
-const reportPushDeliveryFailure = () => {
-  // Never attach provider errors, tokens, message copy or recipient data.
-  reportMonitoringError(new Error('Firebase push delivery failed'), {
-    operation: 'notifications.delivery'
-  });
-};
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const reportPushDeliveryFailure = (code: unknown) => {
+  // Never attach provider errors, tokens, message copy or recipient data. Only
+  // the SDK error code is passed on; monitoring allowlists it or reports `other`.
+  reportMonitoringError(new Error('Firebase push delivery failed'), {
+    operation: 'notifications.delivery',
+    pushError: typeof code === 'string' ? code : 'other'
+  });
+};
 
 const loadMessaging = async (
   serviceAccountJson: string
@@ -82,36 +84,46 @@ export const createFirebasePushSender = ({
         return { invalidTokens: [] };
       }
 
+      // Preserve the sender's existing rejection contract. Its callers keep
+      // push best-effort; a resolved multicast failure never becomes a throw.
+      let messaging: Messaging;
       try {
         messagingPromise ??= loadMessaging(serviceAccountJson).catch((error) => {
           messagingPromise = undefined;
           throw error;
         });
-        const messaging = await messagingPromise;
-        const result = await messaging.sendEachForMulticast({
+        messaging = await messagingPromise;
+      } catch (error) {
+        reportPushDeliveryFailure('initialization');
+        throw error;
+      }
+
+      let result: BatchResponse;
+      try {
+        result = await messaging.sendEachForMulticast({
           tokens,
           notification: { title, body },
           data
         });
-
-        if (result.responses.some((response) => !response.success &&
-            !invalidTokenErrorCodes.has(response.error?.code ?? ''))) {
-          reportPushDeliveryFailure();
-        }
-
-        return {
-          invalidTokens: tokens.filter((_token, index) => {
-            const response = result.responses[index];
-            return response !== undefined && !response.success &&
-              invalidTokenErrorCodes.has(response.error?.code ?? '');
-          })
-        };
       } catch (error) {
-        reportPushDeliveryFailure();
-        // Preserve the sender's existing rejection contract. Its callers keep
-        // push best-effort; a resolved multicast failure never becomes a throw.
+        reportPushDeliveryFailure(isRecord(error) ? error.code : undefined);
         throw error;
       }
+
+      // One report per batch, named by its first non-dead-token failure.
+      const deliveryFailure = result.responses.find((response) => !response.success &&
+        !invalidTokenErrorCodes.has(response.error?.code ?? ''));
+      if (deliveryFailure) {
+        reportPushDeliveryFailure(deliveryFailure.error?.code);
+      }
+
+      return {
+        invalidTokens: tokens.filter((_token, index) => {
+          const response = result.responses[index];
+          return response !== undefined && !response.success &&
+            invalidTokenErrorCodes.has(response.error?.code ?? '');
+        })
+      };
     }
   };
 };

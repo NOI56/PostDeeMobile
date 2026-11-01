@@ -120,11 +120,13 @@ class BioDecoratedPreview extends StatelessWidget {
                                                       const Color(0xff8053b0))))
                                   : Text(appearance.featuredLabel,
                                       style: bioTextStyle(style, size: 11)),
-                            Text(link.title,
+                            Text(bioKeepNumbersTogether(link.title),
                                 style: bioTextStyle(style,
                                     weight: FontWeight.w600)),
                             if (cards)
-                              Text(linkInBioText(context, 'เปิดลิงก์', 'Open link'),
+                              Text(
+                                  linkInBioText(
+                                      context, 'เปิดลิงก์', 'Open link'),
                                   style: bioTextStyle(style, size: 13).copyWith(
                                       color: const Color(0xff8b67b5))),
                           ])),
@@ -205,7 +207,7 @@ class BioDecoratedPreview extends StatelessWidget {
                                                         appearance.logoKey!,
                                                         112)
                                                     : Center(
-                                                        child: Text(String.fromCharCode(name.runes.first),
+                                                        child: Text(bioAvatarInitial(name),
                                                             style: bioTextStyle(
                                                                 appearance
                                                                     .nameStyle,
@@ -222,10 +224,12 @@ class BioDecoratedPreview extends StatelessWidget {
                                         const SizedBox(height: 8),
                                         Text(
                                             appearance.description.isEmpty
-                                                ? linkInBioText(context,
+                                                ? linkInBioText(
+                                                    context,
                                                     'เลือกช่องทางที่ต้องการได้เลย',
                                                     'Choose a channel below')
-                                                : appearance.description,
+                                                : bioKeepNumbersTogether(
+                                                    appearance.description),
                                             textAlign: TextAlign.center,
                                             style: bioTextStyle(
                                                 appearance.descriptionStyle,
@@ -241,9 +245,11 @@ class BioDecoratedPreview extends StatelessWidget {
                                                           .buttonColor)
                                                       .withValues(alpha: .33))),
                                         if (links.isEmpty)
-                                          Text(linkInBioText(context,
-                                              'เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
-                                              'Add a link to see a preview'),
+                                          Text(
+                                              linkInBioText(
+                                                  context,
+                                                  'เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
+                                                  'Add a link to see a preview'),
                                               style: bioTextStyle(
                                                   appearance.descriptionStyle)),
                                         for (final (index, link)
@@ -268,9 +274,11 @@ class BioDecoratedPreview extends StatelessWidget {
                                           linkButton(link, index),
                                         ],
                                         const SizedBox(height: 72),
-                                        Text(linkInBioText(context,
-                                            'สร้างหน้าเว็บร้านค้าด้วย PostDee',
-                                            'Create a store page with PostDee'),
+                                        Text(
+                                            linkInBioText(
+                                                context,
+                                                'สร้างหน้าเว็บร้านค้าด้วย PostDee',
+                                                'Create a store page with PostDee'),
                                             textAlign: TextAlign.center,
                                             style: bioTextStyle(
                                                 appearance.brandStyle,

@@ -108,7 +108,8 @@ class _BioPreviewViewportState extends State<BioPreviewViewport> {
       child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Semantics(
-              label: linkInBioText(context,
+              label: linkInBioText(
+                  context,
                   'ตัวอย่างหน้าเว็บ เลื่อนเพื่อดูส่วนอื่น',
                   'Page preview. Scroll to see more.'),
               child: Scrollbar(
@@ -214,7 +215,7 @@ class LinkInBioPreview extends StatelessWidget {
                         style: bioTextStyle(style, size: 11).copyWith(
                             color:
                                 bioColor(style.color).withValues(alpha: .86))),
-                  Text(link.title,
+                  Text(bioKeepNumbersTogether(link.title),
                       style: bioTextStyle(style, weight: FontWeight.w600)),
                 ])),
             const SizedBox(width: 12),
@@ -308,8 +309,10 @@ class LinkInBioPreview extends StatelessWidget {
                                             const SizedBox(height: 16),
                                             Text(
                                                 storeName.trim().isEmpty
-                                                    ? linkInBioText(context,
-                                                        'ร้านของคุณ', 'Your store')
+                                                    ? linkInBioText(
+                                                        context,
+                                                        'ร้านของคุณ',
+                                                        'Your store')
                                                     : storeName,
                                                 style: bioTextStyle(
                                                         appearance.nameStyle,
@@ -319,16 +322,19 @@ class LinkInBioPreview extends StatelessWidget {
                                             const SizedBox(height: 8),
                                             Text(
                                                 appearance.description.isEmpty
-                                                    ? linkInBioText(context,
+                                                    ? linkInBioText(
+                                                        context,
                                                         'เลือกช่องทางที่ต้องการได้เลย',
                                                         'Choose a channel below')
-                                                    : appearance.description,
+                                                    : bioKeepNumbersTogether(
+                                                        appearance.description),
                                                 style: bioTextStyle(appearance
                                                     .descriptionStyle)),
                                             const SizedBox(height: 16),
                                             if (links.isEmpty)
                                               Text(
-                                                  linkInBioText(context,
+                                                  linkInBioText(
+                                                      context,
                                                       'เพิ่มลิงก์เพื่อแสดงตัวอย่าง',
                                                       'Add a link to see a preview'),
                                                   style: bioTextStyle(appearance
@@ -360,7 +366,8 @@ class LinkInBioPreview extends StatelessWidget {
                                             const SizedBox(height: 28),
                                             Center(
                                                 child: Text(
-                                                    linkInBioText(context,
+                                                    linkInBioText(
+                                                        context,
                                                         'สร้างหน้าเว็บร้านค้าด้วย PostDee',
                                                         'Create a store page with PostDee'),
                                                     textAlign: TextAlign.center,

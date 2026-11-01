@@ -331,7 +331,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
   Color _platformStatusColor(SocialPlatform platform) {
     final result = _resultFor(platform);
     if (result?.status.toUpperCase() == 'FAILED') {
-      return const Color(0xFFDC2626);
+      return Theme.of(context).colorScheme.error;
     }
     if (result?.status.toUpperCase() == 'PUBLISHING') {
       return const Color(0xFF0E9F6E);
@@ -346,7 +346,7 @@ class _PostDetailScreenState extends State<PostDetailScreen>
     }
     return switch (result?.status.toUpperCase()) {
       'PUBLISHED' => const Color(0xFF0E9F6E),
-      'FAILED' => const Color(0xFFDC2626),
+      'FAILED' => Theme.of(context).colorScheme.error,
       _ => AppTheme.textMuted,
     };
   }
@@ -475,10 +475,10 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                   const SizedBox(height: 4),
                   Text(
                     '${_text('สาเหตุ', 'Reason')}: ${_localizedPlatformError(errorMessage)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       height: 1.35,
-                      color: Color(0xFFDC2626),
+                      color: Theme.of(context).colorScheme.error,
                     ),
                   ),
                 ],
@@ -782,15 +782,15 @@ class _PostDetailScreenState extends State<PostDetailScreen>
         child: Container(
           width: 104,
           constraints: const BoxConstraints(minHeight: 140),
-          color: const Color(0xFFE7EFE9),
+          color: AppTheme.glassDeep,
           child: Stack(alignment: Alignment.center, children: [
             if (_safePreviewUrl(cover))
               Positioned.fill(
                   child: Image.network(cover.toString(),
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
+                      errorBuilder: (_, __, ___) => Icon(
                           Icons.videocam_off_outlined,
-                          color: Color(0xFF8FA197)))),
+                          color: AppTheme.textSecondary))),
             if (canPlay)
               const SizedBox(
                   height: 140,
@@ -802,12 +802,18 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                   padding: const EdgeInsets.all(8),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
                     if (!_safePreviewUrl(cover))
-                      const Icon(Icons.videocam_off_outlined,
-                          color: Color(0xFF8FA197)),
+                      Icon(Icons.videocam_off_outlined,
+                          color: AppTheme.textSecondary),
                     const SizedBox(height: 6),
-                    Text(_text('ตัวอย่างยังไม่พร้อม', 'Preview unavailable'),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 11)),
+                    Container(
+                      color: AppTheme.glassDeep,
+                      padding: const EdgeInsets.all(AppTheme.spaceXs),
+                      child: Text(
+                          _text('ตัวอย่างยังไม่พร้อม', 'Preview unavailable'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 11, color: AppTheme.textSecondary)),
+                    ),
                   ])),
           ]),
         ));

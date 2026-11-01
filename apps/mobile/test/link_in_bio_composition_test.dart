@@ -78,6 +78,11 @@ void main() {
                           id: 'empty',
                           title: 'สอง',
                           url: 'https://example.com/2'),
+                      // Pairs with 'empty' so neither tile is alone on a row.
+                      LinkInBioCustomLink(
+                          id: 'empty-pair',
+                          title: 'สองต่อ',
+                          url: 'https://example.com/2b'),
                       LinkInBioCustomLink(
                           id: 'again',
                           title: 'สาม',
@@ -452,8 +457,10 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-  test('each legacy category retains twenty genuinely different compositions', () {
-    for (final category in profileTemplateCategories.keys.where((id) => id != 'dimensional')) {
+  test('each legacy category retains twenty genuinely different compositions',
+      () {
+    for (final category
+        in profileTemplateCategories.keys.where((id) => id != 'dimensional')) {
       expect(
           profileTemplates
               .where((t) => t.category == category)

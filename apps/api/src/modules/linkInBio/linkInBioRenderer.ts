@@ -5,11 +5,24 @@ import { readLinkInBioUrl, resolveLinkInBioIcon } from './linkInBioDestinations.
 import { isDecoratedLinkInBioTheme, linkInBioThemeStyles, renderLinkInBioDecorations } from './linkInBioThemeStyles.js';
 import { getProfileTemplate } from './profileTemplateCatalog.generated.js';
 import { linkInBioTemplateStyles } from './linkInBioTemplateStyles.js';
-import { hasCustomProfileTemplateBackground, isDefaultPortraitSecondaryLink, profileTemplateLinkFill } from './linkInBioCompositionStyles.js';
+import { fillsLastLinkRow, hasCustomProfileTemplateBackground, isDefaultPortraitSecondaryLink, profileTemplateLinkFill } from './linkInBioCompositionStyles.js';
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[character]!);
+// Phone numbers wrap as one unit, splitting only when wider than the whole line.
+const phoneNumber = /(\+?\d[\d -]{6,}\d)/;
+const escapeText = (value: string) => value.split(phoneNumber)
+  .map((part, index) => index % 2 ? `<span class="keep-together">${escapeHtml(part)}</span>` : escapeHtml(part)).join('');
+// Most Thai shop names start with "ร้าน" and a lone ร reads like a Latin S in
+// loopless fonts, so the initial comes from the name itself. A leading vowel
+// (เ แ โ ใ ไ) is skipped in favor of the consonant it belongs to.
+export const linkInBioAvatarInitial = (storeName: string) => {
+  const name = storeName.trim();
+  const characters = Array.from(name.replace(/^ร้าน\s*/u, '') || name);
+  return characters.find((character) => /[\p{L}\p{N}]/u.test(character) && !/[\u0e40-\u0e44]/u.test(character))
+    ?? characters[0] ?? 'ร';
+};
 const fontFamily = (font: LinkInBioFont) => font === 'system' ? 'system-ui,-apple-system,sans-serif' : `"${font === 'prompt' ? 'Prompt' : 'Anuphan'}",system-ui,sans-serif`;
 const textStyle = (style: LinkInBioTextStyle) => `color:${style.color};font-family:${fontFamily(style.font)}`;
 const cssNumber = (value: number) => Number(value.toFixed(6));
@@ -60,12 +73,22 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
     const font = linkInBioFonts.includes(link.font as LinkInBioFont) ? link.font! : appearance.buttonStyle.font;
     return `.link-${index}{color:${color};background:${fill};font-family:${fontFamily(font)}${template ? `;--pd-link-button:${buttonColor};--pd-link-text:${color}` : ''}}`;
   }).join('\n');
+  // A heading starts a new grid run, so count each run to find a lone last tile.
+  const runLengths: number[] = [];
+  profile.links.forEach((link, index) => {
+    const category = link.category?.trim() ?? '';
+    if (index === 0 || (category && category !== (profile.links[index - 1]!.category?.trim() ?? ''))) runLengths.push(0);
+    runLengths[runLengths.length - 1]!++;
+  });
   let currentCategory: string | undefined;
   let categoryPosition = 0;
+  let run = -1;
   const links = profile.links.map((link, index) => {
     const category = link.category?.trim() ?? '';
     const heading = category && category !== currentCategory ? `<li class="category">${escapeHtml(category)}</li>` : '';
+    if (heading || index === 0) run++;
     if (heading) categoryPosition = 0;
+    const fillRow = Boolean(template) && fillsLastLinkRow(template!.layout.composition, categoryPosition, runLengths[run]!);
     const rhythm = categoryPosition++ % 4;
     currentCategory = category;
     const featured = link.id === appearance.featuredLinkId;
@@ -78,7 +101,7 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
     const destination = readLinkInBioUrl(link.url);
     const target = destination?.startsWith('mailto:') || destination?.startsWith('tel:') ? '' : ' target="_blank" rel="noopener noreferrer"';
     const animateFeatured = effects.featured && (featured || (!appearance.featuredLinkId && index === 0));
-    return `${heading}<li class="link-item${effects.entrance ? ' entrance' : ''}"${template ? ` data-position="${index + 1}" data-rhythm="${rhythm}"` : ''}><a class="link-${index}${featured ? ' featured' : ''}${animateFeatured ? ' motion-featured' : ''}${template && readLinkInBioColor(link.buttonColor) ? ' custom-button' : ''}${railOutlineLinks.has(index) ? ' rail-outline' : ''}${filledHairlineLinks.has(index) ? ' filled-button' : ''}" href="${escapeHtml(destination ?? link.url)}"${target}>${template ? `<span class="link-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>` : ''}<span class="platform-icon${isBrand ? ' brand-logo' : ''}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeHtml(link.title)}</span>${!template && appearance.themeId === 'cards' ? '<span class="link-cta">เปิดลิงก์</span>' : ''}</span><span class="arrow" aria-hidden="true">${decorated ? outboundArrow : '↗'}</span></a></li>`;
+    return `${heading}<li class="link-item${effects.entrance ? ' entrance' : ''}${fillRow ? ' fill-row' : ''}"${template ? ` data-position="${index + 1}" data-rhythm="${rhythm}"` : ''}><a class="link-${index}${featured ? ' featured' : ''}${animateFeatured ? ' motion-featured' : ''}${template && readLinkInBioColor(link.buttonColor) ? ' custom-button' : ''}${railOutlineLinks.has(index) ? ' rail-outline' : ''}${filledHairlineLinks.has(index) ? ' filled-button' : ''}" href="${escapeHtml(destination ?? link.url)}"${target}>${template ? `<span class="link-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>` : ''}<span class="platform-icon${isBrand ? ' brand-logo' : ''}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeText(link.title)}</span>${!template && appearance.themeId === 'cards' ? '<span class="link-cta">เปิดลิงก์</span>' : ''}</span><span class="arrow" aria-hidden="true">${decorated ? outboundArrow : '↗'}</span></a></li>`;
   }).join('');
   const customBackground = hasCustomProfileTemplateBackground(appearance);
   const dimensional = template?.category === 'dimensional';
@@ -86,7 +109,7 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
   const cover = appearance.coverKey ? `<img class="cover${dimensional ? ' profile-3d-cover' : ''}" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">`
     : template?.layout.composition === 'torn' ? '<div class="cover cover-fallback" aria-hidden="true"></div>' : '';
   const avatar = appearance.logoKey ? `<img class="logo" src="${imagePath('logo')}" alt="โลโก้ ${escapeHtml(profile.storeName)}">`
-    : decorated ? `<div class="logo avatar-initial" aria-hidden="true">${escapeHtml(Array.from(profile.storeName.trim())[0] ?? 'ร')}</div>` : '';
+    : decorated ? `<div class="logo avatar-initial" aria-hidden="true">${escapeHtml(linkInBioAvatarInitial(profile.storeName))}</div>` : '';
   const arch = template?.layout.composition === 'arch';
   // Artwork is catalog-owned decoration. The owner's avatar and all text stay
   // native HTML, so changing a logo or theme never bakes content into an image.
@@ -106,7 +129,7 @@ main{position:relative;z-index:1;width:min(100% - 32px,520px);margin:48px auto;p
 .brand{${textStyle(appearance.brandStyle)};font-size:13px;font-weight:600;letter-spacing:1px}.cover{display:block;width:calc(100% + 48px);margin:-32px -24px 24px;max-height:220px;object-fit:cover}.logo{display:block;width:88px;height:88px;object-fit:cover;border-radius:24px;margin:0 0 18px}
 h1{${textStyle(appearance.nameStyle)};font-size:28px;font-weight:600;line-height:1.4;overflow-wrap:anywhere;margin:16px 0 8px}.description{${textStyle(appearance.descriptionStyle)};white-space:pre-line;overflow-wrap:anywhere;margin:0 0 28px}
 ul{list-style:none;padding:0;margin:0;display:grid;gap:12px}.category{${textStyle(appearance.categoryStyle)};font-size:14px;font-weight:600;overflow-wrap:anywhere;margin:12px 0 0}a{display:flex;align-items:center;gap:12px;border-radius:${radius};padding:16px 20px;text-decoration:none;font-weight:600;overflow-wrap:anywhere;min-width:0}
-a:hover .link-copy{text-decoration:underline}a:focus-visible{outline:3px solid #d5a22f;outline-offset:4px}.platform-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.14);font-family:system-ui,sans-serif;font-size:18px}.platform-icon.brand-logo{background:transparent;position:relative;overflow:hidden;border-radius:0}.platform-icon img{position:absolute;display:block;max-width:none;object-fit:contain;pointer-events:none}.link-copy{display:flex;flex-direction:column;min-width:0;flex:1}.arrow{flex-shrink:0}.featured{box-shadow:inset 0 0 0 2px currentColor}.featured-label{font-size:11px;opacity:.86;font-weight:400}footer{${textStyle(appearance.brandStyle)};text-align:center;font-size:12px;margin-top:28px}
+a:hover .link-copy{text-decoration:underline}a:focus-visible{outline:3px solid #d5a22f;outline-offset:4px}.platform-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.14);font-family:system-ui,sans-serif;font-size:18px}.platform-icon.brand-logo{background:transparent;position:relative;overflow:hidden;border-radius:0}.platform-icon img{position:absolute;display:block;max-width:none;object-fit:contain;pointer-events:none}.link-copy{display:flex;flex-direction:column;min-width:0;flex:1}.arrow{flex-shrink:0}.featured{box-shadow:inset 0 0 0 2px currentColor}.featured-label{font-size:11px;opacity:.86;font-weight:400}.keep-together{display:inline-block;max-width:100%}footer{${textStyle(appearance.brandStyle)};text-align:center;font-size:12px;margin-top:28px}
 ${platformLogoStyles}
 ${linkStyles}
 @media(max-width:400px){main{margin:24px auto;padding:24px 18px}h1{font-size:24px}.cover{width:calc(100% + 36px);margin:-24px -18px 24px}a{padding:14px 16px}}
@@ -114,6 +137,6 @@ ${linkInBioThemeStyles(appearance)}
 ${linkInBioTemplateStyles(appearance)}
 .background-motion{${background}}
 </style></head><body data-theme="${appearance.themeId}"${templateAttributes}>${effects.background ? '<div class="background-motion"></div>' : ''}${renderLinkInBioDecorations(effects.stickers)}<main>${arch || dimensional ? '' : cover}<header class="profile-header">${template ? '' : '<div class="brand">PostDee</div>'}${profileAvatar}${template ? '<div class="profile-copy">' : ''}<h1>${escapeHtml(profile.storeName)}</h1>
-<p class="description">${escapeHtml(appearance.description || 'เลือกช่องทางที่ต้องการได้เลย')}</p>${template ? '</div>' : ''}</header><ul>${links}</ul>
+<p class="description">${escapeText(appearance.description || 'เลือกช่องทางที่ต้องการได้เลย')}</p>${template ? '</div>' : ''}</header><ul>${links}</ul>
 <footer>สร้างหน้าเว็บร้านค้าด้วย PostDee</footer></main></body></html>`;
 };

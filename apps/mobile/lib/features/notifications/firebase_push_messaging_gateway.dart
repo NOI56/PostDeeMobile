@@ -59,8 +59,12 @@ class FirebasePushMessagingGateway
     Future<void> Function(String token, AuthSession session)? unregisterToken,
     void Function(String postId)? onOpenPost,
     Duration operationTimeout = const Duration(seconds: 5),
+    Duration initializeTimeout = const Duration(seconds: 10),
+    Duration permissionPromptTimeout = const Duration(minutes: 2),
     DateTime Function() now = DateTime.now,
   })  : assert(operationTimeout > Duration.zero),
+        assert(initializeTimeout > Duration.zero),
+        assert(permissionPromptTimeout > Duration.zero),
         _client = client,
         _center = center ?? PostDeeNotificationCenter.instance,
         _sessionStore = sessionStore ?? PostDeeAuthSessionStore.instance,
@@ -70,6 +74,8 @@ class FirebasePushMessagingGateway
         _unregisterToken = unregisterToken,
         _onOpenPost = onOpenPost,
         _operationTimeout = operationTimeout,
+        _initializeTimeout = initializeTimeout,
+        _permissionPromptTimeout = permissionPromptTimeout,
         _now = now {
     _sessionBinding = _sessionStore.captureSession();
   }
@@ -86,6 +92,8 @@ class FirebasePushMessagingGateway
       _unregisterToken;
   final void Function(String postId)? _onOpenPost;
   final Duration _operationTimeout;
+  final Duration _initializeTimeout;
+  final Duration _permissionPromptTimeout;
 
   bool _started = false;
   late AuthSessionBinding _sessionBinding;
@@ -109,15 +117,26 @@ class FirebasePushMessagingGateway
   @override
   Future<void> initialize() async {
     final binding = _sessionStore.captureSession();
-    await start();
-    if (_disposed || !binding.isCurrent || !_sessionStore.session.isSignedIn) return;
-    // Recheck permission on an explicit bell tap, including a previously denied
-    // permission that the user later enabled in system settings.
+    // The bell waits for this call. Bound the app's own work, but not the time
+    // the user spends reading a first-time system permission prompt.
+    final work = Stopwatch()..start();
+    Duration remaining() {
+      final left = _initializeTimeout - work.elapsed;
+      return left > Duration.zero ? left : Duration.zero;
+    }
+
     try {
-      final granted = await _client.requestPermission();
+      await start().timeout(remaining());
+      if (_disposed || !binding.isCurrent || !_sessionStore.session.isSignedIn) return;
+      // Recheck permission on an explicit bell tap, including a previously
+      // denied permission that the user later enabled in system settings.
+      work.stop();
+      final granted =
+          await _client.requestPermission().timeout(_permissionPromptTimeout);
+      work.start();
       if (_disposed || !binding.isCurrent) return;
       _permissionGranted = granted;
-      await _scheduleSync(reportErrors: true);
+      await _scheduleSync(reportErrors: true).timeout(remaining());
     } catch (_) {
       // An explicit bell tap reports failures only to the sign-in that began it.
       if (_disposed || !binding.isCurrent) return;

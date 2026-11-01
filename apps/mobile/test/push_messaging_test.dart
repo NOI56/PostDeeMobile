@@ -325,6 +325,70 @@ void main() {
     await Future.wait([first, second]);
     expect(registrations, 1);
   });
+  test('a slow permission answer does not spend the explicit work budget',
+      () async {
+    final answer = Completer<bool>();
+    final client = FakeFirebaseMessagingClient(permissionGranted: false)
+      ..permissionHandler = () => answer.future;
+    var registrations = 0;
+    final gateway = FirebasePushMessagingGateway(
+      client: client,
+      sessionStore: PostDeeAuthSessionStore(
+          initialSession:
+              const AuthSession(userId: 'owner', idToken: 'owner-token')),
+      center: PostDeeNotificationCenter(),
+      initializeTimeout: const Duration(milliseconds: 20),
+      registerToken: (_, __) async => registrations += 1,
+    );
+    addTearDown(gateway.dispose);
+    await gateway.start();
+
+    final initializing = gateway.initialize();
+    // The user reads the system prompt for longer than the app's own budget.
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    answer.complete(true);
+    await initializing;
+    expect(registrations, 1);
+  });
+  test('explicit initialization still bounds work after the permission answer',
+      () async {
+    final client = FakeFirebaseMessagingClient(permissionGranted: false);
+    final pending = Completer<void>();
+    final gateway = FirebasePushMessagingGateway(
+      client: client,
+      sessionStore: PostDeeAuthSessionStore(
+          initialSession:
+              const AuthSession(userId: 'owner', idToken: 'owner-token')),
+      center: PostDeeNotificationCenter(),
+      initializeTimeout: const Duration(milliseconds: 20),
+      registerToken: (_, __) => pending.future,
+    );
+    addTearDown(gateway.dispose);
+    await gateway.start();
+    client.permissionGranted = true;
+
+    await expectLater(gateway.initialize(), throwsA(isA<TimeoutException>()));
+    pending.complete();
+  });
+  test('an unanswered permission prompt is eventually reported', () async {
+    final client = FakeFirebaseMessagingClient(permissionGranted: false)
+      ..permissionHandler = () => Completer<bool>().future;
+    var registrations = 0;
+    final gateway = FirebasePushMessagingGateway(
+      client: client,
+      sessionStore: PostDeeAuthSessionStore(
+          initialSession:
+              const AuthSession(userId: 'owner', idToken: 'owner-token')),
+      center: PostDeeNotificationCenter(),
+      permissionPromptTimeout: const Duration(milliseconds: 20),
+      registerToken: (_, __) async => registrations += 1,
+    );
+    addTearDown(gateway.dispose);
+    await gateway.start();
+
+    await expectLater(gateway.initialize(), throwsA(isA<TimeoutException>()));
+    expect(registrations, 0);
+  });
   const owner = AuthSession(userId: 'owner', idToken: 'owner-token');
   test('push rebinds refreshed tokens and isolates account changes', () async {
     final store = PostDeeAuthSessionStore(initialSession: owner);

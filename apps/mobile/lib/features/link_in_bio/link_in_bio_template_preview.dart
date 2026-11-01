@@ -43,14 +43,15 @@ class BioTemplatePreview extends StatelessWidget {
   String _name(BuildContext context) => storeName.trim().isEmpty
       ? linkInBioText(context, 'ร้านของคุณ', 'Your store')
       : storeName.trim();
-  Color get _avatarColor => _is3d ? bioColor(appearance.surfaceColor)
+  Color get _avatarColor => _is3d
+      ? bioColor(appearance.surfaceColor)
       : const {'seal', 'tag'}.contains(_composition)
-      ? Colors.transparent
-      : _composition == 'portrait' ||
-              (_presetBackground &&
-                  const {'gallery', 'glass'}.contains(_composition))
-          ? bioColor(appearance.buttonColor)
-          : bioColor(appearance.background.gradientColor);
+          ? Colors.transparent
+          : _composition == 'portrait' ||
+                  (_presetBackground &&
+                      const {'gallery', 'glass'}.contains(_composition))
+              ? bioColor(appearance.buttonColor)
+              : bioColor(appearance.background.gradientColor);
   Widget _photo(String key, double height,
           {Widget? fallback, BoxFit fit = BoxFit.cover}) =>
       Image.memory(images[key]!,
@@ -72,7 +73,7 @@ class BioTemplatePreview extends StatelessWidget {
     final readable = (math.max(a, b) + .05) / (math.min(a, b) + .05) >= 4.5;
     return Builder(
         builder: (context) => Center(
-            child: Text(String.fromCharCode(_name(context).runes.first),
+            child: Text(bioAvatarInitial(_name(context)),
                 style: bioTextStyle(appearance.nameStyle,
                         size: const <String, double>{
                               'editorial': 24,
@@ -169,7 +170,7 @@ class BioTemplatePreview extends StatelessWidget {
                   final style = bioTextStyle(appearance.nameStyle,
                           size: headingSize,
                           weight: heavy ? FontWeight.w800 : FontWeight.w600)
-                      .copyWith(height: 1.2, letterSpacing: framed ? 4 : null);
+                      .copyWith(height: 1.2);
                   final scaler = MediaQuery.textScalerOf(context);
                   var size = headingSize;
                   if (constraints.hasBoundedWidth &&
@@ -222,7 +223,7 @@ class BioTemplatePreview extends StatelessWidget {
                     appearance.description.isEmpty
                         ? linkInBioText(context, 'เลือกช่องทางที่ต้องการได้เลย',
                             'Choose a channel below')
-                        : appearance.description,
+                        : bioKeepNumbersTogether(appearance.description),
                     textAlign: centered ? TextAlign.center : TextAlign.start,
                     style: bioTextStyle(appearance.descriptionStyle,
                         size: _composition == 'poster' ? 16 : 15,
@@ -539,7 +540,7 @@ class BioTemplatePreview extends StatelessWidget {
           if (featured && appearance.featuredLabel.isNotEmpty)
             Text(appearance.featuredLabel,
                 style: bioTextStyle(style, size: 11, weight: FontWeight.w600)),
-          Text(link.title,
+          Text(bioKeepNumbersTogether(link.title),
               style: bioTextStyle(style, size: 16, weight: FontWeight.w600)
                   .copyWith(height: 1.5)),
         ]);
@@ -740,22 +741,31 @@ class BioTemplatePreview extends StatelessWidget {
                     children: [
                       for (final (rhythm, record) in group.indexed)
                         SizedBox(
-                            width: _tileAt(rhythm)
+                            width: _tileAt(rhythm, group.length)
                                 ? (size.maxWidth - 12) / 2
                                 : size.maxWidth,
                             child: _link(record.$2, record.$1, phase, entrance,
                                 reduced, narrow,
-                                tile: _tileAt(rhythm), rhythm: rhythm))
+                                tile: _tileAt(rhythm, group.length),
+                                rhythm: rhythm))
                     ])),
         const SizedBox(height: 12),
       ]
     ]);
   }
 
-  bool _tileAt(int rhythm) =>
-      const {'bicolor', 'gallery', 'window-grid'}.contains(_composition) ||
-      (const {'collage', 'glass'}.contains(_composition) &&
-          (rhythm % 4 == 1 || rhythm % 4 == 2));
+  // A tile that would sit alone on the last row of its group takes the whole
+  // row instead, matching the public page.
+  bool _tileAt(int rhythm, int count) {
+    final paired =
+        const {'bicolor', 'gallery', 'window-grid'}.contains(_composition);
+    if (!paired &&
+        !(const {'collage', 'glass'}.contains(_composition) &&
+            (rhythm % 4 == 1 || rhythm % 4 == 2))) {
+      return false;
+    }
+    return rhythm != count - 1 || (paired ? count.isEven : rhythm % 4 != 1);
+  }
 
   Widget _chrome() => Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

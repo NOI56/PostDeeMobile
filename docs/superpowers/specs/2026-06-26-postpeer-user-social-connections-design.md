@@ -1,5 +1,11 @@
 # PostPeer User Social Connections Design
 
+> **Native routing follow-up (2026-11-01, local candidate):** Prefer a supported
+> installed app for the unchanged trusted HTTPS URL, then retain secure browser
+> fallback. Owner/screen changes cancel later attempts. Launch and return never
+> establish connection success; the authenticated nonce protocol still decides.
+> See the [integration record](../plans/2026-11-01-pending-work-integration.md).
+
 > **Security Batch 2 addendum (2026-10-23, review candidate):** The current
 > polling flow admits new accounts only with a hashed, one-use attempt bound to
 > owner/platform/profile and a 15-minute expiry; pre-existing integration IDs

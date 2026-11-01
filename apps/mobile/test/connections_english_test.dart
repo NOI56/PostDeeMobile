@@ -266,7 +266,7 @@ void main() {
         findsOneWidget);
     expect(
         find.text(
-            'Opens in a trusted system browser. PostDee does not receive your password. When finished, tap Open PostDee. If you do not return automatically, close the window or return to the app, then refresh the status.'),
+            'Opens in a supported app or trusted system browser. PostDee does not receive your password. When finished, return to PostDee, then refresh the status.'),
         findsOneWidget);
     expect(find.byTooltip('Refresh connection status'), findsOneWidget);
     _expectEnglish(tester);
@@ -515,7 +515,7 @@ void main() {
       expect(launches, hasLength(1));
       expect(
           find.text(
-              'Sign-in opened in your system browser. When finished, tap Open PostDee. If you do not return automatically, close the window or return to the app, then refresh the status.'),
+              'Connection page opened. When finished, return to PostDee. If you do not return automatically, close the window or return to the app, then refresh the status.'),
           findsOneWidget);
       expect(find.text('Connected 0/4 channels'), findsOneWidget);
       expect(counts, [0]);

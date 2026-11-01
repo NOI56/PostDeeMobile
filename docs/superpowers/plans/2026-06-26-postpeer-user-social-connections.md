@@ -1,5 +1,12 @@
 # PostPeer User Social Connections Implementation Plan
 
+> **Native routing follow-up (2026-11-01, local candidate):** The current Mobile
+> launcher tries a supported trusted HTTPS link in an installed app before its
+> secure browser fallback, with owner/operation/screen cancellation between
+> attempts. Nonce completion remains authoritative. No new provider connection
+> is claimed; see the [integration record](2026-11-01-pending-work-integration.md)
+> for tests, native acceptance and actual delivery state.
+
 > **Security Batch 2 addendum (2026-10-23, review candidate):** New account
 > admission now requires a hashed, one-use owner/platform/profile-bound attempt
 > with a 15-minute lifetime and pre-connect integration baseline. Authenticated

@@ -811,9 +811,11 @@ class _PublishDoneView extends StatelessWidget {
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: _failed || _hasUnconfirmedOutcome
-                    ? const Color(0xFFEEF2EF)
-                    : AppTheme.mint,
+                color: _failed
+                    ? Theme.of(context).colorScheme.errorContainer
+                    : _hasUnconfirmedOutcome
+                        ? const Color(0xFFEEF2EF)
+                        : AppTheme.mint,
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -824,7 +826,7 @@ class _PublishDoneView extends StatelessWidget {
                         : Icons.check_rounded,
                 size: 54,
                 color: _failed
-                    ? Theme.of(context).colorScheme.error
+                    ? Theme.of(context).colorScheme.onErrorContainer
                     : _hasUnconfirmedOutcome
                         ? AppTheme.textMuted
                         : AppTheme.accentCyanInk,

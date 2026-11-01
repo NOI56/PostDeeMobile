@@ -2,6 +2,19 @@
 
 Build roadmap for PostDee.
 
+## Remaining-work integration (2026-11-01, local candidate)
+
+- Bring the preserved Thai storefront-readability and publishing-contrast fixes
+  onto the current 3D-capable baseline; do not replace newer templates or flows.
+- Add PR #49's safe push-error categories and independent permission-prompt
+  budget without changing delivery retries, token cleanup or owner isolation.
+- Integrate conditional native-app-first OAuth with trusted browser fallback
+  and cancellation across account/screen changes. Opening an app never confirms
+  a connection; retain authoritative nonce completion and verify native routing.
+- No entitlement, schema, dependency or environment change. Delivery and
+  remaining acceptance limits are in the
+  [work record](docs/superpowers/plans/2026-11-01-pending-work-integration.md).
+
 ## 3D storefront category (2026-11-01, local candidate)
 
 - Add ten 3D designs as a separate category beside the twenty visible minimal

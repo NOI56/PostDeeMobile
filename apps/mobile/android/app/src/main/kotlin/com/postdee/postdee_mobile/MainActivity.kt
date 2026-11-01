@@ -1,6 +1,8 @@
 package com.postdee.postdee_mobile
 
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
 import io.flutter.embedding.android.FlutterActivity
@@ -19,29 +21,62 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             SECURE_CUSTOM_TABS_CHANNEL,
         ).setMethodCallHandler { call, result ->
-            if (call.method != "launch") {
-                result.notImplemented()
-                return@setMethodCallHandler
+            when (call.method) {
+                "launchApp" -> result.success(launchExternalApp(call.argument<String>("url")))
+                "launch" -> result.success(launchSecureCustomTab(call.argument<String>("url")))
+                else -> result.notImplemented()
             }
-
-            result.success(launchSecureCustomTab(call.argument<String>("url")))
         }
     }
 
-    private fun launchSecureCustomTab(rawUrl: String?): Boolean {
+    private fun readSocialConnectUri(rawUrl: String?): Uri? {
         if (rawUrl.isNullOrBlank() || rawUrl.contains("\\")) {
-            return false
+            return null
         }
 
         return try {
             val uri = Uri.parse(rawUrl)
+            val host = uri.host?.lowercase() ?: return null
             if (!uri.scheme.equals("https", ignoreCase = true) ||
-                uri.host.isNullOrBlank() ||
+                host.isBlank() ||
                 uri.encodedAuthority?.contains("@") == true
             ) {
-                return false
+                return null
             }
+            val trustedDomains = listOf(
+                "tiktok.com", "accounts.google.com", "instagram.com",
+                "facebook.com", "postpeer.dev",
+            )
+            if (!trustedDomains.any { host == it || host.endsWith(".$it") }) {
+                return null
+            }
+            uri
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
 
+    private fun launchExternalApp(rawUrl: String?): Boolean {
+        // Older Android versions cannot exclude browsers reliably. Retain
+        // their existing Custom Tab path instead of guessing a native handler.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val uri = readSocialConnectUri(rawUrl) ?: return false
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, uri)
+                .addCategory(Intent.CATEGORY_BROWSABLE)
+                .addFlags(Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER)
+            startActivity(intent)
+            true
+        } catch (_: RuntimeException) {
+            // No app supports this exact URL, or the OS rejected the launch.
+            // Dart can fall back without exposing credentials in a WebView.
+            false
+        }
+    }
+
+    private fun launchSecureCustomTab(rawUrl: String?): Boolean {
+        val uri = readSocialConnectUri(rawUrl) ?: return false
+        return try {
             val customTabsPackage =
                 CustomTabsClient.getPackageName(this, emptyList()) ?: return false
             val customTab = CustomTabsIntent.Builder()

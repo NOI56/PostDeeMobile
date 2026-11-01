@@ -26,6 +26,16 @@ export const isDefaultPortraitSecondaryLink = (appearance: LinkInBioAppearance, 
   return Boolean(template?.layout.composition === 'portrait' && position > 0 && !customButton && !customText && appearance.buttonColor === template.palette.button && appearance.buttonStyle.color === template.palette.buttonText);
 };
 
+// Grid layouts pair links two per row. A link that would sit alone on the last
+// row of its group takes the whole row instead of leaving half of it empty.
+const pairedGridCompositions = ['bicolor', 'gallery', 'window-grid'];
+const mixedGridCompositions = ['collage', 'glass'];
+export const fillsLastLinkRow = (composition: string, position: number, count: number) => {
+  if (position !== count - 1) return false;
+  if (pairedGridCompositions.includes(composition)) return count % 2 === 1;
+  return mixedGridCompositions.includes(composition) && position % 4 === 1;
+};
+
 export const profileTemplateLinkFill = (appearance: LinkInBioAppearance, text: string, customButton: string | undefined, customText: boolean, rhythm: number, position = 0) => {
   if (customButton) return customButton;
   const template = getProfileTemplate(appearance.templateId);
@@ -76,7 +86,10 @@ export const linkInBioCompositionStyles = (appearance: LinkInBioAppearance) => {
     [' .category', 'grid-column:1/-1'],
     [' a', 'height:100%;min-height:112px;flex-direction:column;align-items:flex-start;gap:12px;padding:16px 14px 38px'],
     [' .link-copy', 'width:100%;padding-right:0'],
-    [' .arrow', 'position:absolute;right:12px;bottom:14px']
+    [' .arrow', 'position:absolute;right:12px;bottom:14px'],
+    [' li.link-item.fill-row', 'grid-column:1/-1;transform:none'],
+    [' .link-item.fill-row a', 'min-height:72px;flex-direction:row;align-items:center;padding:14px 16px'],
+    [' .link-item.fill-row .arrow', 'position:static']
   ];
   const mixed: [string, string][] = [
     ...grid,
@@ -101,7 +114,7 @@ export const linkInBioCompositionStyles = (appearance: LinkInBioAppearance) => {
       [' main', 'border-radius:0;padding-top:0'],
       [' .profile-header', `margin:-0px -20px 28px;padding:40px 20px 28px;background:${wash}`],
       [' .logo', `border:1px solid ${line};outline:1px solid ${line};outline-offset:6px;margin-bottom:26px`],
-      [' .profile-header h1', `border:3px double ${line};padding:12px 6px;font-size:24px;letter-spacing:4px`],
+      [' .profile-header h1', `border:3px double ${line};padding:12px 6px;font-size:24px`],
       ...grid, [' a', `border:1px solid ${line};border-radius:${radius};min-height:136px`],
       [' footer', `border-top:1px solid ${line}55;margin-top:32px;padding-top:24px`]
     ]; break;

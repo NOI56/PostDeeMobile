@@ -2,6 +2,22 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Preserved-work integration (2026-11-01, local candidate)
+
+Storefront readability stays in the existing HTML renderer and native preview
+helpers, including the ten 3D compositions. Publishing contrast uses existing
+theme colors and an opaque label fill without changing result transitions.
+Push diagnostic categories pass the existing final Sentry allowlist; Mobile's
+gateway owns separate work/prompt deadlines while preserving session binding.
+
+The existing secure-custom-tabs channel additionally attempts a trusted HTTPS
+URL in a non-browser Android app on API 30+. Older/unsupported cases retain
+Custom Tab and external browser fallback; iOS uses universal-links-only first.
+The asynchronous fallback chain remains bound to its initiating owner,
+operation and mounted screen. Nonce completion remains authoritative, with no
+URL rewriting/logging, WebView, new permission or provider integration.
+See [implementation and evidence](docs/superpowers/plans/2026-11-01-pending-work-integration.md).
+
 ## 3D storefront presentation (2026-11-01, local candidate)
 
 `shared/profile-templates.json` version 2 generates the API and Mobile catalogs.

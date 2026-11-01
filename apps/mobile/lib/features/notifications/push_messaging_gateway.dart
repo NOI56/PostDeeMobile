@@ -9,6 +9,8 @@ abstract class PushMessagingGateway {
   /// forwarding incoming messages for the current sign-in. Concurrent calls
   /// share initialization; denied or failed initialization may be retried.
   /// The real gateway clears history and rebinds delivery on account changes.
+  /// Implementations bound their own work, because the bell waits for this
+  /// call; only the system permission prompt may wait on the user.
   Future<void> initialize();
 
   /// Cancels any active message subscriptions.

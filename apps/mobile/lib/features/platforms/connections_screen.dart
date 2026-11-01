@@ -32,15 +32,58 @@ Future<bool> _launchNativeAndroidCustomTab(Uri uri) async =>
     ) ??
     false;
 
+Future<bool> _launchNativeAndroidApp(Uri uri) async =>
+    await _secureCustomTabsChannel.invokeMethod<bool>(
+      'launchApp',
+      {'url': uri.toString()},
+    ) ??
+    false;
+
 /// Opens social authorization without ever giving provider credentials to an
-/// embedded WebView. Android uses a native Custom Tab channel that fails closed;
-/// all other cases use the external system browser.
+/// embedded WebView. A supported installed app gets the unchanged HTTPS URL
+/// first; otherwise use a secure Android Custom Tab or the system browser.
 Future<bool> launchSocialConnectUrl(
   Uri uri, {
   SocialConnectBrowserLauncher? launch,
   SocialConnectCustomTabLauncher? launchCustomTab,
   bool? preferAndroidCustomTab,
+  bool Function()? canContinue,
 }) async {
+  bool isCurrent() => canContinue?.call() ?? true;
+  if (!isCurrent() ||
+      !connectablePlatforms.any(
+          (platform) => isTrustedSocialConnectUrl(uri.toString(), platform))) {
+    return false;
+  }
+
+  const browserConfiguration = BrowserConfiguration(showTitle: true);
+  Future<bool> launchWithMode(LaunchMode mode) async {
+    if (!isCurrent()) return false;
+    if (launch != null) {
+      return launch(uri,
+          mode: mode, browserConfiguration: browserConfiguration);
+    }
+    return launchUrl(uri,
+        mode: mode, browserConfiguration: browserConfiguration);
+  }
+
+  if (!kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS)) {
+    try {
+      final opened = defaultTargetPlatform == TargetPlatform.android
+          ? await _launchNativeAndroidApp(uri)
+          : await launchWithMode(LaunchMode.externalNonBrowserApplication);
+      if (opened) return isCurrent();
+    } on Object {
+      // Unsupported links, missing apps and platform-channel failures retain
+      // the safe browser fallback without changing the OAuth URL.
+    }
+  }
+
+  // A native app launch may complete after sign-out, an account switch or the
+  // screen being closed. Do not open another surface for that stale request.
+  if (!isCurrent()) return false;
   final shouldPreferAndroidCustomTab = preferAndroidCustomTab ??
       (!kIsWeb && defaultTargetPlatform == TargetPlatform.android);
   if (shouldPreferAndroidCustomTab) {
@@ -49,29 +92,14 @@ Future<bool> launchSocialConnectUrl(
         uri,
       );
       if (opened) {
-        return true;
+        return isCurrent();
       }
     } on Object {
       // A missing Custom Tab provider or platform-channel failure must fall
       // through to the external browser, never url_launcher's WebView path.
     }
   }
-  const mode = LaunchMode.externalApplication;
-  const browserConfiguration = BrowserConfiguration(showTitle: true);
-
-  if (launch != null) {
-    return launch(
-      uri,
-      mode: mode,
-      browserConfiguration: browserConfiguration,
-    );
-  }
-
-  return launchUrl(
-    uri,
-    mode: mode,
-    browserConfiguration: browserConfiguration,
-  );
+  return launchWithMode(LaunchMode.externalApplication);
 }
 
 const Map<SocialPlatform, List<String>> _trustedSocialConnectDomains = {
@@ -192,9 +220,6 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     with WidgetsBindingObserver {
   late final PostDeeApiClient _apiClient =
       widget.apiClient ?? PostDeeApiClient();
-  late final ConnectUrlLauncher _launch =
-      widget.launchConnectUrl ?? launchSocialConnectUrl;
-
   Map<String, SocialConnectionResult> _statuses = {};
   bool _loading = true;
   Object? _statusFailure;
@@ -429,18 +454,24 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       _pendingConnectPlatform = platform;
       _waitingForOAuthReturn = true;
       _leftAppForOAuth = false;
-      final launched = await _launch(link.connectUri);
+      final customLauncher = widget.launchConnectUrl;
+      final launched = customLauncher != null
+          ? await customLauncher(link.connectUri)
+          : await launchSocialConnectUrl(
+              link.connectUri,
+              canContinue: () => _operationIsCurrent(generation, owner),
+            );
       if (!_operationIsCurrent(generation, owner)) return;
       if (!launched) {
         _waitingForOAuthReturn = false;
         throw StateError('Could not open the PostPeer connect URL.');
       }
       // Returning is only a hint to reconcile via the authenticated API. The
-      // browser and callback never prove that an account was connected.
+      // opened app/browser and callback never prove an account was connected.
       _showMessage(
         _text(
-            'เปิดหน้าล็อกอินด้วยเบราว์เซอร์ของระบบแล้ว เมื่อเชื่อมเสร็จให้กดเปิด PostDee หากไม่กลับอัตโนมัติให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วกดรีเฟรชสถานะได้',
-            'Sign-in opened in your system browser. When finished, tap Open PostDee. If you do not return automatically, close the window or return to the app, then refresh the status.'),
+            'เปิดหน้าการเชื่อมต่อแล้ว เมื่อเชื่อมเสร็จให้กลับเข้า PostDee หากไม่กลับอัตโนมัติให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วกดรีเฟรชสถานะได้',
+            'Connection page opened. When finished, return to PostDee. If you do not return automatically, close the window or return to the app, then refresh the status.'),
       );
     } on ApiException catch (error) {
       if (!_operationIsCurrent(generation, owner)) return;
@@ -903,8 +934,8 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
                     const SizedBox(height: 2),
                     Text(
                       _text(
-                          'เปิดด้วยเบราว์เซอร์ที่ระบบเชื่อถือ PostDee ไม่ได้รับรหัสผ่านของคุณ เมื่อเสร็จให้กดเปิด PostDee หากไม่กลับให้ปิดหน้าต่างหรือกลับเข้าแอป แล้วรีเฟรชสถานะ',
-                          'Opens in a trusted system browser. PostDee does not receive your password. When finished, tap Open PostDee. If you do not return automatically, close the window or return to the app, then refresh the status.'),
+                          'เปิดด้วยแอปที่รองรับ หรือเบราว์เซอร์ที่ระบบเชื่อถือ PostDee ไม่ได้รับรหัสผ่านของคุณ เมื่อเสร็จให้กลับเข้า PostDee แล้วรีเฟรชสถานะได้',
+                          'Opens in a supported app or trusted system browser. PostDee does not receive your password. When finished, return to PostDee, then refresh the status.'),
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.4,

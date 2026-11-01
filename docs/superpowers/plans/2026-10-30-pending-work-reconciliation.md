@@ -85,6 +85,9 @@ delivery, not a new contract in this patch.
   explicitly excluded from the historical scoped delivery. Current browser
   routing and lifecycle refresh work. Preserve this separate feature candidate;
   it still needs real-provider/device acceptance before delivery claims.
+  The later [2026-11-01 integration candidate](2026-11-01-pending-work-integration.md)
+  ports only its native-routing intent onto the new baseline, preserving the
+  current lifecycle/nonce guards and adding cancellation between fallbacks.
 
 ## Verification
 

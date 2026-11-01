@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
@@ -551,6 +552,44 @@ void main() {
       await tester.pumpAndSettle();
       expect(refreshes, launched ? 1 : 0);
     });
+  }
+
+  for (final cancellation in ['owner change', 'screen closed']) {
+    testWidgets('$cancellation cancels browser fallback after native app rejection',
+        (tester) async {
+      _signIn('owner-a');
+      const channel = MethodChannel(
+        'com.postdee.postdee_mobile/secure_custom_tabs',
+      );
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final nativeResult = Completer<bool>();
+      final methods = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        methods.add(call.method);
+        return call.method == 'launchApp' ? nativeResult.future : true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      await tester.pumpWidget(MaterialApp(
+        home: ConnectionsScreen(
+          apiClient: _StatusApiClient(list: () async => const []),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await _tapConnect(tester);
+      await tester.pump();
+      expect(methods, ['launchApp']);
+      if (cancellation == 'owner change') {
+        _signIn('owner-b');
+        await tester.pump();
+      } else {
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+      nativeResult.complete(false);
+      await tester.pumpAndSettle();
+      expect(methods, ['launchApp']);
+      expect(tester.takeException(), isNull);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   }
 
   testWidgets('owner switch discards a pending OAuth link before browser launch',

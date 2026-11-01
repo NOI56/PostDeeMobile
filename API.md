@@ -2,6 +2,19 @@
 
 PostDee backend API reference.
 
+## Readability and push diagnostic follow-up (2026-11-01, local candidate)
+
+Public storefront HTML improves Thai avatar initials, telephone wrapping,
+heading spacing and odd final grid tiles, preserving escaped content, CSP,
+all 3D templates and catalog 2 compatibility. No route or JSON shape changes.
+Push monitoring adds only fixed allowlisted `push_error` categories; raw
+Firebase messages, tokens, recipients and notification contents stay excluded.
+Dead-token cleanup, best-effort delivery and existing failure contracts remain.
+Mobile's separate permission budget and native-app-first OAuth add no backend
+contract. No schema/migration, entitlement, dependency or environment change.
+Deploy API before the corresponding Mobile update; see the
+[integration record](docs/superpowers/plans/2026-11-01-pending-work-integration.md).
+
 ## 3D storefront catalog compatibility (2026-11-01, local candidate)
 
 The shared profile-template catalog is version 2 with ten new `dimensional-*`

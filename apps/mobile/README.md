@@ -2,6 +2,21 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Pending work integration (2026-11-01, local candidate)
+
+Preserve all 3D templates while improving Thai store-name/telephone layout and
+publishing error contrast in light/dark themes. Push initialization work keeps
+its ten-second budget; a native permission prompt has a separate two-minute
+budget, retaining owner/session protection and retry behavior.
+
+Social connection conditionally opens the unchanged trusted HTTPS URL in a
+supported installed app, then retains the secure browser fallback. Android
+requires API 30+ for the non-browser attempt; older versions keep Custom Tabs.
+iOS uses universal links only for its first attempt. Owner/screen changes cancel
+later fallbacks. Launch/return does not imply connection success. No manifest,
+dependency, entitlement or API contract change. Device/build verification is in
+the [integration record](../../docs/superpowers/plans/2026-11-01-pending-work-integration.md).
+
 ## 3D storefront category (2026-11-01, local candidate)
 
 The decorator has separate Minimal (20 templates) and 3D (10 templates) choices.

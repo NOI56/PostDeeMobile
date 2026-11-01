@@ -1,6 +1,7 @@
 # Render Environment Keys
 
-Repository configuration reviewed: 2026-08-01. The only recorded Render API
+Repository configuration reviewed: 2026-08-01; keys the code reads were
+re-synced on 2026-11-01 (see "Optional Keys Read By The Code"). The only recorded Render API
 snapshot in this file is from 2026-07-03; it is historical evidence, not proof
 of the current Dashboard state.
 
@@ -61,12 +62,12 @@ These are present in `render.yaml` with fixed values or a Render-managed source.
 | `SUBSCRIPTION_STORE` | Blueprint value | `prisma` | Uses PostgreSQL. |
 | `ANALYTICS_STORE` | Blueprint value | `prisma` | Uses PostgreSQL. |
 | `CAPTION_USAGE_STORE` | Blueprint value | `prisma` | Persists paid AI caption quota. |
-| `AI_EDIT_USAGE_STORE` | Blueprint value | `prisma` | Persists AI editing minute quota. |
+| `AI_EDIT_USAGE_STORE` | Blueprint value | `prisma` | Keeps historical minute rows of the retired AI editing feature so account deletion can clear them. |
 | `PUBLISH_QUEUE` | Blueprint value | `memory` | Intentional for one Render web instance. |
 | `VIDEO_STORAGE` | Blueprint value | `r2` | Requires Cloudflare R2 keys below. |
 | `CAPTION_PROVIDER` | Blueprint value | `gemini` | Requires `GEMINI_API_KEY`. |
-| `TRANSCRIPTION_PROVIDER` | Blueprint value | `elevenlabs` | Requires `ELEVENLABS_API_KEY`. |
-| `EDIT_PLAN_PROVIDER` | Blueprint value | `gemini` | Uses `GEMINI_API_KEY`; PostDee rules are the final fallback. |
+| `TRANSCRIPTION_PROVIDER` | Blueprint value | `elevenlabs` | Requires `ELEVENLABS_API_KEY`. Used only as the AI-caption fallback when the Gemini clip-caption provider is not configured. |
+| `EDIT_PLAN_PROVIDER` | Blueprint value | `gemini` | Retired AI editing only; unused unless the rollback switch `AI_EDITING_ENABLED=true` is set. |
 | `SOCIAL_PUBLISHER` | Blueprint value | `postpeer` | Requires `POSTPEER_API_KEY`. |
 | `AUTH_PROVIDER` | Blueprint value | `firebase` | Requires `FIREBASE_PROJECT_ID`. |
 | `FIREBASE_AUTH_DELETE_ENABLED` | Blueprint value | `false` | Temporarily disables destructive Firebase account deletion. The durable PostgreSQL owner drain is implemented and Live on Staging; re-enable only after a disposable account passes real Firebase/R2/PostPeer cleanup on Staging and `FIREBASE_SERVICE_ACCOUNT_JSON` is confirmed (startup fails without it). |
@@ -90,8 +91,8 @@ Render Dashboard.
 | `CLOUDFLARE_R2_ACCESS_KEY_ID` | R2 video storage | Yes | R2 S3-compatible access key id. |
 | `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | R2 video storage | Yes | Secret key. |
 | `CLOUDFLARE_R2_ENDPOINT` | R2 video storage | Usually optional | Override endpoint when needed. If blank, backend can use the default account endpoint. |
-| `GEMINI_API_KEY` | AI caption and edit planning from real clip | Yes | Required because `CAPTION_PROVIDER=gemini` and `EDIT_PLAN_PROVIDER=gemini`. |
-| `ELEVENLABS_API_KEY` | Scribe v2 transcription | Yes | Server-only. Required because `TRANSCRIPTION_PROVIDER=elevenlabs`. |
+| `GEMINI_API_KEY` | AI caption from the real clip | Yes | Required because `CAPTION_PROVIDER=gemini`. Edit planning uses it only under the retired-feature rollback switch. |
+| `ELEVENLABS_API_KEY` | Scribe v2 transcription | Yes | Server-only. Required because `TRANSCRIPTION_PROVIDER=elevenlabs`; serves as the AI-caption fallback. |
 | `POSTPEER_API_KEY` | Social publishing | Yes | Required because `SOCIAL_PUBLISHER=postpeer`. |
 | `FIREBASE_PROJECT_ID` | Firebase Auth token verification | Yes | Project id, not a private key. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Future Firebase account deletion and push sender | Before either feature is enabled | The current Production Blueprint keeps deletion off and push mocked. Keep this secret in Render, but do not treat its presence as authorization to flip deletion on before the distributed owner barrier is complete. |
@@ -142,6 +143,37 @@ existing local template; no secondary Gemini model is attempted.
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Global rate limit window. |
 | `RATE_LIMIT_MAX_REQUESTS` | `300` | Global rate limit max requests. |
 | `REDIS_URL` | `redis://localhost:6379` | Not used while `PUBLISH_QUEUE=memory`; required if switching to BullMQ. |
+
+## Optional Keys Read By The Code
+
+Added 2026-11-01 from `apps/api/src/config/env.ts`, `apps/api/src/modules/admin/adminConfig.ts`,
+and `apps/api/src/monitoring/`. None of these are declared in `render.yaml` except
+`REVENUECAT_SUBSCRIPTION_ENVIRONMENT`. When a key is unset the default applies, so
+leaving them out keeps each feature off. Confirm values in the Dashboard without
+printing secrets.
+
+| Key | Default when unset | Purpose and notes |
+| --- | --- | --- |
+| `ADMIN_CONSOLE_ENABLED` | off | `true` serves the private admin console. It then requires Firebase auth, `TRIAL_ACCESS_ENABLED=true`, an exact HTTPS `ADMIN_CONSOLE_ORIGIN`, `ADMIN_ENVIRONMENT` (`STAGING` or `PRODUCTION`; `LOCAL` is rejected in production), `ADMIN_FIREBASE_WEB_CONFIG` for the same Firebase project as the API, and `ADMIN_OWNER_UIDS`. See `docs/ADMIN_CONSOLE.md`. |
+| `ADMIN_OWNER_UIDS` | — | Comma-separated Firebase UIDs with owner rights. |
+| `ADMIN_VIEWER_UIDS` | empty | Comma-separated Firebase UIDs with viewer rights. Render replaces a key's whole value on update, so append to the current list instead of overwriting it. |
+| `ADMIN_COST_RATES_JSON` | no cost estimate | Optional JSON with `captionRequestUsd`, `editMinuteUsd`, and `postUnitUsd` (each 0–1000) for cost estimates in the admin usage report. |
+| `TRIAL_ACCESS_ENABLED` | off | `true` lets owners grant Pro trials from the admin console. Needs `DATABASE_URL`. |
+| `SUPPORT_BOT_PROVIDER` | `off` | `off`, `mock`, or `openai` for the Dot support helper. `mock` is rejected in production. `openai` sends support chat text to OpenAI and needs `OPENAI_API_KEY`; an owner must also switch Dot on in the admin console. |
+| `OPENAI_SUPPORT_BOT_MODEL` | `gpt-4o-mini` | Model for Dot when `SUPPORT_BOT_PROVIDER=openai`. |
+| `SENTRY_DSN` | off | Enables API error reporting (errors only). In production `SENTRY_ENVIRONMENT` is then required; `SENTRY_RELEASE` is optional. |
+| `SENTRY_SIGNALS_TOKEN` | off | Read-only token for the admin status tab's Sentry signals. Needs `SENTRY_DSN`. Optional `SENTRY_SIGNALS_PROJECT_IDS` (numeric ids) and `SENTRY_SIGNALS_WINDOW_MINUTES` (5–240, default 30). |
+| `REVENUECAT_SUBSCRIPTION_ENVIRONMENT` | `PRODUCTION` | `SANDBOX` or `PRODUCTION`. Declared in both Blueprints; Staging uses `SANDBOX`. |
+| `BILLING_ADDONS_ENABLED` | off | Monthly add-on purchases. `REVENUECAT_ADDON_PRODUCT_ID` (default `postdee_post100_caption50`) must differ from the subscription product ids; `REVENUECAT_ADDON_ENVIRONMENT` defaults to `PRODUCTION`. |
+| `STORE_STARTER_MONTHLY_PRODUCT_ID` / `STORE_PRO_MONTHLY_PRODUCT_ID` | `postdee_starter_monthly` / `postdee_pro_monthly` | Store product ids mapped to Starter and Pro. |
+| `APPLE_APP_STORE_*`, `APPLE_APP_*`, `GOOGLE_PLAY_*` | unset | Legacy direct store-verification scaffold (`BILLING_PROVIDER=store`). Not the preferred production path. |
+| `AI_EDITING_ENABLED` | `false` | Rollback switch for retired AI editing. Leave unset. |
+
+Local development or legacy only, not for Render: `PORT`, `MOCK_USER_ID`,
+`TEMPLATE_STORE_USER_ID`, `SEED_USER_EMAIL`, `SEED_USER_DISPLAY_NAME`, the legacy
+S3 storage keys (`AWS_REGION`, `AWS_S3_BUCKET`, `AWS_S3_UPLOAD_EXPIRES_SECONDS`),
+and the legacy OpenAI caption/edit keys (`OPENAI_CAPTION_MODEL`,
+`OPENAI_EDIT_PLAN_MODEL`, `WHISPER_MODEL`).
 
 ## Do Not Set In Production
 

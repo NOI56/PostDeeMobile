@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/localization/postdee_localizations.dart';
+import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'social_platform.dart';
@@ -185,7 +186,7 @@ class ConnectedPlatformsCard extends StatefulWidget {
   State<ConnectedPlatformsCard> createState() => _ConnectedPlatformsCardState();
 }
 
-enum _ConnectionStatusFailure { ownerChanged, unavailable }
+enum _ConnectionStatusFailure { ownerChanged }
 
 class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
     with WidgetsBindingObserver {
@@ -216,12 +217,20 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         _ConnectionStatusFailure.ownerChanged => _text(
             'กรุณาเข้าสู่ระบบใหม่เพื่อตรวจสอบช่องทาง',
             'Please sign in again to check your channels.'),
-        _ConnectionStatusFailure.unavailable => _text(
-            'โหลดสถานะช่องทางไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่',
-            'Could not load channel status. Check your internet connection and try again.'),
-        ApiException error => _connectAttemptErrorMessage(error),
-        _ => null,
+        null => null,
+        final error =>
+          (error is ApiException ? _connectAttemptErrorMessage(error) : null) ??
+              _requestErrorMessage(
+                  error,
+                  'โหลดสถานะช่องทางไม่สำเร็จ กรุณาลองใหม่',
+                  'Could not load channel status. Please try again.'),
       };
+
+  String _requestErrorMessage(
+          Object error, String thaiFallback, String englishFallback) =>
+      apiErrorMessage(error,
+          languageCode: _text('th', 'en'),
+          fallbackMessage: _text(thaiFallback, englishFallback));
 
   @override
   void initState() {
@@ -318,9 +327,9 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
         _loading = false;
       });
       widget.onConnectionsChanged?.call(_connectedCount);
-    } catch (_) {
+    } catch (error) {
       if (!_loadIsCurrent(generation, owner)) return;
-      _setStatusUnavailable();
+      _setStatusUnavailable(error);
     } finally {
       if (_loadIsCurrent(generation, owner)) _drainOAuthRefresh();
     }
@@ -331,11 +340,11 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
 
   bool get _statusKnown => !_loading && _statusError == null;
 
-  void _setStatusUnavailable() {
+  void _setStatusUnavailable(Object error) {
     setState(() {
       _statuses = {};
       _loading = false;
-      _statusFailure = _ConnectionStatusFailure.unavailable;
+      _statusFailure = error;
     });
   }
 
@@ -439,14 +448,18 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       _leftAppForOAuth = false;
       _pendingOAuthRefresh = false;
       _clearConnectAttempt();
-      _showMessage(_connectAttemptErrorMessage(error) ?? error.message);
-    } catch (_) {
+      _showMessage(_connectAttemptErrorMessage(error) ??
+          _requestErrorMessage(error, 'เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง',
+              'Could not connect your account. Please try again.'));
+    } catch (error) {
       if (!_operationIsCurrent(generation, owner)) return;
       _waitingForOAuthReturn = false;
       _leftAppForOAuth = false;
       _pendingOAuthRefresh = false;
       _clearConnectAttempt();
-      _showMessage(_text('เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง',
+      _showMessage(_requestErrorMessage(
+          error,
+          'เชื่อมบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง',
           'Could not connect your account. Please try again.'));
     } finally {
       if (_operationIsCurrent(generation, owner)) {
@@ -492,20 +505,13 @@ class _ConnectedPlatformsCardState extends State<ConnectedPlatformsCard>
       widget.onConnectionsChanged?.call(_connectedCount);
     } on ApiException catch (error) {
       if (!_loadIsCurrent(generation, owner)) return;
-      final message = _connectAttemptErrorMessage(error);
-      if (message == null) {
-        _setStatusUnavailable();
-      } else {
+      if (_connectAttemptErrorMessage(error) != null) {
         _clearConnectAttempt();
-        setState(() {
-          _statuses = {};
-          _loading = false;
-          _statusFailure = error;
-        });
       }
-    } catch (_) {
+      _setStatusUnavailable(error);
+    } catch (error) {
       if (!_loadIsCurrent(generation, owner)) return;
-      _setStatusUnavailable();
+      _setStatusUnavailable(error);
     } finally {
       if (_loadIsCurrent(generation, owner)) _drainOAuthRefresh();
     }

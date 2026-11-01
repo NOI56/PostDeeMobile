@@ -25,6 +25,7 @@ import 'package:postdee_mobile/features/posts/post_detail_screen.dart';
 import 'package:postdee_mobile/features/platforms/connections_screen.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
+import 'package:postdee_mobile/features/notifications/firebase_push_messaging_gateway.dart';
 import 'package:postdee_mobile/features/notifications/notifications_screen.dart';
 import 'package:postdee_mobile/features/legal/legal_document_screen.dart';
 import 'package:postdee_mobile/features/templates/templates_screen.dart';
@@ -1713,6 +1714,56 @@ void main() {
     expect(find.byType(NotificationsScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final languageCode in ['th', 'en']) {
+    testWidgets(
+        'real notification registration failure shows $languageCode toast',
+        (tester) async {
+      final language = _signInShell()..setLocale(Locale(languageCode));
+      var registrations = 0;
+      final gateway = FirebasePushMessagingGateway(
+        client: _ShellFirebaseMessagingClient(),
+        sessionStore: PostDeeAuthSessionStore.instance,
+        center: PostDeeNotificationCenter(),
+        registerBoundToken: (_, __) async {
+          registrations += 1;
+          throw StateError('opaque-notification-registration-error');
+        },
+      );
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.dark,
+        locale: Locale(languageCode),
+        localizationsDelegates: const [
+          PostDeeLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: PostDeeLocalizations.supportedLocales,
+        home: PostDeeShell(
+          languageController: language,
+          uploaderDraftStore: _ShellDraftStore(),
+          pushMessagingGateway: gateway,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(registrations, 1);
+      await tester.tap(find.bySemanticsLabel(
+          languageCode == 'th' ? 'แจ้งเตือน' : 'Notifications'));
+      await tester.pumpAndSettle();
+
+      expect(
+          find.text(languageCode == 'th'
+              ? 'เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง'
+              : 'Could not connect to notifications. Please try again.'),
+          findsOneWidget);
+      expect(find.textContaining('opaque-notification-registration-error'),
+          findsNothing);
+      expect(registrations, 2);
+      expect(find.byType(NotificationsScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('notification failure uses the locale when initialization finishes',
       (tester) async {
@@ -3692,6 +3743,34 @@ class _FailingAccountAccessRevoker implements AccountAccessRevoker {
     calls.add('revoke');
     throw AccountAccessRevocationException(message);
   }
+}
+
+class _ShellFirebaseMessagingClient implements FirebaseMessagingClient {
+  @override
+  Future<bool> hasPermission() async => true;
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<String?> getToken() async => 'device-token';
+
+  @override
+  Future<void> deleteToken() async {}
+
+  @override
+  Future<PushNotificationMessage?> getInitialMessage() async => null;
+
+  @override
+  Stream<String> get onTokenRefresh => const Stream<String>.empty();
+
+  @override
+  Stream<PushNotificationMessage> get onForegroundMessage =>
+      const Stream<PushNotificationMessage>.empty();
+
+  @override
+  Stream<PushNotificationMessage> get onMessageOpenedApp =>
+      const Stream<PushNotificationMessage>.empty();
 }
 
 class _FakePushMessagingGateway implements PushMessagingGateway {

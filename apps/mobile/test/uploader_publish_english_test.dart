@@ -17,8 +17,9 @@ Future<ReviewEnglishFixture> _review(WidgetTester tester,
     {bool unavailable = false,
     bool landscape = false,
     bool dark = false,
+    Locale locale = const Locale('en'),
     double scale = 1}) async {
-  final fixture = ReviewEnglishFixture(dark: dark, scale: scale)
+  final fixture = ReviewEnglishFixture(locale: locale, dark: dark, scale: scale)
     ..allowFakePublish = true;
   addTearDown(fixture.dispose);
   addTearDown(() async {
@@ -51,6 +52,87 @@ void main() {
     PostDeeAuthSessionStore.instance.signIn(previous);
     AppTheme.applyThemeMode(ThemeMode.light);
   });
+
+  for (final locale in const [Locale('th'), Locale('en')]) {
+    for (final failure in const [
+      (
+        error: ApiException('<html>private-provider-token</html>',
+            statusCode: 503),
+        retryable: true,
+        thai: 'ระบบ PostDee ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลัง',
+        english: 'PostDee is temporarily unavailable. Please try again later.',
+      ),
+      (
+        error: ApiException('private-provider-token', statusCode: 401),
+        retryable: false,
+        thai: 'กรุณาเข้าสู่ระบบใหม่ แล้วลองอีกครั้ง',
+        english: 'Please sign in again and retry.',
+      ),
+      (
+        error: ApiException('private-provider-token', statusCode: 429),
+        retryable: true,
+        thai: 'มีคำขอมากเกินไป กรุณารอสักครู่แล้วลองใหม่',
+        english: 'Too many requests. Wait a moment and try again.',
+      ),
+      (
+        error: ApiException('private-provider-token',
+            statusCode: 408, code: apiRequestTimeoutCode),
+        retryable: true,
+        thai: 'ระบบตอบกลับช้าเกินไป กรุณาลองใหม่อีกครั้ง',
+        english: 'The request took too long. Please try again.',
+      ),
+      (
+        error: ApiException('<html>private-provider-token</html>',
+            statusCode: 400),
+        retryable: false,
+        thai: 'เกิดข้อผิดพลาดระหว่างส่งโพสต์ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่',
+        english: 'An error occurred while sending your post. '
+            'Check your connection and try again.',
+      ),
+    ]) {
+      testWidgets(
+          '${locale.languageCode} submission system failure ${failure.error.statusCode} stays safe after returning from publish flow',
+          (tester) async {
+        final fixture = await _review(tester, locale: locale);
+        fixture.availabilityError = failure.error;
+        await tapVideoEnglishControl(tester, 'publish-review-confirm');
+        if (failure.retryable) {
+          expect(
+              find.byKey(const ValueKey('publish-flow-error')), findsOneWidget);
+          expect(
+              find.text(
+                  locale.languageCode == 'th' ? failure.thai : failure.english),
+              findsOneWidget);
+          await tapVideoEnglishControl(tester, 'publish-flow-back-after-error');
+        }
+        expect(find.byKey(const ValueKey('postdee-system-status-sheet')),
+            findsOneWidget);
+        expect(
+            find.text(
+                locale.languageCode == 'th' ? failure.thai : failure.english),
+            findsOneWidget);
+        expect(find.textContaining('private-provider-token'), findsNothing);
+
+        final switchedToThai = locale.languageCode != 'th';
+        fixture.language.value = Locale(switchedToThai ? 'th' : 'en');
+        await tester.pumpAndSettle();
+        final switchedMessage = switchedToThai ? failure.thai : failure.english;
+        expect(find.text(switchedMessage), findsOneWidget);
+        await tester.tap(
+            find.text(switchedToThai ? 'กลับไปตรวจสอบ' : 'Go back and check'));
+        await tester.pumpAndSettle();
+        expect(find.text(switchedMessage), findsOneWidget);
+        expect(find.textContaining('private-provider-token'), findsNothing);
+        expect(fixture.uploads, isEmpty);
+        expect(fixture.posts, isEmpty);
+        expect(fixture.availabilityChecks, 1);
+        expect(fixture.store.drafts['review-restored']?.caption,
+            'แคปชันลูกค้าต้องคงเดิม #สินค้า');
+        expect(fixture.apiWrites, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   testWidgets('English unavailable sheet and inline preserve the unsent draft',
       (tester) async {

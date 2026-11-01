@@ -4880,7 +4880,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       } else {
         _setUploadStatus(postScheduleApiErrorMessage(error,
                 plan: _scheduleSubscription?.plan) ??
-            error.message);
+            apiErrorMessage(error,
+                fallbackMessage:
+                    'เกิดข้อผิดพลาดระหว่างส่งโพสต์ กรุณาตรวจการเชื่อมต่อแล้วลองใหม่'));
         if (_isRetryablePublishApiError(error)) {
           // The draft was persisted before every remote side effect. Retrying
           // therefore reuses its submission request ID and cannot create a

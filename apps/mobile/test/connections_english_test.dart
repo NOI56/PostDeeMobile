@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -174,6 +175,82 @@ void main() {
   tearDown(PostDeeAuthSessionStore.instance.clear);
   tearDown(() => AppTheme.applyThemeMode(ThemeMode.dark));
 
+  for (final locale in const [Locale('th'), Locale('en')]) {
+    for (final action in ['read', 'connect', 'refresh']) {
+      for (final failure in const [
+        (
+          name: 'server unavailable',
+          error: ApiException('<html>private-provider-token</html>',
+              statusCode: 503),
+          thai: 'ระบบ PostDee ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลัง',
+          english:
+              'PostDee is temporarily unavailable. Please try again later.',
+        ),
+        (
+          name: 'expired session',
+          error: ApiException('private-provider-token', statusCode: 401),
+          thai: 'กรุณาเข้าสู่ระบบใหม่ แล้วลองอีกครั้ง',
+          english: 'Please sign in again and retry.',
+        ),
+        (
+          name: 'rate limit',
+          error: ApiException('private-provider-token', statusCode: 429),
+          thai: 'มีคำขอมากเกินไป กรุณารอสักครู่แล้วลองใหม่',
+          english: 'Too many requests. Wait a moment and try again.',
+        ),
+        (
+          name: 'request deadline',
+          error: ApiException('private-provider-token',
+              code: apiRequestTimeoutCode),
+          thai: 'ระบบตอบกลับช้าเกินไป กรุณาลองใหม่อีกครั้ง',
+          english: 'The request took too long. Please try again.',
+        ),
+        (
+          name: 'offline',
+          error: SocketException('private-provider-token'),
+          thai: 'เชื่อมต่อ PostDee ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่',
+          english:
+              'Cannot connect to PostDee. Check your internet connection and try again.',
+        ),
+      ]) {
+        testWidgets(
+            '${locale.languageCode} $action system failure ${failure.name} explains recovery safely',
+            (tester) async {
+          final api = _Api();
+          if (action == 'read') api.readError = failure.error;
+          if (action == 'connect') api.connectError = failure.error;
+          if (action == 'refresh') api.refreshError = failure.error;
+          await tester.pumpWidget(_app(_screen(api), locale: locale));
+          await tester.pumpAndSettle();
+          if (action == 'connect') {
+            await _tap(tester, _key('profile-platform-connect-TIKTOK'));
+          } else if (action == 'refresh') {
+            await _tap(tester, _key('profile-platforms-refresh'));
+          }
+
+          expect(
+              find.text(
+                  locale.languageCode == 'th' ? failure.thai : failure.english),
+              findsOneWidget);
+          expect(find.textContaining('private-provider-token'), findsNothing);
+          if (action != 'connect') {
+            expect(find.textContaining('0/4'), findsNothing);
+            api.readError = null;
+            api.refreshError = null;
+            await _tap(tester, _key('profile-platforms-retry'));
+            expect(
+                find.text(locale.languageCode == 'th'
+                    ? 'เชื่อมต่อแล้ว 0/4 ช่องทาง'
+                    : 'Connected 0/4 channels'),
+                findsOneWidget);
+          }
+          if (locale.languageCode == 'en') _expectEnglish(tester);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  }
+
   testWidgets('English connections title and verified count are translated',
       (tester) async {
     await tester.pumpWidget(_app(_screen(_Api())));
@@ -283,9 +360,7 @@ void main() {
     final api = _Api()..readError = StateError('private read failure');
     await tester.pumpWidget(_app(_screen(api)));
     await tester.pumpAndSettle();
-    expect(
-        find.text(
-            'Could not load channel status. Check your internet connection and try again.'),
+    expect(find.text('Could not load channel status. Please try again.'),
         findsOneWidget);
     api.readError = null;
     api.connections = const [
@@ -522,7 +597,7 @@ void main() {
 
   for (final rawApi in [false, true]) {
     testWidgets(
-        'English ${rawApi ? 'unmapped API reason' : 'unexpected connect failure'} is preserved safely',
+        'English ${rawApi ? 'unmapped API reason' : 'unexpected connect failure'} uses safe recovery copy',
         (tester) async {
       final api = _Api()
         ..connectError = rawApi
@@ -534,7 +609,7 @@ void main() {
       await _tap(tester, _key('profile-platform-connect-TIKTOK'));
       expect(
           find.text(rawApi
-              ? 'Provider is temporarily unavailable.'
+              ? 'PostDee is temporarily unavailable. Please try again later.'
               : 'Could not connect your account. Please try again.'),
           findsOneWidget);
       expect(find.textContaining('private failure'), findsNothing);

@@ -113,10 +113,16 @@ class FirebasePushMessagingGateway
     if (_disposed || !binding.isCurrent || !_sessionStore.session.isSignedIn) return;
     // Recheck permission on an explicit bell tap, including a previously denied
     // permission that the user later enabled in system settings.
-    final granted = await _client.requestPermission();
-    if (_disposed || !binding.isCurrent) return;
-    _permissionGranted = granted;
-    await _scheduleSync();
+    try {
+      final granted = await _client.requestPermission();
+      if (_disposed || !binding.isCurrent) return;
+      _permissionGranted = granted;
+      await _scheduleSync(reportErrors: true);
+    } catch (_) {
+      // An explicit bell tap reports failures only to the sign-in that began it.
+      if (_disposed || !binding.isCurrent) return;
+      rethrow;
+    }
   }
 
   @override
@@ -182,9 +188,12 @@ class FirebasePushMessagingGateway
     _handleMessage(message, opened: true);
   }
 
-  Future<void> _scheduleSync() {
-    _syncFuture = _syncFuture.then((_) => _syncAccount()).catchError((_) {});
-    return _syncFuture;
+  Future<void> _scheduleSync({bool reportErrors = false}) {
+    final pending = _syncFuture.then((_) => _syncAccount());
+    // Keep background delivery best-effort and the queue usable after failure.
+    // An explicit request still receives its own failure for the shell's toast.
+    _syncFuture = pending.catchError((_) {});
+    return reportErrors ? pending : _syncFuture;
   }
 
   Future<void> _syncAccount() async {

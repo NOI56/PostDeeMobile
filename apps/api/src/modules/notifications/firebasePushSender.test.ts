@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createSentryMonitoring } from '../../monitoring/sentryMonitoring.js';
 import { createFirebasePushSender } from './firebasePushSender.js';
 
 const firebase = vi.hoisted(() => ({
@@ -43,10 +44,31 @@ const message = {
   body: 'คลิปพร้อมแล้ว',
   data: { postId: 'post-1', userId: 'user-1' }
 };
+const captureException = vi.fn();
+
+const expectSafeDeliveryReport = () => {
+  expect(captureException).toHaveBeenCalledOnce();
+  const [error, context] = captureException.mock.calls[0]!;
+  expect(error).toBeInstanceOf(Error);
+  expect(error.message).toBe('Firebase push delivery failed');
+  expect(Object.keys(error)).toEqual([]);
+  expect(context).toEqual({ tags: { component: 'api', operation: 'notifications.delivery' } });
+  const reported = JSON.stringify({ message: error.message, stack: error.stack, context });
+  for (const privateValue of [...message.tokens, message.title, message.body,
+    ...Object.values(message.data), 'private-provider-url', 'private-provider-token']) {
+    expect(reported).not.toContain(privateValue);
+  }
+};
+
+afterEach(async () => { await createSentryMonitoring(undefined); });
 
 describe('Firebase push sender', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    await createSentryMonitoring({
+      dsn: 'https://public123@o123.ingest.us.sentry.io/123456',
+      environment: 'staging'
+    }, { initialize: async () => ({ captureException, flush: async () => true }) });
     firebase.cert.mockReturnValue(firebase.credential);
     firebase.getApps.mockReturnValue([]);
     firebase.initializeApp.mockReturnValue(firebase.app);
@@ -177,6 +199,94 @@ describe('Firebase push sender', () => {
     await expect(
       sender.send({ ...message, tokens: ['ok', 'unregistered', 'invalid', 'flaky'] })
     ).resolves.toEqual({ invalidTokens: ['unregistered', 'invalid'] });
+    expectSafeDeliveryReport();
+  });
+
+  it.each([
+    'messaging/mismatched-credential',
+    'messaging/internal-error',
+    'messaging/message-rate-exceeded',
+    'private-provider-token'
+  ])('reports a non-invalid FCM rejection safely: %s', async (code) => {
+    firebase.sendEachForMulticast.mockResolvedValueOnce({
+      successCount: 1,
+      failureCount: 1,
+      responses: [
+        { success: false, error: { code, message: 'private-provider-url private-provider-token' } },
+        { success: true, messageId: 'private-provider-token' }
+      ]
+    });
+    const sender = createFirebasePushSender({ serviceAccountJson });
+
+    await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
+
+    expectSafeDeliveryReport();
+    expect(firebase.sendEachForMulticast).toHaveBeenCalledOnce();
+  });
+
+  it('returns only dead tokens without reporting expected uninstall failures', async () => {
+    firebase.sendEachForMulticast.mockResolvedValueOnce({
+      successCount: 0,
+      failureCount: 2,
+      responses: [
+        { success: false, error: { code: 'messaging/registration-token-not-registered' } },
+        { success: false, error: { code: 'messaging/invalid-registration-token' } }
+      ]
+    });
+    const sender = createFirebasePushSender({ serviceAccountJson });
+
+    await expect(sender.send(message)).resolves.toEqual({ invalidTokens: message.tokens });
+
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
+  it('reports once for a batch with several delivery failures and a dead token', async () => {
+    firebase.sendEachForMulticast.mockResolvedValueOnce({
+      successCount: 0,
+      failureCount: 3,
+      responses: [
+        { success: false, error: { code: 'messaging/mismatched-credential' } },
+        { success: false, error: { code: 'messaging/registration-token-not-registered' } },
+        { success: false }
+      ]
+    });
+    const sender = createFirebasePushSender({ serviceAccountJson });
+
+    await expect(sender.send({ ...message, tokens: ['device-1', 'device-2', 'device-3'] }))
+      .resolves.toEqual({ invalidTokens: ['device-2'] });
+
+    expectSafeDeliveryReport();
+  });
+
+  it('does not report successful or empty sends', async () => {
+    const sender = createFirebasePushSender({ serviceAccountJson });
+
+    await sender.send({ ...message, tokens: [] });
+    await sender.send(message);
+
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
+  it.each(['throw', 'reject'])('keeps delivery best-effort when monitoring fails: %s', async (failure) => {
+    if (failure === 'throw') {
+      captureException.mockImplementationOnce(() => { throw new Error('private-provider-token'); });
+    } else {
+      captureException.mockRejectedValueOnce(new Error('private-provider-token'));
+    }
+    firebase.sendEachForMulticast.mockResolvedValueOnce({
+      successCount: 0,
+      failureCount: 2,
+      responses: [
+        { success: false, error: { code: 'messaging/mismatched-credential' } },
+        { success: false, error: { code: 'messaging/invalid-registration-token' } }
+      ]
+    });
+    const sender = createFirebasePushSender({ serviceAccountJson });
+
+    await expect(sender.send(message)).resolves.toEqual({ invalidTokens: ['device-2'] });
+    await Promise.resolve();
+
+    expectSafeDeliveryReport();
   });
 
   it('surfaces provider failures and retains the initialized sender for retry', async () => {
@@ -185,6 +295,7 @@ describe('Firebase push sender', () => {
     const sender = createFirebasePushSender({ serviceAccountJson });
 
     await expect(sender.send(message)).rejects.toBe(providerError);
+    expectSafeDeliveryReport();
     await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
 
     expect(firebase.getMessaging).toHaveBeenCalledTimes(1);
@@ -199,6 +310,7 @@ describe('Firebase push sender', () => {
     const sender = createFirebasePushSender({ serviceAccountJson });
 
     await expect(sender.send(message)).rejects.toBe(initializationError);
+    expectSafeDeliveryReport();
     await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
 
     expect(firebase.initializeApp).toHaveBeenCalledTimes(2);

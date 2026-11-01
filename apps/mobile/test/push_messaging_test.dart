@@ -178,6 +178,153 @@ void main() {
     expect(registrations, 2);
     await gateway.dispose();
   });
+  test('explicit initialization reports registration failure and can retry',
+      () async {
+    final failure = StateError('registration unavailable');
+    var unavailable = true;
+    var registrations = 0;
+    final gateway = FirebasePushMessagingGateway(
+      client: FakeFirebaseMessagingClient(),
+      sessionStore: PostDeeAuthSessionStore(
+          initialSession:
+              const AuthSession(userId: 'owner', idToken: 'owner-token')),
+      center: PostDeeNotificationCenter(),
+      registerToken: (_, __) async {
+        registrations += 1;
+        if (unavailable) throw failure;
+      },
+    );
+    addTearDown(gateway.dispose);
+
+    // Starting authorized delivery in the background must remain best-effort.
+    await gateway.start();
+    await expectLater(gateway.initialize(), throwsA(same(failure)));
+    expect(registrations, 2);
+
+    unavailable = false;
+    await gateway.initialize();
+    expect(registrations, 3);
+  });
+  test('a token refresh failure stays best-effort and permits a bell retry',
+      () async {
+    final client = FakeFirebaseMessagingClient();
+    var unavailable = false;
+    final registrations = <String>[];
+    final gateway = FirebasePushMessagingGateway(
+      client: client,
+      sessionStore: PostDeeAuthSessionStore(
+          initialSession:
+              const AuthSession(userId: 'owner', idToken: 'owner-token')),
+      center: PostDeeNotificationCenter(),
+      registerToken: (token, _) async {
+        registrations.add(token);
+        if (unavailable) throw StateError('registration unavailable');
+      },
+    );
+    addTearDown(gateway.dispose);
+    await gateway.start();
+
+    unavailable = true;
+    client.token = 'refreshed-token';
+    client.refreshed.add('refreshed-token');
+    await Future<void>.delayed(Duration.zero);
+    expect(registrations, ['device-token', 'refreshed-token']);
+
+    unavailable = false;
+    await gateway.initialize();
+    expect(registrations,
+        ['device-token', 'refreshed-token', 'refreshed-token']);
+  });
+  test('an old sign-in registration failure cannot reject a later session',
+      () async {
+    final sessions = PostDeeAuthSessionStore(
+        initialSession:
+            const AuthSession(userId: 'owner', idToken: 'owner-token'));
+    final client = FakeFirebaseMessagingClient(permissionGranted: false);
+    final pending = Completer<void>();
+    final entered = Completer<void>();
+    final registrations = <String>[];
+    final gateway = FirebasePushMessagingGateway(
+      client: client,
+      sessionStore: sessions,
+      center: PostDeeNotificationCenter(),
+      registerToken: (_, session) {
+        registrations.add(session.userId!);
+        if (session.userId == 'owner') {
+          entered.complete();
+          return pending.future;
+        }
+        return Future<void>.value();
+      },
+    );
+    addTearDown(gateway.dispose);
+    await gateway.start();
+    client.permissionGranted = true;
+    final initializing = gateway.initialize();
+    await entered.future;
+
+    sessions.signIn(const AuthSession(userId: 'next', idToken: 'next-token'));
+    pending.completeError(StateError('old account registration unavailable'));
+    await initializing;
+    await Future<void>.delayed(Duration.zero);
+    expect(registrations, ['owner', 'next']);
+  });
+  test('explicit registration timeout is surfaced and the next bell can retry',
+      () async {
+    final client = FakeFirebaseMessagingClient(permissionGranted: false);
+    final pending = Completer<void>();
+    var registrations = 0;
+    final gateway = FirebasePushMessagingGateway(
+      client: client,
+      sessionStore: PostDeeAuthSessionStore(
+          initialSession:
+              const AuthSession(userId: 'owner', idToken: 'owner-token')),
+      center: PostDeeNotificationCenter(),
+      operationTimeout: const Duration(milliseconds: 10),
+      registerToken: (_, __) {
+        registrations += 1;
+        return registrations == 1 ? pending.future : Future<void>.value();
+      },
+    );
+    addTearDown(gateway.dispose);
+    await gateway.start();
+    client.permissionGranted = true;
+
+    await expectLater(gateway.initialize(), throwsA(isA<TimeoutException>()));
+    pending.complete();
+    await gateway.initialize();
+    expect(registrations, 2);
+  });
+  test('concurrent initialization registers a successful device only once',
+      () async {
+    final client = FakeFirebaseMessagingClient(permissionGranted: false);
+    final pending = Completer<void>();
+    final entered = Completer<void>();
+    var registrations = 0;
+    final gateway = FirebasePushMessagingGateway(
+      client: client,
+      sessionStore: PostDeeAuthSessionStore(
+          initialSession:
+              const AuthSession(userId: 'owner', idToken: 'owner-token')),
+      center: PostDeeNotificationCenter(),
+      registerToken: (_, __) {
+        registrations += 1;
+        entered.complete();
+        return pending.future;
+      },
+    );
+    addTearDown(gateway.dispose);
+    await gateway.start();
+    client.permissionGranted = true;
+
+    final first = gateway.initialize();
+    final second = gateway.initialize();
+    await entered.future;
+    expect(registrations, 1);
+    pending.complete();
+    await Future.wait([first, second]);
+    expect(registrations, 1);
+  });
   const owner = AuthSession(userId: 'owner', idToken: 'owner-token');
   test('push rebinds refreshed tokens and isolates account changes', () async {
     final store = PostDeeAuthSessionStore(initialSession: owner);

@@ -2,6 +2,29 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## System failure recovery (2026-11-01)
+
+The Mobile push gateway keeps a recovered serialized queue for background
+sync, while an explicit bell request receives its own registration failure.
+Only the initiating account may see that failure. Channel requests retain
+typed errors for locale-aware recovery copy; publishing sanitizes errors
+before storing pending draft status. No API contract, persistence, publishing
+retry, entitlement or feature-flag change is required.
+
+The API candidate reports a batch with a non-dead-token FCM rejection through
+the existing monitoring boundary as `notifications.delivery`. It uses a fixed
+error and no raw provider error, token, recipient or message data. Expected
+uninstalled/invalid tokens still return as cleanup candidates; resolved
+multicast failures do not become new exceptions or publishing retries.
+
+Custom Sentry workflows notify the owner about error/fatal issues and Staging
+availability. The readiness monitor is external to the API process and checks
+`/ready`; customer service notices remain administrator-published and use the
+API. Push remains best-effort with session-only history. The configured service
+account must also have FCM send permission in the target Firebase project.
+See the
+[configuration and verification record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md#system-failure-recovery-follow-up--2026-11-01).
+
 > **Retired features (2026-11-01):** AI video editing / auto editing (editor,
 > subtitles, music and sound effects, beat sync, editing minutes), Groq, AI Clip
 > Review, social post analytics and its secondary entry points, and the Home

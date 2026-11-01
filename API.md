@@ -2585,6 +2585,15 @@ eleventh removes the oldest, and the publish notifier reads at most those 10.
 Tokens FCM reports as unregistered or invalid after a send are unregistered
 for that owner (2026-10-27); transient FCM errors keep the token.
 
+The 2026-11-01 candidate also reports non-dead-token FCM rejections and sender
+initialization/SDK errors to Sentry as `notifications.delivery`, using a fixed
+error without tokens, recipient data or message copy. It does not change this
+HTTP contract, turn resolved multicast failures into exceptions, or retry a
+publish. Real sending requires the service account's FCM send permission in
+the target Firebase project; `PUSH_SENDER=firebase` by itself is insufficient.
+Staging uses the project-scoped Firebase Cloud Messaging API Admin role while
+retaining the existing Authentication Viewer role.
+
 Publish-result pushes include `data: { postId, type: "publish_result", userId }`,
 using the same owner as device-token selection. Mobile clears its in-app list
 on session transitions and accepts only exact matching recipient UIDs. Old

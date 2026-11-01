@@ -1,5 +1,31 @@
 # PostDee Staging
 
+## แจ้งปัญหาระบบและทดสอบ push จริง — 1 พฤศจิกายน 2026
+
+- API ที่ Live ยังเป็น `2a3a560` / `dep-dbjcpds9v7es739o1l1g` ไม่ได้ deploy ใหม่
+  ตรวจ `/health` และ `/ready` ได้ 200, database/queue `ok`; `/posts` ไม่ส่ง token ได้ 401
+- ตั้ง Sentry owner error alert `6272986` และ Staging `/ready` monitor `10821156`
+  พร้อม outage/recovery alert `6272990`; ตรวจทุกนาที พลาดสามครั้งจึงแจ้ง กลับมาสำเร็จ
+  หนึ่งครั้งจึงปิดเหตุ อีเมลทดสอบถึงกล่องเจ้าของ 13:27:38 น. ไทย และกราฟมี check สำเร็จจริง
+- ทดสอบส่งหนึ่ง token ของ emulator พบ `messaging/mismatched-credential` เพราะบัญชีบริการ
+  เดิมไม่มี `cloudmessaging.messages.create` เจ้าของอนุมัติเพิ่มเฉพาะ
+  `roles/firebasecloudmessaging.admin` ให้ `postdee-admin-verifier` ใน PostDee Staging
+  บันทึกประมาณ 13:52:57 น. ไทย คง Authentication Viewer เดิม ไม่สร้าง key และไม่แก้ Render env
+- หลังสิทธิ์มีผล ส่งทดสอบ foreground/background อย่างละหนึ่งครั้งสำเร็จ 1/1 และเห็นข้อความ
+  บนเครื่องจริง ทั้งรายการกระดิ่งและแถบแจ้งเตือน Android ไม่ส่งโพสต์หรือแชตลูกค้า
+- APK Staging 12090 บน Pixel_8 (`emulator-5554`) คงงานลิงก์ร้านและโหมดมืดเดิม
+  UID 10197 / storage เดิม บัญชีและร่างยังอยู่ hash ตรงกับ APK ที่ build:
+  `6f4693425adcf90c919cb89b27c0b74dcb7c70b2a7809463b611e168d026f65d`
+- จำลอง Wi-Fi/mobile data ขาด แล้วกดกระดิ่ง พบข้อความให้ลองใหม่ตามจริงในวิดีโอ
+  คืนการเชื่อมต่อเดิมแล้ว ไม่ล้างข้อมูลแอปหรือเปลี่ยนบัญชี
+- ชุด source ปัจจุบันผ่าน Mobile 4,475 / ข้าม preview 7, analyze, APK; API ด้วย Node
+  22.23.3 ผ่าน 3,104 / ข้าม PostgreSQL opt-in 67, typecheck, build และ Prisma validate
+  ไม่มี schema/migration ใหม่ การเพิ่มรายงาน FCM failure เข้า Sentry ยังเป็นแพตช์ local
+  ที่ต้องรวมและ deploy API ก่อนมีผล ไม่อ้างว่าโค้ดใหม่นี้อยู่บน Staging แล้ว
+- ยังไม่ทำ outage/recovery drill, native crash/ANR drill, iOS หรือ real social publishing;
+  อาการ emulator ไม่ตอบสนองที่งานโหมดมืดเคยพบยังไม่ได้สรุปต้นเหตุจากงานนี้
+  รายละเอียดและขอบเขตอยู่ใน [บันทึก Sentry](superpowers/plans/2026-10-22-sentry-monitoring.md#system-failure-recovery-follow-up--2026-11-01)
+
 ## ทดสอบลบบัญชีกับบริการจริง — 26 ตุลาคม 2026
 
 ผู้ใช้อนุมัติให้รวม PR #36 เข้า `main` หลัง CI ผ่าน แล้ว deploy Staging และอนุมัติการทดสอบ

@@ -1,5 +1,6 @@
 import type { Messaging } from 'firebase-admin/messaging';
 
+import { reportMonitoringError } from '../../monitoring/sentryMonitoring.js';
 import type { PushMessage, PushSender, PushSendResult } from './pushSender.js';
 
 // The project ships with the mock sender by default. To enable real push
@@ -14,6 +15,13 @@ const invalidTokenErrorCodes = new Set([
   'messaging/registration-token-not-registered',
   'messaging/invalid-registration-token'
 ]);
+
+const reportPushDeliveryFailure = () => {
+  // Never attach provider errors, tokens, message copy or recipient data.
+  reportMonitoringError(new Error('Firebase push delivery failed'), {
+    operation: 'notifications.delivery'
+  });
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -74,24 +82,36 @@ export const createFirebasePushSender = ({
         return { invalidTokens: [] };
       }
 
-      messagingPromise ??= loadMessaging(serviceAccountJson).catch((error) => {
-        messagingPromise = undefined;
-        throw error;
-      });
-      const messaging = await messagingPromise;
-      const result = await messaging.sendEachForMulticast({
-        tokens,
-        notification: { title, body },
-        data
-      });
+      try {
+        messagingPromise ??= loadMessaging(serviceAccountJson).catch((error) => {
+          messagingPromise = undefined;
+          throw error;
+        });
+        const messaging = await messagingPromise;
+        const result = await messaging.sendEachForMulticast({
+          tokens,
+          notification: { title, body },
+          data
+        });
 
-      return {
-        invalidTokens: tokens.filter((_token, index) => {
-          const response = result.responses[index];
-          return response !== undefined && !response.success &&
-            invalidTokenErrorCodes.has(response.error?.code ?? '');
-        })
-      };
+        if (result.responses.some((response) => !response.success &&
+            !invalidTokenErrorCodes.has(response.error?.code ?? ''))) {
+          reportPushDeliveryFailure();
+        }
+
+        return {
+          invalidTokens: tokens.filter((_token, index) => {
+            const response = result.responses[index];
+            return response !== undefined && !response.success &&
+              invalidTokenErrorCodes.has(response.error?.code ?? '');
+          })
+        };
+      } catch (error) {
+        reportPushDeliveryFailure();
+        // Preserve the sender's existing rejection contract. Its callers keep
+        // push best-effort; a resolved multicast failure never becomes a throw.
+        throw error;
+      }
     }
   };
 };

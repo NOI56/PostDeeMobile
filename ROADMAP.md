@@ -2,6 +2,20 @@
 
 Build roadmap for PostDee.
 
+## System failure recovery (2026-11-01, Mobile candidate)
+
+- Report explicit push-registration errors and allow the next bell tap to retry;
+  preserve background startup, token rotation and account isolation.
+- Use safe Thai/English recovery messages for channel load/connect/refresh and
+  failed publishing when returning to the saved draft; preserve idempotent retry.
+- Report non-dead-token FCM failures through a sanitized Sentry operation,
+  retaining the existing push result and dead-token cleanup behavior.
+- Custom Sentry error alerts and a Staging `/ready` monitor are configured.
+  A native test email reached the owner. Staging's missing FCM send permission
+  was approved and granted; foreground delivery was then confirmed on build
+  12090. A real outage/recovery drill remains separate. No schema migration.
+- See the [verification record](docs/superpowers/plans/2026-10-22-sentry-monitoring.md#system-failure-recovery-follow-up--2026-11-01).
+
 ## Historical work reconciliation (2026-10-30, local implementation)
 
 - Compare preserved worktrees and backups against verified main `59ad8f00`;

@@ -518,3 +518,120 @@ not live-validated by the cloud API result.
   `sentry-fatal-accepted.png`, plus `render-events.json` and
   `render-clean-live.png` and full `release-proof.json`. Temporary builder/options artifacts remain outside
   tracked source; the instrumentation is absent from the final running service.
+
+## System failure recovery follow-up — 2026-11-01
+
+The owner approved implementing the reviewed recovery fixes and owner alerts.
+Verified integration baseline is freshly fetched `origin/main` at
+`2a3a560538dc56dc7c0db86abcd9015227eed231`. The current checkout is its descendant
+`eb3367a2490c3a893e323d7dd91216bf548985b5`, with the existing Store-link change.
+The emulator also received build 12089 from the parallel dark-mode task during
+verification. Final APK verification therefore preserves that Store-link
+baseline plus the existing two-screen contrast patch and its regression test.
+It uses a separate local checkout at `artifacts/system-alert-recovery-source`,
+not a rollback to an earlier app. The source checkout's pre-existing publishing
+UI/Windows edits are preserved. No merge, push or API deployment is part of
+this record.
+
+- The push gateway returns explicit initialization failures to the existing
+  shell message, but keeps background sync best-effort and the serialized queue
+  usable after failure. Account/session guards, token rotation and next-tap
+  retry are preserved; there is no new automatic retry timer.
+- Channel load/connect/refresh keeps typed errors and uses the common safe
+  recovery mapper in Thai/English. Publishing sanitizes error copy before
+  storing pending draft status, including the return from the publish flow.
+  Existing business errors, OAuth nonce recovery, saved drafts and idempotent
+  post submission remain intact.
+- Tests were added first: four push/shell cases and forty channel/uploader
+  cases failed against the original behavior. The new regressions then passed;
+  targeted runs passed 114 push/shell tests and 149 Mobile error-flow tests.
+  The initial main-only Mobile candidate passed 4,442 tests with seven optional
+  previews skipped. The final current-source build, including the preserved
+  Store-link and contrast work, passed 4,475 tests with seven skipped, analysis
+  and the validated Staging APK build. No test deadline was changed.
+- The API candidate reports non-dead-token FCM failures once per batch using
+  a fixed error and allowlisted `notifications.delivery` operation. Raw provider
+  errors, tokens, recipient data and notification contents are not attached.
+  Existing dead-token cleanup candidates, SDK rejection behavior and publish
+  retry policy remain unchanged. Nine new sender regressions were added first:
+  the initial run failed ten cases; the patched sender then passed all 23.
+  Full API verification with Node 22.23.3 passed 3,104 tests, with 67 opt-in
+  PostgreSQL cases skipped across 11 files. Typecheck, build and Prisma schema
+  validation passed. A broad target under concurrent build/test load hit three
+  six-second fatal-process timeouts; an unchanged isolated repeat passed 4/4
+  and the final full API run also passed with one worker.
+- Sentry custom error workflow
+  [6272986](https://postdeemobile.sentry.io/monitors/alerts/6272986/) covers
+  `postdee-api` and `postdee-mobile`, all environments, new/reappeared/regressed
+  issues at error/fatal severity, excluding outage-category issues to avoid
+  duplicate availability alerts. It emails the configured owner with a
+  30-minute throttle. The existing PR workflow is unchanged.
+- Staging uptime monitor
+  [10821156](https://postdeemobile.sentry.io/monitors/10821156/) uses
+  `GET https://postdee-api-staging.onrender.com/ready`, HTTP 200 assertion,
+  a 60-second interval and 10-second timeout. It opens after three consecutive
+  failures and recovers after one successful check. Its dedicated workflow
+  [6272990](https://postdeemobile.sentry.io/monitors/alerts/6272990/) notifies the
+  same owner on outage and recovery without suppressing the recovery email.
+  The monitor is active with status `ok`; the graph confirms successful checks
+  including 13:30:15 Thailand time. A real outage/recovery drill is not claimed.
+  No Production availability monitor was created for the suspended API.
+- One Sentry-native test notification was sent at 13:27:35 Thailand time
+  (06:27:35 UTC). The owner's connected inbox received `POSTDEE-API-6 - Test
+  Issue` at 13:27:38 (06:27:38 UTC). This proves that notification action and
+  mailbox delivery, not an application exception or outage threshold drill.
+- Live Render Staging remains commit `2a3a560`, deploy
+  `dep-dbjcpds9v7es739o1l1g`. Dashboard inspection confirmed
+  `PUSH_SENDER=firebase`, Firebase authentication, the same Firebase project as
+  the Mobile debug configuration, and `SENTRY_ENVIRONMENT=staging`. No Render
+  environment value was changed. `/health` and `/ready` returned 200, with
+  database/queue `ok`; unauthenticated `/posts` returned 401.
+- Real push preflight on one exact emulator token failed twice with
+  `messaging/mismatched-credential`; the diagnostic identified missing
+  `cloudmessaging.messages.create` permission, not a mobile registration failure.
+  The Firebase V1 API was already enabled and the sender/project matched.
+  The owner explicitly approved adding `roles/firebasecloudmessaging.admin`
+  to the existing `postdee-admin-verifier` account in PostDee Staging only.
+  Save at about 13:52:57 Thailand time (06:52:57 UTC) retained Authentication
+  Viewer and added only that FCM role. No new key or other role was created.
+- Guarded update installed build 12090 on Pixel_8 (`emulator-5554`), package
+  `com.postdee.postdee_mobile.staging`. UID 10197 and internal storage were
+  retained; version increased from 12089 to 12090. Installed APK SHA-256 equals
+  `6f4693425adcf90c919cb89b27c0b74dcb7c70b2a7809463b611e168d026f65d`.
+  Staging API/Firebase authentication, RevenueCat Test Store and staging-only
+  Sentry error reporting were validated by the helper. The local ignored build
+  configuration uses the existing Mobile DSN and release
+  `postdee-mobile@system-alert-recovery-12090`; other root local config values
+  are unchanged. No DSN, token or service-account key is recorded here.
+- After IAM propagation, test `verify-foreground-mvxhay8u` was accepted for
+  exactly one device (one success, zero failures) and appeared in the installed
+  app's bell list. Native startup retained the signed-in account and existing
+  saved draft. The test used generic notification text and no post ID; no post,
+  purchase or customer chat was sent.
+- Background test `verify-background-mvxhk0yb` was also accepted for one exact
+  device with one success/zero failures. Android was on its launcher when sent;
+  the PostDee notification with the same test ID appeared in the system shade,
+  and tapping it reopened the app.
+- Wi-Fi and mobile data were disabled only on the emulator, with automatic
+  restoration in `finally`. The app retained the draft, displayed the correct
+  offline recovery copy on Home, and an explicit bell tap showed
+  `เชื่อมการแจ้งเตือนไม่สำเร็จ กรุณาลองอีกครั้ง`. The transient message is visible
+  in the unedited screen-recording frames 20 and 23; the first still captures
+  had missed it. Wi-Fi and mobile data were restored to their original enabled
+  state after both bounded runs. No app data was cleared.
+- Built API local smoke used the exact compiled candidate with all stores and
+  providers in memory/mock, no `.env` or credentials and zero outbound fetches.
+  `/health` returned 200; mock-auth `/posts` returned 200 with an empty list.
+  `/ready` returned 503 before its mock scheduler started, 200 with the scheduler
+  running, then 503 after stopping it. The server and timer were closed. This
+  is separate from the real Staging authentication/readiness checks above.
+- Verification artifacts under `artifacts/` include full Mobile/API logs,
+  `system-alert-device-install.json`, `system-alert-push-foreground-window.png`,
+  `system-alert-background-shade-window.png`, the offline recording and
+  `api-system-alert-built-smoke-proof.json`. Sentry/IAM screenshots are under
+  `artifacts/system-alert-recovery-sentry/`. Temporary device-token input is
+  never written into tracked source or terminal history.
+- No API contract, Prisma schema, migration, entitlement, retired-feature or
+  provider publishing change is needed. Customer service notices remain manual
+  and API-dependent; failed push delivery has no replay or persistent history.
+  Production and real social posting are outside this verification.

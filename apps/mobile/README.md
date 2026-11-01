@@ -2,6 +2,21 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## System failure recovery (2026-11-01, local candidate)
+
+An explicit bell tap now reports push-registration failure through the existing
+Thai/English message and can retry later; background initialization stays
+optional and account switches remain isolated. Channel load/connect/refresh
+uses typed errors to distinguish offline, timeout, server failure, sign-in and
+rate limits. Returning from a failed publish keeps safe messages in both the
+status sheet and inline draft state without submitting the post again.
+The combined current-source candidate passed 4,475 tests (seven optional
+previews skipped), analysis and the validated Staging build. Build 12090 is
+installed on Pixel_8 with its package UID, account and draft retained; received
+real foreground/background push and verified the offline bell error. No API
+contract or database migration is required. See the
+[verification record](../../docs/superpowers/plans/2026-10-22-sentry-monitoring.md#system-failure-recovery-follow-up--2026-11-01).
+
 ## Social post analytics retirement (2026-11-01, local candidate)
 
 The dashboard and all post-detail/publish-result statistics actions are

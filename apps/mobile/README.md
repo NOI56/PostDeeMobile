@@ -2,6 +2,19 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Social post analytics retirement (2026-11-01, local candidate)
+
+The dashboard and all post-detail/publish-result statistics actions are
+removed, along with onboarding and Pro package promises. Publishing results,
+saved drafts, schedules and the existing Firebase app telemetry remain.
+`canUseAnalytics` stays in subscription JSON as `false` for every plan.
+The API retains authenticated `GET /analytics/summary` only to return
+`410 ANALYTICS_RETIRED` to older clients; it no longer reads metrics.
+Retained historical stores and publishing records need no migration or data
+deletion. Roll out this Mobile change before or together with API retirement.
+Analytics descriptions in dated entries below are historical; see `AGENTS.md`.
+This note is not a hosted deployment or app-store release receipt.
+
 ## Shop information layout (2026-10-26, locally verified)
 
 The selected mockup variant 1 moves logo/photo actions above separate shop-text
@@ -808,8 +821,11 @@ The Home Starter/Pro CTAs can run in two modes:
 
 - Default local mode uses the legacy Flutter `in_app_purchase` scaffold and
   `POST /billing/store/verify`.
-- RevenueCat mode uses `purchases_flutter` and waits for
-  `POST /billing/revenuecat/webhooks` to update the backend entitlement.
+- RevenueCat mode uses `purchases_flutter`, checks
+  `POST /billing/purchase-readiness` before checkout, and reads the backend's
+  purchased subscription after the webhook updates it. Restore calls
+  `POST /billing/revenuecat/resync` before confirming the purchased plan; trial
+  access alone does not confirm a store purchase.
 
 For local RevenueCat Test Store testing, use the ignored
 `revenuecat.local.json` file that contains only
@@ -827,11 +843,11 @@ Use `STORE_STARTER_MONTHLY_PRODUCT_ID=postdee_starter_monthly` and
 `STORE_PRO_MONTHLY_PRODUCT_ID=postdee_pro_monthly` as the default product ids.
 The helper passes the base Staging defines first and the validated Test Store
 overlay second, so billing is enabled without moving the key into Git. Do not
-submit an App Store or Google Play release with that file. RevenueCat's Play app,
-products, entitlements, default offering, and production Android public SDK key
-are prepared. Release work still needs the Play Console app/subscriptions,
-service credentials, Internal Testing purchase/restore on a physical Android
-device, the matching App Store setup, and renewal/cancel/refund verification.
+submit an App Store or Google Play release with that file. Code and local
+configuration do not confirm the live RevenueCat or store-console setup. Release
+verification must cover the matching products, entitlements, offering, public
+SDK keys and server credentials, Internal Testing purchase/restore on a physical
+Android device, the matching App Store setup, and renewal/cancel/refund behavior.
 
 ## Publishing Status
 
@@ -856,22 +872,33 @@ while cancel remains usable.
 A successful `POST /posts` response means the post was accepted as `QUEUED` (or
 scheduled); the mobile UI must describe that state as queued, not as proof that
 every platform has already published it. Final platform success or failure
-comes from the publish worker.
+comes from publish processing. The repository's `render.yaml` uses one API
+instance with `PUBLISH_QUEUE=memory`, so its scheduler runs inside the API;
+there is no separate worker service in that Blueprint.
 The app requests `multipart-v1` from `POST /uploads`. When the server runs in
 `dual` or `multipart` mode, it uploads exact file ranges to just-in-time part
-URLs, retries the same failed part up to three times, retains each ETag, and
+URLs, makes up to three attempts per part, retains each ETag, and
 calls the completion endpoint before creating a post. It checks upload status
 after an ambiguous completion response with bounded 1s/2s/4s backoff instead of
 creating a second session. If the server still reports `COMPLETING`, the app
 preserves that session and never sends a competing abort request.
 
-The server defaults to `legacy`, and production uses `dual` while older clients
-are upgraded. If the server returns the legacy signed-`PUT` response, the app
-keeps the existing 30-second expiry safety margin and requests one fresh URL
-only after an explicit expiry response. The legacy path remains replayable
-until production switches to strict `multipart` mode.
+The repository's `render.yaml` sets `UPLOAD_PROTOCOL_MODE=multipart`; live
+environment settings still need deployment verification. Strict multipart mode
+rejects clients that do not request `multipart-v1` with `426`. The runtime
+configuration default remains `legacy` for other setups. If a server in
+`legacy` or `dual` mode returns the legacy signed-`PUT` response, the app keeps
+the existing 30-second expiry safety margin and requests one fresh URL only
+after an explicit expiry response.
 
-## AI Editing and Subtitle Studio
+## AI Editing and Subtitle Studio (retired; history only)
+
+AI video editing and Subtitle Studio are retired. The current app has no editing
+navigation entry, and the API returns `410 AI_EDITING_RETIRED` for `/ai-edits/*`
+unless the rollback switch `AI_EDITING_ENABLED=true` is set. The compatibility
+folder remains because AI captions reuse `AiEditAudioExtractor` and the cover
+editor reuses `ReviewVideoTimeline`. The descriptions below record the retired
+implementation; they are not current features or package benefits.
 
 AI Editing renders a lightweight preview and opens result review before any
 subtitle editor. The user opens Subtitle Studio explicitly from review. Local

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>3D storefront art studio</title>
+<style>body{margin:0;background:#888 repeating-conic-gradient(#999 0 25%,#777 0 50%) 0 0/24px 24px;font:13px system-ui;color:#111}#log{position:fixed;left:8px;bottom:8px;background:#fffd;padding:6px 10px;border-radius:6px;white-space:pre}canvas{display:block;max-width:100vw;max-height:100vh;margin:auto}</style>
+</head><body><canvas id="view"></canvas><div id="log">loading…</div>
+<script type="module">
+// ?scene=<name>&w=1600&h=800&ss=3&save=1 renders one scene. Tiles keep each
+// GPU submission short so heavy shaders never trip the driver watchdog.
+const params = new URLSearchParams(location.search);
+const scene = params.get('scene');
+const width = Number(params.get('w') ?? 1600), height = Number(params.get('h') ?? 800);
+const ss = Number(params.get('ss') ?? 3), tile = Number(params.get('tile') ?? 64);
+// MessageChannel yields are not throttled like timers in a hidden pane.
+const yieldNow = () => new Promise((resolve) => { const channel = new MessageChannel(); channel.port1.onmessage = () => resolve(); channel.port2.postMessage(0); });
+const log = (text) => { document.getElementById('log').textContent = text; window.__status = text; };
+const report = (text) => { log(text); return fetch(`/status/${params.get('name') ?? scene}`, { method: 'POST', body: text }); };
+const fetchText = async (path) => { const response = await fetch(path); if (!response.ok) throw new Error(`${path}: ${response.status}`); return response.text(); };
+try {
+  const [common, body] = await Promise.all([fetchText('/common.glsl'), fetchText(`/scenes/${scene}.glsl`)]);
+  const defines = body.match(/^#define .*$/gm) ?? [];
+  const source = common.replace('//@@DEFINES@@', defines.join(String.fromCharCode(10))).replace('//@@SCENE@@', body.replace(/^#define .*$/gm, ''));
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false });
+  if (!gl) throw new Error('WebGL2 unavailable');
+  const compile = (type, text) => {
+    const shader = gl.createShader(type); gl.shaderSource(shader, text); gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) || (gl.isContextLost() ? 'context lost' : 'compile failed'));
+    return shader;
+  };
+  const program = gl.createProgram();
+  gl.attachShader(program, compile(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.-1.,0,1);}'));
+  gl.attachShader(program, compile(gl.FRAGMENT_SHADER, source));
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+  gl.useProgram(program);
+  gl.uniform2f(gl.getUniformLocation(program, 'uRes'), width, height);
+  gl.uniform1i(gl.getUniformLocation(program, 'uSS'), ss);
+  gl.uniform1i(gl.getUniformLocation(program, 'uZero'), 0);
+  gl.viewport(0, 0, width, height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.SCISSOR_TEST);
+  const started = performance.now();
+  const pixels = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y += tile) {
+    for (let x = 0; x < width; x += tile) {
+      gl.scissor(x, y, tile, tile); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    gl.readPixels(0, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    if (gl.isContextLost()) throw new Error(`GPU context lost at row ${y}; use a smaller tile or ss`);
+    log(`${scene}: row ${y}/${height}`);
+    await yieldNow();
+  }
+  gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  const view = document.getElementById('view'); view.width = width; view.height = height;
+  const context = view.getContext('2d'); const image = context.createImageData(width, height);
+  for (let row = 0; row < height; row++) image.data.set(pixels.subarray((height - 1 - row) * width * 4, (height - row) * width * 4), row * width * 4);
+  context.putImageData(image, 0, 0);
+  const seconds = ((performance.now() - started) / 1000).toFixed(1);
+  if (params.get('save') === '1') {
+    const blob = await new Promise((resolve) => view.toBlob(resolve, 'image/png'));
+    const response = await fetch(`/save/${params.get('name') ?? scene}.png`, { method: 'POST', body: blob });
+    await report(`done:${scene} ${seconds}s ${await response.text()}`);
+  } else {
+    await report(`done:${scene} ${seconds}s`);
+  }
+} catch (error) {
+  await report(`error:${error.message}`);
+}
+</script></body></html>

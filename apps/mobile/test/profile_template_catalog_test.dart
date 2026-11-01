@@ -5,14 +5,14 @@ import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
 import 'package:postdee_mobile/core/models/profile_template_catalog.generated.dart';
 
 void main() {
-  test('five legacy categories and ten new 3D choices retain their catalogs',
+  test('five legacy categories and twenty 3D choices retain their catalogs',
       () {
     expect(profileTemplateCategories.keys,
         ['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional']);
-    expect(profileTemplateCatalogVersion, 2);
-    expect(profileTemplates, hasLength(110));
+    expect(profileTemplateCatalogVersion, 3);
+    expect(profileTemplates, hasLength(120));
     expect(profileTemplates.map((template) => template.id).toSet(),
-        hasLength(110));
+        hasLength(120));
     for (final category
         in profileTemplateCategories.keys.where((id) => id != 'dimensional')) {
       final templates = profileTemplates
@@ -25,10 +25,18 @@ void main() {
     }
     final dimensional =
         profileTemplates.where((item) => item.category == 'dimensional');
-    expect(dimensional, hasLength(10));
-    expect(dimensional.map((item) => item.name).toSet(), hasLength(10));
-    expect(dimensional.map((item) => item.layout.composition).toSet(),
-        {'clay', 'paper-stack', 'frosted'});
+    expect(dimensional, hasLength(20));
+    expect(dimensional.map((item) => item.name).toSet(), hasLength(20));
+    expect(dimensional.map((item) => item.layout.composition).toSet(), {
+      'clay',
+      'paper-stack',
+      'frosted',
+      'showcase',
+      'split-art',
+      'tile-grid',
+      'neon',
+      'slab'
+    });
   });
 
   test('the three agreed reference compositions appear first in each category',

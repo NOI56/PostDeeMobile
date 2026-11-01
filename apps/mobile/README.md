@@ -2,6 +2,15 @@
 
 Flutter mobile app scaffold for PostDee.
 
+## Second 3D storefront set (2026-11-02, local candidate)
+
+The 3D choice lists 20 templates. The ten new scenes render through
+`Bio3dSceneHeader`, `bio3dSceneLinkDecoration` and `bio3dScenePanelDecoration`
+in `lib/features/link_in_bio/link_in_bio_3d_scenes.dart`, matching the public
+page's `linkInBio3dSceneStyles.ts`. Thai and English names are localized.
+Mobile now sends `X-PostDee-Profile-Catalog: 3` (generated catalog version).
+See the [second-set plan](../../docs/superpowers/plans/2026-11-02-3d-storefront-second-set.md).
+
 ## Preserved-work integration (2026-11-01, source on main / APK not installed)
 
 Preserve all 3D templates while improving Thai store-name/telephone layout and

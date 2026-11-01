@@ -11,7 +11,10 @@ const generatedFiles = {
 const categoryIds = ['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional'];
 const paletteFields = ['background', 'gradient', 'surface', 'button', 'name', 'description', 'category', 'buttonText', 'brand'];
 const compositionIds = ["editorial","bicolor","portrait","scallop","collage","window","botanical","glass","torn","seal","tag","gallery","poster","window-grid","ticket","rail","ribbon","notebook","arch","staircase"];
-const dimensionalCompositionIds = ['clay', 'paper-stack', 'frosted'];
+const dimensionalCompositionIds = ['clay', 'paper-stack', 'frosted', 'showcase', 'split-art', 'tile-grid', 'neon', 'slab'];
+// Templates without a marker belong to the release that introduced their
+// category (classic: 1, first 3D set: 2). Later additions name their release.
+const releaseMarkers = [3];
 const layoutOptions = {
   composition: [...compositionIds, ...dimensionalCompositionIds],
   header: ['centered', 'left', 'split', 'cover', 'badge'],
@@ -29,15 +32,16 @@ const contrast = (foreground, background) => (Math.max(luminance(foreground), lu
   (Math.min(luminance(foreground), luminance(background)) + .05);
 
 export function validateProfileTemplateCatalog(manifest) {
-  requireValue(manifest && manifest.version === 2 && Array.isArray(manifest.categories) && Array.isArray(manifest.templates), 'Expected version 2 profile template catalog');
+  requireValue(manifest && manifest.version === 3 && Array.isArray(manifest.categories) && Array.isArray(manifest.templates), 'Expected version 3 profile template catalog');
   requireValue(manifest.categories.length === categoryIds.length && manifest.categories.every((category, index) => category.id === categoryIds[index] && text(category.name)), 'Expected five original categories and the 3D category');
-  requireValue(manifest.templates.length === 110, 'Expected 100 original and ten 3D profile templates');
+  requireValue(manifest.templates.length === 120, 'Expected 100 original and twenty 3D profile templates');
   const ids = new Set();
   for (const template of manifest.templates) {
     requireValue(template && categoryIds.includes(template.category) && text(template.name) && template.name.length <= 80, 'Invalid template category or name');
     requireValue(typeof template.id === 'string' && /^[a-z][a-z\d-]{0,79}$/.test(template.id) && template.id.startsWith(`${template.category}-`) && !ids.has(template.id), `Invalid or duplicate template ID: ${template.id}`);
     ids.add(template.id);
     requireValue(['minimal', 'shop', 'pastel', 'dark', 'pink', 'garden', 'cards'].includes(template.themeId), `${template.id}: invalid fallback theme`);
+    requireValue(template.since === undefined || (template.category === 'dimensional' && releaseMarkers.includes(template.since) && template.since <= manifest.version), `${template.id}: invalid release marker`);
     for (const [field, options] of Object.entries(layoutOptions)) requireValue(options.includes(template.layout?.[field]), `${template.id}: invalid layout ${field}`);
     requireValue((template.category === 'dimensional' ? dimensionalCompositionIds : compositionIds).includes(template.layout.composition), `${template.id}: composition does not belong to its category`);
     for (const field of paletteFields) requireValue(typeof template.palette?.[field] === 'string' && /^#[a-f\d]{6}$/.test(template.palette[field]), `${template.id}: invalid palette ${field}`);
@@ -58,16 +62,15 @@ export function validateProfileTemplateCatalog(manifest) {
   for (const category of categoryIds) {
     const templates = manifest.templates.filter((template) => template.category === category);
     const dimensional = category === 'dimensional';
-    const count = dimensional ? 10 : 20;
-    requireValue(templates.length === count, `${category}: expected ${count} templates`);
-    requireValue(new Set(templates.map((template) => template.name)).size === count, `${category}: template names must differ`);
-    requireValue(new Set(templates.map((template) => template.layout.composition)).size === (dimensional ? 3 : 20), `${category}: expected distinct page compositions`);
+    requireValue(templates.length === 20, `${category}: expected 20 templates`);
+    requireValue(new Set(templates.map((template) => template.name)).size === 20, `${category}: template names must differ`);
+    requireValue(new Set(templates.map((template) => template.layout.composition)).size === (dimensional ? dimensionalCompositionIds.length : 20), `${category}: expected distinct page compositions`);
   }
   return manifest;
 }
 
 export function generateProfileTemplateTypeScript(manifest) {
-  return `// Generated from shared/profile-templates.json by scripts/generate-profile-templates.mjs.\n// Do not edit; maintain the authored source catalog and regenerate both clients.\n\nexport const profileTemplateCatalogVersion = ${manifest.version};\n\nexport type ProfileTemplateCategoryId = ${categoryIds.map((id) => `'${id}'`).join(' | ')};\nexport type ProfileTemplateComposition = ${[...compositionIds, ...dimensionalCompositionIds].map((id) => `'${id}'`).join(' | ')};\nexport type ProfileTemplateLayout = {\n  composition: ProfileTemplateComposition;\n  header: 'centered' | 'left' | 'split' | 'cover' | 'badge';\n  links: 'list' | 'grid';\n  button: 'solid' | 'outline' | 'soft' | 'raised';\n  decoration: 'none' | 'line' | 'dots' | 'frame' | 'stripe';\n  avatar: 'circle' | 'rounded' | 'square';\n};\nexport type ProfileTemplatePalette = { ${paletteFields.map((field) => `${field}: string`).join('; ')} };\nexport type ProfileTemplateDefinition = {\n  id: string; name: string; category: ProfileTemplateCategoryId;\n  themeId: 'minimal' | 'shop' | 'pastel' | 'dark' | 'pink' | 'garden' | 'cards';\n  layout: ProfileTemplateLayout; palette: ProfileTemplatePalette;\n  font: 'anuphan' | 'prompt' | 'system'; buttonRadius: 'rounded' | 'pill' | 'square';\n  effects: { background: boolean; entrance: boolean; featured: boolean; stickers: 'none' | 'hearts' | 'flowers' | 'sparkles' };\n};\n\nexport const profileTemplateCategories: readonly { id: ProfileTemplateCategoryId; name: string }[] = ${JSON.stringify(manifest.categories, null, 2)};\n\nexport const profileTemplates: readonly ProfileTemplateDefinition[] = ${JSON.stringify(manifest.templates, null, 2)};\n\nconst templatesById = new Map(profileTemplates.map((template) => [template.id, template]));\nexport const getProfileTemplate = (id: string | null | undefined): ProfileTemplateDefinition | undefined => typeof id === 'string' ? templatesById.get(id) : undefined;\n`;
+  return `// Generated from shared/profile-templates.json by scripts/generate-profile-templates.mjs.\n// Do not edit; maintain the authored source catalog and regenerate both clients.\n\nexport const profileTemplateCatalogVersion = ${manifest.version};\n\nexport type ProfileTemplateCategoryId = ${categoryIds.map((id) => `'${id}'`).join(' | ')};\nexport type ProfileTemplateComposition = ${[...compositionIds, ...dimensionalCompositionIds].map((id) => `'${id}'`).join(' | ')};\nexport type ProfileTemplateLayout = {\n  composition: ProfileTemplateComposition;\n  header: 'centered' | 'left' | 'split' | 'cover' | 'badge';\n  links: 'list' | 'grid';\n  button: 'solid' | 'outline' | 'soft' | 'raised';\n  decoration: 'none' | 'line' | 'dots' | 'frame' | 'stripe';\n  avatar: 'circle' | 'rounded' | 'square';\n};\nexport type ProfileTemplatePalette = { ${paletteFields.map((field) => `${field}: string`).join('; ')} };\nexport type ProfileTemplateDefinition = {\n  id: string; name: string; category: ProfileTemplateCategoryId;\n  /** Catalog release that added this template; absent for releases 1 and 2. */\n  since?: ${releaseMarkers.join(' | ')};\n  themeId: 'minimal' | 'shop' | 'pastel' | 'dark' | 'pink' | 'garden' | 'cards';\n  layout: ProfileTemplateLayout; palette: ProfileTemplatePalette;\n  font: 'anuphan' | 'prompt' | 'system'; buttonRadius: 'rounded' | 'pill' | 'square';\n  effects: { background: boolean; entrance: boolean; featured: boolean; stickers: 'none' | 'hearts' | 'flowers' | 'sparkles' };\n};\n\nexport const profileTemplateCategories: readonly { id: ProfileTemplateCategoryId; name: string }[] = ${JSON.stringify(manifest.categories, null, 2)};\n\nexport const profileTemplates: readonly ProfileTemplateDefinition[] = ${JSON.stringify(manifest.templates, null, 2)};\n\nconst templatesById = new Map(profileTemplates.map((template) => [template.id, template]));\nexport const getProfileTemplate = (id: string | null | undefined): ProfileTemplateDefinition | undefined => typeof id === 'string' ? templatesById.get(id) : undefined;\n`;
 }
 
 const dartString = (value) => `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\$/g, '\\$')}'`;

@@ -1,5 +1,15 @@
 # PostDee
 
+## Second 3D storefront set (2026-11-02, local candidate)
+
+The **3D** category grows from ten to twenty designs: night chrome, low-poly
+dawn, zen garden, wooden toy blocks, parcel stack, glazed tiles, pop shapes,
+neon night, raw concrete and terrazzo steps, on five new page layouts. Every
+design uses the seller's real name, logo, description and links; artwork is
+decoration only and a custom cover replaces it. Older installed apps keep
+working and never see IDs they do not know. Deliver the API before Mobile. See
+the [second-set plan](docs/superpowers/plans/2026-11-02-3d-storefront-second-set.md).
+
 ## Caption quality and recovery (2026-11-01, main / Staging API delivered)
 
 AI captions read clip evidence before writing, preserve the original meaning,

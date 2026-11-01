@@ -37,12 +37,13 @@ describe('expanded profile catalog compatibility', () => {
     const read = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '2').expect(200);
     expect(read.body.profile).toEqual(published.body.profile);
     const publishSpy = vi.spyOn(store, 'publish');
-    for (const capability of [undefined, '', '1', '3', '2, 1', 'garbage']) {
+    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200)).body.profile).toEqual(published.body.profile);
+    for (const capability of [undefined, '', '1', '4', '3, 2', '2, 1', '03', 'garbage']) {
       const pending = request(app).get('/link-in-bio');
       if (capability !== undefined) pending.set('X-PostDee-Profile-Catalog', capability);
       const legacy = await pending.expect(200);
       expect(legacy.headers['cache-control']).toBe('no-store');
-      expect(legacy.body.profile.appearance).toEqual({ ...read.body.profile.appearance, templateId: null });
+      expect(legacy.body.profile.appearance, String(capability)).toEqual({ ...read.body.profile.appearance, templateId: null });
     }
     expect(publishSpy).not.toHaveBeenCalled();
     expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(templateId);
@@ -85,7 +86,7 @@ describe('expanded profile catalog compatibility', () => {
     expect((await request(app).get(`/p/${page.slug}`).expect(200)).text).toContain(`data-template="${templateId}"`);
   });
 
-  it.each([undefined, '1', '3', 'garbage'])('rejects a stale fallback captured before a newer theme was saved (catalog %s)', async (capability) => {
+  it.each([undefined, '1', '4', 'garbage'])('rejects a stale fallback captured before a newer theme was saved (catalog %s)', async (capability) => {
     const { app, store, validateImages, releaseImages, onPublished } = fixture();
     await publishDimensional(app).expect(200);
     const legacy = await request(app).get('/link-in-bio').expect(200);
@@ -183,5 +184,66 @@ describe('expanded profile catalog compatibility', () => {
     expect(legacy.body).toEqual(modern.body);
     expect(legacy.body.profile.appearance).toEqual(appearance);
     expect(published.body.profile.appearance).toEqual(appearance);
+  });
+});
+
+const sceneId = 'dimensional-neon-sign';
+const publishScene = (app: ReturnType<typeof express>) => request(app)
+  .post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '3')
+  .send({ ...page, appearance: createDefaultLinkInBioTemplateAppearance(sceneId) });
+
+describe('second 3D release compatibility', () => {
+  it('shows the new 3D scenes only to catalog 3 clients while catalog 2 keeps the first ten', async () => {
+    const { app, store } = fixture();
+    const published = await publishScene(app).expect(200);
+    expect(published.body.profile.appearance.templateId).toBe(sceneId);
+    const current = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200);
+    expect(current.body.profile).toEqual(published.body.profile);
+    for (const capability of [undefined, '1', '2', '4']) {
+      const pending = request(app).get('/link-in-bio');
+      if (capability !== undefined) pending.set('X-PostDee-Profile-Catalog', capability);
+      const older = await pending.expect(200);
+      expect(older.headers.vary).toContain('X-PostDee-Profile-Catalog');
+      expect(older.body.profile.appearance).toEqual({ ...current.body.profile.appearance, templateId: null });
+    }
+    expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(sceneId);
+    expect((await request(app).get(`/p/${page.slug}`).expect(200)).text).toContain(`data-template="${sceneId}"`);
+
+    await publishDimensional(app).expect(200);
+    const firstRelease = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '2').expect(200);
+    expect(firstRelease.body.profile.appearance.templateId).toBe(templateId);
+  });
+
+  it('keeps the new scene when a catalog 2 app replays its exact fallback, and refuses an edited one', async () => {
+    const { app, store } = fixture();
+    await publishScene(app).expect(200);
+    const older = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '2').expect(200);
+    const replayed = await request(app).post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '2')
+      .send({ ...page, storeName: 'ชื่อจากแอปรุ่นก่อน', appearance: older.body.profile.appearance }).expect(200);
+    expect(replayed.body.profile.appearance.templateId).toBeNull();
+    expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(sceneId);
+    expect((await store.getForUser('owner'))?.storeName).toBe('ชื่อจากแอปรุ่นก่อน');
+    const before = await store.getForUser('owner');
+    const edited = await request(app).post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '2')
+      .send({ ...page, appearance: { ...older.body.profile.appearance, buttonColor: '#123456' } }).expect(409);
+    expect(edited.body.code).toBe('LINK_IN_BIO_APPEARANCE_CONFLICT');
+    expect(await store.getForUser('owner')).toEqual(before);
+  });
+
+  it('lets a catalog 2 app deliberately switch from a new scene to a first-release 3D design', async () => {
+    const { app, store } = fixture();
+    await publishScene(app).expect(200);
+    await publishDimensional(app).expect(200);
+    expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(templateId);
+  });
+
+  it('serializes unpublish responses per catalog without changing the stored scene', async () => {
+    const { app, store } = fixture();
+    await publishScene(app).expect(200);
+    const older = await request(app).delete('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '2').expect(200);
+    expect(older.body.profile).toMatchObject({ isPublished: false, appearance: { templateId: null } });
+    const current = await request(app).delete('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '3').expect(200);
+    expect(current.body.profile.appearance.templateId).toBe(sceneId);
+    expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(sceneId);
   });
 });

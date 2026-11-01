@@ -5,12 +5,12 @@ import { test } from 'node:test';
 import { validateProfileTemplateCatalog, generateProfileTemplateTypeScript, generateProfileTemplateDart } from './generate-profile-templates.mjs';
 
 const source = JSON.parse(await readFile(new URL('../shared/profile-templates.json', import.meta.url), 'utf8'));
-test('authored catalog adds ten 3D templates to the existing one hundred', () => {
-  assert.equal(source.version, 2);
-  assert.equal(validateProfileTemplateCatalog(source).templates.length, 110);
+test('authored catalog adds twenty 3D templates to the existing one hundred', () => {
+  assert.equal(source.version, 3);
+  assert.equal(validateProfileTemplateCatalog(source).templates.length, 120);
   assert.deepEqual(source.categories.map((category) => category.id), ['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional']);
-  assert.match(generateProfileTemplateTypeScript(source), /export const profileTemplateCatalogVersion = 2/);
-  assert.match(generateProfileTemplateDart(source), /const profileTemplateCatalogVersion = 2/);
+  assert.match(generateProfileTemplateTypeScript(source), /export const profileTemplateCatalogVersion = 3/);
+  assert.match(generateProfileTemplateDart(source), /const profileTemplateCatalogVersion = 3/);
   assert.match(generateProfileTemplateTypeScript(source), /getProfileTemplate/);
   assert.match(generateProfileTemplateDart(source), /ProfileTemplatePalette/);
 });
@@ -52,17 +52,40 @@ test('each category exposes twenty distinct page compositions with the three agr
   assert.match(generateProfileTemplateDart(source), /final String composition;/);
 });
 
-test('the new 3D category has four clay, three paper and three glass designs', () => {
-  const dimensional = source.templates.filter((template) => template.category === 'dimensional');
+test('the first 3D release keeps four clay, three paper and three glass designs', () => {
+  const dimensional = source.templates.filter((template) => template.category === 'dimensional' && template.since === undefined);
   assert.equal(dimensional.length, 10);
   assert.equal(new Set(dimensional.map((template) => template.name)).size, 10);
   assert.deepEqual(['clay', 'paper-stack', 'frosted'].map((composition) => dimensional.filter((template) => template.layout.composition === composition).length), [4, 3, 3]);
   assert.ok(dimensional.every((template) => template.themeId === 'minimal'));
 });
 
+test('the second 3D release adds ten scenes on five new layouts after the first ten', () => {
+  const dimensional = source.templates.filter((template) => template.category === 'dimensional');
+  assert.equal(dimensional.length, 20);
+  assert.equal(new Set(dimensional.map((template) => template.name)).size, 20);
+  const added = dimensional.slice(10);
+  assert.ok(added.every((template) => template.since === 3 && template.themeId === 'minimal'));
+  assert.ok(dimensional.slice(0, 10).every((template) => template.since === undefined));
+  assert.deepEqual(['showcase', 'split-art', 'tile-grid', 'neon', 'slab'].map((composition) => added.filter((template) => template.layout.composition === composition).length), [3, 2, 2, 1, 2]);
+  assert.ok(added.every((template) => !['clay', 'paper-stack', 'frosted'].includes(template.layout.composition)));
+  assert.match(generateProfileTemplateTypeScript(source), /since\?: 3/);
+});
+
+test('catalog release markers stay on new 3D templates only', () => {
+  const marked = structuredClone(source);
+  marked.templates[0].since = 3;
+  assert.throws(() => validateProfileTemplateCatalog(marked), /release marker/);
+  const future = structuredClone(source);
+  future.templates[119].since = 4;
+  assert.throws(() => validateProfileTemplateCatalog(future), /release marker/);
+});
+
 test('all existing published template values and their order remain unchanged', () => {
   const legacy = source.templates.filter((template) => template.category !== 'dimensional');
   assert.equal(createHash('sha256').update(JSON.stringify(legacy)).digest('hex'), 'dbb85250b867a68d924d15968835bed51238434a260690d33e14ef9716f96756');
+  // The first 3D release (catalog 2) is also frozen for saved pages.
+  assert.equal(createHash('sha256').update(JSON.stringify(source.templates.slice(0, 110))).digest('hex'), '73e4332758fc7785a9a18d3a5f9b0ad682a1c6cb02724c18991b30190c5d61d4');
 });
 
 test('bicolor and scallop keep the accepted hairline links with readable surface text', () => {

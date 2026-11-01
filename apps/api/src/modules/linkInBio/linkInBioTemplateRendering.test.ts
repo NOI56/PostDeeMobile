@@ -475,9 +475,9 @@ describe('categorized profile template publication routes', () => {
     app.use(router);
     for (const template of profileTemplates) {
       const page = { storeName: 'ร้าน', slug: 'templates', links, appearance: { templateId: template.id } };
-      const published = await request(app).post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '2').send(page).expect(200);
+      const published = await request(app).post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '3').send(page).expect(200);
       expect(published.body.profile.appearance.templateId).toBe(template.id);
-      const saved = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '2').expect(200);
+      const saved = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200);
       expect(saved.body.profile.appearance.templateId).toBe(template.id);
       const rendered = await request(app).get('/p/templates').expect(200);
       expect(rendered.text).toContain(`data-template="${template.id}"`);
@@ -488,10 +488,10 @@ describe('categorized profile template publication routes', () => {
     }
     const latestId = profileTemplates.at(-1)!.id;
     await request(app).post('/link-in-bio/publish').send({ storeName: 'ร้าน', slug: 'templates', links }).expect(200);
-    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '2').expect(200)).body.profile.appearance.templateId).toBe(latestId);
+    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200)).body.profile.appearance.templateId).toBe(latestId);
     for (const templateId of ['unknown', 'minimal-99', '" onclick="bad', {}, 7]) {
       await request(app).post('/link-in-bio/publish').send({ storeName: 'ร้าน', slug: 'templates', links, appearance: { templateId } }).expect(400);
-      expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '2').expect(200)).body.profile.appearance.templateId).toBe(latestId);
+      expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200)).body.profile.appearance.templateId).toBe(latestId);
     }
   });
 });

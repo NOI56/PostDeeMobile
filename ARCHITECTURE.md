@@ -2,6 +2,20 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Second 3D storefront set (2026-11-02, local candidate)
+
+Catalog version 3 adds ten 3D scenes on five new compositions: `showcase`
+(full-bleed banner, overlapping avatar), `neon` (inset glowing banner),
+`split-art` (art beside the avatar), `tile-grid` (paired tile links) and `slab`
+(art shelf below the name). Public CSS lives in `linkInBio3dSceneStyles.ts`
+and native widgets in `link_in_bio_3d_scenes.dart`; both share the same fixed
+geometry table and link materials, while the original ten keep their rules.
+Artwork is rendered procedurally by `scripts/3d-storefront-art/` (WebGL ray
+marching, no third-party assets) and bundled byte-identically for API and
+Mobile. Route serialization now compares each template's release with the
+client's catalog header. See the
+[second-set plan](docs/superpowers/plans/2026-11-02-3d-storefront-second-set.md).
+
 ## Caption evidence and request lifetime (2026-11-01, Staging API delivered)
 
 The real-clip Gemini provider separates multimodal evidence extraction from

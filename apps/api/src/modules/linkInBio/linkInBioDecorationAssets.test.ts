@@ -10,7 +10,10 @@ import { createInMemoryLinkInBioStore } from './linkInBioStore.js';
 const files = ['botanical-frame', 'forest', 'meadow', 'paper', 'letter-frame', 'collage-tape', 'gold-seal', 'tag-cord',
   'dimensional-clay-mint', 'dimensional-clay-peach', 'dimensional-clay-cloud', 'dimensional-clay-sand',
   'dimensional-paper-fold', 'dimensional-paper-stage', 'dimensional-paper-ribbon',
-  'dimensional-glass-lavender', 'dimensional-glass-mist', 'dimensional-glass-sage'];
+  'dimensional-glass-lavender', 'dimensional-glass-mist', 'dimensional-glass-sage',
+  'dimensional-chrome-night', 'dimensional-lowpoly-dawn', 'dimensional-zen-garden', 'dimensional-wood-blocks',
+  'dimensional-parcel-stack', 'dimensional-ceramic-tiles', 'dimensional-pop-shapes', 'dimensional-neon-sign',
+  'dimensional-concrete-slab', 'dimensional-terrazzo-steps'];
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 describe('bundled profile decoration artwork', () => {

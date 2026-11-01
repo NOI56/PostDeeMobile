@@ -1,10 +1,10 @@
 // Generated from shared/profile-templates.json by scripts/generate-profile-templates.mjs.
 // Do not edit; maintain the authored source catalog and regenerate both clients.
 
-export const profileTemplateCatalogVersion = 2;
+export const profileTemplateCatalogVersion = 3;
 
 export type ProfileTemplateCategoryId = 'minimal' | 'cute' | 'nature' | 'luxury' | 'creative' | 'dimensional';
-export type ProfileTemplateComposition = 'editorial' | 'bicolor' | 'portrait' | 'scallop' | 'collage' | 'window' | 'botanical' | 'glass' | 'torn' | 'seal' | 'tag' | 'gallery' | 'poster' | 'window-grid' | 'ticket' | 'rail' | 'ribbon' | 'notebook' | 'arch' | 'staircase' | 'clay' | 'paper-stack' | 'frosted';
+export type ProfileTemplateComposition = 'editorial' | 'bicolor' | 'portrait' | 'scallop' | 'collage' | 'window' | 'botanical' | 'glass' | 'torn' | 'seal' | 'tag' | 'gallery' | 'poster' | 'window-grid' | 'ticket' | 'rail' | 'ribbon' | 'notebook' | 'arch' | 'staircase' | 'clay' | 'paper-stack' | 'frosted' | 'showcase' | 'split-art' | 'tile-grid' | 'neon' | 'slab';
 export type ProfileTemplateLayout = {
   composition: ProfileTemplateComposition;
   header: 'centered' | 'left' | 'split' | 'cover' | 'badge';
@@ -16,6 +16,8 @@ export type ProfileTemplateLayout = {
 export type ProfileTemplatePalette = { background: string; gradient: string; surface: string; button: string; name: string; description: string; category: string; buttonText: string; brand: string };
 export type ProfileTemplateDefinition = {
   id: string; name: string; category: ProfileTemplateCategoryId;
+  /** Catalog release that added this template; absent for releases 1 and 2. */
+  since?: 3;
   themeId: 'minimal' | 'shop' | 'pastel' | 'dark' | 'pink' | 'garden' | 'cards';
   layout: ProfileTemplateLayout; palette: ProfileTemplatePalette;
   font: 'anuphan' | 'prompt' | 'system'; buttonRadius: 'rounded' | 'pill' | 'square';
@@ -3679,6 +3681,346 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "featured": false,
       "stickers": "none"
     }
+  },
+  {
+    "id": "dimensional-chrome-night",
+    "name": "โครมยามค่ำ",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "showcase",
+      "header": "left",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#0f1626",
+      "gradient": "#1b2742",
+      "surface": "#141d31",
+      "button": "#223152",
+      "name": "#f2f5ff",
+      "description": "#c3cde3",
+      "category": "#a9c4ff",
+      "buttonText": "#f2f5ff",
+      "brand": "#c3cde3"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-lowpoly-dawn",
+    "name": "ภูเขาโลว์โพลี",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "showcase",
+      "header": "centered",
+      "links": "list",
+      "button": "soft",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#f7ece9",
+      "gradient": "#e6e3f4",
+      "surface": "#fffaf7",
+      "button": "#ffffff",
+      "name": "#2c2a52",
+      "description": "#524e72",
+      "category": "#594a88",
+      "buttonText": "#2c2a52",
+      "brand": "#524e72"
+    },
+    "font": "anuphan",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-zen-garden",
+    "name": "สวนหินเซน",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "showcase",
+      "header": "left",
+      "links": "list",
+      "button": "outline",
+      "decoration": "none",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#f2ede2",
+      "gradient": "#e4ddcc",
+      "surface": "#faf7f0",
+      "button": "#3d4a36",
+      "name": "#26301f",
+      "description": "#4c5544",
+      "category": "#45603b",
+      "buttonText": "#26301f",
+      "brand": "#4c5544"
+    },
+    "font": "anuphan",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-wood-blocks",
+    "name": "บล็อกไม้ของเล่น",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "split-art",
+      "header": "left",
+      "links": "list",
+      "button": "raised",
+      "decoration": "none",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#fbf5ea",
+      "gradient": "#f2e4cc",
+      "surface": "#fffdf8",
+      "button": "#ffffff",
+      "name": "#3b2a1a",
+      "description": "#62503d",
+      "category": "#9a3b23",
+      "buttonText": "#3b2a1a",
+      "brand": "#62503d"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-parcel-stack",
+    "name": "กองกล่องพัสดุ",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "split-art",
+      "header": "left",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "square"
+    },
+    "palette": {
+      "background": "#e9f0f6",
+      "gradient": "#d8e5f1",
+      "surface": "#f7fafd",
+      "button": "#ffffff",
+      "name": "#1c2e44",
+      "description": "#43546a",
+      "category": "#2a5a87",
+      "buttonText": "#1c2e44",
+      "brand": "#43546a"
+    },
+    "font": "anuphan",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-ceramic-tiles",
+    "name": "กระเบื้องเคลือบ",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "tile-grid",
+      "header": "split",
+      "links": "grid",
+      "button": "raised",
+      "decoration": "none",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#f1f5fb",
+      "gradient": "#dde7f5",
+      "surface": "#ffffff",
+      "button": "#1f4fa8",
+      "name": "#142f66",
+      "description": "#3b5077",
+      "category": "#1d4a9e",
+      "buttonText": "#ffffff",
+      "brand": "#3b5077"
+    },
+    "font": "anuphan",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-pop-shapes",
+    "name": "ทรงป๊อปสีสด",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "tile-grid",
+      "header": "split",
+      "links": "grid",
+      "button": "raised",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#fff3f7",
+      "gradient": "#ffe2ec",
+      "surface": "#ffffff",
+      "button": "#ffd23f",
+      "name": "#1d1a22",
+      "description": "#48424f",
+      "category": "#a3124f",
+      "buttonText": "#1d1a22",
+      "brand": "#48424f"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-neon-sign",
+    "name": "นีออนยามค่ำ",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "neon",
+      "header": "centered",
+      "links": "list",
+      "button": "outline",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#120f1c",
+      "gradient": "#1d1630",
+      "surface": "#171226",
+      "button": "#ff5fc8",
+      "name": "#fbf3ff",
+      "description": "#cfc5e0",
+      "category": "#ff8fd8",
+      "buttonText": "#fbf3ff",
+      "brand": "#cfc5e0"
+    },
+    "font": "prompt",
+    "buttonRadius": "pill",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-concrete-slab",
+    "name": "คอนกรีตเปลือย",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "slab",
+      "header": "left",
+      "links": "list",
+      "button": "raised",
+      "decoration": "none",
+      "avatar": "square"
+    },
+    "palette": {
+      "background": "#e8e6e2",
+      "gradient": "#d9d6d0",
+      "surface": "#f3f1ee",
+      "button": "#f3f1ee",
+      "name": "#1e1e1e",
+      "description": "#45433f",
+      "category": "#a3380a",
+      "buttonText": "#1e1e1e",
+      "brand": "#45433f"
+    },
+    "font": "anuphan",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
+  },
+  {
+    "id": "dimensional-terrazzo-steps",
+    "name": "บันไดเทอราซโซ",
+    "category": "dimensional",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "slab",
+      "header": "left",
+      "links": "list",
+      "button": "raised",
+      "decoration": "none",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#f6eee4",
+      "gradient": "#eedfcd",
+      "surface": "#fffaf3",
+      "button": "#fffaf3",
+      "name": "#3a2318",
+      "description": "#634a3d",
+      "category": "#953f20",
+      "buttonText": "#3a2318",
+      "brand": "#634a3d"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 3
   }
 ];
 

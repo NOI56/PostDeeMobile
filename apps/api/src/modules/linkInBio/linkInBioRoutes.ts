@@ -80,16 +80,26 @@ const respondError = (response: Response, error: unknown) => {
 };
 
 const profileCatalogHeader = 'X-PostDee-Profile-Catalog';
-const supportsCurrentProfileCatalog = (request: Request) =>
-  request.get(profileCatalogHeader) === String(profileTemplateCatalogVersion);
+// Only an exact known release number counts. Missing, malformed and future
+// values are treated as the original classic-only catalog (release 1).
+const readProfileCatalog = (request: Request) => {
+  const value = request.get(profileCatalogHeader);
+  for (let release = profileTemplateCatalogVersion; release >= 2; release--) if (value === String(release)) return release;
+  return 1;
+};
+// Classic templates shipped in release 1 and the first 3D set in release 2.
+// Later templates carry the release that added them.
+const profileTemplateRelease = (templateId: string | null | undefined) => {
+  const template = getProfileTemplate(templateId);
+  return template ? template.since ?? (template.category === 'dimensional' ? 2 : 1) : 1;
+};
 
 // Older installed apps reject unknown template IDs. Give only those clients
 // the same editable colors/content with the existing legacy theme as fallback.
 // This is response serialization only; stored and public page styling is intact.
-const profileForClient = (profile: LinkInBioProfile | null, currentCatalog: boolean): LinkInBioProfile | null => {
+const profileForClient = (profile: LinkInBioProfile | null, catalog: number): LinkInBioProfile | null => {
   const appearance = profile?.appearance;
-  if (currentCatalog || !profile || !appearance ||
-      getProfileTemplate(appearance.templateId)?.category !== 'dimensional') return profile;
+  if (!profile || !appearance || profileTemplateRelease(appearance.templateId) <= catalog) return profile;
   return { ...profile, appearance: { ...appearance, templateId: null } };
 };
 
@@ -121,7 +131,7 @@ export const registerLinkInBioRoutes = (
     if (!user) { response.status(401).json({ status: 'error', message: 'Authenticated user is required' }); return; }
     response.set('Cache-Control', 'no-store');
     try {
-      response.json({ status: 'ok', profile: profileForClient(await store.getForUser(user.id), supportsCurrentProfileCatalog(request)) });
+      response.json({ status: 'ok', profile: profileForClient(await store.getForUser(user.id), readProfileCatalog(request)) });
     } catch (error) { respondError(response, error); }
   });
   router.post('/link-in-bio/publish', authMiddleware, async (request, response) => {
@@ -152,12 +162,15 @@ export const registerLinkInBioRoutes = (
       const imageGuard: { release?: () => Promise<void> } = {};
       const commit = async () => {
         let publishInput = input;
-        const legacyFallback = !supportsCurrentProfileCatalog(request) &&
+        const catalog = readProfileCatalog(request);
+        const legacyFallback = catalog < profileTemplateCatalogVersion &&
           input.appearance?.themeId === 'minimal' && input.appearance.templateId === null;
         const previous = input.appearance === undefined || legacyFallback
           ? await store.getForUser(user.id) : null;
         const storedAppearance = normalizeStoredLinkInBioAppearance(previous?.appearance, input.links);
-        if (legacyFallback && getProfileTemplate(storedAppearance.templateId)?.category === 'dimensional') {
+        // Only a saved template this client cannot see makes a null-template
+        // snapshot ambiguous; templates it knows remain explicit replacements.
+        if (legacyFallback && profileTemplateRelease(storedAppearance.templateId) > catalog) {
           if (JSON.stringify(input.appearance) !== JSON.stringify({ ...storedAppearance, templateId: null })) {
             // A legacy client cannot distinguish an edited fallback from a stale
             // snapshot. Refuse both rather than silently removing a newer theme.
@@ -167,7 +180,7 @@ export const registerLinkInBioRoutes = (
           // Exact fallback replay is a no-op on styling. Omit it from the atomic
           // write just like a legacy request without appearance. Known classic
           // IDs and distinct legacy themes remain explicit replacements;
-          // catalog 2 clients can explicitly clear templateId with null.
+          // current-catalog clients can explicitly clear templateId with null.
           publishInput = { ...input, appearance: undefined };
         }
         const appearance = publishInput.appearance ?? storedAppearance;
@@ -190,7 +203,7 @@ export const registerLinkInBioRoutes = (
       try { await imageGuard.release?.(); } catch { /* Publication is already accepted. */ }
       // A cleanup failure after the commit cannot change publication success.
       try { await options.onPublished?.(user.id, profile); } catch { /* The page is already committed. */ }
-      response.json({ status: 'ok', profile: profileForClient(profile, supportsCurrentProfileCatalog(request)) });
+      response.json({ status: 'ok', profile: profileForClient(profile, readProfileCatalog(request)) });
     } catch (error) { respondError(response, error); }
   });
   router.delete('/link-in-bio/publish', authMiddleware, async (request, response) => {
@@ -198,7 +211,7 @@ export const registerLinkInBioRoutes = (
     if (!user) { response.status(401).json({ status: 'error', message: 'Authenticated user is required' }); return; }
     response.set('Cache-Control', 'no-store');
     try {
-      response.json({ status: 'ok', profile: profileForClient(await store.unpublish(user.id), supportsCurrentProfileCatalog(request)) });
+      response.json({ status: 'ok', profile: profileForClient(await store.unpublish(user.id), readProfileCatalog(request)) });
     } catch (error) { respondError(response, error); }
   });
   router.get('/p/:slug', async (request, response) => {

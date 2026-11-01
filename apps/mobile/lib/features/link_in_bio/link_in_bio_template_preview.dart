@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_composition_art.dart';
+import 'link_in_bio_3d_scenes.dart';
 import 'link_in_bio_3d_styles.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_link_defaults.dart';
@@ -33,6 +34,7 @@ class BioTemplatePreview extends StatelessWidget {
   final double cornerRadius;
   String get _composition => template.layout.composition;
   bool get _is3d => template.category == 'dimensional';
+  Bio3dScene? get _scene => bio3dScenes[template.id];
   bool get _presetBackground =>
       appearance.background.imageKey == null &&
       appearance.background.mode ==
@@ -234,6 +236,19 @@ class BioTemplatePreview extends StatelessWidget {
 
   Widget _header(double headingSize, double editorialSize) {
     final cover = appearance.coverKey;
+    final scene = bio3dScenes[template.id];
+    if (scene != null) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Bio3dSceneHeader(
+            template: template,
+            appearance: appearance,
+            avatar: _avatar,
+            copy: (centered) => _copy(
+                centered: centered, headingSize: headingSize, heavy: true),
+            cover: images[cover] == null ? null : _photo(cover!, scene.height)),
+        const SizedBox(height: 26),
+      ]);
+    }
     if (_is3d) {
       final geometry = bio3dGeometries[template.id]!;
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -553,16 +568,26 @@ class BioTemplatePreview extends StatelessWidget {
         key: ValueKey('link-in-bio-template-link-${link.id}'),
         constraints: BoxConstraints(
             minHeight: grid
-                ? 112
-                : _is3d
-                    ? 76
-                    : 64),
+                ? (_scene != null ? 116 : 112)
+                : _scene != null
+                    ? 72
+                    : _is3d
+                        ? 76
+                        : 64),
         padding: grid
             ? const EdgeInsets.all(14)
             : EdgeInsets.symmetric(
                 horizontal: narrow ? 12 : 16,
                 vertical: _is3d ? (narrow ? 14 : 16) : 12),
-        decoration: _is3d
+        decoration: _scene != null
+            ? bio3dSceneLinkDecoration(
+                template: template,
+                appearance: appearance,
+                color: color,
+                textColor: textColor,
+                open: transparent,
+                featured: featured)
+            : _is3d
             ? bio3dLinkDecoration(
                 template: template,
                 appearance: appearance,
@@ -673,10 +698,13 @@ class BioTemplatePreview extends StatelessWidget {
                 Icon(Icons.north_east, size: 18, color: textColor)
               ]));
     Widget decorated = button;
-    if (template.id == 'dimensional-paper-stage') {
+    if (template.id == 'dimensional-paper-stage' ||
+        template.id == 'dimensional-wood-blocks') {
+      final offset = template.id == 'dimensional-wood-blocks' ? 14.0 : 6.0;
       decorated = Padding(
           padding: EdgeInsets.only(
-              left: rhythm.isOdd ? 6 : 0, right: rhythm.isEven ? 6 : 0),
+              left: rhythm.isOdd ? offset : 0,
+              right: rhythm.isEven ? offset : 0),
           child: decorated);
     }
     if (_composition == 'torn') {
@@ -736,13 +764,14 @@ class BioTemplatePreview extends StatelessWidget {
                       size: 14, weight: FontWeight.w600))),
         LayoutBuilder(
             builder: (_, size) => Wrap(
-                    spacing: 12,
-                    runSpacing: _is3d ? bio3dGeometries[template.id]!.gap : 12,
+                    spacing: _scene?.gap ?? 12,
+                    runSpacing: _scene?.gap ??
+                        (_is3d ? bio3dGeometries[template.id]!.gap : 12),
                     children: [
                       for (final (rhythm, record) in group.indexed)
                         SizedBox(
                             width: _tileAt(rhythm, group.length)
-                                ? (size.maxWidth - 12) / 2
+                                ? (size.maxWidth - (_scene?.gap ?? 12)) / 2
                                 : size.maxWidth,
                             child: _link(record.$2, record.$1, phase, entrance,
                                 reduced, narrow,
@@ -757,8 +786,8 @@ class BioTemplatePreview extends StatelessWidget {
   // A tile that would sit alone on the last row of its group takes the whole
   // row instead, matching the public page.
   bool _tileAt(int rhythm, int count) {
-    final paired =
-        const {'bicolor', 'gallery', 'window-grid'}.contains(_composition);
+    final paired = const {'bicolor', 'gallery', 'window-grid', 'tile-grid'}
+        .contains(_composition);
     if (!paired &&
         !(const {'collage', 'glass'}.contains(_composition) &&
             (rhythm % 4 == 1 || rhythm % 4 == 2))) {
@@ -796,6 +825,17 @@ class BioTemplatePreview extends StatelessWidget {
       ]));
 
   Widget _panel(Widget child) {
+    if (_scene != null) {
+      return Container(
+          key: ValueKey(
+              'link-in-bio-template-layout-${template.layout.header}-${template.layout.links}'),
+          padding: const EdgeInsets.symmetric(horizontal: bio3dSceneSide),
+          decoration: bio3dScenePanelDecoration(template, appearance),
+          clipBehavior: Clip.antiAlias,
+          child: KeyedSubtree(
+              key: ValueKey('link-in-bio-composition-$_composition'),
+              child: child));
+    }
     if (_is3d) {
       final paper = _composition == 'paper-stack';
       final surface = bioColor(appearance.surfaceColor);

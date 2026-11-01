@@ -4,17 +4,17 @@ import { profileTemplateCatalogVersion, profileTemplateCategories, profileTempla
 import { createDefaultLinkInBioAppearance, createDefaultLinkInBioTemplateAppearance, readLinkInBioAppearance } from './linkInBioAppearance.js';
 
 describe('shared profile template catalog and appearance contract', () => {
-  it('keeps five original categories and adds ten 3D templates', () => {
-    expect(profileTemplateCatalogVersion).toBe(2);
+  it('keeps five original categories and twenty 3D templates', () => {
+    expect(profileTemplateCatalogVersion).toBe(3);
     expect(profileTemplateCategories.map((category) => category.id)).toEqual(['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional']);
-    expect(profileTemplates).toHaveLength(110);
-    expect(new Set(profileTemplates.map((template) => template.id)).size).toBe(110);
+    expect(profileTemplates).toHaveLength(120);
+    expect(new Set(profileTemplates.map((template) => template.id)).size).toBe(120);
     for (const category of profileTemplateCategories) {
       const templates = profileTemplates.filter((template) => template.category === category.id);
       const dimensional = category.id === 'dimensional';
-      expect(templates).toHaveLength(dimensional ? 10 : 20);
-      expect(new Set(templates.map((template) => template.layout.composition)).size).toBe(dimensional ? 3 : 20);
-      expect(new Set(templates.map((template) => template.name)).size).toBe(dimensional ? 10 : 20);
+      expect(templates).toHaveLength(20);
+      expect(new Set(templates.map((template) => template.layout.composition)).size).toBe(dimensional ? 8 : 20);
+      expect(new Set(templates.map((template) => template.name)).size).toBe(20);
     }
   });
 

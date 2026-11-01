@@ -546,6 +546,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   color: AppTheme.textSecondary,
                 ),
               ),
+              const SizedBox(height: 4),
+              _PaywallText(
+                '1 หน่วย = โพสต์ 1 ช่องทาง เช่น โพสต์คลิปเดียวลง 3 ช่องทางใช้ 3 หน่วย',
+                key: const ValueKey('paywall-unit-explainer'),
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
               const SizedBox(height: 16),
               if (_isSubscriptionLoading)
                 const _PaywallSubscriptionStatus(
@@ -592,8 +598,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 ),
                 if (index < _plans.length - 1) const SizedBox(height: 13),
               ],
-              const SizedBox(height: 16),
-              _buildAddonCard(),
+              if (_showsAddonCard) ...[
+                const SizedBox(height: 16),
+                _buildAddonCard(),
+              ],
               const SizedBox(height: 16),
               if (_priceLoadFailed)
                 TextButton(
@@ -656,6 +664,17 @@ class _PaywallScreenState extends State<PaywallScreen> {
       actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(),
         child: const _PaywallText('รับทราบ'))],
     ));
+  }
+
+  // A pack that is not on sale is noise on the plan list. Keep the card only
+  // while it can matter: on sale, still loading, a pending purchase, or
+  // credits the seller already owns.
+  bool get _showsAddonCard {
+    final catalog = _addonCatalog;
+    if (catalog == null || catalog.enabled) return true;
+    return _addonService.hasPendingPurchase ||
+        catalog.addonPostUnits > 0 ||
+        catalog.addonAiCaptions > 0;
   }
 
   Widget _buildAddonCard() {
@@ -944,7 +963,8 @@ class _PlanBadge extends StatelessWidget {
 }
 
 class _PaywallText extends StatelessWidget {
-  const _PaywallText(this.message, {this.style, this.textAlign, this.maxLines});
+  const _PaywallText(this.message,
+      {super.key, this.style, this.textAlign, this.maxLines});
 
   final String message;
   final TextStyle? style;
@@ -1043,6 +1063,8 @@ const _englishPaywallMessages = <String, String>{
   'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่':
       'Could not load credit pack. Please try again.',
   'แพ็กเติมยังไม่เปิดขาย': 'Credit packs are not on sale yet',
+  '1 หน่วย = โพสต์ 1 ช่องทาง เช่น โพสต์คลิปเดียวลง 3 ช่องทางใช้ 3 หน่วย':
+      '1 unit = 1 post to 1 channel. Posting one video to 3 channels uses 3 units.',
   'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครแพ็กเกจด้านบนก่อน':
       'For Starter or Pro members · Subscribe to a plan above first',
   'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้':

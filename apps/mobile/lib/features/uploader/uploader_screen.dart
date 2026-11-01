@@ -14,6 +14,7 @@ import '../../core/monitoring/postdee_analytics.dart';
 import '../../core/theme/app_theme.dart';
 import '../ai_editing/ai_edit_audio_extractor.dart';
 import '../ai_editing/review_video_timeline.dart';
+import '../billing/paywall_screen.dart';
 import '../captions/caption_writing_style_store.dart';
 import '../platforms/connections_screen.dart';
 import '../platforms/social_platform.dart';
@@ -220,6 +221,8 @@ class UploaderScreen extends StatefulWidget {
     this.initialVideoHeight,
     this.initialVideoDurationSeconds,
     this.fullScreen = false,
+    this.verifyPhone,
+    this.openPaywall,
   });
 
   final UploaderTemplateLoader? loadTemplates;
@@ -282,6 +285,14 @@ class UploaderScreen extends StatefulWidget {
   final int? initialVideoHeight;
   final double? initialVideoDurationSeconds;
   final bool fullScreen;
+
+  // Opens phone verification from the posting checklist. Without it, the
+  // checklist points the seller to the Account tab instead.
+  final Future<void> Function(BuildContext context)? verifyPhone;
+
+  // Opens the package screen when a plan without AI captions asks for one.
+  // Injectable so tests do not reach the real store.
+  final Future<void> Function(BuildContext context)? openPaywall;
 
   @override
   State<UploaderScreen> createState() => _UploaderScreenState();
@@ -2008,6 +2019,163 @@ class _UploaderScreenState extends State<UploaderScreen>
     }
   }
 
+  Future<void> _verifyPhoneFromChecklist() async {
+    final verifyPhone = widget.verifyPhone;
+    if (verifyPhone == null || _formBusy) return;
+    await verifyPhone(context);
+    if (mounted) await _loadPostQuota();
+  }
+
+  // Plans without AI captions get the package screen instead of an error.
+  Future<void> _openPaywallForAiCaptions() async {
+    final openPaywall = widget.openPaywall;
+    if (openPaywall != null) {
+      await openPaywall(context);
+    } else {
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+          builder: (_) =>
+              PaywallScreen(loadSubscription: widget.loadSubscription)));
+    }
+    if (!mounted) return;
+    unawaited(_loadCaptionQuota());
+    unawaited(_loadPostQuota());
+  }
+
+  bool get _hasNonVerticalVideo {
+    final width = _readPositiveInt(_widthController);
+    final height = _readPositiveInt(_heightController);
+    return width != null &&
+        height != null &&
+        !_isVerticalNineBySixteen(width: width, height: height);
+  }
+
+  // Warn as soon as the clip is picked. Posting still rejects it at submit,
+  // but AI captions accept any ratio, so the seller may continue.
+  Widget _buildAspectWarning() {
+    if (!_hasNonVerticalVideo) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Semantics(
+        liveRegion: true,
+        child: PostDeeNotice(
+          key: const ValueKey('uploader-aspect-warning'),
+          message: uploaderText(
+              context,
+              'คลิปนี้ไม่ใช่แนวตั้ง 9:16 จึงโพสต์ไม่ได้ เปลี่ยนเป็นคลิปแนวตั้ง เช่น 1080x1920',
+              'This video is not vertical 9:16, so it cannot be posted. Choose a vertical video such as 1080x1920.'),
+          icon: Icons.crop_portrait_rounded,
+          color: Theme.of(context).colorScheme.error,
+        ),
+      ),
+    );
+  }
+
+  // Shows what blocks the first post before the seller writes a caption,
+  // instead of surfacing it on the channels step or at submit.
+  Widget _buildPostingChecklist() {
+    final needsPhone = _postQuota?.requiresPhoneVerification == true;
+    final needsConnection = !_isLoadingConnections &&
+        _connectionsErrorMessage == null &&
+        _connectedPlatforms.isEmpty;
+    if (!needsPhone && !needsConnection) return const SizedBox.shrink();
+    final textTheme = Theme.of(context).textTheme;
+    Widget row({
+      required Key key,
+      required IconData icon,
+      required String title,
+      required String subtitle,
+      Key? actionKey,
+      String? actionLabel,
+      VoidCallback? onAction,
+    }) =>
+        Padding(
+          key: key,
+          padding: const EdgeInsets.symmetric(vertical: AppTheme.spaceSm),
+          child: LayoutBuilder(builder: (context, constraints) {
+            final action = onAction != null && actionLabel != null
+                ? TextButton(
+                    key: actionKey,
+                    onPressed: _formBusy ? null : onAction,
+                    child: UploaderText(actionLabel),
+                  )
+                : null;
+            // Narrow screens and large text put the action under the copy
+            // so neither gets squeezed.
+            final stackAction = constraints.maxWidth < 320 ||
+                MediaQuery.textScalerOf(context).scale(14) > 18;
+            return Row(
+                crossAxisAlignment: stackAction
+                    ? CrossAxisAlignment.start
+                    : CrossAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 20, color: AppTheme.accentCyanInk),
+                  const SizedBox(width: AppTheme.spaceSm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        UploaderText(title,
+                            style: textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600)),
+                        UploaderText(subtitle,
+                            style: textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textSecondary)),
+                        if (stackAction && action != null) action,
+                      ],
+                    ),
+                  ),
+                  if (!stackAction && action != null) action,
+                ]);
+          }),
+        );
+
+    return Container(
+      key: const ValueKey('uploader-posting-checklist'),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 4),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UploaderText('ก่อนเริ่มโพสต์',
+              style: textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          if (needsPhone)
+            row(
+              key: const ValueKey('uploader-checklist-verify-phone'),
+              icon: Icons.phone_iphone_rounded,
+              title: 'ยืนยันเบอร์โทร',
+              subtitle: widget.verifyPhone == null
+                  ? 'แพ็กเกจ Basic ต้องยืนยันก่อน ยืนยันได้ที่หน้าบัญชี'
+                  : 'แพ็กเกจ Basic ต้องยืนยันก่อนโพสต์',
+              actionKey:
+                  const ValueKey('uploader-checklist-verify-phone-button'),
+              actionLabel: 'ยืนยัน',
+              onAction: widget.verifyPhone == null
+                  ? null
+                  : () => unawaited(_verifyPhoneFromChecklist()),
+            ),
+          if (needsPhone && needsConnection)
+            Divider(height: 1, color: AppTheme.border),
+          if (needsConnection)
+            row(
+              key: const ValueKey('uploader-checklist-connect'),
+              icon: Icons.link_rounded,
+              title: 'เชื่อมโซเชียลอย่างน้อย 1 ช่องทาง',
+              subtitle: 'TikTok, YouTube Shorts, Instagram หรือ Facebook',
+              actionKey: const ValueKey('uploader-checklist-connect-button'),
+              actionLabel: 'เชื่อมต่อ',
+              onAction: () => unawaited(_openConnections()),
+            ),
+        ],
+      ),
+    );
+  }
+
   /// Loads an injected clip (e.g. the rendered output handed over from the
   /// editor) into the form fields the post flow reads from.
   void _prefillInitialVideo() {
@@ -2846,10 +3014,11 @@ class _UploaderScreenState extends State<UploaderScreen>
           return;
         }
 
-        setState(() {
-          _aiCaptionErrorMessage =
-              'AI แคปชั่นใช้ได้ในแพ็กเกจ Starter หรือ Pro กรุณาตรวจสอบแพ็กเกจของคุณ';
-        });
+        // Show the packages instead of a dead-end error. The finally block
+        // clears the busy state before the screen opens.
+        unawaited(Future<void>.microtask(() async {
+          if (stillCurrent()) await _openPaywallForAiCaptions();
+        }));
         return;
       }
 
@@ -4394,7 +4563,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         }
 
         setState(() {
-          _errorMessage = 'ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 ครั้งต่อเดือน';
+          _errorMessage = 'ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 หน่วยต่อเดือน';
         });
         return null;
       }
@@ -5478,12 +5647,14 @@ class _UploaderScreenState extends State<UploaderScreen>
                                     isSubmitting: _formBusy,
                                     onPickVideo: _pickVideoFile,
                                     onPreview: _openVideoPreview,
+                                    isVertical: !_hasNonVerticalVideo,
                                   ),
                                   enabled: !_formBusy),
                               if (_selectedVideoName != null) ...[
                                 const SizedBox(height: 12),
                                 _buildVideoMetadata(
                                     textAlign: TextAlign.center),
+                                _buildAspectWarning(),
                                 _buildDurationWarnings(),
                                 const SizedBox(height: 6),
                                 Wrap(
@@ -5521,6 +5692,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                               ],
                               const SizedBox(height: 12),
                               _buildPostQuota(),
+                              _buildPostingChecklist(),
                             ],
                             if (_currentStep == 1) ...[
                               if (_selectedVideoName != null) ...[
@@ -6121,6 +6293,24 @@ class _UploaderScreenState extends State<UploaderScreen>
         : PostQuotaStrip(subscription: quota);
   }
 
+  // "Auto · Auto · Auto" told the seller nothing. Name the style once and
+  // list only the choices the seller actually changed.
+  String _captionStyleSummary() {
+    final style = _captionWritingProfile.style;
+    final labels = [
+      if (style.tone != CaptionWritingTone.auto) style.tone.label,
+      if (style.length != CaptionWritingLength.auto) style.length.label,
+      if (style.emoji == CaptionWritingEmoji.none) style.emoji.label,
+      if (style.emoji == CaptionWritingEmoji.light) 'อีโมจิเล็กน้อย',
+    ];
+    final summary = labels.isEmpty
+        ? localizeCaptionMessage(context, 'อัตโนมัติ')
+        : labels
+            .map((label) => localizeCaptionMessage(context, label))
+            .join(' · ');
+    return uploaderText(context, 'สไตล์: $summary', 'Style: $summary');
+  }
+
   Widget _buildAiCaptionPanel() => _AiCaptionPanel(
         guidanceController: _aiGuidanceController,
         selectedVideoName: _selectedVideoName,
@@ -6128,11 +6318,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         captionReady: _aiCaptionReady,
         formBusy: _formBusy,
         errorMessage: _aiCaptionErrorMessage,
-        styleSummary: [
-          _captionWritingProfile.style.tone.label,
-          _captionWritingProfile.style.length.label,
-          _captionWritingProfile.style.emoji.label,
-        ].map((label) => localizeCaptionMessage(context, label)).join(' · '),
+        styleSummary: _captionStyleSummary(),
         styleError: _captionStyleError,
         isSavingStyle: _isSavingCaptionStyle,
         onOpenStyle: _openCaptionWritingStyle,
@@ -6503,6 +6689,7 @@ class _VideoPreviewCard extends StatelessWidget {
     required this.onPickVideo,
     required this.onPreview,
     this.compact = false,
+    this.isVertical = true,
   });
 
   final String? videoName;
@@ -6512,6 +6699,8 @@ class _VideoPreviewCard extends StatelessWidget {
   final VoidCallback onPickVideo;
   final VoidCallback onPreview;
   final bool compact;
+  // False when the known size is not 9:16, so the badge stops showing a check.
+  final bool isVertical;
 
   @override
   Widget build(BuildContext context) {
@@ -6673,14 +6862,22 @@ class _VideoPreviewCard extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(7),
               ),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.check, size: 13, color: Colors.white),
-                    SizedBox(width: 4),
-                    UploaderText(
+                    Icon(
+                        isVertical
+                            ? Icons.check
+                            : Icons.warning_amber_rounded,
+                        key: ValueKey(isVertical
+                            ? 'uploader-video-ratio-ok'
+                            : 'uploader-video-ratio-warning'),
+                        size: 13,
+                        color: Colors.white),
+                    const SizedBox(width: 4),
+                    const UploaderText(
                       'ดูคลิป',
                       style: TextStyle(
                         fontSize: 10,
@@ -6916,6 +7113,25 @@ class _PlatformSelectorSection extends StatelessWidget {
             ),
           ),
         ),
+        if (!isLoadingConnections &&
+            !hasConnectionError &&
+            !hasConnectedPlatforms) ...[
+          const SizedBox(height: AppTheme.spaceMd),
+          ChannelText(
+              'รองรับ TikTok, YouTube Shorts, Instagram Reels และ Facebook Reels '
+              'เชื่อมอย่างน้อย 1 ช่องทางเพื่อโพสต์คลิปนี้',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: AppTheme.textSecondary)),
+          const SizedBox(height: AppTheme.spaceSm),
+          FilledButton.icon(
+            key: const ValueKey('uploader-connect-platforms-button'),
+            onPressed: onOpenConnections,
+            icon: const Icon(Icons.link_rounded, size: 18),
+            label: const ChannelText('เชื่อมต่อช่องทาง'),
+          ),
+        ],
         if (hasConnectionError) ...[
           Align(
             alignment: Alignment.centerRight,
@@ -8067,6 +8283,7 @@ class _AiCaptionPanel extends StatelessWidget {
     final requiredCredits = selectedPlatformCount ?? 1;
     final insufficientCredits = quota?.isPaid == true &&
         quota!.availableCount < requiredCredits;
+    final aiLocked = quota != null && !quota!.isPaid;
 
     return DecoratedBox(
       key: const ValueKey('uploader-ai-caption-panel'),
@@ -8218,6 +8435,19 @@ class _AiCaptionPanel extends StatelessWidget {
                         color: Theme.of(context).colorScheme.error)),
               const SizedBox(height: 8),
             ],
+            // A plan without AI captions sees a quiet path to the packages.
+            // The tap still re-checks the fresh plan, so a stale Basic quota
+            // never blocks someone who has just upgraded.
+            if (aiLocked)
+              OutlinedButton.icon(
+                key: const ValueKey('uploader-ai-generate-button'),
+                onPressed: formBusy || isGenerating || isSavingStyle
+                    ? null
+                    : onGenerate,
+                icon: const Icon(Icons.workspace_premium_outlined, size: 18),
+                label: const CaptionText('ดูแพ็กเกจเพื่อใช้ AI'),
+              )
+            else
             PostDeePressFeedback(
               enabled: animate &&
                   !insufficientCredits &&

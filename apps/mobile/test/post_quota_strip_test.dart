@@ -80,11 +80,22 @@ void main() {
         addon: 100,
         requiresPhoneVerification: true)));
 
-    expect(find.text('0 / 3 หน่วย', findRichText: true), findsOneWidget);
-    expect(find.text('ใช้ไป 0 หน่วย'), findsOneWidget);
-    expect(find.text('ยืนยันเบอร์เพื่อใช้โควตาฟรี'), findsOneWidget);
+    // "0 left, 0 used" read as a broken quota. The phone gate explains the
+    // free allowance instead of showing numbers the seller cannot use yet.
+    expect(find.text('0 / 3 หน่วย', findRichText: true), findsNothing);
+    expect(find.text('ใช้ไป 0 หน่วย'), findsNothing);
+    expect(find.byKey(const ValueKey('uploader-post-quota-progress')),
+        findsNothing);
+    expect(find.text('ยืนยันเบอร์โทรเพื่อรับโพสต์ฟรี 3 หน่วยต่อเดือน'),
+        findsOneWidget);
+    expect(find.text('1 หน่วย = โพสต์ 1 ช่องทาง'), findsOneWidget);
     expect(find.textContaining('เครดิตเติม'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('explains what one posting unit means', (tester) async {
+    await tester.pumpWidget(_host(_subscription()));
+    expect(find.text('1 หน่วย = โพสต์ 1 ช่องทาง'), findsOneWidget);
   });
 
   testWidgets('Basic never presents retained paid units as spendable',

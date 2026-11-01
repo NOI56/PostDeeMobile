@@ -264,6 +264,16 @@ const _englishMessages = <String, String>{
       'Too many requests. Wait a moment and try again.',
   'ดำเนินการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง':
       'Could not complete the action. Please try again.',
+  'ก่อนเริ่มโพสต์': 'Before you can post',
+  'ยืนยันเบอร์โทร': 'Verify your phone number',
+  'แพ็กเกจ Basic ต้องยืนยันก่อนโพสต์': 'Basic requires this before posting',
+  'แพ็กเกจ Basic ต้องยืนยันก่อน ยืนยันได้ที่หน้าบัญชี':
+      'Basic requires this first. Verify it from the Account tab.',
+  'ยืนยัน': 'Verify',
+  'เชื่อมโซเชียลอย่างน้อย 1 ช่องทาง': 'Connect at least 1 social account',
+  'TikTok, YouTube Shorts, Instagram หรือ Facebook':
+      'TikTok, YouTube Shorts, Instagram, or Facebook',
+  'เชื่อมต่อ': 'Connect',
 };
 
 class UploaderText extends StatelessWidget {

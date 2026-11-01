@@ -41,6 +41,29 @@ class PostQuotaStrip extends StatelessWidget {
     final remainingFraction =
         limit > 0 ? (remaining / limit).clamp(0.0, 1.0) : 0.0;
     final canSpendAddon = subscription.isStarter || subscription.isPro;
+    // Until the phone is verified the API reports "0 left, 0 used", which
+    // reads as a broken quota. Explain the free allowance instead, and hide
+    // the numbers while they say nothing.
+    final phoneGate = subscription.requiresPhoneVerification;
+    final hideNumbers = phoneGate && remaining == 0 && used == 0;
+    final phoneGateText = Text(
+        uploaderText(
+            context,
+            'ยืนยันเบอร์โทรเพื่อรับโพสต์ฟรี $limit หน่วยต่อเดือน',
+            'Verify your phone to get $limit free post ${limit == 1 ? 'unit' : 'units'} per month'),
+        key: const ValueKey('uploader-post-quota-phone-gate'),
+        style: hideNumbers
+            ? secondaryStyle?.copyWith(
+                color: AppTheme.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              )
+            : secondaryStyle);
+    final unitHint = Text(
+        uploaderText(
+            context, '1 หน่วย = โพสต์ 1 ช่องทาง', '1 unit = 1 post to 1 channel'),
+        key: const ValueKey('uploader-post-quota-unit-hint'),
+        style: secondaryStyle);
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -97,6 +120,11 @@ class PostQuotaStrip extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 3),
+            if (hideNumbers) ...[
+              phoneGateText,
+              const SizedBox(height: 2),
+              unitHint,
+            ] else ...[
             Wrap(
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
@@ -152,10 +180,12 @@ class PostQuotaStrip extends StatelessWidget {
                       '+ ${subscription.addonPostUnits} add-on ${subscription.addonPostUnits == 1 ? 'unit' : 'units'}'),
                   style: secondaryStyle),
             ],
-            if (subscription.requiresPhoneVerification) ...[
+            if (phoneGate) ...[
               const SizedBox(height: 4),
-              UploaderText('ยืนยันเบอร์เพื่อใช้โควตาฟรี',
-                  style: secondaryStyle),
+              phoneGateText,
+            ],
+            const SizedBox(height: 2),
+            unitHint,
             ],
           ],
         ),

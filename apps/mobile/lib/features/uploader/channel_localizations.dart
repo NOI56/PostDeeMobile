@@ -298,6 +298,11 @@ const _messages = <String, String>{
   'ไม่ใช่': 'No',
   'เลือกเผยแพร่หรือเก็บเป็นร่างบนเพจก่อนบันทึก':
       'Choose Publish to Page or Save as Page draft before saving.',
+  'รองรับ TikTok, YouTube Shorts, Instagram Reels และ Facebook Reels '
+          'เชื่อมอย่างน้อย 1 ช่องทางเพื่อโพสต์คลิปนี้':
+      'Supports TikTok, YouTube Shorts, Instagram Reels, and Facebook Reels. '
+          'Connect at least 1 to post this video.',
+  'เชื่อมต่อช่องทาง': 'Connect channels',
 };
 
 class ChannelText extends StatelessWidget {

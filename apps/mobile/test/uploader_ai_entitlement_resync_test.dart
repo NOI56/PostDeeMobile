@@ -88,6 +88,7 @@ class _ResyncFixture {
   int loads = 0;
   int resyncs = 0;
   int extractions = 0;
+  int paywallOpens = 0;
 
   Future<SubscriptionStatusResult> _load() async {
     loads++;
@@ -111,6 +112,7 @@ class _ResyncFixture {
       loadSubscription: _load,
       resyncRevenueCatSubscription: _resync,
       enableRevenueCatBilling: enabled,
+      openPaywall: (_) async => paywallOpens++,
       pickVideo: () async => replacement ?? video,
       extractFrames: (_, {int maxFrames = 3}) async {
         extractions++;
@@ -283,7 +285,9 @@ void main() {
     expect(fixture.loads, 2);
     expect(fixture.resyncs, 1);
     fixture.expectNoMediaWork();
-    expect(find.text(_paidRequired), findsOneWidget);
+    // A confirmed denial opens the packages once instead of an error.
+    expect(fixture.paywallOpens, 1);
+    expect(find.text(_paidRequired), findsNothing);
     _expectOriginalText(tester);
     expect(
         tester
@@ -299,7 +303,9 @@ void main() {
     await _generate(tester);
     expect(fixture.events, ['get-1', 'resync', 'get-2']);
     fixture.expectNoMediaWork();
-    expect(find.text(_paidRequired), findsOneWidget);
+    // A confirmed denial opens the packages once instead of an error.
+    expect(fixture.paywallOpens, 1);
+    expect(find.text(_paidRequired), findsNothing);
   });
 
   for (final plan in ['PRO', 'STARTER']) {
@@ -322,7 +328,9 @@ void main() {
     expect(fixture.loads, 1);
     expect(fixture.resyncs, 0);
     fixture.expectNoMediaWork();
-    expect(find.text(_paidRequired), findsOneWidget);
+    // A confirmed denial opens the packages once instead of an error.
+    expect(fixture.paywallOpens, 1);
+    expect(find.text(_paidRequired), findsNothing);
   });
 
   final failures = <String, Object>{

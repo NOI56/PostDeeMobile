@@ -18,6 +18,7 @@ import '../auth/firebase_account_access_revoker.dart';
 import '../auth/firebase_email_auth_gateway.dart';
 import '../auth/firebase_google_auth_gateway.dart';
 import '../auth/firebase_id_token_refresher.dart';
+import '../auth/phone_verification_screen.dart';
 import '../calendar/calendar_screen.dart';
 import '../billing/addon_pending_store.dart';
 import '../captions/caption_writing_style_store.dart';
@@ -409,6 +410,29 @@ class _PostDeeShellState extends State<PostDeeShell> {
     await _openPostComposer(initialDraftId: draft.id);
   }
 
+  // Same verification the Account tab opens, reachable from the composer's
+  // posting checklist. Credentials update only for the account that began it.
+  Future<void> _verifyPhoneFromComposer(BuildContext context) async {
+    final sessions = PostDeeAuthSessionStore.instance;
+    final binding = sessions.captureSession();
+    bool sameAccount(AuthSession verified) =>
+        binding.isCurrent &&
+        verified.stableUserId == sessions.session.stableUserId;
+    final session = await Navigator.of(context).push<AuthSession>(
+      MaterialPageRoute<AuthSession>(
+        builder: (_) => PhoneVerificationScreen(
+          runNativeAuthOperation: _authController.runBoundNativeAuthOperation,
+          onVerified: (verified) {
+            if (sameAccount(verified)) sessions.updateCredentials(verified);
+          },
+        ),
+      ),
+    );
+    if (session != null && sameAccount(session)) {
+      sessions.updateCredentials(session);
+    }
+  }
+
   Future<void> _openHomeConnections() async {
     if (!mounted ||
         _isHomeConnectionsOpen ||
@@ -464,6 +488,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
                 }
               },
               onPublishFinished: () => _finishPostComposer(route, 0),
+              verifyPhone: _verifyPhoneFromComposer,
             ),
           ),
         ),

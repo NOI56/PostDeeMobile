@@ -98,6 +98,7 @@ class CaptionEnglishFixture extends VideoEnglishFixture {
   final templates = <TextTemplateResult>[];
   int templateReads = 0;
   int subscriptionReads = 0;
+  int paywallOpens = 0;
   Object? templateError;
   Object? aiError;
   Object? aiQuotaError;
@@ -122,6 +123,7 @@ class CaptionEnglishFixture extends VideoEnglishFixture {
       fullScreen: true,
       draftStore: store,
       enableRevenueCatBilling: false,
+      openPaywall: (_) async => paywallOpens++,
       captionWritingStyleStore: styles,
       initialDraftId: initialDraftId,
       initialVideoPath: initialVideo?.path,
@@ -392,7 +394,8 @@ void main() {
     await revealCaptionEnglishControl(
         tester, find.byKey(const ValueKey('uploader-ai-style-summary')));
     expect(
-        find.text('Friendly · Short and concise · No emoji'), findsOneWidget);
+        find.text('Style: Friendly · Short and concise · No emoji'),
+        findsOneWidget);
     expect(fixture.styles.profile, same(profile));
     expect(profile.style.summary, 'เป็นกันเอง · สั้น กระชับ · ไม่ใช้อีโมจิ');
     expect(fixture.styles.loads, [captionEnglishOwner]);
@@ -508,10 +511,12 @@ void main() {
     addTearDown(fixture.dispose);
     await fixture.mount(tester);
     await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
+    // The fresh denial opens the packages instead of a dead-end error.
+    expect(fixture.paywallOpens, 1);
     expect(
         find.text(
             'AI captions are available on Starter or Pro. Please check your plan.'),
-        findsOneWidget);
+        findsNothing);
     expect(fixture.subscriptionReads, 1);
     expect(fixture.requests, isEmpty);
     expect(fixture.uploadRequests, isEmpty);

@@ -731,7 +731,9 @@ class HomeActivitySectionState extends State<HomeActivitySection>
             child: TextButton(
                 key: const ValueKey('home-manage-connections'),
                 onPressed: widget.onOpenConnections,
-                child: Text(_text('จัดการ', 'Manage')))),
+                child: Text(_connectedPlatforms.isEmpty && !_connectionsError
+                    ? _text('เชื่อม', 'Connect')
+                    : _text('จัดการ', 'Manage')))),
       ])
     ]));
   }

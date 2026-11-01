@@ -448,6 +448,8 @@ void main() {
     final quotaReads = fixture.quotaReads;
     final metadataReads = fixture.metadataReads.length;
     await tapVideoEnglishControl(tester, 'uploader-video-preview-picker');
+    // The posting checklist lengthens the clip step, so bring the card back.
+    await revealVideoEnglishControl(tester, find.text('คลิปเดิม.mp4'));
     expect(find.text('คลิปเดิม.mp4'), findsOneWidget);
     expect(find.text('Video selected'), findsOneWidget);
     expect(fixture.picks, 2);
@@ -691,7 +693,7 @@ void main() {
             find.text('240 / 250 units', findRichText: true), findsOneWidget);
       } else {
         expect(find.text('+ 40 add-on units'), findsNothing);
-        expect(find.text('Verify your phone number to use the free quota'),
+        expect(find.text('Verify your phone to get 3 free post units per month'),
             findsOneWidget);
         expect(find.text('1 unit used'), findsOneWidget);
         expect(find.text('2 / 3 units', findRichText: true), findsOneWidget);

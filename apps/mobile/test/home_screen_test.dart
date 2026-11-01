@@ -304,7 +304,7 @@ void main() {
       loadRecentPosts: () async => const [],
     )));
     await tester.pumpAndSettle();
-    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+    expect(find.text('แพ็กเกจ Basic'), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump();
@@ -706,7 +706,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ตรวจสอบแพ็กเกจไม่ได้'), findsOneWidget);
-    expect(find.text('แพ็กเกจฟรี'), findsNothing);
+    expect(find.text('แพ็กเกจ Basic'), findsNothing);
     expect(find.text('อัปเกรด'), findsNothing);
   });
 
@@ -912,9 +912,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+    expect(find.text('แพ็กเกจ Basic'), findsOneWidget);
 
-    await tester.tap(find.text('แพ็กเกจฟรี'));
+    await tester.tap(find.text('แพ็กเกจ Basic'));
     await tester.pumpAndSettle();
     expect(find.text('เลือกแพ็กเกจ'), findsOneWidget);
 
@@ -996,7 +996,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('หน้าแรก'), findsOneWidget);
-    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+    expect(find.text('แพ็กเกจ Basic'), findsOneWidget);
     expect(find.text('ตัดต่อด้วย AI'), findsNothing);
     expect(find.text('ลิงก์หน้าโปรไฟล์'), findsOneWidget);
     expect(find.text('ยอดวิวเดือนนี้'), findsNothing);
@@ -1057,7 +1057,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('หน้าแรก'), findsOneWidget);
-    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+    expect(find.text('แพ็กเกจ Basic'), findsOneWidget);
     expect(find.text('เหลือ 1/3 หน่วย'), findsOneWidget);
     expect(find.byKey(const ValueKey('home-plan-progress-fill')), findsNothing);
     expect(find.text('อัปเกรด'), findsOneWidget);

@@ -19,7 +19,7 @@ void main() {
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
   Future<void> show(WidgetTester tester, _Addon addon,
-      {VoidCallback? onPurchased}) async {
+      {VoidCallback? onPurchased, bool revealCard = true}) async {
     await tester.pumpWidget(MaterialApp(
         home: PaywallScreen(
             service: StoreSubscriptionService(
@@ -34,6 +34,7 @@ void main() {
                 canUseAiCaptions: true,
                 canUseAnalytics: true))));
     await tester.pumpAndSettle();
+    if (!revealCard) return;
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('paywall-addon-card')), 400);
   }
@@ -57,11 +58,21 @@ void main() {
     expect(find.text('เติมเครดิตสำเร็จ'), findsOneWidget);
   });
 
-  for (final state in ['disabled', 'basic', 'missing']) {
+  testWidgets('an unsold add-on is hidden instead of shown disabled',
+      (tester) async {
+    final addon = _Addon(enabled: false);
+    await show(tester, addon, revealCard: false);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -4000));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('paywall-addon-card')), findsNothing);
+    expect(find.text('แพ็กเติมยังไม่เปิดขาย'), findsNothing);
+    expect(addon.purchaseCalls, 0);
+  });
+
+  for (final state in ['basic', 'missing']) {
     testWidgets('$state prevents add-on checkout before payment',
         (tester) async {
       final addon = _Addon(
-          enabled: state != 'disabled',
           eligible: state != 'basic',
           hasProduct: state != 'missing');
       await show(tester, addon);

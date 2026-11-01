@@ -79,7 +79,7 @@ void main() {
       final bannerTop = tester
           .getTopLeft(find.byKey(const ValueKey('service-incident-incident-1')))
           .dy;
-      expect(bannerTop, lessThan(tester.getTopLeft(find.text('แพ็กเกจฟรี')).dy));
+      expect(bannerTop, lessThan(tester.getTopLeft(find.text('แพ็กเกจ Basic')).dy));
     });
 
     testWidgets('stays hidden when there is no notice or the read fails',

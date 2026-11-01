@@ -123,6 +123,7 @@ void main() {
     UploaderSubscriptionLoader? loadSubscription,
     UploaderRealClipCaptionGenerator? generate,
     UploaderUploadCreator? createUpload,
+    Future<void> Function(BuildContext context)? openPaywall,
   }) async {
     final directory =
         Directory.systemTemp.createTempSync('caption-quota-main-');
@@ -161,6 +162,7 @@ void main() {
                   storageProvider: 'mock'),
           uploadVideoFile: (_, __) async {},
           generateRealClipCaption: generate ?? (_) async => _generated(),
+          openPaywall: openPaywall ?? (_) async {},
         ))));
     await tester.pumpAndSettle();
   }
@@ -400,7 +402,9 @@ void main() {
       (tester) async {
     var uploads = 0;
     var generations = 0;
+    var paywallOpens = 0;
     await pumpUploader(tester,
+        openPaywall: (_) async => paywallOpens++,
         loadQuota: () async => _quota(used: 7, plan: 'BASIC', addon: 8),
         loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'owner-a',
@@ -429,13 +433,17 @@ void main() {
     expect(find.textContaining('เครดิตไม่พอ'), findsNothing);
     expect(uploads, 0);
     expect(generations, 0);
-    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed,
-        isNotNull);
+    // Basic gets a quiet upgrade action instead of a bright generate button.
+    expect(find.byType(PostDeeGradientButton), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byKey(_action), matching: find.text('ดูแพ็กเกจเพื่อใช้ AI')),
+        findsOneWidget);
     await tester.tap(find.byKey(_action));
     await tester.pumpAndSettle();
     expect(uploads, 0);
     expect(generations, 0);
-    expect(find.textContaining('กรุณาตรวจสอบแพ็กเกจของคุณ'), findsOneWidget);
+    expect(paywallOpens, 1);
   });
 
   testWidgets('cached Basic quota cannot override fresh paid AI entitlement',
@@ -449,8 +457,7 @@ void main() {
         });
     await _show(tester, find.byKey(_action));
     expect(strip(tester).plan, 'BASIC');
-    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).onPressed,
-        isNotNull);
+    // A stale Basic quota still checks the fresh plan before upselling.
     await tester.tap(find.byKey(_action));
     await tester.pumpAndSettle();
     expect(generations, 1);
@@ -458,11 +465,13 @@ void main() {
     expect(strip(tester).quota.remainingThisMonth, 37);
   });
 
-  testWidgets('Basic advanced mode retains quota and per-channel pricing',
+  testWidgets('Basic advanced mode retains quota and opens packages',
       (tester) async {
     var uploads = 0;
     var generations = 0;
+    var paywallOpens = 0;
     await pumpUploader(tester,
+        openPaywall: (_) async => paywallOpens++,
         loadQuota: () async => _quota(used: 0, plan: 'BASIC', addon: 8),
         loadSubscription: () async => const SubscriptionStatusResult(
             userId: 'owner-a',
@@ -487,14 +496,17 @@ void main() {
     expect(find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
     expect(find.textContaining('เครดิตเติม'), findsNothing);
     expect(find.textContaining('เครดิตไม่พอ'), findsNothing);
-    expect(tester.widget<PostDeeGradientButton>(find.byKey(_action)).label,
-        'สร้างแคปชั่น · 2 เครดิต');
+    expect(
+        find.descendant(
+            of: find.byKey(_action), matching: find.text('ดูแพ็กเกจเพื่อใช้ AI')),
+        findsOneWidget);
     expect(uploads, 0);
     expect(generations, 0);
     await tester.tap(find.byKey(_action));
     await tester.pumpAndSettle();
     expect(uploads, 0);
     expect(generations, 0);
+    expect(paywallOpens, 1);
   });
 
   testWidgets('account replacement discards old balance and late generation',

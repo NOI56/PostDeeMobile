@@ -116,7 +116,7 @@ void main() {
 
     expect(find.text('Home'), findsWidgets);
     expect(find.text('Could not check package'), findsOneWidget);
-    expect(find.text('Free package'), findsNothing);
+    expect(find.text('Basic package'), findsNothing);
     expect(find.text('AI editing'), findsNothing);
     expect(find.text('Views this month'), findsNothing);
     expect(find.text('Likes this month'), findsNothing);

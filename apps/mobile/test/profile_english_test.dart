@@ -363,8 +363,8 @@ void main() {
   }
 
   for (final tier in const {
-    'BASIC': 'Free',
-    'FREE': 'Free',
+    'BASIC': 'Basic',
+    'FREE': 'Basic',
     'STARTER': 'Starter',
     'PRO': 'Pro',
     'FUTURE_PLAN': 'Unknown plan',

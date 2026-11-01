@@ -189,7 +189,10 @@ void main() {
             find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
       }
       if (mode.advanced) {
-        expect(find.text('สร้างแคปชั่น · 4 เครดิต'), findsOneWidget);
+        // Basic sees the package path instead of a credit price.
+        expect(
+            find.text(paid ? 'สร้างแคปชั่น · 4 เครดิต' : 'ดูแพ็กเกจเพื่อใช้ AI'),
+            findsOneWidget);
       }
       expect(writes, 0);
       final card = tester.widget<CaptionQuotaStrip>(strip);

@@ -110,7 +110,7 @@ void main() {
     final context = await _context(tester, 'en');
     expect(
         localizeReviewMessage(
-            context, 'ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 ครั้งต่อเดือน'),
+            context, 'ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 หน่วยต่อเดือน'),
         'Verify your phone number before using the 3 free post units per month.');
   });
   testWidgets('draft readiness accepts only an exact finite platform list',

@@ -524,7 +524,20 @@ void main() {
     });
   }
 
-  for (final state in ['disabled', 'ineligible', 'missing', 'error']) {
+  testWidgets('an unsold credit pack is hidden', (tester) async {
+    final fixture = _Fixture();
+    fixture.addons.enabled = false;
+    addTearDown(fixture.dispose);
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -4000));
+    await tester.pumpAndSettle();
+    expect(_key('paywall-addon-card'), findsNothing);
+    expect(find.text('Credit packs are not on sale yet'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final state in ['ineligible', 'missing', 'error']) {
     testWidgets('credit pack $state remains unavailable with an English reason',
         (tester) async {
       final fixture = _Fixture();
@@ -539,7 +552,6 @@ void main() {
       await tester.pumpAndSettle();
       await _reveal(tester, _key('paywall-addon-card'));
       final message = switch (state) {
-        'disabled' => 'Credit packs are not on sale yet',
         'ineligible' =>
           'For Starter or Pro members · Subscribe to a plan above first',
         'missing' => 'Could not load the credit pack from your store.',

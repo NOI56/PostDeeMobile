@@ -1219,12 +1219,13 @@ class _CurrentPlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final plan = subscription.plan.toUpperCase();
     final name = switch (plan) {
-      'BASIC' || 'FREE' => _profileText(context, 'ฟรี', 'Free'),
+      'BASIC' || 'FREE' => 'Basic',
       'STARTER' => 'Starter',
       'PRO' => 'Pro',
       _ => _profileText(context, 'ไม่รู้จักแพ็กเกจนี้', 'Unknown plan'),
     };
     final isPaid = plan == 'STARTER' || plan == 'PRO';
+    final isBasic = plan == 'BASIC' || plan == 'FREE';
     final status = switch (subscription.status.toUpperCase()) {
       'ACTIVE' => _profileText(context, 'ใช้งานอยู่', 'Active'),
       'INACTIVE' => _profileText(context, 'ยังไม่เปิดใช้งาน', 'Inactive'),
@@ -1278,10 +1279,10 @@ class _CurrentPlanCard extends StatelessWidget {
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                if (isPaid) ...[
+                if (isPaid || isBasic) ...[
                   const SizedBox(height: 4),
                   Text(
-                    status,
+                    isPaid ? status : _profileText(context, 'ฟรี', 'Free'),
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.textSecondary,
@@ -1291,12 +1292,29 @@ class _CurrentPlanCard extends StatelessWidget {
                 if (remaining != null && limit != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    _profileText(
-                        context,
-                        'เหลือโพสต์ $remaining / $limit หน่วยเดือนนี้',
-                        '$remaining / $limit post units left this month'),
+                    // "0 / 3 left" before verification read as a used-up
+                    // quota, so the phone gate explains the allowance.
+                    subscription.requiresPhoneVerification
+                        ? _profileText(
+                            context,
+                            'ยืนยันเบอร์โทรเพื่อรับโพสต์ฟรี $limit หน่วยต่อเดือน',
+                            'Verify your phone to get $limit free post units per month')
+                        : _profileText(
+                            context,
+                            'เหลือโพสต์ $remaining / $limit หน่วยเดือนนี้',
+                            '$remaining / $limit post units left this month'),
                     style: TextStyle(
                       fontSize: 12,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _profileText(context, '1 หน่วย = โพสต์ 1 ช่องทาง',
+                        '1 unit = 1 post to 1 channel'),
+                    key: const ValueKey('profile-plan-unit-hint'),
+                    style: TextStyle(
+                      fontSize: 11,
                       color: AppTheme.textSecondary,
                     ),
                   ),

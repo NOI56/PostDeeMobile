@@ -1077,14 +1077,16 @@ class _PlanSummaryCard extends StatelessWidget {
       return isThai ? 'ตรวจสอบแพ็กเกจไม่ได้' : 'Could not check package';
     }
 
+    // Basic is the plan's name everywhere else (packages, composer, Account),
+    // so Home uses it too instead of a separate "free package" label.
     if (current == null) {
-      return isThai ? 'แพ็กเกจฟรี' : 'Free package';
+      return isThai ? 'แพ็กเกจ Basic' : 'Basic package';
     }
 
     return switch (current.plan.toUpperCase()) {
       'PRO' => isThai ? 'แพ็กเกจ Pro' : 'Pro package',
       'STARTER' => isThai ? 'แพ็กเกจ Starter' : 'Starter package',
-      'BASIC' || 'FREE' => isThai ? 'แพ็กเกจฟรี' : 'Free package',
+      'BASIC' || 'FREE' => isThai ? 'แพ็กเกจ Basic' : 'Basic package',
       _ => current.plan,
     };
   }
@@ -1117,6 +1119,11 @@ class _PlanSummaryCard extends StatelessWidget {
       return isThai ? 'ยังไม่ทราบหน่วยคงเหลือ' : 'Remaining units unavailable';
     }
     final includedUnits = _planIncludedUnits();
+    if (subscription?.requiresPhoneVerification == true) {
+      return isThai
+          ? 'ยืนยันเบอร์เพื่อรับ $includedUnits หน่วยฟรี'
+          : 'Verify your phone to get $includedUnits free units';
+    }
     return isThai
         ? 'เหลือ $remainingPosts/$includedUnits หน่วย'
         : '$remainingPosts/$includedUnits units left';

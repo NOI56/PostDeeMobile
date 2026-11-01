@@ -97,7 +97,6 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | Starter/Pro | Paywall, RevenueCat gateway, Play products/entitlements/default offering และ production Android public SDK key เตรียมแล้ว | สร้าง Play Console app/subscriptions และ service credentials จากนั้นทดสอบซื้อ ต่ออายุ ยกเลิก คืนเงิน และ restore ผ่าน Internal Testing บนมือถือจริง |
 | AI แคปชั่นจากคลิป | Gemini adapter และ quota มีในโค้ด | ทดสอบ provider, โควตา, frame flow และ usage ledger ด้วยบัญชี Starter/Pro จริง |
 | แชตช่วยเหลือและประกาศสถานะบริการ | แชตในแอปและ API มีแล้ว ทีมงานตอบผ่านหน้าแอดมิน และส่งประกาศสถานะบริการได้; ผู้ช่วยตอบอัตโนมัติ Dot ปิดอยู่ | ทดสอบส่ง ตอบ ปิดแชต และการแจ้งเตือนบน production ก่อนอ้างเป็นช่องทางช่วยเหลือ |
-| Analytics | API/UI ใช้ข้อมูล backend และไม่สร้างตัวเลขปลอม | ต้องมีผลโพสต์จริงจาก provider และตรวจช่วงวันที่/ยอดจากบัญชีจริง |
 | Push notification | FCM mobile/server code มี | เปิด Firebase sender, ทดสอบ permission, token refresh, logout/unregister และ invalid-token cleanup |
 | ลบบัญชีฝั่งบริการ | มี in-app flow, cleanup saga, durable managed-upload marker และ durable PostgreSQL owner drain (อยู่บน Staging แล้ว) แต่ Production ยังปิดจนกว่าจะทดสอบกับบริการจริง | ตรวจ R2/PostPeer/Firebase cleanup ด้วยบัญชีทดสอบบน Staging, RevenueCat behavior, physical-device/slow-network race และ public deletion URL ก่อนเปิด; local draft/Application Support และ OS backup ไม่ถูกลบโดย flow ฝั่งบริการ ต้องมี copy/วิธีลบแยกที่ตรงกัน |
 
@@ -109,6 +108,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 - Hashtag Radar, ศูนย์คอมเมนต์ AI และแจ้งเตือนไวรัล
 - Link in Bio ที่เผยแพร่เป็นเว็บไซต์จริง
 - Team & Editor Access
+- สถิติ/analytics ของโพสต์ (ยกเลิกแล้ว)
 - AI ตัดต่อวิดีโอ ซับไตเติล และเครื่องมือตัดต่อด้วยมือ (ยกเลิกแล้ว ไม่มีในแอปปัจจุบัน)
 - Beat sync/เพลงอัตโนมัติ และ Hook 3 วินาที
 - Auto reframe, auto zoom, ลดเสียงรบกวน, แปลซับ, ป้ายราคา, CTA card
@@ -124,7 +124,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | --- | --- | --- |
 | Basic | 3 post units/เดือนหลังยืนยันเบอร์, ลิงก์ร้านสูงสุด 2 ลิงก์; ไม่มี AI แคปชั่นและการตั้งเวลา | Phone Auth และ real publishing ต้องผ่าน production test |
 | Starter | 120 post units, ลิงก์ร้านสูงสุด 7 ลิงก์, ตั้งเวลาล่วงหน้า 14 วัน + ปฏิทิน + เทมเพลต, AI แคปชั่นจากเสียง 50 เครดิต, ลายน้ำ PostDee อัตโนมัติ | Google product/RevenueCat และ AI provider ยังไม่ผ่าน checkout-to-entitlement E2E |
-| Pro | 250 post units, ลิงก์ร้านสูงสุด 20 ลิงก์, ทุกอย่างใน Starter + analytics, ตั้งเวลาล่วงหน้า 30 วัน, AI แคปชั่นเสียง+ภาพ 120 เครดิต | ต้องทดสอบ entitlement, quota, provider และอุปกรณ์จริงก่อนโฆษณา |
+| Pro | 250 post units, ลิงก์ร้านสูงสุด 20 ลิงก์, รวมฟีเจอร์ใน Starter, ตั้งเวลาล่วงหน้า 30 วัน, AI แคปชั่นเสียง+ภาพ 120 เครดิต | ต้องทดสอบ entitlement, quota, provider และอุปกรณ์จริงก่อนโฆษณา |
 
 ข้อความในตารางนี้ตรงกับ `apps/mobile/lib/features/billing/paywall_screen.dart` และ
 `apps/api/src/modules/subscriptions/subscriptionEntitlements.ts` ณ วันที่อัปเดต
@@ -259,7 +259,6 @@ Google Play กำหนดอย่างน้อย 2 ภาพ; สำหร
 - [ ] ภาพ 3 — preview วิดีโอและเลือกหน้าปกจริง
 - [ ] ภาพ 4 — ปฏิทินและสถานะคิว/ตั้งเวลา โดยไม่อ้างว่าคิวคือโพสต์สำเร็จ
 - [ ] ภาพ AI แคปชั่นใช้ได้ต่อเมื่อ provider และโควตาผ่าน real-device E2E
-- [ ] ภาพ Analytics ใช้ได้ต่อเมื่อเป็นข้อมูลจาก real publish ไม่ใช่ mock/demo
 - [ ] ภาพ Paywall ใช้ได้ต่อเมื่อ Google products/ราคา/entitlement ตรง production
 - [ ] ลบ notification, email, UID, ชื่อบัญชี, token และข้อมูลลูกค้าออกจากภาพ
 - [ ] ไม่ใช้ device frame เก่า, โลโก้แพลตฟอร์มโดยไม่มีสิทธิ์ หรือข้อความ claim ที่พิสูจน์ไม่ได้

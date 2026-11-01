@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Caption evidence and request lifetime (2026-11-01, local candidate)
+## Caption evidence and request lifetime (2026-11-01, Staging API delivered)
 
 The real-clip Gemini provider separates multimodal evidence extraction from
 text-only caption writing and a final evidence audit/repair. Pure audio cannot contribute visual observations;
@@ -18,6 +18,9 @@ Shared-caption preview/selection/undo follows the existing owner, source and
 text-staleness guards. Fallback leaves current text intact. API first, then
 Mobile, with no schema migration or new environment variable. See [implementation
 and verification](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+Staging runs `604ecad7` with unchanged schema/environment; English live quality,
+native proxy preparation and hosted end-to-end acceptance remain pending.
+Production is unchanged. See the [delivery record](docs/STAGING.md).
 
 ## Preserved-work integration (2026-11-01, main / Staging API delivered)
 

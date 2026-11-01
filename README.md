@@ -1,6 +1,6 @@
 # PostDee
 
-## Caption quality and recovery (2026-11-01, local candidate)
+## Caption quality and recovery (2026-11-01, main / Staging API delivered)
 
 AI captions read clip evidence before writing, preserve the original meaning,
 and return an uncharged fallback when evidence is insufficient. Generation has
@@ -9,8 +9,12 @@ adds shared-caption choices and undo, preserves manual text on fallback, and
 prepares a small visual proxy for large clips without extractable audio.
 Per-channel credits and package rights stay unchanged. No migration or new
 environment variable; deploy API before Mobile. See the [change and verification
-record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md). This is
-a local candidate, not a hosted deployment or a guarantee of caption accuracy.
+record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+Staging API runs `604ecad7`; the Staging APK is installed on the test emulator.
+English live quality still awaits the same test key's daily quota reset, and
+silent visual clips/native proxy/R2 end-to-end checks remain pending. CI and
+deployment health do not establish caption accuracy for every clip. Production
+is unchanged; see the [delivery record](docs/STAGING.md).
 
 ## Preserved-work integration (2026-11-01, main / Staging API delivered)
 

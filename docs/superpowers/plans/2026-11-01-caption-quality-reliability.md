@@ -1,4 +1,4 @@
-# Caption quality and recovery (2026-11-01, local candidate)
+# Caption quality and recovery (2026-11-01, main / Staging API delivered)
 
 ## Baseline and scope
 
@@ -11,7 +11,9 @@
   isolation, draft recovery, writing styles, publishing targets, scheduling,
   Facebook Page Reels settings and all retired-feature boundaries.
 - No schema migration, entitlement change, dependency upgrade or new environment
-  variable. API first, then Mobile; no merge, push or deployment is included.
+  variable. The owner authorized merge/push/Staging delivery after the local
+  candidate and its remaining live-test limits were reported. Production remains
+  outside this delivery; retain API-first compatibility for future rollout.
 
 ## Evidence behind the change
 
@@ -129,12 +131,46 @@ and the existing RevenueCat Test Store overlay. Firebase Staging project:
   account and one saved draft still visible; create-post navigation opened.
   AndroidRuntime showed no crash. Startup screenshots are in
   `.tmp/caption-quality/native-startup.png` and `native-draft.png`.
-- The account is Basic and the hosted API still runs its previous implementation.
+- At the native smoke check, the account was Basic and the hosted API had not
+  yet received this patch.
   No entitlement was changed and no real-account AI/publishing action was run.
   The new selection sheet was checked with widget fixtures; native generation,
   FFmpeg proxy preparation on Android, R2 cleanup and hosted end-to-end acceptance
-  remain separate checks. API and then Mobile rollout still require authorization.
-- This is a local candidate. No merge, push or API deployment has occurred.
+  remain separate checks. The subsequent authorized Staging API deploy does not
+  complete those checks or authorize a Production/store release.
+
+## Main and Staging delivery
+
+- Fast-forwarded and pushed `main` from verified `353cb011` to
+  `604ecad78916881421fe07f6b4eb4a4f30951b5c`, retaining `[skip render]` and the
+  original dirty checkout. API tree `3c8e1ea6449d4b68624d13ac0aefbd599a4c9433`
+  and Mobile tree `4cc3de4e8b499bc24e167943e7f302f11f8cc640` match the tested candidate.
+- [CI 41327579474](https://github.com/NOI56/PostDeeMobile/actions/runs/41327579474)
+  passed on that exact SHA at **23:52:04 Asia/Bangkok / 16:52:04 UTC**:
+  API **3,259 passed / 67 skipped**, Mobile **4,571 passed / 7 skipped**;
+  typecheck/build/Prisma/audit and Mobile analyze/config guards passed. The seven
+  caption PostgreSQL cases skipped in CI passed on the isolated local fixture.
+- [iOS 41327579445](https://github.com/NOI56/PostDeeMobile/actions/runs/41327579445)
+  passed its no-codesign build at **23:47:09 Asia/Bangkok / 16:47:09 UTC**. The
+  artifact was not distributed or installed.
+- Staging deploy
+  [`dep-dbjmsh3bc2fs73d9vkog`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbjmsh3bc2fs73d9vkog)
+  started **23:52:20 / 16:52:20 UTC**, went **Live 23:53:52 / 16:53:52 UTC**,
+  and reports the exact intended SHA `604ecad7`. Previous Live rollback reference:
+  `449b465704e5a649f92ec3f9315b6e35ce7730ca` / `dep-dbjksp2jnfac738a57h0`.
+- Startup confirmed database `postdee_staging`, 28 existing migrations and no
+  pending migrations. Publishing activation guard passed with an empty backlog.
+  No new migration, environment value, secret, plan or feature flag was changed.
+- Checks completed **23:54:46 / 16:54:46 UTC**: `/health` and `/ready` 200,
+  database/queue `ok`, readiness `Cache-Control: no-store`; unauthenticated
+  `/posts`, `/captions/quota` and `POST /captions/generate-from-clip` all 401.
+  These checks made no Gemini call or customer-content write. No application
+  error/warning logs appeared from deploy start through 16:55:12 UTC.
+- Production remained user-suspended with its original 2026-10-05 service update
+  timestamp; it was not deployed, resumed or reconfigured. The subsequent
+  documentation-only commit records delivery without changing runtime `604ecad7`.
+- The owner chose to retain the same Gemini key and wait for reset. English,
+  silent visual-video and native/R2 end-to-end limits below remain unchanged.
 
 ## Resume live verification after the same key resets
 

@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Caption evidence and bounded generation (2026-11-01, local candidate)
+## Caption evidence and bounded generation (2026-11-01, Staging API delivered)
 
 `POST /captions/generate-from-clip` retains the existing request, response fields,
 per-channel `expectedCredits` and atomic monthly/purchased-credit accounting.
@@ -28,6 +28,9 @@ Deploy API first, then Mobile. No database migration, destructive cleanup,
 dependency upgrade or new environment variable is required. Live/native limits
 and validation are in the [verification
 record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+Staging is Live at `604ecad7` after exact-commit CI; no environment value or
+migration changed. English real-provider quality and hosted end-to-end acceptance
+remain pending. See [delivery evidence](docs/STAGING.md). Production is unchanged.
 
 ## Readability and push diagnostic follow-up (2026-11-01, Staging API delivered)
 

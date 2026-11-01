@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Caption quality and recovery (2026-11-01, local candidate)
+## Caption quality and recovery (2026-11-01, main / Staging API delivered)
 
 - Read actual clip evidence before writing; preserve negative meaning and stop
   when no usable evidence exists, with no caption credit charged for fallback.
@@ -12,9 +12,12 @@ Build roadmap for PostDee.
 - Prepare a bounded visual proxy for large clips without extractable audio.
 - Keep per-channel costs, purchased credits, owner isolation, saved drafts,
   writing styles, publishing settings and retired features unchanged.
-- No migration, new environment variable or hosted delivery. Deploy API before
-  Mobile. Record real-provider and native limits in the [work
-  record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+- Staging API is Live at `604ecad7` after exact-commit CI, with no migration or
+  environment change. Production is unchanged. The Staging APK is on the test
+  emulator; English live quality awaits the same key's daily quota reset and
+  silent visual/native proxy/R2 end-to-end checks remain pending. See the [work
+  record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md) and
+  [delivery evidence](docs/STAGING.md). Future rollout remains API first, then Mobile.
 
 ## Preserved-work integration (2026-11-01, delivered / native acceptance pending)
 

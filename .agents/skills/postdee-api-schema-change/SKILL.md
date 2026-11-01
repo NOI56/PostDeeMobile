@@ -26,7 +26,7 @@ Installed Mobile builds keep calling the API after a deploy, and the Staging and
 - Migrations must be safe on populated tables: add nullable columns or columns with defaults, backfill in SQL when needed, and never drop or rewrite user data without an approved plan.
 - A new user-owned model must relate to `User` with `onDelete: Cascade`, or be cleared explicitly by account deletion (`apps/api/src/modules/account/`), with a test. Account deletion relies on the cascade.
 - Run `npm.cmd run prisma:generate` and `prisma:validate` (needs a `DATABASE_URL`; the local value is in `AGENTS.md`), plus the `tsc` check for `prisma/seed.ts` and `prisma.config.ts` from `AGENTS.md`.
-- On Render, `preDeployCommand` runs `prisma migrate deploy` before the new code starts.
+- On Render, migrations run with `prisma migrate deploy` before the new code serves: Production in `preDeployCommand` (`render.yaml`), Staging at the start of `startCommand` (`render.staging.yaml`).
 
 ## Database tests are opt-in
 

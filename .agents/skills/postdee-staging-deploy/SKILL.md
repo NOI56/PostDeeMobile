@@ -23,7 +23,7 @@ A Staging deploy changes what testers and the owner's installed Staging app talk
 ## Deploy
 
 1. Record the intended SHA (`git rev-parse origin/main`) and the currently Live Staging deploy and commit (`list_deploys`), so you can report the change and roll back.
-2. Trigger the deploy (`trigger_deploy`) and follow it (`get_deploy`) until it is Live or fails. `preDeployCommand` runs `prisma migrate deploy` first; a failed migration cancels the deploy and the previous instance keeps serving.
+2. Trigger the deploy (`trigger_deploy`) and follow it (`get_deploy`) until it is Live or fails. Staging runs `prisma migrate deploy` at the start of `startCommand` (Production uses `preDeployCommand` instead); a failed migration fails the start, the deploy does not go Live, and the previous instance keeps serving.
 3. Confirm the Live deploy's commit equals the intended SHA. A Live deploy of a different commit is a failed delivery.
 
 ## Environment variables

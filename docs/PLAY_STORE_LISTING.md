@@ -1,6 +1,6 @@
 # Google Play listing draft — PostDee
 
-อัปเดตล่าสุด: 1 สิงหาคม 2026
+อัปเดตล่าสุด: 1 พฤศจิกายน 2026 (ถอดการตัดต่อวิดีโอที่ยกเลิกแล้วออก และ sync แพ็กเกจกับ Paywall ปัจจุบัน)
 
 สถานะ: **เอกสารเตรียมข้อมูลเท่านั้น — ยังห้าม Submit หรือเปิด Production**
 
@@ -44,7 +44,7 @@ PostDee
 64/80 ตัวอักษร:
 
 ```text
-เตรียมคลิป แคปชั่น ตารางโพสต์ และตัดต่อวิดีโอสำหรับครีเอเตอร์ไทย
+เตรียมคลิป แคปชั่น ตารางโพสต์ และหน้าปกวิดีโอสำหรับครีเอเตอร์ไทย
 ```
 
 ### Full description
@@ -58,14 +58,13 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 • บันทึกเทมเพลตแคปชั่นที่ใช้บ่อยแล้วนำกลับมาใช้ได้
 • วางแผนวันเวลาและตรวจสถานะงานผ่านปฏิทินโพสต์
 
-ปรับวิดีโอก่อนนำไปใช้
-• ดูตัวอย่างและเลื่อนไทม์ไลน์ไปยังช่วงที่ต้องการ
-• ตัดต้นท้าย แบ่งช่วง ปรับความเร็วและระดับเสียง
-• เพิ่มข้อความ สติกเกอร์ ฟิลเตอร์ และปรับแสงสี
-• ส่งออกคลิปที่แก้ไขแล้วเพื่อนำไปใช้ในขั้นตอนโพสต์
+เตรียมวิดีโอก่อนโพสต์
+• ดูตัวอย่างวิดีโอแบบเต็มจอก่อนสร้างโพสต์
+• เลือกภาพหน้าปกจากเฟรมในคลิป
+• ใส่ลายน้ำ PostDee อัตโนมัติสำหรับแพ็กเกจ Starter/Pro
 
 ออกแบบเพื่อผู้ใช้ภาษาไทย
-• หน้าจอและขั้นตอนหลักใช้ภาษาไทย
+• หน้าจอและขั้นตอนหลักใช้ภาษาไทย และเปลี่ยนเป็นภาษาอังกฤษได้
 • รองรับธีมสว่างและธีมมืด
 • แสดงสถานะงานที่จัดคิว ตั้งเวลา กำลังทำงาน หรือไม่สำเร็จอย่างชัดเจน
 
@@ -73,7 +72,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 ```
 
 ก่อนนำข้อความนี้ขึ้น Store ต้องทดสอบทุก bullet กับ **final release AAB** อีกครั้ง
-โดยเฉพาะการส่งออกวิดีโอจริงบน Android หลายรุ่นและสถานะงานจาก production API
+โดยเฉพาะการเลือกหน้าปก ลายน้ำ การสลับภาษา และสถานะงานจาก production API บน Android หลายรุ่น
 
 ## 3. จุดเด่นและขอบเขตความจริงของระบบ
 
@@ -83,9 +82,8 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 - สร้างแคปชั่นและใช้เทมเพลตที่บันทึกไว้
 - ปฏิทินและหน้ารายละเอียดแสดงสถานะ `QUEUED`, ตั้งเวลา, กำลังโพสต์,
   สำเร็จบางส่วน และไม่สำเร็จ โดยไม่ตีความ “เข้าคิว” ว่าเผยแพร่สำเร็จแล้ว
-- เครื่องมือตัดต่อด้วยมือรองรับตัดต้นท้าย, แบ่งช่วง, ความเร็ว, ระดับเสียง,
-  ข้อความ, สติกเกอร์, ฟิลเตอร์, แสงสี และส่งออกผ่าน FFmpeg ในเครื่อง
-- หน้าตรวจผลงานวิดีโอมีตัวเล่น, ไทม์ไลน์, เวลาเล่น/เวลารวม และการลองใหม่เมื่อเปิดไฟล์ไม่ได้
+- พรีวิววิดีโอเต็มจอ เลือกหน้าปกจากเฟรมในคลิป และใส่ลายน้ำ PostDee (Starter/Pro)
+- หน้าจอภาษาไทยเป็นค่าเริ่มต้น และเปลี่ยนเป็นภาษาอังกฤษได้
 - ผู้ใช้มีทางเริ่มลบบัญชีจากหน้าโปรไฟล์
 
 ### มี integration ในโค้ด แต่ยังห้ามใช้เป็นคำรับรอง production
@@ -98,7 +96,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | Firebase Email/Google/Phone Auth | gateway มีในแอปและ API; release SHA/OAuth ตรงกับ APK ที่เซ็นแล้ว | ทดสอบ Email/Google/Phone บน Internal testing AAB และมือถือจริง |
 | Starter/Pro | Paywall, RevenueCat gateway, Play products/entitlements/default offering และ production Android public SDK key เตรียมแล้ว | สร้าง Play Console app/subscriptions และ service credentials จากนั้นทดสอบซื้อ ต่ออายุ ยกเลิก คืนเงิน และ restore ผ่าน Internal Testing บนมือถือจริง |
 | AI แคปชั่นจากคลิป | Gemini adapter และ quota มีในโค้ด | ทดสอบ provider, โควตา, frame flow และ usage ledger ด้วยบัญชี Starter/Pro จริง |
-| Pro AI ตัดต่อ | ElevenLabs ถอดเสียง, Gemini เลือกช่วง และ renderer จริงรองรับซับ/ตัดช่วงเงียบ/จัดการคำพูดซ้ำ/แสงสี | ทดสอบ provider + upload + FFmpeg + review + post/manual editor บนอุปกรณ์จริงหลายรุ่น |
+| แชตช่วยเหลือและประกาศสถานะบริการ | แชตในแอปและ API มีแล้ว ทีมงานตอบผ่านหน้าแอดมิน และส่งประกาศสถานะบริการได้; ผู้ช่วยตอบอัตโนมัติ Dot ปิดอยู่ | ทดสอบส่ง ตอบ ปิดแชต และการแจ้งเตือนบน production ก่อนอ้างเป็นช่องทางช่วยเหลือ |
 | Analytics | API/UI ใช้ข้อมูล backend และไม่สร้างตัวเลขปลอม | ต้องมีผลโพสต์จริงจาก provider และตรวจช่วงวันที่/ยอดจากบัญชีจริง |
 | Push notification | FCM mobile/server code มี | เปิด Firebase sender, ทดสอบ permission, token refresh, logout/unregister และ invalid-token cleanup |
 | ลบบัญชีฝั่งบริการ | มี in-app flow, cleanup saga, durable managed-upload marker และ durable PostgreSQL owner drain (อยู่บน Staging แล้ว) แต่ Production ยังปิดจนกว่าจะทดสอบกับบริการจริง | ตรวจ R2/PostPeer/Firebase cleanup ด้วยบัญชีทดสอบบน Staging, RevenueCat behavior, physical-device/slow-network race และ public deletion URL ก่อนเปิด; local draft/Application Support และ OS backup ไม่ถูกลบโดย flow ฝั่งบริการ ต้องมี copy/วิธีลบแยกที่ตรงกัน |
@@ -111,6 +109,7 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 - Hashtag Radar, ศูนย์คอมเมนต์ AI และแจ้งเตือนไวรัล
 - Link in Bio ที่เผยแพร่เป็นเว็บไซต์จริง
 - Team & Editor Access
+- AI ตัดต่อวิดีโอ ซับไตเติล และเครื่องมือตัดต่อด้วยมือ (ยกเลิกแล้ว ไม่มีในแอปปัจจุบัน)
 - Beat sync/เพลงอัตโนมัติ และ Hook 3 วินาที
 - Auto reframe, auto zoom, ลดเสียงรบกวน, แปลซับ, ป้ายราคา, CTA card
   และลายน้ำจากหน้า AI
@@ -123,9 +122,13 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 
 | แพ็กเกจ | UI ปัจจุบัน | ข้อควรระวังสำหรับ Store |
 | --- | --- | --- |
-| Basic | 3 post units/เดือนหลังยืนยันเบอร์ | Phone Auth และ real publishing ต้องผ่าน production test |
-| Starter | 120 post units, ตั้งเวลา/ปฏิทิน/เทมเพลต, AI แคปชั่นจากเสียง 50 ครั้ง, ลายน้ำ PostDee อัตโนมัติ | Google product/RevenueCat และ AI provider ยังไม่ผ่าน checkout-to-entitlement E2E |
-| Pro | 250 post units, Starter, analytics, AI แคปชั่นเสียง+ภาพ 120 ครั้ง, AI ตัดต่อ 200 นาที | ต้องทดสอบ entitlement, quota, provider และอุปกรณ์จริงก่อนโฆษณา |
+| Basic | 3 post units/เดือนหลังยืนยันเบอร์, ลิงก์ร้านสูงสุด 2 ลิงก์; ไม่มี AI แคปชั่นและการตั้งเวลา | Phone Auth และ real publishing ต้องผ่าน production test |
+| Starter | 120 post units, ลิงก์ร้านสูงสุด 7 ลิงก์, ตั้งเวลาล่วงหน้า 14 วัน + ปฏิทิน + เทมเพลต, AI แคปชั่นจากเสียง 50 เครดิต, ลายน้ำ PostDee อัตโนมัติ | Google product/RevenueCat และ AI provider ยังไม่ผ่าน checkout-to-entitlement E2E |
+| Pro | 250 post units, ลิงก์ร้านสูงสุด 20 ลิงก์, ทุกอย่างใน Starter + analytics, ตั้งเวลาล่วงหน้า 30 วัน, AI แคปชั่นเสียง+ภาพ 120 เครดิต | ต้องทดสอบ entitlement, quota, provider และอุปกรณ์จริงก่อนโฆษณา |
+
+ข้อความในตารางนี้ตรงกับ `apps/mobile/lib/features/billing/paywall_screen.dart` และ
+`apps/api/src/modules/subscriptions/subscriptionEntitlements.ts` ณ วันที่อัปเดต
+หากแก้แพ็กเกจต้องแก้ตารางนี้ด้วย
 
 - หนึ่ง post unit นับต่อหนึ่งแพลตฟอร์ม ไม่ใช่ต่อหนึ่งวิดีโอ
 - ลายน้ำที่ทำได้จริงตอนนี้เป็นโลโก้ PostDee ตำแหน่งขวาล่างคงที่ ไม่ใช่โลโก้ร้านที่อัปโหลดเอง
@@ -146,11 +149,12 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 | Phone number | Firebase Phone Auth สำหรับ Basic quota | Authentication, fraud/abuse prevention | เป็น optional หรือ required ต่อผู้ใช้แต่ละแพ็กเกจ |
 | User IDs | Firebase UID, internal user ID, social connection IDs | Account management, cross-service linking | การส่งต่อ Firebase, RevenueCat, PostPeer และ backend |
 | Purchase history | product, entitlement, renewal/cancel/refund state | Purchases, subscription entitlement | Google Play Billing และ RevenueCat Data Safety docs |
-| Photos and videos | วิดีโอที่ผู้ใช้เลือก, สำเนาวิดีโอ/หน้าปกของ local publish draft และ frames ที่ Pro อาจสกัด | Local draft, upload, publishing, AI caption/edit | การบันทึกร่างยังไม่ส่ง API/R2/provider แต่ Application Support อาจเข้า OS backup; ตรวจ retention ในเครื่อง/backup, R2, Gemini/ElevenLabs และการลบหลังงานเสร็จ |
-| Audio files / voice content | เสียงภายในวิดีโอที่ส่งถอดเสียง | AI caption/edit | provider, region, retention และการใช้เพื่อ train model หรือไม่ |
+| Photos and videos | วิดีโอที่ผู้ใช้เลือก, สำเนาวิดีโอ/หน้าปกของ local publish draft และ frames ที่ Pro อาจสกัด | Local draft, upload, publishing, AI caption | การบันทึกร่างยังไม่ส่ง API/R2/provider; Android ปิด backup แล้ว แต่ Application Support บน iOS อาจเข้า OS backup; ตรวจ retention ในเครื่อง/backup, R2, Gemini/ElevenLabs และการลบหลังงานเสร็จ |
+| Audio files / voice content | เสียงภายในวิดีโอที่ส่งให้ AI สร้างแคปชั่น | AI caption | provider, region, retention และการใช้เพื่อ train model หรือไม่ |
+| Messages (other in-app messages) | ข้อความแชตช่วยเหลือระหว่างผู้ใช้กับทีมงาน | Customer support | retention, การลบพร้อมบัญชี และการส่งให้ OpenAI เฉพาะเมื่อเปิดผู้ช่วย Dot |
 | Other user-generated content | แคปชั่น, template, post metadata, schedule และ manifest ของ local publish draft | App functionality | แยกข้อมูล Application Support/SharedPreferences ที่ไม่ส่งจนกดโพสต์ออกจากข้อมูล backend/provider และยืนยันระยะเก็บ/backup |
 | App interactions | เหตุการณ์ใช้งานที่ส่ง Firebase Analytics | Analytics | production เปิด monitoring อัตโนมัติเมื่อ Firebase เปิด |
-| Crash logs / diagnostics | Firebase Crashlytics | App stability | SDK defaults, retention และ user association |
+| Crash logs / diagnostics | Firebase Crashlytics และ Sentry (เมื่อตั้งค่า DSN; ส่งเฉพาะ error ที่คัดกรองแล้ว ไม่มี PII หรือภาพหน้าจอ) | App stability | SDK defaults, retention และ user association |
 | Device or other IDs | FCM token, Firebase installation/analytics identifiers, RevenueCat app user ID | Push, analytics, subscriptions | ตรวจว่าจัดเป็น collected/shared อย่างไรใน SDK docs |
 
 ### ผู้ประมวลผล/บริการที่ต้องอยู่ใน privacy review
@@ -162,6 +166,8 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 - Gemini และ ElevenLabs ตาม production configuration
 - PostPeer เมื่อเปิด social connection/publishing
 - Upstash Redis เมื่อเปิด durable scheduling
+- Sentry เมื่อตั้งค่า DSN
+- OpenAI เฉพาะเมื่อเปิดผู้ช่วยตอบแชต Dot
 
 อย่าตอบ “ไม่แชร์ข้อมูล” โดยอัตโนมัติ คำว่า service provider และ user-directed action
 มีเงื่อนไขเฉพาะในแบบฟอร์ม ต้องให้ผู้รับผิดชอบ privacy ตรวจสัญญาและการใช้งานจริงก่อน
@@ -179,9 +185,11 @@ PostDee คือพื้นที่เตรียมงานวิดีโ
 - [ ] ยืนยันว่า production ทุก endpoint เข้ารหัสระหว่างส่งผ่าน HTTPS/TLS ก่อนตอบ
   “Data is encrypted in transit”
 - [ ] ตัดสินใจว่ามี user opt-out สำหรับ Analytics/Crashlytics หรือไม่ และทำให้คำตอบตรงกับแอป
-- [ ] ตรวจ Android Auto Backup/iOS backup ของ Application Support ใน final binary
-  และตัดสินใจ exclude/retain ให้ตรงกับ Privacy, Terms, account deletion และคำตอบ
-  Data Safety; ห้ามอ้างว่า local draft ไม่ขึ้น cloud หาก OS backup ยังรวมไฟล์
+- [x] Android ปิด Auto Backup และ device transfer แล้ว (`allowBackup="false"` และ
+  data extraction rules ที่ยกเว้นทุกพื้นที่, 24 ต.ค. 2026); ยังต้องตรวจซ้ำใน final AAB
+- [ ] ตัดสินใจ exclude/retain iOS backup ของ Application Support ให้ตรงกับ Privacy,
+  Terms, account deletion และคำตอบ App Privacy; ห้ามอ้างว่า local draft ไม่ขึ้น cloud
+  บน iOS หาก OS backup ยังรวมไฟล์
 - [ ] ดาวน์โหลด/อ่าน Data Safety guidance ของ Firebase, RevenueCat และ provider ทุกตัวตามเวอร์ชันใน final AAB
 - [ ] ให้ผู้รับผิดชอบกฎหมาย/PDPA ตรวจคำตอบฉบับสุดท้าย
 
@@ -248,9 +256,9 @@ Google Play กำหนดอย่างน้อย 2 ภาพ; สำหร
 
 - [ ] ภาพ 1 — Home หลังล็อกอินด้วยบัญชีทดสอบจริง; ไม่แสดงข้อมูลส่วนตัว
 - [ ] ภาพ 2 — ขั้นตอนเลือกคลิป 9:16/เขียนแคปชั่น
-- [ ] ภาพ 3 — เครื่องมือตัดต่อด้วยมือและ preview จริง
+- [ ] ภาพ 3 — preview วิดีโอและเลือกหน้าปกจริง
 - [ ] ภาพ 4 — ปฏิทินและสถานะคิว/ตั้งเวลา โดยไม่อ้างว่าคิวคือโพสต์สำเร็จ
-- [ ] ภาพ AI review ใช้ได้ต่อเมื่อ provider + renderer ผ่าน real-device E2E
+- [ ] ภาพ AI แคปชั่นใช้ได้ต่อเมื่อ provider และโควตาผ่าน real-device E2E
 - [ ] ภาพ Analytics ใช้ได้ต่อเมื่อเป็นข้อมูลจาก real publish ไม่ใช่ mock/demo
 - [ ] ภาพ Paywall ใช้ได้ต่อเมื่อ Google products/ราคา/entitlement ตรง production
 - [ ] ลบ notification, email, UID, ชื่อบัญชี, token และข้อมูลลูกค้าออกจากภาพ
@@ -274,7 +282,7 @@ Google Play กำหนดอย่างน้อย 2 ภาพ; สำหร
 - [ ] App access: ตอบว่าบางส่วนถูกจำกัดด้วยการเข้าสู่ระบบและแพ็กเกจ
 - [ ] เตรียม reviewer email/password ที่ไม่ต้องใช้ข้อมูลส่วนตัวหรือ OTP ของ reviewer
 - [ ] เปิด Pro ให้ reviewer ผ่าน entitlement จริง ห้ามใช้ mock header หรือ Test Store key
-- [ ] เขียนขั้นตอน reviewer ตั้งแต่ sign-in > เลือกคลิป > ตัดต่อ > review > upload/post
+- [ ] เขียนขั้นตอน reviewer ตั้งแต่ sign-in > เลือกคลิป > แคปชั่น/หน้าปก > เลือกช่องทาง > review > upload/post
 - [ ] ระบุถ้า social connection ต้องใช้บัญชีทดสอบหรือขั้นตอนพิเศษ
 - [ ] Content rating (IARC): กรอกตาม content จริงและ user-generated video workflow
 - [ ] Data safety: ใช้ checklist ในหัวข้อ 5 หลังตรวจ SDK/final AAB

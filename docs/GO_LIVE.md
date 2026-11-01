@@ -3,7 +3,11 @@
 Most external integrations have a real adapter behind a config flag. A flag and
 credentials are not proof that the full feature is production-ready: each row
 below lists the remaining provider/device verification. Platform metric
-ingestion, Sentry, beat/hook rendering, and AI minute top-ups still need code.
+ingestion still needs code. Sentry error reporting is implemented but opt-in:
+set `SENTRY_DSN` for the API and the Mobile Sentry define per environment, then
+verify delivery before relying on it. AI video editing (including beat/hook
+rendering, editing minutes, and top-ups) is retired; see the Retired Features
+table in `AGENTS.md`.
 
 Default values keep everything in mock/local mode so the app runs without any
 third-party accounts.
@@ -444,7 +448,15 @@ physical Android remain unverified.
 - Keep the existing `/billing/store/verify` path only as a legacy scaffold, not
   the preferred production billing path.
 
-## 6. AI auto editing — ElevenLabs transcription + Gemini planning
+## 6. AI auto editing — retired (history only)
+
+**Status (2026-11-01): retired, not a launch item.** The navigation entry was
+removed on 2026-10-05 and every `/ai-edits/*` request answers
+`410 AI_EDITING_RETIRED` unless the rollback switch `AI_EDITING_ENABLED=true` is
+set. `EDIT_PLAN_PROVIDER` and `GEMINI_EDIT_PLAN_MODEL` are unused without that
+switch. `TRANSCRIPTION_PROVIDER` and `ELEVENLABS_API_KEY` remain only as the
+fallback transcription path for AI captions when the Gemini clip-caption provider
+is not configured. Everything below in this section is the historical record.
 
 Backend transcription is ready (`POST /ai-edits/transcribe`, Pro-gated), and the
 UI-facing recipe endpoint is ready (`POST /ai-edits/prepare`, Pro-gated with
@@ -663,9 +675,12 @@ Prove same-process, separate-process, and crash/restart behavior.
    draft, YouTube compliance/visibility, Instagram, Facebook Page publish/draft,
    target change/redaction, scheduling, and recovery with explicit authorization.
 5. **Firebase production/device completion** — test Google, Apple, Phone Auth,
-   and FCM/APNs on supported devices. Keep account deletion disabled until the
-   durable full-mutation barrier/drain is implemented, then run route-family,
-   worker, slow-network, and physical-device deletion races.
+   and FCM/APNs on supported devices. Account deletion's durable owner drain is
+   implemented and passed Staging real-service acceptance on 2026-10-26
+   (PostPeer/R2 object cleanup not exercised); keep it disabled in Production
+   until a disposable-account run proves Firebase/R2/PostPeer cleanup and the
+   Production service account is confirmed, then run worker, slow-network, and
+   physical-device deletion races.
 6. **R2 isolation and cleanup** — verify environment-specific buckets, temporary
    object cleanup, and safe lifecycle prefixes.
 7. **Close publish concurrency and orphan-media gates** — add the durable

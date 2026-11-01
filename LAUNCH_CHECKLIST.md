@@ -89,8 +89,8 @@
 | `BILLING_PROVIDER` | `mock` → `store` หรือ `revenuecat` | webhook token + REST key (ดูข้อ 6) |
 | `VIDEO_STORAGE` | `mock` → `r2` | `CLOUDFLARE_R2_*` |
 | `CAPTION_PROVIDER` | `mock` → `gemini` | `GEMINI_API_KEY` |
-| `TRANSCRIPTION_PROVIDER` | `mock` → `elevenlabs` | `ELEVENLABS_API_KEY` |
-| `EDIT_PLAN_PROVIDER` | `mock` → `gemini` | `GEMINI_API_KEY` |
+| `TRANSCRIPTION_PROVIDER` | `mock` → `elevenlabs` (ทางสำรองของ AI แคปชั่นเมื่อไม่ได้ตั้ง Gemini) | `ELEVENLABS_API_KEY` |
+| `EDIT_PLAN_PROVIDER` | ไม่ต้องใช้แล้ว: เป็นของ AI ตัดต่อที่ยกเลิก ทำงานเฉพาะเมื่อตั้ง rollback `AI_EDITING_ENABLED=true` | — |
 | `SOCIAL_PUBLISHER` | `mock` → `postpeer` | (ดูข้อ 5) |
 | `PUBLISH_QUEUE` | คง `memory` สำหรับหนึ่ง instance; เปลี่ยนเป็น `bullmq` เมื่อต้องการ durable/scale | `REDIS_URL` (Upstash) + worker แยก |
 | `*_STORE` (post/subscription/analytics/template/captionUsage/aiEditUsage) | `memory` → `prisma` | `DATABASE_URL` |
@@ -220,14 +220,14 @@
       และการแก้ CVE-2026-8461 สำหรับ Android/iOS แล้ว
 - [x] Android API 34 Emulator: เลือกคลิป 720×1280, อ่าน metadata, เรนเดอร์ AI
       เป็น MP4 และเปิด preview/เลื่อนเวลาได้ด้วย FFmpeg 8.1.2
-- [ ] ทดสอบ export ด้วย FFmpeg 8.1.2 บน Android และ iPhone จริงก่อนรับไฟล์
-      จากผู้ใช้ทั่วไป ระหว่างนี้ให้ทดสอบเฉพาะคลิปที่ทีมสร้างหรือเชื่อถือได้
+- [ ] ทดสอบการประมวลผลวิดีโอด้วย FFmpeg 8.1.2 (ดึงเสียงสำหรับ AI แคปชั่นและดึงเฟรมหน้าปก)
+      บน Android และ iPhone จริงก่อนรับไฟล์จากผู้ใช้ทั่วไป ระหว่างนี้ให้ทดสอบเฉพาะคลิปที่ทีมสร้างหรือเชื่อถือได้
 - [ ] ล็อกอิน Google + Apple + ยืนยันเบอร์ (OTP) สำเร็จ บนมือถือจริง
 - [ ] อัปคลิป → โพสต์ทันที → ขึ้นจริงทุก capability ที่ระบุไว้ → provider URL/ID
       และ `GET /posts.platformResults` ตรงกัน (Facebook ต้องเป็น Page Reel)
 - [ ] ตั้งเวลาโพสต์ → ปฏิทินแสดง → ถึงเวลาแล้วโพสต์จริง
 - [ ] AI แคปชั่นจากคลิป (Starter ฟัง / Pro ฟัง+ดูเฟรม)
-- [ ] AI ตัดต่อ/ซับ (Pro) + export บนเครื่อง
+- ~~AI ตัดต่อ/ซับ (Pro) + export บนเครื่อง~~ ยกเลิกแล้ว ไม่ต้องทดสอบก่อนเปิด (ดูตาราง Retired Features ใน `AGENTS.md`)
 - [ ] ซื้อแพ็กเกจ (sandbox) → ปลดล็อกฟีเจอร์
 - [x] Staging 26 ต.ค. 2026: ลบบัญชีทดสอบผ่านทั้งทางแอป (`DELETE /account`) และหน้าแอดมิน
       ข้อมูลและ Firebase UID หายจริง; ยังไม่ครอบคลุม PostPeer และ R2 object จริง (ดู `docs/STAGING.md`)
@@ -238,7 +238,8 @@
 
 ## 9) ภายหลัง (ไม่บล็อกการเปิด)
 
-- [ ] Sentry (error tracking) — API, worker, mobile
+- [ ] Sentry (error tracking) — โค้ดมีแล้วแบบ opt-in ทั้ง API (รวม worker ในตัว) และ mobile;
+      งานที่เหลือคือตั้ง `SENTRY_DSN` และ Mobile define ต่อ environment แล้วยืนยันว่ารายงานไปถึงจริง
 - [x] FCM backend sender + device token endpoint มีในโค้ดแล้ว; งานที่เหลือคือ
       ใส่ service account, ตั้ง `PUSH_SENDER=firebase`, ตั้ง APNs และทดสอบเครื่องจริง
 - [ ] Analytics: ตัวดึง views/likes จริงจากแพลตฟอร์ม (ตอนนี้แสดง 0)

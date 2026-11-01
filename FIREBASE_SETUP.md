@@ -129,6 +129,34 @@ Then test:
 - `POST /posts` with the same token after phone verification. Basic should be blocked until the token includes `phone_number`.
 - `POST /captions/generate` with the same token and Starter or Pro entitlement.
 
+## Staging Firebase Project
+
+Added 2026-11-01. Staging uses its own Firebase project, separate from
+Production (`postdee-3c163`), so test accounts, tokens, and push never mix with
+real users.
+
+| Item | Staging | Production |
+| --- | --- | --- |
+| Android package | `com.postdee.postdee_mobile.staging` (Debug builds) | `com.postdee.postdee_mobile` (Release) |
+| Android config file | `apps/mobile/android/app/src/debug/google-services.json` | `apps/mobile/android/app/google-services.json` |
+| Firebase project id | the `project_id` in the debug config file | `postdee-3c163` |
+| Mobile defines | `apps/mobile/staging.local.example.json` (`GOOGLE_SERVER_CLIENT_ID`, `ENABLE_FIREBASE_AUTH=true`, `ALLOW_LOCAL_MOCK_AUTH=false`) | ignored `apps/mobile/production.local.json` |
+| API service | `postdee-api-staging` (`render.staging.yaml`) | `postdee-api` (`render.yaml`) |
+
+- Build installed Staging apps only through `apps/mobile/tool/postdee-staging.ps1`;
+  see `apps/mobile/README.md` → "Android Debug Staging". A raw build without its
+  defines disables Firebase Auth.
+- On the Staging API, set `FIREBASE_PROJECT_ID` to the Staging project and
+  `FIREBASE_SERVICE_ACCOUNT_JSON` to that project's own service account (both
+  Dashboard secrets). With the service account the API also rejects revoked or
+  disabled users. `FIREBASE_AUTH_DELETE_ENABLED` and `PUSH_SENDER` decide whether
+  account deletion and push actually call Firebase; confirm their live values in
+  the Dashboard rather than assuming the Blueprint defaults.
+- A machine or CI that signs Debug builds with a different keystore must register
+  its SHA-1 and SHA-256 in the Staging Firebase project.
+- The admin console's `ADMIN_FIREBASE_WEB_CONFIG` must point to the same Firebase
+  project as the API it runs on.
+
 ## Local Development Mode
 
 Firebase Auth is off by default in local scaffolding. In that mode, the Flutter app uses mock development headers such as:

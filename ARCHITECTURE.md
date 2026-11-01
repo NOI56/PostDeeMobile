@@ -2,6 +2,23 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Caption evidence and request lifetime (2026-11-01, local candidate)
+
+The real-clip Gemini provider separates multimodal evidence extraction from
+text-only caption writing and a final evidence audit/repair. Pure audio cannot contribute visual observations;
+seller guidance and style samples never become product facts. All three stages
+share a bounded, cancellable lifetime. The route owns cancellation/refunds and
+media admission, and validates generated text using publishing constraints.
+Evidence is request-local: no transcript cache, new database model or additional
+retention is introduced. User credit costs remain per selected channel.
+
+Mobile reuses retained media-preparation helpers to make a bounded visual proxy
+when large clips lack extractable audio; this does not restore retired editing.
+Shared-caption preview/selection/undo follows the existing owner, source and
+text-staleness guards. Fallback leaves current text intact. API first, then
+Mobile, with no schema migration or new environment variable. See [implementation
+and verification](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+
 ## Preserved-work integration (2026-11-01, main / Staging API delivered)
 
 Storefront readability stays in the existing HTML renderer and native preview

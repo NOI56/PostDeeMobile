@@ -318,7 +318,7 @@ describe('caption routes', () => {
     expect(generate).not.toHaveBeenCalled();
   });
 
-  it('generates a real-clip caption for Starter from audio only', async () => {
+  it('returns an uncharged editable Starter fallback without a real AI provider', async () => {
     const userId = 'seller-starter-real-clip';
     const videoS3Key = ownedUploadKey(userId, 'starter-real-clip.mp4');
 
@@ -342,19 +342,21 @@ describe('caption routes', () => {
       },
       quota: {
         limit: 50,
-        usedThisMonth: 1,
-        remainingThisMonth: 49
+        usedThisMonth: 0,
+        remainingThisMonth: 50,
+        charged: false
       }
     });
-    expect(response.body.caption).toContain('starter-real-clip.mp4');
-    expect(response.body.captionOptions).toHaveLength(3);
-    expect(response.body.hooks).toHaveLength(3);
-    expect(response.body.seoKeywords).toHaveLength(5);
-    expect(response.body.hashtags).toHaveLength(5);
-    expect(response.body.searchTitle).toContain('starter-real-clip.mp4');
+    expect(response.body.isFallback).toBe(true);
+    expect(response.body.caption).toBe('[เขียนเรื่องที่เห็นจริงในคลิปของคุณที่นี่]');
+    expect(response.body.captionOptions).toHaveLength(1);
+    expect(response.body.hooks).toEqual([]);
+    expect(response.body.seoKeywords).toEqual([]);
+    expect(response.body.hashtags).toEqual([]);
+    expect(response.body.searchTitle).toBe('');
   });
 
-  it('generates a real-clip caption for Pro with selected visual frames', async () => {
+  it('retains Pro frame provenance in an uncharged editable fallback', async () => {
     const userId = 'seller-pro-real-clip';
     const videoS3Key = ownedUploadKey(userId, 'pro-real-clip.mp4');
 
@@ -381,8 +383,9 @@ describe('caption routes', () => {
       },
       quota: {
         limit: 120,
-        usedThisMonth: 1,
-        remainingThisMonth: 119
+        usedThisMonth: 0,
+        remainingThisMonth: 120,
+        charged: false
       }
     });
   });
@@ -820,8 +823,8 @@ describe('caption routes', () => {
       suggestedCaptionLanguage: 'Thai',
       suggestedTargetMarket: 'Thailand'
     });
-    expect(response.body.caption).toContain('Detected spoken language: Thai');
-    expect(response.body.caption).toContain('write the caption in Japanese for Japan');
+    expect(response.body.caption).toBe('[เขียนเรื่องที่เห็นจริงในคลิปของคุณที่นี่]');
+    expect(response.body.caption).not.toContain('write the caption in Japanese for Japan');
   });
 
   it('uses transcript language to suggest caption language and market automatically', async () => {
@@ -862,9 +865,8 @@ describe('caption routes', () => {
       suggestedCaptionLanguage: 'Japanese',
       suggestedTargetMarket: 'Japan'
     });
-    expect(response.body.caption).toContain('Japanese');
-    expect(response.body.caption).toContain('Japan');
-    expect(response.body.caption).toContain('この商品は朝の準備を楽にします');
+    expect(response.body.caption).toBe('[เขียนเรื่องที่เห็นจริงในคลิปของคุณที่นี่]');
+    expect(response.body.quota).toMatchObject({ charged: false, chargedCredits: 0 });
   });
 
   it('requires a paid plan for real-clip captions', async () => {
@@ -1110,9 +1112,11 @@ describe('caption routes', () => {
 
   it('blocks Starter real-clip captions after 50 generations in the month', async () => {
     const userId = 'seller-starter-real-clip-quota';
+    const quotaApp = createApp({ realClipCaptionProvider: { generate: async input => fakeRealClipCaption(input) },
+      fetchClipMedia: async () => ({ data: new Uint8Array([1]), mimeType: 'video/mp4' }) });
 
     for (let index = 0; index < 50; index += 1) {
-      await request(app)
+      await request(quotaApp)
         .post('/captions/generate-from-clip')
         .set('x-postdee-user-id', userId)
         .set('x-postdee-subscription-plan', 'STARTER')
@@ -1126,7 +1130,7 @@ describe('caption routes', () => {
         .expect(200);
     }
 
-    const response = await request(app)
+    const response = await request(quotaApp)
       .post('/captions/generate-from-clip')
       .set('x-postdee-user-id', userId)
       .set('x-postdee-subscription-plan', 'STARTER')

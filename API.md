@@ -2,6 +2,33 @@
 
 PostDee backend API reference.
 
+## Caption evidence and bounded generation (2026-11-01, local candidate)
+
+`POST /captions/generate-from-clip` retains the existing request, response fields,
+per-channel `expectedCredits` and atomic monthly/purchased-credit accounting.
+The Gemini provider reads actual media into evidence, writes from those facts,
+then audits/repairs the draft against the same evidence. These three bounded
+provider calls still cost the same number of user caption credits; only the
+first sends media. The later calls send request-local text, with no extra storage.
+
+- Insufficient evidence returns the existing `200` fallback shape with optional
+  `fallbackReason: "INSUFFICIENT_EVIDENCE"`, `isFallback: true` and zero charged
+  credits. Provider failure may add `fallbackReason: "PROVIDER_UNAVAILABLE"`.
+  Local fallback text is an editable placeholder with no fabricated clip facts.
+- The request has a finite lifetime; timeout returns `504
+  CAPTION_GENERATION_TIMEOUT` after refunding its reservation. Disconnects cancel
+  pending media/provider work and release the request's media slot.
+- Generated platform text, including appended hashtags, must pass the same
+  constraints as publishing before it counts as a successful generation.
+- All additional fields are optional. Existing installed clients retain their
+  generic fallback behavior; the new Mobile candidate explains the reason and
+  preserves manual text. Media ownership and paid-plan checks are unchanged.
+
+Deploy API first, then Mobile. No database migration, destructive cleanup,
+dependency upgrade or new environment variable is required. Live/native limits
+and validation are in the [verification
+record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+
 ## Readability and push diagnostic follow-up (2026-11-01, Staging API delivered)
 
 Public storefront HTML improves Thai avatar initials, telephone wrapping,

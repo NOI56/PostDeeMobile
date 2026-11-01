@@ -39,8 +39,48 @@ import type {
   RealClipCaptionProvider,
   RealClipMediaPart
 } from './realClipCaptionProvider.js';
+import { CaptionInsufficientEvidenceError } from './realClipCaptionProvider.js';
 
 const defaultMaxConcurrentMediaRequests = 2;
+const defaultCaptionGenerationTimeoutMs = 90_000;
+
+class CaptionRequestInterruptedError extends Error {
+  constructor(readonly disconnected: boolean) {
+    super(disconnected ? 'Caption client disconnected' : 'Caption generation timed out');
+  }
+}
+
+const createCaptionRequestDeadline = (response: Response, timeoutMs: number) => {
+  const controller = new AbortController();
+  const abort = (disconnected: boolean) => {
+    if (!controller.signal.aborted) controller.abort(new CaptionRequestInterruptedError(disconnected));
+  };
+  const timer = setTimeout(() => abort(false), timeoutMs);
+  const onClose = () => { if (!response.writableFinished) abort(true); };
+  const dispose = () => {
+    clearTimeout(timer);
+    response.off('close', onClose);
+    response.off('finish', dispose);
+  };
+  response.once('close', onClose);
+  response.once('finish', dispose);
+  return {
+    signal: controller.signal,
+    dispose,
+    // Race only provider/download/read work. A late result from an adapter
+    // ignoring AbortSignal cannot continue into the next stage or charge again.
+    run: async <T>(operation: () => Promise<T>): Promise<T> => {
+      controller.signal.throwIfAborted();
+      let onAbort!: () => void;
+      const interrupted = new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(controller.signal.reason);
+        controller.signal.addEventListener('abort', onAbort, { once: true });
+      });
+      try { return await Promise.race([operation(), interrupted]); }
+      finally { controller.signal.removeEventListener('abort', onAbort); }
+    }
+  };
+};
 
 const sendMediaBusyResponse = (response: Response) => {
   response.set('Retry-After', '1').status(503).json({
@@ -194,6 +234,7 @@ export const registerCaptionRoutes = (
     billingAddonsEnabled?: boolean;
     now?: () => Date;
     maxConcurrentMediaRequests?: number;
+    captionGenerationTimeoutMs?: number;
   } = {}
 ) => {
   // Both Gemini and legacy transcription hold media in this shared process.
@@ -407,24 +448,29 @@ export const registerCaptionRoutes = (
       mode,
       deleteAfterUse: validation.request.deleteAfterUse
     });
-    const cleanupRequestedMedia = async () => {
+    let cleanupPromise: Promise<void> | undefined;
+    const cleanupRequestedMedia = () => cleanupPromise ??= (async () => {
       if (!deleteClipMedia || cleanupKeys.length === 0) {
         return;
       }
 
-      const results = await Promise.allSettled(
-        cleanupKeys.map((videoS3Key) => deleteClipMedia(videoS3Key))
-      );
-
-      for (const result of results) {
-        if (result.status === 'rejected') {
-          console.error(
-            'AI caption media cleanup failed:',
-            result.reason instanceof Error ? result.reason.message : result.reason
-          );
+      const cleanup = Promise.allSettled(
+        cleanupKeys.map((videoS3Key) => Promise.resolve().then(() => deleteClipMedia(videoS3Key)))
+      ).then(results => {
+        for (const result of results) {
+          if (result.status === 'rejected') {
+            console.error(
+              'AI caption media cleanup failed:',
+              result.reason instanceof Error ? result.reason.message : result.reason
+            );
+          }
         }
-      }
-    };
+      });
+      let timer!: ReturnType<typeof setTimeout>;
+      try {
+        await Promise.race([cleanup, new Promise<void>(resolve => { timer = setTimeout(resolve, 5000); })]);
+      } finally { clearTimeout(timer); }
+    })();
 
     // The server derives price from validated channels. Old apps displaying one
     // credit must acknowledge the new price before any multi-channel debit.
@@ -469,12 +515,36 @@ export const registerCaptionRoutes = (
     let reservation: RealClipCaptionUsageReservation | undefined;
     let isFallback = false;
     let releasedFallbackUsage = false;
+    let fallbackReason: 'INSUFFICIENT_EVIDENCE' | 'PROVIDER_UNAVAILABLE' | undefined;
+    const deadline = createCaptionRequestDeadline(response, options.captionGenerationTimeoutMs ?? defaultCaptionGenerationTimeoutMs);
+    const handleInterruption = async (error: unknown) => {
+      if (!(error instanceof CaptionRequestInterruptedError)) return false;
+      if (!releasedFallbackUsage) releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
+      // Deleting temporary media is best effort and must not hold a timed-out
+      // request or its account operation ticket open behind a stuck storage API.
+      void cleanupRequestedMedia();
+      deadline.dispose();
+      const charged = Boolean(reservation?.ok && !releasedFallbackUsage);
+      if (error.disconnected) {
+        // End the handler even with a dead socket: owner-operation lifetime is
+        // released by end/finish only after the reservation refund has settled.
+        if (charged) response.status(500);
+        response.end();
+      } else {
+        response.status(504).json({ status: 'error', code: 'CAPTION_GENERATION_TIMEOUT',
+          message: 'Caption generation took too long. Please try again.',
+          quota: { requestedCredits: requiredCredits, chargedCredits: charged ? requiredCredits : 0, charged } });
+      }
+      return true;
+    };
     const reserveUsageOrRespond = async () => {
+      deadline.signal.throwIfAborted();
       if (reservation) {
         return reservation;
       }
 
       await userStore?.ensure(authUser);
+      deadline.signal.throwIfAborted();
       const nextReservation = await realClipCaptionUsageStore.reserve({
         userId: authUser.id,
         monthKey,
@@ -483,14 +553,19 @@ export const registerCaptionRoutes = (
         ...(includeMonthlyAddons ? { includeMonthlyAddons: true, now } : {})
       });
 
+      // Do not race a durable reservation: if its write completes after the
+      // deadline, retain its exact rows so the caller can refund before ending.
+      if (nextReservation.ok) reservation = nextReservation;
+      deadline.signal.throwIfAborted();
+
       if (!nextReservation.ok) {
-        await cleanupRequestedMedia();
+        await deadline.run(cleanupRequestedMedia);
         sendQuotaReachedResponse({
           response,
           plan,
           limit,
           usedThisMonth: nextReservation.usedThisMonth,
-          addonRemaining: await readFinalAddonRemaining(authUser.id, now, 0),
+          addonRemaining: await deadline.run(() => readFinalAddonRemaining(authUser.id, now, 0)),
           requiredCredits
         });
         return undefined;
@@ -500,172 +575,187 @@ export const registerCaptionRoutes = (
       return reservation;
     };
 
-    if (realClipCaptionProvider && fetchClipMedia) {
-      // Primary path: Gemini listens to the clip (Starter) and also looks at
-      // selected frames (Pro) to write the caption — no Whisper here.
-      const releaseMediaSlot = acquireMediaSlot();
-      if (!releaseMediaSlot) {
-        await cleanupRequestedMedia();
-        sendMediaBusyResponse(response);
-        return;
-      }
+    try {
+      if (realClipCaptionProvider && fetchClipMedia) {
+        // Primary path: Gemini listens to the clip (Starter) and also looks at
+        // selected frames (Pro) to write the caption — no Whisper here.
+        const releaseMediaSlot = acquireMediaSlot();
+        if (!releaseMediaSlot) {
+          await deadline.run(cleanupRequestedMedia);
+          sendMediaBusyResponse(response);
+          return;
+        }
 
-      try {
+        try {
+          try {
+            if (!(await reserveUsageOrRespond())) {
+              return;
+            }
+
+            const audio = await deadline.run(() => fetchClipMedia(validation.request.videoS3Key, {
+              kind: validation.request.mediaKind ?? 'video',
+              maxBytes: realClipCaptionClipMaxBytes,
+              signal: deadline.signal
+            })).catch((error: unknown) => {
+              // A legacy full video this large was always rejected by Gemini and
+              // fell back to the template; keep that outcome without the download.
+              // Beyond the general AI media limit it stays a 413 as before.
+              if (
+                validation.request.mediaKind !== 'audio' &&
+                error instanceof MediaDownloadError &&
+                error.code === 'AI_MEDIA_TOO_LARGE' &&
+                (error.declaredSizeBytes ?? 0) <= aiMediaDownloadMaxBytes
+              ) {
+                throw new Error('Clip exceeds the Gemini inline caption budget');
+              }
+
+              throw error;
+            });
+            let frames: RealClipMediaPart[] | undefined;
+
+            if (
+              mode === 'AUDIO_WITH_FRAMES' &&
+              validation.request.selectedFrameKeys.length > 0
+            ) {
+              frames = await deadline.run(() => Promise.all(
+                validation.request.selectedFrameKeys.map((key) =>
+                  fetchClipMedia(key, { kind: 'frame', maxBytes: aiCaptionFrameMaxBytes, signal: deadline.signal })
+                )
+              ));
+            }
+
+            caption = await deadline.run(() => realClipCaptionProvider.generate({
+              request: validation.request,
+              mode,
+              audio,
+              frames,
+              signal: deadline.signal
+            }));
+            if (validation.request.platforms) {
+              const platformCaptions = readRealClipPlatformCaptions(caption.platformCaptions, validation.request.platforms);
+              if (!platformCaptions) {
+                throw new Error('Real-clip AI provider returned incomplete or invalid platform captions');
+              }
+              caption = { ...caption, platformCaptions };
+            }
+          } catch (error) {
+            if (await handleInterruption(error)) return;
+            if (error instanceof MediaDownloadError) {
+              releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
+              await deadline.run(cleanupRequestedMedia);
+              sendMediaDownloadErrorResponse(response, error);
+              return;
+            }
+
+            if (!(await reserveUsageOrRespond())) {
+              return;
+            }
+
+            // Keep a visibly editable fallback when AI cannot produce grounded
+            // copy. Provider outages remain visible in ops and Sentry.
+            if (!(error instanceof CaptionInsufficientEvidenceError)) {
+              reportMonitoringError(error, { operation: 'captions.provider' });
+              console.error(
+                'Real-clip AI caption failed; using local template:',
+                error instanceof Error ? error.message : error
+              );
+            }
+            caption = generateLocalRealClipCaption({ request: validation.request, mode });
+            isFallback = true;
+            fallbackReason = error instanceof CaptionInsufficientEvidenceError ? 'INSUFFICIENT_EVIDENCE' : 'PROVIDER_UNAVAILABLE';
+            releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
+          }
+        } finally {
+          releaseMediaSlot();
+        }
+      } else if (transcriptionProvider) {
+        // Legacy path: transcription -> local template.
+        let transcript;
+        const releaseMediaSlot = acquireMediaSlot();
+        if (!releaseMediaSlot) {
+          await deadline.run(cleanupRequestedMedia);
+          sendMediaBusyResponse(response);
+          return;
+        }
+
         try {
           if (!(await reserveUsageOrRespond())) {
             return;
           }
 
-          const audio = await fetchClipMedia(validation.request.videoS3Key, {
-            kind: validation.request.mediaKind ?? 'video',
-            maxBytes: realClipCaptionClipMaxBytes
-          }).catch((error: unknown) => {
-            // A legacy full video this large was always rejected by Gemini and
-            // fell back to the template; keep that outcome without the download.
-            // Beyond the general AI media limit it stays a 413 as before.
-            if (
-              validation.request.mediaKind !== 'audio' &&
-              error instanceof MediaDownloadError &&
-              error.code === 'AI_MEDIA_TOO_LARGE' &&
-              (error.declaredSizeBytes ?? 0) <= aiMediaDownloadMaxBytes
-            ) {
-              throw new Error('Clip exceeds the Gemini inline caption budget');
-            }
-
-            throw error;
-          });
-          let frames: RealClipMediaPart[] | undefined;
-
-          if (
-            mode === 'AUDIO_WITH_FRAMES' &&
-            validation.request.selectedFrameKeys.length > 0
-          ) {
-            frames = await Promise.all(
-              validation.request.selectedFrameKeys.map((key) =>
-                fetchClipMedia(key, { kind: 'frame', maxBytes: aiCaptionFrameMaxBytes })
-              )
-            );
-          }
-
-          caption = await realClipCaptionProvider.generate({
-            request: validation.request,
-            mode,
-            audio,
-            frames
-          });
-          if (validation.request.platforms) {
-            const platformCaptions = readRealClipPlatformCaptions(caption.platformCaptions, validation.request.platforms);
-            if (!platformCaptions) {
-              throw new Error('Real-clip AI provider returned incomplete or invalid platform captions');
-            }
-            caption = { ...caption, platformCaptions };
-          }
+          transcript = await deadline.run(() => transcriptionProvider.transcribe({
+            mediaS3Key: validation.request.videoS3Key,
+            mediaKind: validation.request.mediaKind === 'audio' ? 'audio' : 'legacy-video'
+          }));
         } catch (error) {
+          if (await handleInterruption(error)) return;
+          releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
           if (error instanceof MediaDownloadError) {
-            await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
-            await cleanupRequestedMedia();
+            await deadline.run(cleanupRequestedMedia);
             sendMediaDownloadErrorResponse(response, error);
             return;
           }
 
-          if (!(await reserveUsageOrRespond())) {
-            return;
-          }
-
-          // Fall back to the local template so an AI/provider outage still returns
-          // a usable caption. Logged so a broken provider is visible in ops.
-          reportMonitoringError(error, { operation: 'captions.provider' });
-          console.error(
-            'Real-clip AI caption failed; using local template:',
-            error instanceof Error ? error.message : error
-          );
-          caption = generateLocalRealClipCaption({ request: validation.request, mode });
-          isFallback = true;
-          releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
+          await deadline.run(cleanupRequestedMedia);
+          reportMonitoringError(error, { operation: 'ai.transcription' });
+          response.status(502).json({
+            status: 'error',
+            code: 'AI_CAPTION_TRANSCRIPTION_FAILED',
+            message: 'Could not read audio from the selected clip'
+          });
+          return;
+        } finally {
+          releaseMediaSlot();
         }
-      } finally {
-        releaseMediaSlot();
-      }
-    } else if (transcriptionProvider) {
-      // Legacy path: transcription -> local template.
-      let transcript;
-      const releaseMediaSlot = acquireMediaSlot();
-      if (!releaseMediaSlot) {
-        await cleanupRequestedMedia();
-        sendMediaBusyResponse(response);
-        return;
-      }
 
-      try {
+        caption = generateLocalRealClipCaption({
+          request: validation.request,
+          mode,
+          transcript
+        });
+      } else {
         if (!(await reserveUsageOrRespond())) {
           return;
         }
 
-        transcript = await transcriptionProvider.transcribe({
-          mediaS3Key: validation.request.videoS3Key,
-          mediaKind: validation.request.mediaKind === 'audio' ? 'audio' : 'legacy-video'
-        });
-      } catch (error) {
-        await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
-        if (error instanceof MediaDownloadError) {
-          await cleanupRequestedMedia();
-          sendMediaDownloadErrorResponse(response, error);
-          return;
+        caption = generateLocalRealClipCaption({ request: validation.request, mode });
+      }
+
+      if (caption.model === 'local-real-clip-template' && !isFallback) {
+        isFallback = true;
+        fallbackReason = 'PROVIDER_UNAVAILABLE';
+        releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
+      }
+
+      await deadline.run(cleanupRequestedMedia);
+
+      const finalUsage = await deadline.run(() => readUsageAfterFallback(realClipCaptionUsageStore,
+        { userId: authUser.id, monthKey }, releasedFallbackUsage,
+        reservation?.usedThisMonth ?? usedThisMonth));
+      const chargedAddonCredits = reservation?.ok && !releasedFallbackUsage
+        ? (reservation.records ?? [reservation.record]).filter(record => record.usesAddonCredit).length : 0;
+      const finalAddonRemaining = await deadline.run(() => readFinalAddonRemaining(authUser.id, now,
+        addonRemaining - chargedAddonCredits));
+      response.json({
+        status: 'ok',
+        ...caption,
+        ...(isFallback ? { isFallback: true } : {}),
+        ...(fallbackReason ? { fallbackReason } : {}),
+        quota: {
+          limit,
+          ...finalUsage,
+          remainingThisMonth: Math.max(limit - finalUsage.usedThisMonth, 0),
+          addonRemaining: finalAddonRemaining,
+          availableGenerations: Math.max(limit - finalUsage.usedThisMonth, 0) + finalAddonRemaining,
+          requestedCredits: requiredCredits,
+          chargedCredits: releasedFallbackUsage ? 0 : requiredCredits,
+          ...(isFallback ? { charged: !releasedFallbackUsage } : {})
         }
-
-        await cleanupRequestedMedia();
-        reportMonitoringError(error, { operation: 'ai.transcription' });
-        response.status(502).json({
-          status: 'error',
-          code: 'AI_CAPTION_TRANSCRIPTION_FAILED',
-          message: 'Could not read audio from the selected clip'
-        });
-        return;
-      } finally {
-        releaseMediaSlot();
-      }
-
-      caption = generateLocalRealClipCaption({
-        request: validation.request,
-        mode,
-        transcript
       });
-    } else {
-      if (!(await reserveUsageOrRespond())) {
-        return;
-      }
-
-      caption = generateLocalRealClipCaption({ request: validation.request, mode });
+    } catch (error) {
+      if (!(await handleInterruption(error))) throw error;
+    } finally {
+      deadline.dispose();
     }
-
-    if (validation.request.platforms && caption.model === 'local-real-clip-template' && !isFallback) {
-      isFallback = true;
-      releasedFallbackUsage = await releaseFailedCaptionUsage(realClipCaptionUsageStore, reservation);
-    }
-
-    await cleanupRequestedMedia();
-
-    const finalUsage = await readUsageAfterFallback(realClipCaptionUsageStore,
-      { userId: authUser.id, monthKey }, releasedFallbackUsage,
-      reservation?.usedThisMonth ?? usedThisMonth);
-    const chargedAddonCredits = reservation?.ok && !releasedFallbackUsage
-      ? (reservation.records ?? [reservation.record]).filter(record => record.usesAddonCredit).length : 0;
-    const finalAddonRemaining = await readFinalAddonRemaining(authUser.id, now,
-      addonRemaining - chargedAddonCredits);
-    response.json({
-      status: 'ok',
-      ...caption,
-      ...(isFallback ? { isFallback: true } : {}),
-      quota: {
-        limit,
-        ...finalUsage,
-        remainingThisMonth: Math.max(limit - finalUsage.usedThisMonth, 0),
-        addonRemaining: finalAddonRemaining,
-        availableGenerations: Math.max(limit - finalUsage.usedThisMonth, 0) + finalAddonRemaining,
-        requestedCredits: requiredCredits,
-        chargedCredits: releasedFallbackUsage ? 0 : requiredCredits,
-        ...(isFallback ? { charged: !releasedFallbackUsage } : {})
-      }
-    });
   });
 };

@@ -2,6 +2,20 @@
 
 Build roadmap for PostDee.
 
+## Caption quality and recovery (2026-11-01, local candidate)
+
+- Read actual clip evidence before writing; preserve negative meaning and stop
+  when no usable evidence exists, with no caption credit charged for fallback.
+- Bound media/AI work and recover reservations on timeout/disconnect; validate
+  generated text before accepting it as publishable output.
+- Offer shared-caption choices and undo; preserve manual text on fallback.
+- Prepare a bounded visual proxy for large clips without extractable audio.
+- Keep per-channel costs, purchased credits, owner isolation, saved drafts,
+  writing styles, publishing settings and retired features unchanged.
+- No migration, new environment variable or hosted delivery. Deploy API before
+  Mobile. Record real-provider and native limits in the [work
+  record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+
 ## Preserved-work integration (2026-11-01, delivered / native acceptance pending)
 
 - Bring the preserved Thai storefront-readability and publishing-contrast fixes

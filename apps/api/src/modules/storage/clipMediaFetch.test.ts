@@ -22,6 +22,30 @@ const frameOptions = { kind: 'frame', maxBytes: aiCaptionFrameMaxBytes } as cons
 // A key ending in .jpg only proves the name; the stored object itself must be a
 // small image before it is buffered for Gemini.
 describe('createFetchMediaFromVideoStorage frame limits', () => {
+  it('passes caption cancellation to storage fetch and cancels a stalled body read', async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    const fetchImpl = vi.fn(async () => new Response(body, { headers: { 'content-type': 'image/jpeg' } }));
+    const fetchMedia = createFetchMediaFromVideoStorage(signedStorage(), fetchImpl);
+    const result = fetchMedia('uploads/u/frame/frame_1.jpg', { ...frameOptions, signal: controller.signal });
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    controller.abort(new Error('caption cancelled'));
+    await expect(result).rejects.toThrow('caption cancelled');
+    expect(fetchImpl).toHaveBeenCalledWith(expect.any(String), { signal: controller.signal });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('does not request signed storage access for an already cancelled caption', async () => {
+    const storage = signedStorage();
+    const access = vi.spyOn(storage, 'createDownloadAccess');
+    const controller = new AbortController();
+    controller.abort(new Error('caption cancelled'));
+    await expect(createFetchMediaFromVideoStorage(storage)('uploads/u/clip/a.mp4', {
+      kind: 'video', maxBytes: 100, signal: controller.signal
+    })).rejects.toThrow('caption cancelled');
+    expect(access).not.toHaveBeenCalled();
+  });
   it('refuses a frame whose stored object is not an image', async () => {
     const fetchImpl = vi.fn(async () => new Response(new Uint8Array(16), { headers: { 'content-type': 'video/mp4' } }));
     const fetchMedia = createFetchMediaFromVideoStorage(signedStorage(), fetchImpl);

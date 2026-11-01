@@ -6,6 +6,7 @@ import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/ai_editing/ai_edit_audio_extractor.dart';
+import 'package:postdee_mobile/features/ai_editing/ai_edit_visual_proxy_extractor.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -47,6 +48,16 @@ AiEditAudioArtifact _audioFixture({int sizeBytes = 512}) {
   return AiEditAudioArtifact(file: file, workingDirectory: directory);
 }
 
+AiEditVisualProxyArtifact _proxyFixture({int sizeBytes = 512}) {
+  final directory = Directory.systemTemp.createTempSync('caption-proxy-');
+  addTearDown(() {
+    if (directory.existsSync()) directory.deleteSync(recursive: true);
+  });
+  final file = File('${directory.path}/caption-proxy.mp4')
+    ..writeAsBytesSync(List.filled(sizeBytes, 7));
+  return AiEditVisualProxyArtifact(file: file, workingDirectory: directory);
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -66,6 +77,7 @@ void main() {
       })> generateWith(
     WidgetTester tester, {
     required UploaderAudioExtractor extractCaptionAudio,
+    Future<AiEditVisualProxyArtifact> Function(File)? extractCaptionVisualProxy,
     // Above the 15,000,000-byte Gemini inline budget by default.
     int videoSizeBytes = 20000000,
   }) async {
@@ -107,6 +119,7 @@ void main() {
               canSchedule: true,
               canUseAnalytics: false),
           extractCaptionAudio: extractCaptionAudio,
+          extractCaptionVisualProxy: extractCaptionVisualProxy,
           createUpload: (request) async {
             uploads.add(request);
             return UploadResult(
@@ -165,15 +178,47 @@ void main() {
     expect(audio.file.existsSync(), isFalse);
   });
 
-  testWidgets('falls back to the video upload when audio extraction fails',
+  testWidgets('silent large clips upload a bounded visual proxy and clean it',
+      (tester) async {
+    final proxy = _proxyFixture();
+    final result = await generateWith(tester,
+        extractCaptionAudio: (_) async => throw const AiEditAudioExtractionException(
+            AiEditAudioExtractionFailure.noAudioStream),
+        extractCaptionVisualProxy: (_) async => proxy);
+
+    expect(result.uploads.single.purpose, 'ai-caption-video');
+    expect(result.uploads.single.sizeBytes, 512);
+    expect(result.uploads.single.fileName, 'caption-proxy.mp4');
+    expect(result.requests.single.videoS3Key, 'uploads/owner-a/video/clip.mp4');
+    expect(result.requests.single.audioS3Key, isNull);
+    expect(proxy.file.existsSync(), isFalse);
+  });
+
+  testWidgets('an oversized proxy never uploads the original large clip',
+      (tester) async {
+    final proxy = _proxyFixture(sizeBytes: 15000001);
+    final result = await generateWith(tester,
+        extractCaptionAudio: (_) async => throw const AiEditAudioExtractionException(
+            AiEditAudioExtractionFailure.noAudioStream),
+        extractCaptionVisualProxy: (_) async => proxy);
+    expect(result.uploads, isEmpty);
+    expect(result.requests, isEmpty);
+    expect(proxy.file.existsSync(), isFalse);
+    expect(find.text('เตรียมคลิปสำหรับ AI ไม่สำเร็จ ลองเลือกคลิปที่สั้นลงแล้วลองใหม่'),
+        findsOneWidget);
+  });
+
+  testWidgets('a failed visual proxy explains the next step before upload',
       (tester) async {
     final result = await generateWith(tester,
         extractCaptionAudio: (_) async => throw const AiEditAudioExtractionException(
-            AiEditAudioExtractionFailure.noAudioStream));
-
-    expect(result.uploads.single.purpose, 'ai-caption-video');
-    expect(result.requests.single.videoS3Key, 'uploads/owner-a/video/clip.mp4');
-    expect(result.requests.single.audioS3Key, isNull);
+            AiEditAudioExtractionFailure.ffmpegFailed),
+        extractCaptionVisualProxy: (_) async => throw const AiEditVisualProxyException(
+            AiEditVisualProxyFailure.ffmpegFailed));
+    expect(result.uploads, isEmpty);
+    expect(result.requests, isEmpty);
+    expect(find.text('เตรียมคลิปสำหรับ AI ไม่สำเร็จ ลองเลือกคลิปที่สั้นลงแล้วลองใหม่'),
+        findsOneWidget);
   });
 
   testWidgets('explains instead of uploading audio over the caption limit',

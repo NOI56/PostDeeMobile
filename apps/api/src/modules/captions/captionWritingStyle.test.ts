@@ -151,13 +151,21 @@ describe('real-clip caption writingStyle route', () => {
 const capturePrompt = async (writingStyle?: unknown) => {
   const validated = validate(writingStyle);
   if (!validated.ok) throw new Error('Expected a valid style');
-  const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => ({
+  const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => ({
     ok: true,
-    json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(generated) }] } }] })
+    json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(
+      JSON.parse(init.body as string).contents[0].parts.some((part: { inlineData?: unknown }) => part.inlineData)
+        ? { transcript: '', detectedSpokenLanguage: 'und', visibleText: ['เมนูร้าน'],
+          visualObservations: ['หน้าเมนูร้าน'], enoughEvidence: true }
+        : generated
+    ) }] } }] })
   }));
   const provider = createGeminiRealClipCaptionProvider({ apiKey: 'test-key', model: 'gemini-2.5-flash-lite', fetchImpl });
   const result = await provider.generate({ request: validated.request, mode: 'AUDIO_ONLY', audio: media });
-  const body = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
+  expect(fetchImpl).toHaveBeenCalledTimes(3);
+  const evidenceBody = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
+  expect(JSON.stringify(evidenceBody)).not.toContain('ข้อมูลตัวอย่างสไตล์');
+  const body = JSON.parse(fetchImpl.mock.calls[1][1].body as string);
   return { result, body, system: body.systemInstruction.parts[0].text as string,
     instruction: body.contents[0].parts.at(-1).text as string };
 };

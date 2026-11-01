@@ -1984,6 +1984,7 @@ class RealClipCaptionResult {
     this.model,
     this.isFallback = false,
     this.platformCaptions = const {},
+    this.fallbackReason,
   });
 
   final String caption;
@@ -1998,6 +1999,7 @@ class RealClipCaptionResult {
   final String? model;
   final bool isFallback;
   final Map<String, CaptionResult> platformCaptions;
+  final String? fallbackReason;
 
   factory RealClipCaptionResult.fromJson(Map<String, Object?> json) {
     final source = json['source'];
@@ -2016,6 +2018,7 @@ class RealClipCaptionResult {
     return RealClipCaptionResult(
       caption: json['caption'] as String,
       captionOptions: _readStringList(json['captionOptions']),
+      fallbackReason: json['fallbackReason'] as String?,
       hooks: _readStringList(json['hooks']),
       hashtags: _readStringList(json['hashtags']),
       seoKeywords: _readStringList(json['seoKeywords']),

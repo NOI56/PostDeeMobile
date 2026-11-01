@@ -42,9 +42,13 @@ export const createOwnerOperationRouter = (router: Router, runWithActiveOwner: R
           }
           void runWithActiveOwner(user.id, async () => {
             let code: string | undefined;
+            let captionCreditsRefunded = false;
             const originalJson = response.json;
             response.json = function (body: unknown) {
               if (body && typeof body === 'object' && 'code' in body && typeof body.code === 'string') code = body.code;
+              const quota = body && typeof body === 'object' && 'quota' in body ? body.quota : undefined;
+              captionCreditsRefunded = Boolean(quota && typeof quota === 'object' &&
+                'charged' in quota && quota.charged === false && 'chargedCredits' in quota && quota.chargedCredits === 0);
               return originalJson.call(this, body);
             };
             try { await (handler as RequestHandler)(request, response, next); }
@@ -55,7 +59,12 @@ export const createOwnerOperationRouter = (router: Router, runWithActiveOwner: R
             // mutates or contacts a publisher. Keep its lifetime admission and
             // completion while exempting only its exact path from write ambiguity.
             const readOnlyRecovery = request.method === 'POST' && path === '/posts/submissions/recover';
-            if (response.statusCode >= 500 && !readOnlyRecovery && (!code || !unavailableBeforeRemoteWork.has(code))) {
+            // AI caption generation cannot create a social post. Its timeout
+            // only finishes the owner ticket after the route confirms that its
+            // reservation was refunded (or that no credits were reserved).
+            const refundedCaptionTimeout = request.method === 'POST' && path === '/captions/generate-from-clip' &&
+              response.statusCode === 504 && code === 'CAPTION_GENERATION_TIMEOUT' && captionCreditsRefunded;
+            if (response.statusCode >= 500 && !readOnlyRecovery && !refundedCaptionTimeout && (!code || !unavailableBeforeRemoteWork.has(code))) {
               retainCurrentOwnerOperation(user.id);
             }
           }).catch(next);

@@ -232,6 +232,7 @@ type AppOptions = {
   realClipCaptionProvider?: RealClipCaptionProvider;
   fetchClipMedia?: (videoS3Key: string, options?: AiMediaFetchOptions) => Promise<RealClipMediaPart>;
   maxConcurrentAiMediaRequests?: number;
+  captionGenerationTimeoutMs?: number;
   transcriptionProvider?: TranscriptionProvider;
   editPlanProvider?: EditPlanProvider;
   soundEffectPlanProvider?: SoundEffectPlanProvider;
@@ -411,13 +412,15 @@ const createFetchAudioFromVideoStorage =
 export const createFetchMediaFromVideoStorage =
   (videoStorage: VideoStorage, fetchImpl: typeof fetch = fetch) =>
   async (videoS3Key: string, mediaOptions?: AiMediaFetchOptions): Promise<RealClipMediaPart> => {
+    mediaOptions?.signal?.throwIfAborted();
     const access = await videoStorage.createDownloadAccess(videoS3Key);
+    mediaOptions?.signal?.throwIfAborted();
 
     if (access.accessType !== 'signed-url' || !access.downloadUrl) {
       throw new Error('Signed download access is required for real-clip captioning');
     }
 
-    const response = await fetchImpl(access.downloadUrl);
+    const response = await fetchImpl(access.downloadUrl, mediaOptions?.signal ? { signal: mediaOptions.signal } : undefined);
 
     if (!response.ok) {
       throw new Error(`Media download failed with status ${response.status}`);
@@ -447,7 +450,7 @@ export const createFetchMediaFromVideoStorage =
     }
 
     return {
-      data: await readAiMediaResponseBytes(response, mediaOptions?.maxBytes),
+      data: await readAiMediaResponseBytes(response, mediaOptions?.maxBytes, mediaOptions?.signal),
       mimeType: contentType ?? 'video/mp4'
     };
   };
@@ -737,7 +740,8 @@ export const createApp = (options: AppOptions = {}) => {
       monthlyAddonStore,
       billingAddonsEnabled: config.billingAddonsEnabled,
       now: options.now,
-      maxConcurrentMediaRequests: options.maxConcurrentAiMediaRequests
+      maxConcurrentMediaRequests: options.maxConcurrentAiMediaRequests,
+      captionGenerationTimeoutMs: options.captionGenerationTimeoutMs
     }
   );
   // Account deletion still clears historical AI-edit usage rows.

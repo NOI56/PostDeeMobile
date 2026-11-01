@@ -9,6 +9,8 @@ import { createInMemoryPlatformPublishStore } from '../platformPublishes/platfor
 import { registerPostRoutes } from '../posts/postRoutes.js';
 import { createInMemoryRealClipCaptionUsageStore } from '../captions/captionUsageStore.js';
 import { registerCaptionRoutes } from '../captions/captionRoutes.js';
+import { generateLocalRealClipCaption } from '../captions/captionService.js';
+import type { RealClipCaptionGenerateInput } from '../captions/realClipCaptionProvider.js';
 import { registerBillingRoutes } from './billingRoutes.js';
 import { createInMemoryMonthlyAddonStore } from './monthlyAddonStore.js';
 
@@ -27,6 +29,9 @@ const fixture = async (initialPlan: SubscriptionPlan = 'STARTER', enabled = true
   const users = createUserStore();
   const generator = { generate: vi.fn(async () => ({ caption: 'แคปชันทดสอบ', hashtags: ['#ทดสอบ'],
     affiliateLinkPlaceholder: '[ลิงก์]', model: 'test' })) };
+  const clipProvider = { generate: vi.fn(async (input: RealClipCaptionGenerateInput) => ({
+    ...generateLocalRealClipCaption(input), model: 'test-ai', caption: 'พาดูเมนูที่เห็นในคลิปกัน'
+  })) };
   const app = express();
   const router = express.Router();
   const auth: express.RequestHandler = (_request, response, next) => {
@@ -39,9 +44,9 @@ const fixture = async (initialPlan: SubscriptionPlan = 'STARTER', enabled = true
   registerPostRoutes(router, posts, createInMemoryPublishQueue(), auth, users, subscriptions,
     createInMemoryPlatformPublishStore(), { ...options, allowSubscriptionPlanOverride: false });
   registerCaptionRoutes(router, generator, auth, subscriptions, undefined, captions,
-    undefined, undefined, undefined, users, options);
+    clipProvider, async () => ({ data: new Uint8Array([1]), mimeType: 'video/mp4' }), undefined, users, options);
   app.use(router);
-  return { app, posts, captions, monthlyAddonStore, userId, generator, setPlan: (value: SubscriptionPlan) => { plan = value; },
+  return { app, posts, captions, monthlyAddonStore, userId, generator, clipProvider, setPlan: (value: SubscriptionPlan) => { plan = value; },
     setNow: (value: string) => { instant = value; } };
 };
 
@@ -119,15 +124,21 @@ describe('nonexpiring addon quota integration', () => {
     }
   );
 
-  it('refunds an addon caption when the provider fails without releasing other usage', async () => {
-    const { app, captions, userId, generator } = await fixture();
-    for (let index = 0; index < 99; index += 1) await captions.reserve({ userId, monthKey: '2026-10',
-      limit: 50, includeMonthlyAddons: true, now: '2026-10-31T23:59:59.000Z' });
-    generator.generate.mockRejectedValueOnce(new Error('provider unavailable'));
-    const response = await request(app).post('/captions/generate').send({ keywords: ['สินค้า'] }).expect(200);
-    expect(response.body.quota).toMatchObject({ limit: 50, usedThisMonth: 50, remainingThisMonth: 0,
-      addonRemaining: 1, availableGenerations: 1, charged: false });
-    expect(await captions.countForMonth({ userId, monthKey: '2026-10' })).toBe(50);
-    expect(await captions.countAddonUsages({ userId })).toBe(49);
-  });
+  it.each(['/captions/generate', '/captions/generate-from-clip'])(
+    'refunds an addon caption for %s when its provider fails without releasing other usage', async endpoint => {
+      const { app, captions, userId, generator, clipProvider } = await fixture();
+      for (let index = 0; index < 99; index += 1) await captions.reserve({ userId, monthKey: '2026-10',
+        limit: 50, includeMonthlyAddons: true, now: '2026-10-31T23:59:59.000Z' });
+      const fromClip = endpoint.endsWith('from-clip');
+      if (fromClip) clipProvider.generate.mockRejectedValueOnce(new Error('provider unavailable'));
+      else generator.generate.mockRejectedValueOnce(new Error('provider unavailable'));
+      const response = await request(app).post(endpoint).send(fromClip
+        ? { videoS3Key: `uploads/${userId}/clip/video.mp4` } : { keywords: ['สินค้า'] }).expect(200);
+      expect(response.body.isFallback).toBe(true);
+      expect(response.body.quota).toMatchObject({ limit: 50, usedThisMonth: 50, remainingThisMonth: 0,
+        addonRemaining: 1, availableGenerations: 1, charged: false });
+      expect(await captions.countForMonth({ userId, monthKey: '2026-10' })).toBe(50);
+      expect(await captions.countAddonUsages({ userId })).toBe(49);
+    }
+  );
 });

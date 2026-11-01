@@ -30,7 +30,7 @@ Key facts:
 
 - **The launcher always builds `main`**, from whichever worktree has `main` checked out, even when started from another branch. It cannot demonstrate a feature branch. It fails if no worktree is on exact `main`.
 - The launcher reuses the installed build number so the install is an update, never a downgrade. The number on screen therefore does not identify the source; the APK hash does.
-- The updater pins the app's existing storage volume (`install -r --force-uuid`) and refuses when that volume is not mounted or the package UID, volume, or version would change. If it stops, report why; do not work around it.
+- The updater refuses to install when the app's existing storage volume is not mounted, then pins that volume (`install -r --force-uuid`). After installing it checks that the package UID and volume are unchanged and the version code did not go down (a higher build number is the normal update); otherwise it stops and the app must not be launched. It never uninstalls, clears data, or retries on another volume. If it stops, report why; do not work around it.
 - `postdee-staging.ps1 -Command run` refuses an adopted-storage target. After the launcher installs, debug with `flutter attach -d <device>` using the Flutter path the launcher prints as `Flutter=`.
 - In a linked worktree the helper finds the ignored `revenuecat.local.json` in the root checkout automatically. If it is missing, the build stops; ask the owner rather than creating one.
 

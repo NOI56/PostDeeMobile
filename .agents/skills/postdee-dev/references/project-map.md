@@ -23,7 +23,7 @@ Paths are relative to the repository root. Confirm a path still exists before re
 | Device build helpers | `apps/mobile/tool/` (see `postdee-android-build`) |
 | Tests and CI | API tests sit next to the code (`*.test.ts`, `*.database.test.ts`); Mobile tests in `apps/mobile/test/`; CI in `.github/workflows/ci.yml` and `build_ios.yml` |
 
-Retired AI-editing and Clip Review code (`aiEdits`, `clipReviews`, `features/ai_editing`) is compatibility code; see the table in `AGENTS.md` before touching it.
+Retired AI-editing code (`apps/api/src/modules/aiEdits`, `apps/mobile/lib/features/ai_editing`) is compatibility code that live features still use; see the table in `AGENTS.md` before touching it. AI Clip Review is fully removed; an empty `clipReviews` folder left in an older checkout is not tracked source.
 
 ## Contracts with a non-obvious shape
 

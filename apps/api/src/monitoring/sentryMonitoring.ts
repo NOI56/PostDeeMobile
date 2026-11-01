@@ -16,6 +16,18 @@ const errorNames = new Set([
 ]);
 const methods = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const platforms = new Set(['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REELS']);
+// Fixed Firebase Admin SDK codes only; any other value is reported as `other`.
+const pushErrors = new Set([
+  'messaging/invalid-argument', 'messaging/invalid-recipient', 'messaging/invalid-payload',
+  'messaging/invalid-data-payload-key', 'messaging/payload-size-limit-exceeded',
+  'messaging/invalid-options', 'messaging/installation-id-not-registered',
+  'messaging/mismatched-credential', 'messaging/invalid-package-name',
+  'messaging/device-message-rate-exceeded', 'messaging/message-rate-exceeded',
+  'messaging/third-party-auth-error', 'messaging/authentication-error',
+  'messaging/server-unavailable', 'messaging/internal-error', 'messaging/unknown-error',
+  'app/invalid-credential', 'app/network-error', 'app/network-timeout', 'app/internal-error',
+  'initialization', 'other'
+]);
 const routeSegments = new Set([
   'posts', 'uploads', 'captions', 'ai-edits', 'templates', 'social-connections',
   'billing', 'analytics', 'devices', 'account', 'auth', 'subscriptions',
@@ -37,6 +49,7 @@ export type MonitoringContext = {
   route?: string;
   httpStatus?: number;
   platform?: string;
+  pushError?: string;
 };
 
 export type MonitoringReporter = {
@@ -72,6 +85,10 @@ const safeTags = (tags: Record<string, unknown> = {}): Record<string, string> =>
   if (route) result.route = route;
   if (typeof tags.platform === 'string' && platforms.has(tags.platform)) result.platform = tags.platform;
   if (typeof tags.http_status === 'string' && /^5\d\d$/.test(tags.http_status)) result.http_status = tags.http_status;
+  if (tags.push_error !== undefined) {
+    result.push_error = typeof tags.push_error === 'string' && pushErrors.has(tags.push_error)
+      ? tags.push_error : 'other';
+  }
   return result;
 };
 
@@ -205,7 +222,8 @@ export const createSentryMonitoring = async (
     });
     const reporter: MonitoringReporter = {
       capture: (error, context) => {
-        const tags = safeTags({ component, ...context, http_status: String(context.httpStatus ?? '') });
+        const tags = safeTags({ component, ...context, http_status: String(context.httpStatus ?? ''),
+          push_error: context.pushError });
         try {
           void Promise.resolve(client.captureException(error, { tags })).catch(() => undefined);
         } catch {

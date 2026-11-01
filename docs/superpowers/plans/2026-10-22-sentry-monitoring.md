@@ -635,3 +635,19 @@ this record.
   provider publishing change is needed. Customer service notices remain manual
   and API-dependent; failed push delivery has no replay or persistent history.
   Production and real social posting are outside this verification.
+
+### Push failure cause tag and permission-prompt budget — 2026-11-01
+
+- `notifications.delivery` reports now add a `push_error` tag. The sender
+  passes only the SDK error code of the batch's first non-dead-token failure,
+  or `initialization` for a setup failure; the monitoring sanitizer keeps it
+  only when it is an allowlisted Firebase Admin `messaging/*` or `app/*` code
+  and reports `other` for any missing or unrecognized value. The fixed error,
+  one report per batch, dead-token cleanup and rejection contract are unchanged.
+- The bell's 10-second deadline moved from the shell into the push gateway.
+  Time spent on the system permission prompt is excluded and bounded
+  separately at 2 minutes, so a slow first-time answer no longer shows the
+  failure toast while the prompt is still open.
+- Regression tests were added first and failed against the previous code:
+  sender tag cases, the sanitizer allowlist, two gateway budget cases, the
+  prompt bound and a shell case that kept the prompt open for 30 seconds.

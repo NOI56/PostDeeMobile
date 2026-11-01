@@ -1765,6 +1765,40 @@ void main() {
     });
   }
 
+  testWidgets('a slow permission answer opens notifications without a failure toast',
+      (tester) async {
+    final language = _signInShell();
+    final answer = Completer<bool>();
+    var registrations = 0;
+    final gateway = FirebasePushMessagingGateway(
+      client: _ShellFirebaseMessagingClient(permissionAnswer: answer.future),
+      sessionStore: PostDeeAuthSessionStore.instance,
+      center: PostDeeNotificationCenter(),
+      registerBoundToken: (_, __) async => registrations += 1,
+    );
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
+      pushMessagingGateway: gateway,
+    )));
+    await tester.pumpAndSettle();
+    expect(registrations, 0);
+
+    await tester.tap(find.bySemanticsLabel('Notifications'));
+    // The first-time system prompt stays open longer than the app's budget.
+    await tester.pump(const Duration(seconds: 30));
+    expect(find.text('Could not connect to notifications. Please try again.'),
+        findsNothing);
+    answer.complete(true);
+    await tester.pumpAndSettle();
+
+    expect(registrations, 1);
+    expect(find.byType(NotificationsScreen), findsOneWidget);
+    expect(find.text('Could not connect to notifications. Please try again.'),
+        findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('notification failure uses the locale when initialization finishes',
       (tester) async {
     final language = _signInShell()..setLocale(const Locale('th'));
@@ -3746,11 +3780,16 @@ class _FailingAccountAccessRevoker implements AccountAccessRevoker {
 }
 
 class _ShellFirebaseMessagingClient implements FirebaseMessagingClient {
-  @override
-  Future<bool> hasPermission() async => true;
+  _ShellFirebaseMessagingClient({this.permissionAnswer});
+
+  /// A pending first-time prompt; permission is already granted when null.
+  final Future<bool>? permissionAnswer;
 
   @override
-  Future<bool> requestPermission() async => true;
+  Future<bool> hasPermission() async => permissionAnswer == null;
+
+  @override
+  Future<bool> requestPermission() => permissionAnswer ?? Future.value(true);
 
   @override
   Future<String?> getToken() async => 'device-token';

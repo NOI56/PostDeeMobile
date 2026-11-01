@@ -273,9 +273,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
     // gives the system prompt clear context instead of interrupting sign-in.
     final owner = _authController.session.stableUserId;
     try {
-      await _pushMessagingGateway
-          .initialize()
-          .timeout(const Duration(seconds: 10));
+      // The gateway bounds its own work; a deadline here would also count the
+      // time the user spends answering the system permission prompt.
+      await _pushMessagingGateway.initialize();
     } catch (_) {
       if (mounted && binding.isCurrent) {
         final languageCode = Localizations.of<PostDeeLocalizations>(

@@ -2594,6 +2594,12 @@ the target Firebase project; `PUSH_SENDER=firebase` by itself is insufficient.
 Staging uses the project-scoped Firebase Cloud Messaging API Admin role while
 retaining the existing Authentication Viewer role.
 
+Each `notifications.delivery` report also carries a `push_error` tag naming the
+batch's first non-dead-token failure: an allowlisted Firebase Admin SDK code
+such as `messaging/mismatched-credential` or `app/invalid-credential`,
+`initialization` when the sender cannot start, or `other` for any missing or
+unrecognized code. Provider messages are never forwarded.
+
 Publish-result pushes include `data: { postId, type: "publish_result", userId }`,
 using the same owner as device-token selection. Mobile clears its in-app list
 on session transitions and accepts only exact matching recipient UIDs. Old

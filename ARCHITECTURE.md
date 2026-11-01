@@ -6,14 +6,18 @@ Architecture overview for the PostDee mobile app and backend scaffold.
 
 The Mobile push gateway keeps a recovered serialized queue for background
 sync, while an explicit bell request receives its own registration failure.
-Only the initiating account may see that failure. Channel requests retain
+Only the initiating account may see that failure. The gateway, not the shell,
+bounds a bell request: 10 seconds of app work, excluding the time the user
+spends on the system permission prompt (bounded separately at 2 minutes).
+Channel requests retain
 typed errors for locale-aware recovery copy; publishing sanitizes errors
 before storing pending draft status. No API contract, persistence, publishing
 retry, entitlement or feature-flag change is required.
 
 The API candidate reports a batch with a non-dead-token FCM rejection through
 the existing monitoring boundary as `notifications.delivery`. It uses a fixed
-error and no raw provider error, token, recipient or message data. Expected
+error and no raw provider error, token, recipient or message data; a
+`push_error` tag keeps only allowlisted Firebase SDK codes (else `other`). Expected
 uninstalled/invalid tokens still return as cleanup candidates; resolved
 multicast failures do not become new exceptions or publishing retries.
 

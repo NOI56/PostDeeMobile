@@ -6,7 +6,9 @@ Flutter mobile app scaffold for PostDee.
 
 An explicit bell tap now reports push-registration failure through the existing
 Thai/English message and can retry later; background initialization stays
-optional and account switches remain isolated. Channel load/connect/refresh
+optional and account switches remain isolated. The gateway bounds the bell at
+10 seconds of app work; time spent on the first-time system permission prompt
+does not count (that prompt has its own 2-minute bound). Channel load/connect/refresh
 uses typed errors to distinguish offline, timeout, server failure, sign-in and
 rate limits. Returning from a failed publish keeps safe messages in both the
 status sheet and inline draft state without submitting the post again.

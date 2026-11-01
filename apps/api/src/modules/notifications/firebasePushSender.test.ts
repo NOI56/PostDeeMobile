@@ -46,13 +46,15 @@ const message = {
 };
 const captureException = vi.fn();
 
-const expectSafeDeliveryReport = () => {
+const expectSafeDeliveryReport = (pushError: string) => {
   expect(captureException).toHaveBeenCalledOnce();
   const [error, context] = captureException.mock.calls[0]!;
   expect(error).toBeInstanceOf(Error);
   expect(error.message).toBe('Firebase push delivery failed');
   expect(Object.keys(error)).toEqual([]);
-  expect(context).toEqual({ tags: { component: 'api', operation: 'notifications.delivery' } });
+  expect(context).toEqual({
+    tags: { component: 'api', operation: 'notifications.delivery', push_error: pushError }
+  });
   const reported = JSON.stringify({ message: error.message, stack: error.stack, context });
   for (const privateValue of [...message.tokens, message.title, message.body,
     ...Object.values(message.data), 'private-provider-url', 'private-provider-token']) {
@@ -199,15 +201,16 @@ describe('Firebase push sender', () => {
     await expect(
       sender.send({ ...message, tokens: ['ok', 'unregistered', 'invalid', 'flaky'] })
     ).resolves.toEqual({ invalidTokens: ['unregistered', 'invalid'] });
-    expectSafeDeliveryReport();
+    expectSafeDeliveryReport('messaging/internal-error');
   });
 
   it.each([
-    'messaging/mismatched-credential',
-    'messaging/internal-error',
-    'messaging/message-rate-exceeded',
-    'private-provider-token'
-  ])('reports a non-invalid FCM rejection safely: %s', async (code) => {
+    ['messaging/mismatched-credential', 'messaging/mismatched-credential'],
+    ['messaging/internal-error', 'messaging/internal-error'],
+    ['messaging/message-rate-exceeded', 'messaging/message-rate-exceeded'],
+    ['app/invalid-credential', 'app/invalid-credential'],
+    ['private-provider-token', 'other']
+  ])('reports a non-invalid FCM rejection safely: %s', async (code, pushError) => {
     firebase.sendEachForMulticast.mockResolvedValueOnce({
       successCount: 1,
       failureCount: 1,
@@ -220,8 +223,21 @@ describe('Firebase push sender', () => {
 
     await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
 
-    expectSafeDeliveryReport();
+    expectSafeDeliveryReport(pushError);
     expect(firebase.sendEachForMulticast).toHaveBeenCalledOnce();
+  });
+
+  it('reports a failure without a provider code as other', async () => {
+    firebase.sendEachForMulticast.mockResolvedValueOnce({
+      successCount: 1,
+      failureCount: 1,
+      responses: [{ success: false }, { success: true, messageId: 'm2' }]
+    });
+    const sender = createFirebasePushSender({ serviceAccountJson });
+
+    await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
+
+    expectSafeDeliveryReport('other');
   });
 
   it('returns only dead tokens without reporting expected uninstall failures', async () => {
@@ -255,7 +271,8 @@ describe('Firebase push sender', () => {
     await expect(sender.send({ ...message, tokens: ['device-1', 'device-2', 'device-3'] }))
       .resolves.toEqual({ invalidTokens: ['device-2'] });
 
-    expectSafeDeliveryReport();
+    // The first delivery failure names the batch; dead tokens never do.
+    expectSafeDeliveryReport('messaging/mismatched-credential');
   });
 
   it('does not report successful or empty sends', async () => {
@@ -286,7 +303,7 @@ describe('Firebase push sender', () => {
     await expect(sender.send(message)).resolves.toEqual({ invalidTokens: ['device-2'] });
     await Promise.resolve();
 
-    expectSafeDeliveryReport();
+    expectSafeDeliveryReport('messaging/mismatched-credential');
   });
 
   it('surfaces provider failures and retains the initialized sender for retry', async () => {
@@ -295,22 +312,36 @@ describe('Firebase push sender', () => {
     const sender = createFirebasePushSender({ serviceAccountJson });
 
     await expect(sender.send(message)).rejects.toBe(providerError);
-    expectSafeDeliveryReport();
+    expectSafeDeliveryReport('other');
     await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
 
     expect(firebase.getMessaging).toHaveBeenCalledTimes(1);
     expect(firebase.sendEachForMulticast).toHaveBeenCalledTimes(2);
   });
 
+  it('names a known provider code on a thrown send failure', async () => {
+    const providerError = Object.assign(new Error('private-provider-token'), {
+      code: 'messaging/invalid-argument'
+    });
+    firebase.sendEachForMulticast.mockRejectedValueOnce(providerError);
+    const sender = createFirebasePushSender({ serviceAccountJson });
+
+    await expect(sender.send(message)).rejects.toBe(providerError);
+    expectSafeDeliveryReport('messaging/invalid-argument');
+  });
+
   it('surfaces initialization failures and allows another attempt', async () => {
-    const initializationError = new Error('Firebase initialization failed');
+    const initializationError = Object.assign(new Error('Firebase initialization failed'), {
+      code: 'app/invalid-credential'
+    });
     firebase.initializeApp.mockImplementationOnce(() => {
       throw initializationError;
     });
     const sender = createFirebasePushSender({ serviceAccountJson });
 
     await expect(sender.send(message)).rejects.toBe(initializationError);
-    expectSafeDeliveryReport();
+    // Setup failures are one bucket even when the SDK attaches a code.
+    expectSafeDeliveryReport('initialization');
     await expect(sender.send(message)).resolves.toEqual({ invalidTokens: [] });
 
     expect(firebase.initializeApp).toHaveBeenCalledTimes(2);

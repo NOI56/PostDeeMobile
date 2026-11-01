@@ -1,5 +1,10 @@
 # Flat rounded mobile bottom navigation
 
+> Analytics retirement (2026-11-01): secondary Analytics access below is a
+> historical behavior, now removed with all statistics actions. The empty
+> screen-index slot is kept for navigation compatibility; the five active
+> destinations and publishing flows are unchanged. See `AGENTS.md`.
+
 ## Accepted scope
 
 The user selected a white surface with dark text and green primary actions for

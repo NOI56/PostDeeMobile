@@ -1,5 +1,11 @@
 # Usability review fixes — 2026-10-21
 
+> Analytics retirement (2026-11-01): the lazy/session-bound dashboard work
+> recorded below is historical. Customer statistics, secondary entry points
+> and package promises are now retired. The authenticated compatibility route
+> returns `410 ANALYTICS_RETIRED`; publishing records and Firebase app telemetry
+> remain. See `AGENTS.md`.
+
 ## Baseline and authorization
 
 The user requested implementation after the review of 100 synthetic scenarios.

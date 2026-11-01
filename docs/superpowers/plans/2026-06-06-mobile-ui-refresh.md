@@ -1,5 +1,10 @@
 # Mobile UI Refresh Implementation Plan
 
+> Superseded analytics scope (2026-11-01): the customer statistics feature,
+> secondary entry points and package promises are retired. Analytics design,
+> route and preservation instructions below are historical, not TODOs. Keep
+> publishing/delivery outcomes and Firebase app telemetry. See `AGENTS.md`.
+
 > Navigation update (2026-10-05): the second tab is Profile link. Home has one
 > profile-link shortcut above analytics. AI editing and Subtitle Studio no
 > longer have an active entry; uploader AI captions and other tabs remain.

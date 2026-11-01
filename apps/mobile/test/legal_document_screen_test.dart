@@ -4,6 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/legal/legal_document_screen.dart';
 
 void main() {
+  test('privacy copy preserves publishing without retired post analytics', () {
+    expect(PostDeeLegalDocuments.privacyPolicy.body,
+        isNot(contains('แสดงผลวิเคราะห์')));
+    expect(PostDeeLegalDocuments.privacyPolicy.englishBody,
+        isNot(contains('show you analytics')));
+    expect(PostDeeLegalDocuments.privacyPolicy.body, contains('ตั้งเวลา'));
+    expect(PostDeeLegalDocuments.privacyPolicy.englishBody,
+        contains('publish and schedule posts'));
+  });
+
   test('legal documents point to the monitored support address', () {
     expect(
       PostDeeLegalDocuments.privacyPolicy.body,

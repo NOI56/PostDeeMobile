@@ -477,7 +477,8 @@ void main() {
     expect(find.text('TikTok'), findsOneWidget);
     expect(find.text('YouTube Shorts'), findsOneWidget);
     expect(find.text('เสร็จสิ้น'), findsOneWidget);
-    expect(find.text('ดูสถิติโพสต์'), findsOneWidget);
+    expect(find.text('ดูสถิติโพสต์'), findsNothing);
+    expect(find.byKey(const ValueKey('publish-flow-analytics')), findsNothing);
   });
 
   testWidgets('pending progress explains foreground use before Back is pressed',

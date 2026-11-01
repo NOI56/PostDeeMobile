@@ -11,7 +11,7 @@ import '../shared/post_delivery_outcome.dart';
 import '../shared/tiktok_draft_next_step.dart';
 import 'publish_flow_localizations.dart';
 
-enum PublishFlowAction { finish, analytics }
+enum PublishFlowAction { finish }
 
 enum PublishFlowStage {
   preparing,
@@ -932,24 +932,6 @@ class _PublishDoneView extends StatelessWidget {
                   ),
                 ),
                 child: const PublishFlowText('เสร็จสิ้น'),
-              ),
-            ),
-            const SizedBox(height: 4),
-            ConstrainedBox(
-              constraints: const BoxConstraints(
-                  minWidth: double.infinity, minHeight: 48),
-              child: TextButton(
-                key: const ValueKey('publish-flow-analytics'),
-                onPressed: () =>
-                    Navigator.of(context).pop(PublishFlowAction.analytics),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppTheme.accentCyanInk,
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                child: const PublishFlowText('ดูสถิติโพสต์'),
               ),
             ),
           ],

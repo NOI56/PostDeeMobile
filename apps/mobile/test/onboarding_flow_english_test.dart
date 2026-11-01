@@ -10,7 +10,6 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/monitoring/postdee_analytics.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
-import 'package:postdee_mobile/features/analytics/analytics_screen.dart';
 import 'package:postdee_mobile/features/home/home_screen.dart';
 import 'package:postdee_mobile/features/notifications/push_messaging_gateway.dart';
 import 'package:postdee_mobile/features/onboarding/onboarding_flow.dart';
@@ -30,7 +29,7 @@ const _session = AuthSession(
 const _titles = [
   'Connect your channels once',
   'One video. Every channel.',
-  'Schedule and track in one place',
+  'Plan posts in one place',
 ];
 
 final _next = find.byKey(const ValueKey('onboarding-next'));
@@ -193,7 +192,8 @@ class _Fixture {
     expect(videoPicks, 0);
     expect(drafts.writes, 0);
     expect(analytics, isEmpty);
-    expect(find.byType(AnalyticsScreen, skipOffstage: false), findsNothing);
+    expect(find.byKey(const ValueKey('analytics-scroll'), skipOffstage: false),
+        findsNothing);
   }
 }
 

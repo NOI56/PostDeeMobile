@@ -14,25 +14,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 const onboardingEnglishTitles = [
   'Connect your channels once',
   'One video. Every channel.',
-  'Schedule and track in one place',
+  'Plan posts in one place',
 ];
 
 const onboardingEnglishDescriptions = [
   'Connect TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels without switching between apps.',
   'Choose one 9:16 video and send it to all your channels, with AI to help write Thai captions.',
-  'Plan posts in your calendar, then see views, likes, and engagement across platforms in one place.',
+  'Plan posts in your calendar and check delivery status for each channel in one place.',
 ];
 
 const onboardingThaiTitles = [
   'เชื่อมช่องทางครั้งเดียว',
   'คลิปเดียว โพสต์ได้ทุกที่',
-  'ตั้งเวลา + ดูยอดที่เดียว',
+  'วางแผนโพสต์ในที่เดียว',
 ];
 
 const onboardingThaiDescriptions = [
   'เชื่อม TikTok, YouTube Shorts, Instagram Reels และ Facebook Reels บนเพจ ไม่ต้องสลับหลายแอป',
   'เลือกวิดีโอ 9:16 หนึ่งคลิป แล้วส่งขึ้นทุกช่องทางพร้อมกัน พร้อม AI ช่วยใส่แคปชั่นภาษาไทย',
-  'วางแผนโพสต์ในปฏิทิน แล้วดูยอดวิว ไลก์ และเอนเกจเมนต์รวมทุกแพลตฟอร์มในหน้าเดียว',
+  'วางแผนโพสต์ในปฏิทิน และตรวจสอบสถานะการส่งแต่ละช่องทางในที่เดียว',
 ];
 
 class OnboardingEnglishFixture {

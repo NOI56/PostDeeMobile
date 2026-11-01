@@ -74,7 +74,7 @@ const buildSubscriptionStatus = ({
     canUseFreePostQuota,
     canSchedule: canSchedulePosts(plan),
     canUseAiCaptions: plan !== 'BASIC',
-    canUseAnalytics: plan === 'PRO',
+    canUseAnalytics: false,
     canUseAiAudioReview: false,
     canUseAiVideoReview: false
   };

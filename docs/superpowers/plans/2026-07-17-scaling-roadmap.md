@@ -13,8 +13,9 @@ Keep Flutter and the Express modular monolith, Prisma/PostgreSQL, direct signed
 R2 media access, Firebase, RevenueCat, Gemini captions and guarded PostPeer
 publishing. The active product is upload/caption/publish/schedule plus profile
 links; AI video editing/Subtitle Studio are inactive compatibility modules.
-Groq is rejected by runtime configuration. New cross-platform statistics
-ingestion and paid analytics providers are deferred, not scaling prerequisites.
+Groq is rejected by runtime configuration. Social post analytics was retired
+on 2026-11-01; cross-platform metric ingestion and paid analytics providers are
+not scaling prerequisites or launch TODOs.
 
 Useful foundations include persisted scheduled posts, managed uploads,
 idempotency and target snapshots, owner-scoped routes, a BullMQ adapter and
@@ -77,10 +78,9 @@ not automatic infrastructure triggers or supported-user promises.
   persisted state, quota reservation/refund, cancellation, cleanup and restart
   recovery before adding schemas/workers. Active publishing takes priority;
   inactive editing workflows are not reintroduced.
-- [ ] If analytics becomes a separately approved product feature, design
-  provider access/cost, timestamp freshness and bounded SQL aggregation then.
-  Do not buy metrics APIs or implement analytics workers under this capacity
-  plan alone.
+- Social post analytics is retired. Do not buy metrics APIs or implement
+  analytics workers under this capacity plan; restoring that product feature
+  requires a new explicit user request.
 - [ ] Review managed service cost/operational support from actual workload
   evidence. Preserve the modular monolith unless profiling justifies isolation;
   Kubernetes, sharding and broad microservices require their own demonstrated

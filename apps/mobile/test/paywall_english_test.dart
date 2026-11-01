@@ -255,7 +255,7 @@ const _features = {
   'Pro': [
     '250 multi-channel post units/month',
     'Up to 20 store links',
-    'Everything in Starter + full analytics',
+    'Includes Starter features',
     'Schedule up to 30 days ahead',
     'AI captions from audio + images: 120 credits/month',
   ],
@@ -273,7 +273,7 @@ void main() {
     expect(find.text('Choose a plan'), findsOneWidget);
     expect(
         find.text(
-            'Upgrade to unlock scheduling, AI captions, and full analytics'),
+            'Upgrade to unlock scheduling and AI captions'),
         findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -796,7 +796,7 @@ void main() {
       _readable(
           tester,
           find.text(
-              'Upgrade to unlock scheduling, AI captions, and full analytics'));
+              'Upgrade to unlock scheduling and AI captions'));
       for (final entry in _features.entries) {
         await _reveal(tester, find.text(entry.key));
         _readable(tester, find.text(entry.key));

@@ -167,7 +167,7 @@ describe('billing routes', () => {
         canUseFreePostQuota: false,
         canSchedule: true,
         canUseAiCaptions: true,
-        canUseAnalytics: true,
+        canUseAnalytics: false,
         canUseAiAudioReview: false,
         canUseAiVideoReview: false
       }

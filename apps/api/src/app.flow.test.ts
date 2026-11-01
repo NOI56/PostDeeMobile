@@ -227,19 +227,19 @@ describe('PostDee mock publishing flow', () => {
     expect(proResponse.body.hashtags).toHaveLength(5);
   });
 
-  it('blocks Basic analytics and allows analytics after Pro activation', async () => {
+  it('keeps analytics retired before and after Pro activation', async () => {
     const app = createApp();
     const userId = 'seller-analytics-flow';
 
     const basicResponse = await request(app)
       .get('/analytics/summary')
       .set('x-postdee-user-id', userId)
-      .expect(402);
+      .expect(410);
 
     expect(basicResponse.body).toEqual({
       status: 'error',
-      code: 'PRO_REQUIRED',
-      message: 'Unified Analytics requires the Pro plan'
+      code: 'ANALYTICS_RETIRED',
+      message: 'Post analytics has been retired'
     });
 
     await request(app)
@@ -251,22 +251,25 @@ describe('PostDee mock publishing flow', () => {
     const proResponse = await request(app)
       .get('/analytics/summary')
       .set('x-postdee-user-id', userId)
-      .expect(200);
+      .expect(410);
 
     expect(proResponse.body).toEqual({
-      status: 'ok',
-      summary: {
-        range: '30d',
-        totalViews: 0,
-        totalLikes: 0,
-        platforms: [
-          { platform: 'TIKTOK', label: 'TikTok', views: 0, likes: 0 },
-          { platform: 'YOUTUBE_SHORTS', label: 'YouTube Shorts', views: 0, likes: 0 },
-          { platform: 'INSTAGRAM_REELS', label: 'Instagram Reels', views: 0, likes: 0 },
-          { platform: 'FACEBOOK_REELS', label: 'Facebook Reels', views: 0, likes: 0 }
-        ],
-        daily: []
-      }
+      status: 'error',
+      code: 'ANALYTICS_RETIRED',
+      message: 'Post analytics has been retired'
+    });
+
+    const billingResponse = await request(app)
+      .get('/billing/subscription')
+      .set('x-postdee-user-id', userId)
+      .expect(200);
+
+    expect(billingResponse.body.subscription).toMatchObject({
+      plan: 'PRO',
+      monthlyPostLimit: 250,
+      canSchedule: true,
+      canUseAiCaptions: true,
+      canUseAnalytics: false
     });
   });
   it('publishes with the post owner social connection account id', async () => {

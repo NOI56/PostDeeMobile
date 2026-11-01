@@ -386,7 +386,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         features: const [
           _PlanFeature('โพสต์หลายช่องทาง 250 หน่วย/เดือน'),
           _PlanFeature('ลิงก์ร้านสูงสุด 20 ลิงก์'),
-          _PlanFeature('ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ'),
+          _PlanFeature('รวมฟีเจอร์ใน Starter'),
           _PlanFeature('ตั้งเวลาล่วงหน้า 30 วัน'),
           _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 เครดิต/เดือน'),
         ],
@@ -538,7 +538,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
             padding: AppTheme.screenPadding,
             children: [
               _PaywallText(
-                'อัปเกรดเพื่อปลดล็อกการตั้งเวลา AI แคปชั่น และวิเคราะห์เต็มรูปแบบ',
+                'อัปเกรดเพื่อปลดล็อกการตั้งเวลาและ AI แคปชั่น',
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
@@ -978,8 +978,8 @@ String _paywallMessage(BuildContext context, String message) =>
 // provider errors retain their original values; billing services stay unchanged.
 const _englishPaywallMessages = <String, String>{
   'เลือกแพ็กเกจ': 'Choose a plan',
-  'อัปเกรดเพื่อปลดล็อกการตั้งเวลา AI แคปชั่น และวิเคราะห์เต็มรูปแบบ':
-      'Upgrade to unlock scheduling, AI captions, and full analytics',
+  'อัปเกรดเพื่อปลดล็อกการตั้งเวลาและ AI แคปชั่น':
+      'Upgrade to unlock scheduling and AI captions',
   'กำลังโหลดราคา...': 'Loading prices...',
   'ตรวจราคาในร้านค้า': 'Check prices in the store',
   'กำลังตรวจสอบแพ็กเกจปัจจุบัน...': 'Checking current plan...',
@@ -1008,8 +1008,7 @@ const _englishPaywallMessages = <String, String>{
   'ลายน้ำอัตโนมัติ': 'Automatic watermark',
   'โพสต์หลายช่องทาง 250 หน่วย/เดือน': '250 multi-channel post units/month',
   'ลิงก์ร้านสูงสุด 20 ลิงก์': 'Up to 20 store links',
-  'ทุกอย่างใน Starter + วิเคราะห์เต็มรูปแบบ':
-      'Everything in Starter + full analytics',
+  'รวมฟีเจอร์ใน Starter': 'Includes Starter features',
   'ตั้งเวลาล่วงหน้า 30 วัน': 'Schedule up to 30 days ahead',
   'AI แคปชั่นจากเสียง + ภาพ 120 เครดิต/เดือน':
       'AI captions from audio + images: 120 credits/month',

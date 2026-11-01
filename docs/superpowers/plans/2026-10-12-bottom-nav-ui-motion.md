@@ -1,5 +1,10 @@
 # Bottom navigation finite UI motion
 
+> Analytics retirement (2026-11-01): the former secondary index 4 is an empty
+> compatibility slot, with no dashboard or statistics action. References to
+> preserving Analytics below are historical. Keep the five active navigation
+> destinations and publishing/delivery behavior. See `AGENTS.md`.
+
 สถานะ: STAGING DELIVERED — the dock and subsequent motion audit are included in
 combined source `7b0c51d71090e5c080182daa8630d5b90e6d3d49`, with CI and Render
 Live confirmed. Current installed APK is 4016/8016 with retained data. Original

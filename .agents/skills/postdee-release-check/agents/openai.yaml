@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostDee Release Check"
+  short_description: "ตรวจความพร้อมก่อนขึ้น Production หรือส่งสโตร์"
+  default_prompt: "Use $postdee-release-check to report whether the current main commit is ready for Production."

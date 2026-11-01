@@ -137,10 +137,26 @@ of the application ANR. There is no successful native OAuth-routing acceptance
 check, real provider authorization, iOS-device check or live publishing test.
 Do not mark those flows verified from the automated tests or screenshots.
 
-Per the repository's no-regression policy, delivery is stopped at this gate:
+Per the repository's no-regression policy, delivery was stopped at this gate:
 the four work groups remain committed locally, with no main integration,
 push or new Staging deploy from this candidate. Production is unchanged.
 Repeat the guarded native acceptance checks on a responsive Android device
 or emulator before advancing. No migration or environment change is needed.
 Local evidence is retained in `artifacts/pending-qa-native-diagnostic.json`,
 the full test/build logs, the source manifest and the APK receipts.
+
+## Owner-directed Staging delivery follow-up
+
+After receiving the native ANR findings and the explicit report that main,
+push and deploy were held, the owner instructed `main/push/deploy` on
+1 November 2026. Proceed with that reviewed candidate to main and Staging
+only, retaining the unverified native flow as a known limitation. This
+instruction changes the delivery decision; it does not turn native QA into
+a passing check or establish the ANR's cause.
+
+Use fast-forward integration from freshly verified `origin/main` at
+`2f6d0feb4d9833fff2f7b54c98f48bf14e8d1e6a`, preserve the original dirty
+checkout and `[skip render]`, and wait for exact-main-SHA CI before the
+manual Staging deploy. Do not install/distribute an APK or change Production,
+environment values, package rules or schemas as part of this follow-up.
+Record the actual deploy and live checks in `docs/STAGING.md` after success.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostDee Developer"
+  short_description: "แผนที่โค้ด PostDee และเลือก skill ที่ตรงงาน"
+  default_prompt: "Use $postdee-dev to find the PostDee code and tests affected by this change."

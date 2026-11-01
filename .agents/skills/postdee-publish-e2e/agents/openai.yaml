@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostDee Publish E2E"
+  short_description: "ทดสอบโพสต์จริงกับบัญชีจริงบน Staging อย่างปลอดภัย"
+  default_prompt: "Use $postdee-publish-e2e to run an approved private YouTube test post on Staging and record it."

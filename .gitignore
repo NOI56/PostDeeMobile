@@ -11,7 +11,9 @@ coverage/
 .superpowers/
 .worktrees/
 *.log
-.claude/
+# Local Claude Code state stays ignored; shared project skill pointers are tracked.
+.claude/*
+!.claude/skills/
 .codex/
 .idea/
 .tmp/

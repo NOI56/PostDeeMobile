@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostDee Android Build"
+  short_description: "Build และติดตั้งแอป Staging โดยข้อมูลในเครื่องไม่หาย"
+  default_prompt: "Use $postdee-android-build to install the latest main build on the emulator and verify it."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostDee Staging Deploy"
+  short_description: "Deploy API ขึ้น Staging บน Render และตรวจผล"
+  default_prompt: "Use $postdee-staging-deploy to deploy the current main commit to Staging and verify it."

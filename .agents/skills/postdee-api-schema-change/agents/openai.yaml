@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostDee API & Schema"
+  short_description: "แก้ API และฐานข้อมูลโดยแอปรุ่นเก่ายังใช้ได้"
+  default_prompt: "Use $postdee-api-schema-change to add this field to the API and database safely."

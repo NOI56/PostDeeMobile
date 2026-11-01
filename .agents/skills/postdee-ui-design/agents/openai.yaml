@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostDee UI & Copy"
+  short_description: "แก้หน้าจอและข้อความให้ตรงดีไซน์ ทั้งไทยและอังกฤษ"
+  default_prompt: "Use $postdee-ui-design to restyle this screen and keep Thai and English copy in sync."

@@ -84,6 +84,22 @@ apps/
 - This project might not be a git repo yet, so do not rely solely on `git diff` to verify work.
 - If you find files that already have changes, assume they might be the user's work and do not revert them yourself.
 
+## Project Skills
+
+Reusable workflows live in `.agents/skills/<name>/SKILL.md`, which Codex reads. `.claude/skills/<name>/SKILL.md` is a pointer for Claude Code with the same `name` and `description`. Skills add workflow detail only; this file remains the rulebook and wins on any conflict.
+
+| Skill | Use for |
+| --- | --- |
+| `postdee-dev` | Code map and choosing the right workflow skill |
+| `postdee-android-build` | Building and installing Staging builds without losing device data |
+| `postdee-api-schema-change` | API contract and Prisma changes, including opt-in database tests |
+| `postdee-ui-design` | Screens, theme tokens, design preferences, Thai/English copy |
+| `postdee-staging-deploy` | Render Staging deploys and environment variables |
+| `postdee-publish-e2e` | Controlled real-account publishing tests |
+| `postdee-release-check` | Go/no-go report before Production or a store release |
+
+When a helper script, service, or workflow that a skill describes changes, update the skill in the same change. Keep each pointer's `description` identical to its canonical skill.
+
 ## Backend
 
 Location: `apps/api`

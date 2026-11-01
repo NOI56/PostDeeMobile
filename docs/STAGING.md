@@ -1,5 +1,47 @@
 # PostDee Staging
 
+## รวมงานค้าง 4 กลุ่มขึ้น Staging — 1 พฤศจิกายน 2026
+
+- หลังรับทราบผล native QA ที่เกิด ANR ซ้ำ เจ้าของสั่ง `main/push/deploy`
+  จึงรวมแบบ fast-forward จาก `2f6d0feb` เป็น
+  `449b465704e5a649f92ec3f9315b6e35ce7730ca` และ push main โดยคงงานเดิมใน
+  checkout ที่มีการแก้ไขไว้ครบ รวม PR #49 เป็น merged ที่ `ac62a01a`
+  ทุก commit ใช้ `[skip render]`; Production ยัง user-suspended และไม่ได้ deploy/resume
+- งานที่รวมคือการอ่านชื่อร้าน/เบอร์โทรและช่องลิงก์บนเว็บ, สีข้อผิดพลาด Mobile,
+  หมวดข้อผิดพลาด push แบบไม่ส่งข้อมูลส่วนตัวและเวลา permission แยกจาก initialization,
+  รวมถึงเปิดลิงก์เชื่อมต่อในแอปที่รองรับก่อนใช้ browser โดยคง owner/nonce guards
+  ธีม 3D ทั้ง 10 แบบ สิทธิ์แพ็กเกจ และ API contracts เดิมยังครบ
+- [CI 41316009628](https://github.com/NOI56/PostDeeMobile/actions/runs/41316009628)
+  ของ SHA นี้ผ่านก่อน deploy เวลา 21:35:33 น. ไทย (14:35:33 UTC): API 3,210 ผ่าน /
+  67 PostgreSQL opt-in ข้าม, Mobile 4,558 ผ่าน / 7 optional previews ข้าม,
+  analyze ไม่มีปัญหา และ Staging config guards 21 ผ่าน
+  [Build iOS IPA 41316009633](https://github.com/NOI56/PostDeeMobile/actions/runs/41316009633)
+  ผ่าน 21:36:31 น. ไทย (14:36:31 UTC), no codesign และไม่ได้แจกหรือติดตั้ง
+- Deploy [`dep-dbjksp2jnfac738a57h0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbjksp2jnfac738a57h0)
+  เริ่ม 21:36:20 น. ไทย (14:36:20 UTC), **Live 21:37:44 น. ไทย (14:37:44 UTC)**
+  ที่ SHA `449b4657` ตรงกับ main ที่ CI ผ่าน แทน `859d2a86` /
+  `dep-dbjimstg1s2s73fs0q2g` ซึ่งเป็นจุดอ้างอิงย้อนกลับ
+- Startup พบ 28 migrations และ `No pending migrations to apply.`
+  Publishing activation guard ผ่านและ backlog ว่าง ไม่เพิ่ม migration หรือเปลี่ยน env
+  `npm prune` รายงาน moderate vulnerabilities 4 รายการ; CI audit เกณฑ์ high ผ่าน
+  ไม่มีการเปลี่ยน dependencies ในงานนี้
+- ตรวจสดจบ 21:38:13 น. ไทย (14:38:13 UTC) ด้วย PowerShell HTTP: `/health` 200,
+  `/ready` 200 พร้อม database/queue `ok` และ `Cache-Control: no-store`, `/posts` 401
+  `/link-in-bio` ทั้งมี/ไม่มี catalog header ได้ 401 พร้อม `no-store` และ `Vary`
+  ภาพ 3D 10 แบบได้ 200 เป็น PNG / `nosniff` / public cache ถูกต้อง และ SHA-256
+  ตรงกับ source ทุกไฟล์ ชื่อภาพนอก allowlist ได้ 404 ทุกคำขอเป็น GET ไม่มีการเขียนข้อมูล
+  ไม่พบ app logs ระดับ error/warn ตั้งแต่เริ่ม deploy ถึง 14:38:21 UTC
+  ตัวตรวจ Node ในเครื่องหมดเวลาก่อนหน้านี้ แต่ PowerShell ตรวจ endpoint เดียวกันได้
+- Mobile source อยู่บน main แต่ **APK 12092 ยังไม่ได้ติดตั้งหรือแจก**;
+  เครื่องเจ้าของยังใช้ 12090 Native ANR ยังไม่ทราบสาเหตุแน่ชัด และ native OAuth
+  acceptance ยังไม่ผ่าน ไม่ได้ทดสอบ failure push ใหม่, real provider authorization,
+  iOS device, เผยแพร่หน้าเว็บจริง หรือ social publishing ในรอบนี้
+  การ deploy API สำเร็จไม่เปลี่ยนสถานะการตรวจเหล่านี้
+- หลักฐาน: `artifacts/pending-main-ci-receipt.json`,
+  `artifacts/pending-staging-live-receipt.json` และ
+  [บันทึก integration](superpowers/plans/2026-11-01-pending-work-integration.md)
+  commit บันทึกผลภายหลังเปลี่ยนเฉพาะเอกสาร; runtime Staging คง SHA `449b4657`
+
 ## ธีมหน้าเว็บ 3D 10 แบบ — 1 พฤศจิกายน 2026
 
 - เจ้าของอนุมัตินำ `859d2a86beb4adbfa6f89ef1338d1cc399359378` เข้า `main`, push

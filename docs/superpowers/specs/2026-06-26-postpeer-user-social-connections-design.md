@@ -1,6 +1,6 @@
 # PostPeer User Social Connections Design
 
-> **Native routing follow-up (2026-11-01, local candidate):** Prefer a supported
+> **Native routing follow-up (2026-11-01, source integrated / native acceptance pending):** Prefer a supported
 > installed app for the unchanged trusted HTTPS URL, then retain secure browser
 > fallback. Owner/screen changes cancel later attempts. Launch and return never
 > establish connection success; the authenticated nonce protocol still decides.

@@ -1,6 +1,6 @@
 # PostPeer User Social Connections Implementation Plan
 
-> **Native routing follow-up (2026-11-01, local candidate):** The current Mobile
+> **Native routing follow-up (2026-11-01, source integrated / native acceptance pending):** The current Mobile
 > launcher tries a supported trusted HTTPS link in an installed app before its
 > secure browser fallback, with owner/operation/screen cancellation between
 > attempts. Nonce completion remains authoritative. No new provider connection

@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Remaining-work integration (2026-11-01, local candidate)
+## Preserved-work integration (2026-11-01, delivered / native acceptance pending)
 
 - Bring the preserved Thai storefront-readability and publishing-contrast fixes
   onto the current 3D-capable baseline; do not replace newer templates or flows.
@@ -14,6 +14,8 @@ Build roadmap for PostDee.
 - No entitlement, schema, dependency or environment change. Delivery and
   remaining acceptance limits are in the
   [work record](docs/superpowers/plans/2026-11-01-pending-work-integration.md).
+- These groups are integrated on main; Staging API is Live at `449b4657`.
+  Mobile APK installation and native acceptance remain pending.
 
 ## 3D storefront category (2026-11-01, local candidate)
 

@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Readability and push diagnostic follow-up (2026-11-01, local candidate)
+## Readability and push diagnostic follow-up (2026-11-01, Staging API delivered)
 
 Public storefront HTML improves Thai avatar initials, telephone wrapping,
 heading spacing and odd final grid tiles, preserving escaped content, CSP,
@@ -12,7 +12,8 @@ Firebase messages, tokens, recipients and notification contents stay excluded.
 Dead-token cleanup, best-effort delivery and existing failure contracts remain.
 Mobile's separate permission budget and native-app-first OAuth add no backend
 contract. No schema/migration, entitlement, dependency or environment change.
-Deploy API before the corresponding Mobile update; see the
+The API is Live on Staging at `449b4657`; the Mobile update is not installed.
+Native acceptance remains pending. See the
 [integration record](docs/superpowers/plans/2026-11-01-pending-work-integration.md).
 
 ## 3D storefront catalog compatibility (2026-11-01, local candidate)

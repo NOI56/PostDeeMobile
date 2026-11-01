@@ -1,6 +1,6 @@
 # PostDee
 
-## Pending work integration (2026-11-01, local candidate)
+## Preserved-work integration (2026-11-01, main / Staging API delivered)
 
 Integrate Thai store-link readability, publishing error contrast in both themes,
 sanitized push failure categories with a separately timed permission prompt,
@@ -9,7 +9,8 @@ package rights, drafts and owner-bound connection completion. Supported native
 links retain the trusted browser fallback. No new migration, dependency or
 environment setting is required. See the
 [integration record](docs/superpowers/plans/2026-11-01-pending-work-integration.md)
-for validation and actual delivery state.
+for validation and actual delivery state. Staging API runs `449b4657`; Mobile
+source is on main, but the APK is not installed and native acceptance is pending.
 
 PostDee is a cross-platform mobile app and backend for Thai e-commerce sellers,
 affiliate marketers, and creators. The product is Thai-first and has an

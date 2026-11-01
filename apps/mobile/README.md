@@ -2,7 +2,7 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Pending work integration (2026-11-01, local candidate)
+## Preserved-work integration (2026-11-01, source on main / APK not installed)
 
 Preserve all 3D templates while improving Thai store-name/telephone layout and
 publishing error contrast in light/dark themes. Push initialization work keeps
@@ -16,6 +16,8 @@ iOS uses universal links only for its first attempt. Owner/screen changes cancel
 later fallbacks. Launch/return does not imply connection success. No manifest,
 dependency, entitlement or API contract change. Device/build verification is in
 the [integration record](../../docs/superpowers/plans/2026-11-01-pending-work-integration.md).
+API Staging is Live at `449b4657`. APK 12092 is built but not installed;
+native ANR diagnosis and routing acceptance remain pending.
 
 ## 3D storefront category (2026-11-01, local candidate)
 

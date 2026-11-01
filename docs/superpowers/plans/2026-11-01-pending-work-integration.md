@@ -9,9 +9,10 @@ audit. Work starts from freshly fetched `origin/main`
 The dirty root, all 44 registered worktrees, six stashes and combined APK source
 remain preserved. Port only intended changes, never entire stale worktrees.
 
-This is the integrated local candidate. Main integration, push, Staging deploy
-and installed-build verification are recorded only after they occur.
-Production remains outside this task.
+The four groups are integrated on main and the API is delivered to Staging at
+`449b465704e5a649f92ec3f9315b6e35ce7730ca`. Mobile source is on main, but the
+owner's APK has not been updated and native acceptance remains unverified.
+See the delivery receipt below. Production remains outside this task.
 
 ## Four work groups
 
@@ -108,7 +109,8 @@ and social publishing remain separate from routing-only acceptance checks.
   provider/device limitations.
 - [x] Final diff review against baseline: deletions, retired features, assets,
   dependencies and environment flags.
-- [ ] Record delivery only when authorized and performed.
+- [x] Record delivery only when authorized and performed (main/push/Staging API;
+  no installed Mobile delivery or native acceptance claim).
 
 ## Native QA blocker and retained candidate
 
@@ -137,11 +139,12 @@ of the application ANR. There is no successful native OAuth-routing acceptance
 check, real provider authorization, iOS-device check or live publishing test.
 Do not mark those flows verified from the automated tests or screenshots.
 
-Per the repository's no-regression policy, delivery was stopped at this gate:
-the four work groups remain committed locally, with no main integration,
-push or new Staging deploy from this candidate. Production is unchanged.
+Historical gate, superseded only by the owner-directed delivery decision below:
+delivery was stopped under the repository's no-regression policy, with the four
+groups committed locally and no main/push/Staging delivery at that time.
 Repeat the guarded native acceptance checks on a responsive Android device
-or emulator before advancing. No migration or environment change is needed.
+or emulator before claiming native acceptance. No migration or environment
+change is needed. Production remains unchanged.
 Local evidence is retained in `artifacts/pending-qa-native-diagnostic.json`,
 the full test/build logs, the source manifest and the APK receipts.
 
@@ -160,3 +163,30 @@ checkout and `[skip render]`, and wait for exact-main-SHA CI before the
 manual Staging deploy. Do not install/distribute an APK or change Production,
 environment values, package rules or schemas as part of this follow-up.
 Record the actual deploy and live checks in `docs/STAGING.md` after success.
+
+### Completed main and Staging API receipt
+
+- Fast-forwarded and pushed main at `449b465704e5a649f92ec3f9315b6e35ce7730ca`;
+  PR #49 is merged through `ac62a01a`. Original dirty work remains preserved.
+- Exact-SHA [CI 41316009628](https://github.com/NOI56/PostDeeMobile/actions/runs/41316009628)
+  succeeds at 14:35:33 UTC: API 3,210 passed / 67 opt-in SQL skipped; Mobile
+  4,558 passed / seven optional previews skipped; analyze clean; configuration
+  guards 21 passed. [iOS build 41316009633](https://github.com/NOI56/PostDeeMobile/actions/runs/41316009633)
+  succeeds at 14:36:31 UTC, no codesign and no device installation.
+- Manual Staging deploy `dep-dbjksp2jnfac738a57h0` starts 14:36:20 UTC and is
+  Live at 14:37:44 UTC (21:37:44 Bangkok), with exactly that commit. Previous
+  Live reference is `859d2a86` / `dep-dbjimstg1s2s73fs0q2g`.
+- Startup finds 28 migrations with none pending; publishing activation guard
+  passes with empty backlog. No schema, environment or entitlement changes.
+- GET-only live verification finishes 14:38:13 UTC: health/ready 200 with
+  database/queue OK and readiness no-store, unauthenticated posts 401, private
+  profiles 401 with catalog Vary/no-store, all ten 3D PNG hashes equal source,
+  valid MIME/nosniff/cache, unknown artwork 404. No app error/warn logs through
+  14:38:21 UTC. PowerShell supplies this evidence after local Node HTTP times out.
+- This delivers the API and source, not native acceptance. APK 12092 remains
+  uninstalled; owner installation stays 12090. Native ANR cause, native OAuth,
+  real provider authorization, push-failure drill, iOS device and real social
+  publishing remain unverified. No profile writes or Production operations.
+- [Staging record](../../STAGING.md) contains the dashboard link and full Thai
+  receipt. Later receipt commits change documentation only; runtime stays at
+  `449b4657`. Local JSON receipts retain CI and GET evidence.

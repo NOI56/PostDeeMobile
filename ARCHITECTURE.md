@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Preserved-work integration (2026-11-01, local candidate)
+## Preserved-work integration (2026-11-01, main / Staging API delivered)
 
 Storefront readability stays in the existing HTML renderer and native preview
 helpers, including the ten 3D compositions. Publishing contrast uses existing
@@ -16,7 +16,8 @@ Custom Tab and external browser fallback; iOS uses universal-links-only first.
 The asynchronous fallback chain remains bound to its initiating owner,
 operation and mounted screen. Nonce completion remains authoritative, with no
 URL rewriting/logging, WebView, new permission or provider integration.
-See [implementation and evidence](docs/superpowers/plans/2026-11-01-pending-work-integration.md).
+The API is Live at `449b4657`; Mobile source is integrated, with APK installation
+and native acceptance pending. See [implementation and evidence](docs/superpowers/plans/2026-11-01-pending-work-integration.md).
 
 ## 3D storefront presentation (2026-11-01, local candidate)
 

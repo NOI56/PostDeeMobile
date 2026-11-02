@@ -208,7 +208,12 @@ class _Fixture {
 
 Finder _key(String value) => find.byKey(ValueKey(value));
 
-Future<void> _reveal(WidgetTester tester, Finder target) async {
+Future<void> _reveal(WidgetTester tester, Finder target,
+    {bool addon = false}) async {
+  if (addon) {
+    await tester.tap(_key('paywall-addons-category'));
+    await tester.pumpAndSettle();
+  }
   if (target.evaluate().isEmpty) {
     tester
         .state<ScrollableState>(find.byType(Scrollable).first)
@@ -263,6 +268,90 @@ const _features = {
 
 void main() {
   tearDown(() => AppTheme.applyThemeMode(ThemeMode.light));
+
+  testWidgets('package categories separate main plans and add-ons without reloading',
+      (tester) async {
+    final fixture = _Fixture();
+    addTearDown(fixture.dispose);
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    final state = tester.state(find.byType(PaywallScreen));
+    final main = _key('paywall-main-plans-category');
+    final addons = _key('paywall-addons-category');
+    expect(find.text('Main plans'), findsOneWidget);
+    expect(find.text('Add-ons'), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(main).selected, isTrue);
+    expect(find.text('Basic'), findsOneWidget);
+    expect(_key('paywall-addon-card'), findsNothing);
+
+    for (var round = 0; round < 3; round++) {
+      await tester.tap(addons);
+      await tester.pumpAndSettle();
+      expect(tester.widget<ChoiceChip>(addons).selected, isTrue);
+      expect(_key('paywall-addon-card'), findsOneWidget);
+      for (final name in _features.keys) {
+        expect(find.text(name), findsNothing);
+      }
+      expect(main.hitTestable(), findsOneWidget);
+      await tester.tap(main);
+      await tester.pumpAndSettle();
+      expect(tester.widget<ChoiceChip>(main).selected, isTrue);
+      expect(_key('paywall-addon-card'), findsNothing);
+      for (final name in _features.keys) {
+        await _reveal(tester, find.text(name));
+        expect(find.text(name), findsOneWidget);
+      }
+      expect(addons.hitTestable(), findsOneWidget);
+    }
+    expect(tester.state(find.byType(PaywallScreen)), same(state));
+    expect(fixture.subscriptionReads, 1);
+    expect(fixture.gateway.queries, hasLength(1));
+    expect(fixture.addons.catalogReads, 1);
+    expect(fixture.addons.productReads, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Thai categories and the active add-on survive locale changes',
+      (tester) async {
+    final fixture = _Fixture(locale: const Locale('th'));
+    addTearDown(fixture.dispose);
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    expect(find.text('แพ็กเกจหลัก'), findsOneWidget);
+    expect(find.text('แพ็กเกจเสริม'), findsOneWidget);
+    final addons = _key('paywall-addons-category');
+    await tester.tap(addons);
+    await tester.pumpAndSettle();
+    expect(find.text('ซื้อครั้งเดียว CHF 1.25'), findsOneWidget);
+    fixture.language.value = const Locale('en');
+    await tester.pumpAndSettle();
+    expect(find.text('Main plans'), findsOneWidget);
+    expect(find.text('Add-ons'), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(addons).selected, isTrue);
+    expect(find.text('One-time purchase CHF 1.25'), findsOneWidget);
+    expect(find.text('Basic'), findsNothing);
+    expect(fixture.subscriptionReads, 1);
+    expect(fixture.gateway.queries, hasLength(1));
+    expect(fixture.addons.catalogReads, 1);
+    expect(fixture.addons.productReads, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('back from add-ons returns to the previous route', (tester) async {
+    final fixture = _Fixture();
+    addTearDown(fixture.dispose);
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await tester.tap(_key('paywall-addons-category'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(PaywallScreen), findsNothing);
+    expect(find.byType(Scaffold), findsOneWidget);
+    expect(fixture.subscriptionReads, 1);
+    expect(fixture.addons.catalogReads, 1);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('English paywall explains the paid plan benefits',
       (tester) async {
@@ -456,7 +545,7 @@ void main() {
     addTearDown(fixture.dispose);
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
-    await _reveal(tester, _key('paywall-addon-card'));
+    await _reveal(tester, _key('paywall-addon-card'), addon: true);
 
     expect(find.text('One-time credit pack'), findsOneWidget);
     expect(find.text('100 post units + 50 AI caption credits'), findsOneWidget);
@@ -478,7 +567,7 @@ void main() {
     addTearDown(fixture.dispose);
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
-    await _reveal(tester, _key('paywall-addon-card'));
+    await _reveal(tester, _key('paywall-addon-card'), addon: true);
     expect(
         find.text(
             'Purchased credits do not expire · Monthly quota is used first · No automatic renewal'),
@@ -497,7 +586,7 @@ void main() {
     addTearDown(fixture.dispose);
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
-    await _reveal(tester, _key('paywall-addon-card'));
+    await _reveal(tester, _key('paywall-addon-card'), addon: true);
     expect(find.text('One-time purchase   ๑๒,๙๐ บาท  '), findsOneWidget);
     expect(
         find.text('Thailand price: THB 49 · Pay the price shown by your store'),
@@ -515,7 +604,7 @@ void main() {
       addTearDown(fixture.dispose);
       await tester.pumpWidget(fixture.app());
       await tester.pumpAndSettle();
-      await _reveal(tester, _key('paywall-addon-card'));
+      await _reveal(tester, _key('paywall-addon-card'), addon: true);
       expect(
           find.text(
               'Credits remaining: ${credits.$1} post units · ${credits.$2} AI caption credits'),
@@ -537,11 +626,11 @@ void main() {
       addTearDown(fixture.dispose);
       await tester.pumpWidget(fixture.app());
       await tester.pumpAndSettle();
-      await _reveal(tester, _key('paywall-addon-card'));
+      await _reveal(tester, _key('paywall-addon-card'), addon: true);
       final message = switch (state) {
         'disabled' => 'Credit packs are not on sale yet',
         'ineligible' =>
-          'For Starter or Pro members · Subscribe to a plan above first',
+          'For Starter or Pro members · Subscribe in Main plans first',
         'missing' => 'Could not load the credit pack from your store.',
         _ => 'Could not load credit pack. Please try again.',
       };
@@ -549,6 +638,15 @@ void main() {
       expect(find.text('Buy credit pack'), findsOneWidget);
       expect(tester.widget<FilledButton>(_key('paywall-buy-addon')).onPressed,
           isNull);
+      expect(fixture.addons.productReads, state == 'missing' ? 1 : 0);
+      await tester.tap(_key('paywall-main-plans-category'));
+      await tester.pumpAndSettle();
+      await tester.tap(_key('paywall-addons-category'));
+      await tester.pumpAndSettle();
+      expect(find.text(message), findsOneWidget);
+      expect(tester.widget<FilledButton>(_key('paywall-buy-addon')).onPressed,
+          isNull);
+      expect(fixture.addons.catalogReads, 1);
       expect(fixture.addons.productReads, state == 'missing' ? 1 : 0);
       expect(tester.takeException(), isNull);
     });
@@ -577,7 +675,7 @@ void main() {
     });
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
-    await _reveal(tester, _key('paywall-addon-card'));
+    await _reveal(tester, _key('paywall-addon-card'), addon: true);
     expect(find.text('Loading credit pack...'), findsOneWidget);
     expect(find.text('Buy credit pack'), findsOneWidget);
     expect(find.text('One-time purchase CHF 1.25'), findsNothing);
@@ -596,7 +694,7 @@ void main() {
     addTearDown(fixture.dispose);
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
-    await _reveal(tester, _key('paywall-addon-card'));
+    await _reveal(tester, _key('paywall-addon-card'), addon: true);
     expect(find.text('เครดิตคงเหลือ: โพสต์ 138 หน่วย · AI 47 เครดิต'),
         findsOneWidget);
     fixture.language.value = const Locale('en');
@@ -628,6 +726,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Checking current plan...'), findsOneWidget);
     expect(find.text('Current plan'), findsNothing);
+    await tester.tap(_key('paywall-addons-category'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(_key('paywall-subscription-loading'), findsOneWidget);
+    expect(tester.widget<FilledButton>(_key('paywall-buy-addon')).onPressed,
+        isNull);
+    await tester.tap(_key('paywall-main-plans-category'));
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.scrollUntilVisible(find.text('Subscribe Starter'), 250,
         scrollable: find.byType(Scrollable).first);
     await tester.pump();
@@ -669,6 +774,15 @@ void main() {
     expect(fixture.gateway.queries, hasLength(1));
     expect(fixture.addons.catalogReads, 1);
     expect(fixture.addons.productReads, 1);
+    await tester.tap(_key('paywall-addons-category'));
+    await tester.pumpAndSettle();
+    expect(_key('paywall-subscription-error'), findsOneWidget);
+    expect(tester.widget<FilledButton>(_key('paywall-buy-addon')).onPressed,
+        isNull);
+    await _reveal(tester, _key('paywall-retry-subscription'));
+    expect(_key('paywall-retry-subscription').hitTestable(), findsOneWidget);
+    await tester.tap(_key('paywall-main-plans-category'));
+    await tester.pumpAndSettle();
     await _reveal(tester, find.text('Subscribe Starter'));
     expect(
         tester
@@ -793,6 +907,8 @@ void main() {
 
       expect(find.byType(BackButton), findsOneWidget);
       _readable(tester, find.text('Choose a plan'));
+      _readable(tester, find.text('Main plans'));
+      _readable(tester, find.text('Add-ons'));
       _readable(
           tester,
           find.text(
@@ -817,7 +933,7 @@ void main() {
         }
         expect(tester.takeException(), isNull);
       }
-      await _reveal(tester, _key('paywall-addon-card'));
+      await _reveal(tester, _key('paywall-addon-card'), addon: true);
       for (final label in [
         'One-time credit pack',
         '100 post units + 50 AI caption credits',

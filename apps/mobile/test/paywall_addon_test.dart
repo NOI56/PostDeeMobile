@@ -34,6 +34,8 @@ void main() {
                 canUseAiCaptions: true,
                 canUseAnalytics: true))));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('paywall-addon-card')), 400);
   }
@@ -175,6 +177,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ตกลง'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('paywall-buy-addon')), 250);
     await tester.pumpAndSettle();
@@ -238,29 +242,35 @@ void main() {
                     canUseAnalytics: true)),
           )));
       await tester.pumpAndSettle();
-      final card = find.byKey(const ValueKey('paywall-addon-card'));
-      await tester.scrollUntilVisible(card, 350);
-      await Scrollable.ensureVisible(tester.element(card), alignment: .5);
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      final rect = tester.getRect(card);
-      expect(rect.top, greaterThanOrEqualTo(0));
-      expect(rect.bottom, lessThanOrEqualTo(812));
-      final boundary = boundaryKey.currentContext!.findRenderObject()!
-          as RenderRepaintBoundary;
-      await tester.runAsync(() async {
-        final image = await boundary.toImage(pixelRatio: 2);
-        try {
-          final png = await image.toByteData(format: ui.ImageByteFormat.png);
-          final directory = Directory(previewDirectory!);
-          await directory.create(recursive: true);
-          await File(
-                  '${directory.path}/addon-card-${scale == 1 ? 'normal' : 'large-text'}.png')
-              .writeAsBytes(png!.buffer.asUint8List());
-        } finally {
-          image.dispose();
+      for (final category in ['main-plans', 'addons']) {
+        await tester.tap(find.byKey(ValueKey('paywall-$category-category')));
+        await tester.pumpAndSettle();
+        if (category == 'addons') {
+          final card = find.byKey(const ValueKey('paywall-addon-card'));
+          await tester.scrollUntilVisible(card, 350);
+          await Scrollable.ensureVisible(tester.element(card), alignment: .5);
+          await tester.pumpAndSettle();
+          final rect = tester.getRect(card);
+          expect(rect.top, greaterThanOrEqualTo(0));
+          expect(rect.bottom, lessThanOrEqualTo(812));
         }
-      });
+        expect(tester.takeException(), isNull);
+        final boundary = boundaryKey.currentContext!.findRenderObject()!
+            as RenderRepaintBoundary;
+        await tester.runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: 2);
+          try {
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            final directory = Directory(previewDirectory!);
+            await directory.create(recursive: true);
+            await File(
+                    '${directory.path}/$category-${scale == 1 ? 'normal' : 'large-text'}.png')
+                .writeAsBytes(png!.buffer.asUint8List());
+          } finally {
+            image.dispose();
+          }
+        });
+      }
     }
   }, skip: previewDirectory == null);
 }

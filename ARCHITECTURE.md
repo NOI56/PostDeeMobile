@@ -18,6 +18,36 @@ edges. Drawings are SVG written as code in `scripts/cartoon-storefront-art/`
 `scenes.test.mjs`) and bundled as byte-identical PNGs for API and Mobile. See
 the [cartoon plan](docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
 
+## Package categories and immutable top-up grants (2026-11-02, consolidated draft)
+
+The paywall separates Main plans and Add-ons without changing plan products.
+For catalog v3, each offer owns its sale state; the legacy scalar flag cannot
+override disabled replacement offers. Loading, errors, owned balances and pending
+recovery retain the Add-ons content, while a completed empty disabled catalog
+shows a localized empty state. Only these paywall safeguards are taken from
+pending PR #50; its auth/home/profile/shell/uploader changes are excluded.
+
+An append-only server product registry maps the new 40/25, 90/50 and 190/100
+packs to distinct consumable SKUs. The historical 100/50 product keeps its
+meaning. Receipt identity remains store/environment/canonical transaction,
+bound to its original owner and product. First delivery freezes
+`postUnitsGranted` and `aiCaptionsGranted` in memory and PostgreSQL; duplicate
+confirmation/webhook deliveries and refund tombstones preserve the snapshot.
+The migration defaults historical rows and late old writers to 100/50 and adds
+quantity constraints plus a trigger preventing grant edits.
+
+Grant readers sum the frozen quantities and count actual transactions. Existing
+post allocations and caption usage still consume their separate banks after
+monthly quota, including lifetime spend and refund deficits. New catalog fields
+are additive to the legacy scalar response. Mobile resolves each selection and
+localized quote by SKU while retaining one account-wide unfinished purchase and
+its exact receipt namespace across product changes and app restarts.
+
+New-tier sales are gated off by default. Migration/API rollout must finish on
+every instance before new Mobile and different-sized SKU sales. An old
+count-based reader is no longer a safe rollback after those purchases exist.
+No hosted change is included. See the [consolidation record](docs/superpowers/plans/2026-11-02-packages-consolidated.md).
+
 ## Second 3D storefront set (2026-11-02, local candidate)
 
 Catalog version 3 adds ten 3D scenes on five new compositions: `showcase`

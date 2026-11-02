@@ -119,10 +119,62 @@ class StoreAddonService {
 
   bool _hasExpectedPack(AddonCatalogResult catalog) =>
       catalog.hasNonExpiringPolicy &&
+      AddonCatalogProduct.definitionFor(AppConfig.storePostCaptionAddonProductId) == null &&
       catalog.productId == AppConfig.storePostCaptionAddonProductId &&
       catalog.postUnits == 100 &&
       catalog.aiCaptions == 50 &&
       catalog.priceThb == 49;
+
+  AddonCatalogProduct? _receiptDefinition(String productId) {
+    final tier = AddonCatalogProduct.definitionFor(productId);
+    if (tier != null) return tier;
+    if (productId != AppConfig.legacyPostCaptionAddonProductId &&
+        productId != AppConfig.storePostCaptionAddonProductId) {
+      return null;
+    }
+    return AddonCatalogProduct(id: 'legacy', productId: productId,
+        postUnits: 100, aiCaptions: 50, priceThb: 49,
+        enabled: false, eligible: false);
+  }
+
+  AddonCatalogProduct? _pendingDefinition(AddonPendingRecord record) {
+    if (record.version == 1) {
+      // Shipped v1 intents describe the original immutable 100/50 pack, even
+      // if its historical alias now names a different approved sale tier.
+      // A current SKU definition must never reinterpret that old contract.
+      return AddonCatalogProduct(id: 'legacy', productId: record.productId,
+          postUnits: 100, aiCaptions: 50, priceThb: 49,
+          enabled: false, eligible: false);
+    }
+    final known = _receiptDefinition(record.productId);
+    final postUnits = record.expectedPostUnits;
+    final aiCaptions = record.expectedAiCaptions;
+    if (postUnits == null || aiCaptions == null ||
+        (known != null && (postUnits != known.postUnits || aiCaptions != known.aiCaptions))) {
+      return null;
+    }
+    return AddonCatalogProduct(id: known?.id ?? 'historical',
+        productId: record.productId, postUnits: postUnits, aiCaptions: aiCaptions,
+        priceThb: known?.priceThb ?? 0, enabled: false, eligible: false);
+  }
+
+  AddonCatalogProduct? _availableOffer(AddonCatalogResult catalog, String productId) {
+    if (!catalog.hasNonExpiringPolicy) return null;
+    if (AddonCatalogProduct.definitionFor(productId) == null) {
+      if (!_hasExpectedPack(catalog) || !catalog.enabled || !catalog.eligible ||
+          catalog.productId != productId) {
+        return null;
+      }
+      return AddonCatalogProduct(id: 'legacy', productId: productId,
+          postUnits: catalog.postUnits, aiCaptions: catalog.aiCaptions,
+          priceThb: catalog.priceThb, enabled: true, eligible: true);
+    }
+    final matches = catalog.products?.where((product) => product.productId == productId).toList();
+    if (matches == null || matches.length != 1) return null;
+    final product = matches.single;
+    return product.hasApprovedDefinition && product.enabled && product.eligible
+        ? product : null;
+  }
 
   Future<StoreProductInfo?> loadProduct(AddonCatalogResult catalog) async {
     _binding.ensureCurrent();
@@ -133,19 +185,41 @@ class StoreAddonService {
         _gateway == null) {
       return null;
     }
-    final available = await _gateway.isAvailable().timeout(requestTimeout);
+    return _loadStoreProduct(catalog.productId);
+  }
+
+  Future<StoreProductInfo?> loadProductFor(
+      AddonCatalogResult catalog, AddonCatalogProduct product) async {
+    _binding.ensureCurrent();
+    if (!supportsPlatform || _gateway == null ||
+        AddonCatalogProduct.definitionFor(product.productId) == null) {
+      return null;
+    }
+    final offer = _availableOffer(catalog, product.productId);
+    if (offer == null || !offer.sameOfferAs(product)) return null;
+    return _loadStoreProduct(product.productId);
+  }
+
+  Future<StoreProductInfo?> _loadStoreProduct(String productId) async {
+    final available = await _gateway!.isAvailable().timeout(requestTimeout);
     _binding.ensureCurrent();
     if (!available) return null;
     final products = await _gateway
-        .queryAddonProducts({catalog.productId}).timeout(requestTimeout);
+        .queryAddonProducts({productId}).timeout(requestTimeout);
     _binding.ensureCurrent();
     return products
         .where((item) =>
-            item.id == catalog.productId && item.price.trim().isNotEmpty)
+            item.id == productId && item.price.trim().isNotEmpty)
         .firstOrNull;
   }
 
-  Future<AddonConfirmationResult> purchase() {
+  Future<AddonConfirmationResult> purchase() =>
+      _startPurchase(AppConfig.storePostCaptionAddonProductId);
+
+  Future<AddonConfirmationResult> purchaseProduct(String productId) =>
+      _startPurchase(productId);
+
+  Future<AddonConfirmationResult> _startPurchase(String productId) {
     _binding.ensureCurrent();
     if (!supportsPlatform) {
       return Future.error(
@@ -154,20 +228,26 @@ class StoreAddonService {
     if (hasPendingPurchase) {
       return Future.error(const StoreAddonPendingException());
     }
-    final operation = _purchaseAndConfirm();
+    if (_receiptDefinition(productId) == null) {
+      return Future.error(const StoreAddonException(
+          'แพ็กเติมยังไม่พร้อมซื้อสำหรับบัญชีนี้ กรุณาตรวจสอบแพ็กเกจอีกครั้ง'));
+    }
+    final operation = _purchaseAndConfirm(productId);
     _operation = operation;
     return _awaitOperation(operation);
   }
 
-  Future<AddonConfirmationResult> _purchaseAndConfirm() async {
+  Future<AddonConfirmationResult> _purchaseAndConfirm(String productId) async {
     await _restorePending();
     if (_pendingRecord != null) throw const StoreAddonPendingException();
     final catalog = await loadCatalog();
-    if (!catalog.enabled || !catalog.eligible || !_hasExpectedPack(catalog)) {
+    final offer = _availableOffer(catalog, productId);
+    if (offer == null) {
       throw const StoreAddonException(
           'แพ็กเติมยังไม่พร้อมซื้อสำหรับบัญชีนี้ กรุณาตรวจสอบแพ็กเกจอีกครั้ง');
     }
-    final product = await loadProduct(catalog);
+    final product = AddonCatalogProduct.definitionFor(productId) == null
+        ? await loadProduct(catalog) : await loadProductFor(catalog, offer);
     _binding.ensureCurrent();
     if (product == null) {
       throw const StoreAddonException(
@@ -177,15 +257,17 @@ class StoreAddonService {
         .timeout(requestTimeout);
     _binding.ensureCurrent();
     final preparedCatalog = await loadCatalog();
-    if (!preparedCatalog.enabled ||
-        !preparedCatalog.eligible ||
-        !_hasExpectedPack(preparedCatalog) ||
-        preparedCatalog.productId != product.id) {
+    final preparedOffer = _availableOffer(preparedCatalog, productId);
+    if (preparedOffer == null || !offer.sameOfferAs(preparedOffer) ||
+        productId != product.id) {
       throw const StoreAddonException(
           'ระบบซื้อเครดิตยังไม่พร้อม กรุณาโหลดแพ็กเติมใหม่');
     }
     late final StoreAddonTransaction receipt;
     final intent = AddonPendingRecord(
+        version: 2,
+        expectedPostUnits: offer.postUnits,
+        expectedAiCaptions: offer.aiCaptions,
         productId: product.id,
         intentId:
             '${_now().toUtc().microsecondsSinceEpoch}-${Random.secure().nextInt(0x7fffffff)}');
@@ -205,7 +287,8 @@ class StoreAddonService {
         receipt = await (gateway as DurableAddonPurchaseGateway)
             .buyAddonWithSnapshot(product.id, (baseline) async {
           await _writePending(baseline: baseline.toList());
-          if (!_hasExpectedPack(preparedCatalog)) {
+          final dispatchOffer = _availableOffer(preparedCatalog, productId);
+          if (dispatchOffer == null || !offer.sameOfferAs(dispatchOffer)) {
             throw const StoreAddonPurchaseNotStartedException();
           }
         });
@@ -277,11 +360,21 @@ class StoreAddonService {
       rethrow;
     }
     _binding.ensureCurrent();
+    final record = _pendingRecord;
+    final definition = record == null ? null : _pendingDefinition(record);
     if (!result.confirmed ||
         result.transactionId != receipt.transactionId ||
         result.transactionIdKind != receipt.transactionIdKind ||
-        result.postUnits != 100 ||
-        result.aiCaptions != 50 ||
+        definition == null ||
+        record?.productId != receipt.productId ||
+        result.postUnits != definition.postUnits ||
+        result.aiCaptions != definition.aiCaptions ||
+        (result.productId != null && result.productId != receipt.productId) ||
+        (record?.version == 2 &&
+            AddonCatalogProduct.definitionFor(receipt.productId) != null &&
+            result.productId != receipt.productId) ||
+        (record?.version == 2 && _receiptDefinition(receipt.productId) == null &&
+            result.productId != receipt.productId) ||
         !result.hasNonExpiringPolicy) {
       throw const StoreAddonPendingException();
     }
@@ -308,7 +401,8 @@ class StoreAddonService {
     }
     _binding.ensureCurrent();
     if (receipt == null ||
-        receipt.productId != AppConfig.storePostCaptionAddonProductId ||
+        record == null || receipt.productId != record.productId ||
+        _pendingDefinition(record) == null ||
         receipt.transactionId.trim().isEmpty) {
       throw const StoreAddonPendingException();
     }
@@ -342,7 +436,7 @@ class StoreAddonService {
       _pendingLoaded = true;
       _pendingLoadFailed = false;
       if (record != null) {
-        if (record.productId != AppConfig.storePostCaptionAddonProductId) {
+        if (_pendingDefinition(record) == null) {
           _unknownStoreResult = true;
           throw const StoreAddonPendingException();
         }
@@ -369,6 +463,9 @@ class StoreAddonService {
     _binding.ensureCurrent();
     final previous = _pendingRecord!;
     final record = AddonPendingRecord(
+        version: previous.version,
+        expectedPostUnits: previous.expectedPostUnits,
+        expectedAiCaptions: previous.expectedAiCaptions,
         productId: previous.productId,
         intentId: previous.intentId,
         transactionId: transactionId ?? previous.transactionId,

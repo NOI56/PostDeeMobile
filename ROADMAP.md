@@ -12,6 +12,25 @@ Build roadmap for PostDee.
   templates they know. Deliver after PR #51, API before Mobile; no migration.
   Device and published-page checks are recorded in the [cartoon plan](docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
 
+## Package categories and credit packs (2026-11-02, consolidated draft)
+
+- Consolidate the package categories from PR #52 and billing from PR #53 with
+  relevant PR #50 paywall guards. Keep its unrelated work and all PR #51 work out
+  of this change; preserve the existing branches and open PRs.
+
+- Prepare approved Small 40 post / 25 caption credits (THB 49 reference), Medium
+  90 / 50 (THB 99) and Large 190 / 100 (THB 199), using distinct consumable SKUs.
+- Preserve all historical 100/50 grants, paid balances, pending receipt recovery,
+  Starter/Pro eligibility and non-expiry. Use actual store checkout quotes.
+- Add immutable grant snapshots, a backward-compatible product catalog, per-SKU
+  confirmation/webhook fulfillment and Mobile selection with a shared payment lock.
+- Keep new-tier sales disabled. Migration/API on all instances precedes Mobile,
+  store/sandbox verification and separately authorized activation. Do not revert
+  to count-based grant readers after new-sized purchases exist.
+- Prepare one consolidated draft for review. Live product setup, production
+  migration, activation, PR approval/merge and deployment remain separate actions.
+  [Work record](docs/superpowers/plans/2026-11-02-packages-consolidated.md).
+
 ## Second 3D storefront set (2026-11-02, local candidate)
 
 - Add ten more 3D designs that differ from the first set in material, lighting,

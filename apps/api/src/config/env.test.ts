@@ -3,6 +3,24 @@ import { describe, expect, it } from 'vitest';
 import { readServerConfig } from './env.js';
 
 describe('readServerConfig', () => {
+  it('keeps the replacement add-on tiers disabled until explicitly enabled', () => {
+    expect(readServerConfig({}).billingAddonTiersEnabled).toBe(false);
+    expect(readServerConfig({ BILLING_ADDON_TIERS_ENABLED: 'true' }).billingAddonTiersEnabled).toBe(true);
+    expect(() => readServerConfig({ BILLING_ADDON_TIERS_ENABLED: 'yes' }))
+      .toThrow('BILLING_ADDON_TIERS_ENABLED must be true or false');
+  });
+  it.each(['postdee_post40_caption25', 'postdee_post90_caption50', 'postdee_post190_caption100'])(
+    'rejects new SKU %s being configured as a historical 100/50 alias', productId => {
+      expect(() => readServerConfig({ REVENUECAT_ADDON_PRODUCT_ID: productId }))
+        .toThrow('REVENUECAT_ADDON_PRODUCT_ID must not reuse a replacement tier identifier');
+      expect(() => readServerConfig({ REVENUECAT_PRO_PRODUCT_ID: productId }))
+        .toThrow('Add-on tier identifiers must differ from subscription product identifiers');
+    });
+  it('keeps the canonical historical add-on distinct from subscriptions when a legacy alias is configured', () => {
+    expect(() => readServerConfig({ REVENUECAT_ADDON_PRODUCT_ID: 'historical-alias',
+      REVENUECAT_PRO_PRODUCT_ID: 'postdee_post100_caption50' }))
+      .toThrow('Add-on tier identifiers must differ from subscription product identifiers');
+  });
   it('keeps retired AI video editing disabled unless the rollback switch is set', () => {
     expect(readServerConfig({}).aiEditingEnabled).toBe(false);
     expect(readServerConfig({ AI_EDITING_ENABLED: 'true' }).aiEditingEnabled).toBe(true);
@@ -60,6 +78,7 @@ describe('readServerConfig', () => {
       revenueCatRestApiV1Key: undefined,
       revenueCatSubscriptionEnvironment: 'PRODUCTION',
       billingAddonsEnabled: false,
+      billingAddonTiersEnabled: false,
       revenueCatAddonProductId: 'postdee_post100_caption50',
       revenueCatAddonEnvironment: 'PRODUCTION',
       revenueCatStarterEntitlementId: 'starter',

@@ -111,7 +111,7 @@ const prismaLedger = ({ addonUsed = 48, failCreate, failDelete }: {
       let creates = 0;
       let deletes = 0;
       const value = await operation({
-        monthlyAddonPurchase: { findMany: async () => [{ id: 'grant' }] },
+        monthlyAddonPurchase: { findMany: async () => [{ id: 'grant', postUnitsGranted: 100, aiCaptionsGranted: 50 }] },
         realClipCaptionUsage: {
           count: async ({ where }: CountArgs) => draft.filter(row => row.userId === where.userId &&
             (where.monthKey === undefined || row.monthKey === where.monthKey) &&

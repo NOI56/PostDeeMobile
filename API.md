@@ -2,6 +2,57 @@
 
 PostDee backend API reference.
 
+## Replacement top-up catalog and immutable grants (2026-11-02, consolidated draft)
+
+The consolidated paywall presents the product list in Add-ons and subscriptions
+in Main plans. Per-item sale flags are authoritative for the new list; legacy
+scalar flags remain solely for old-client compatibility. Category navigation
+does not change confirmation, purchase recovery or quota-consumption contracts.
+
+`GET /billing/addons` keeps the installed-client scalar fields for the legacy
+100-post / 50-caption SKU, reference `priceThb: 49`, and non-expiring
+`policyVersion: 2`. It adds `catalogVersion: 3` and `products`, with per-item
+`id`, `productId`, `postUnits`, `aiCaptions`, `priceThb`, `enabled` and `eligible`:
+
+| ID | Store product ID | Post units | Caption credits | THB reference |
+| --- | --- | ---: | ---: | ---: |
+| small | `postdee_post40_caption25` | 40 | 25 | 49 |
+| medium | `postdee_post90_caption50` | 90 | 50 | 99 |
+| large | `postdee_post190_caption100` | 190 | 100 | 199 |
+
+The reference price is not the checkout quote; Mobile uses the exact matching
+store product's localized `price`. The legacy `postdee_post100_caption50` and
+configured historical alias remain 100 / 50. `purchasedPacks` counts valid ledger
+transactions, rather than dividing accumulated credits by 100. New Mobile falls
+back to the legacy single pack when an older API omits the product list.
+
+The legacy scalar offer keeps its existing sale gate for installed old clients;
+the new product list presents only the three replacements. Retiring new sales
+of the legacy store product is a separate rollout decision. It must not delete
+its receipt history, disable fulfillment, or change its 100/50 grant.
+
+`POST /billing/addons/confirm` retains its request shape. The server selects the
+grant from the verified SKU and stores it once per canonical transaction.
+Confirmed responses include `productId` and that transaction's stored
+`postUnits` / `aiCaptions`; duplicates, restored receipts and refunds cannot
+rewrite them. Old clients may ignore the added product field. Verification and
+pending recovery remain available when sales are off or membership has expired.
+Unknown products cannot create new grants. Existing stored historical receipts
+retain their original grant and exact owner, environment and receipt namespace
+checks. Post and caption balances/consumption stay separate, monthly quota is
+used first, and purchased-credit deficits after refunds remain charged.
+
+`BILLING_ADDON_TIERS_ENABLED=false` is the additional default-off gate for the
+three replacements. It requires the existing add-on sale/provider readiness
+gate as well. It does not activate store products or alter old subscription
+rights. The additive migration `20261102010000_addon_grant_snapshots` adds frozen
+per-purchase quantities, with 100 / 50 defaults for every historical row and
+late legacy writer. Deploy migration and compatible API readers to **all**
+instances, then Mobile, then separately authorized store setup/sandbox checks
+and sales activation. Once a different-sized SKU has a ledger row, do not roll
+back to the former purchase-count × 100 / 50 reader. See the
+[verification and rollout record](docs/superpowers/plans/2026-11-02-multi-sku-topups.md).
+
 ## Second 3D storefront set (2026-11-02, local candidate)
 
 The shared profile-template catalog is version 3 and adds ten `dimensional-*`

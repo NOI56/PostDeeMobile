@@ -2478,12 +2478,81 @@ class SubscriptionStatusResult {
       );
 }
 
+/// A sale offer for an immutable credit grant. Store-localized prices remain
+/// separate from this Thai reference price and never determine credited units.
+class AddonCatalogProduct {
+  const AddonCatalogProduct({required this.id, required this.productId,
+    required this.postUnits, required this.aiCaptions, required this.priceThb,
+    required this.enabled, required this.eligible});
+
+  final String id;
+  final String productId;
+  final int postUnits;
+  final int aiCaptions;
+  final int priceThb;
+  final bool enabled;
+  final bool eligible;
+
+  static const approvedDefinitions = <AddonCatalogProduct>[
+    AddonCatalogProduct(id: 'small',
+      productId: AppConfig.storeSmallPostCaptionAddonProductId,
+      postUnits: 40, aiCaptions: 25, priceThb: 49,
+      enabled: false, eligible: false),
+    AddonCatalogProduct(id: 'medium',
+      productId: AppConfig.storeMediumPostCaptionAddonProductId,
+      postUnits: 90, aiCaptions: 50, priceThb: 99,
+      enabled: false, eligible: false),
+    AddonCatalogProduct(id: 'large',
+      productId: AppConfig.storeLargePostCaptionAddonProductId,
+      postUnits: 190, aiCaptions: 100, priceThb: 199,
+      enabled: false, eligible: false),
+  ];
+
+  static AddonCatalogProduct? definitionFor(String productId) {
+    for (final product in approvedDefinitions) {
+      if (product.productId == productId) return product;
+    }
+    return null;
+  }
+
+  bool get hasApprovedDefinition {
+    final definition = definitionFor(productId);
+    return definition != null && id == definition.id &&
+        postUnits == definition.postUnits && aiCaptions == definition.aiCaptions &&
+        priceThb == definition.priceThb;
+  }
+
+  bool sameOfferAs(AddonCatalogProduct other) =>
+      id == other.id && productId == other.productId &&
+      postUnits == other.postUnits && aiCaptions == other.aiCaptions &&
+      priceThb == other.priceThb && enabled == other.enabled && eligible == other.eligible;
+
+  factory AddonCatalogProduct.fromJson(Map<String, Object?> json) {
+    if (json['id'] is! String || json['productId'] is! String ||
+        json['postUnits'] is! int || json['aiCaptions'] is! int ||
+        json['priceThb'] is! int || json['enabled'] is! bool ||
+        json['eligible'] is! bool ||
+        (json['eligible'] == true && json['enabled'] != true)) {
+      throw const ApiException('Invalid add-on product response');
+    }
+    final product = AddonCatalogProduct(id: json['id'] as String,
+        productId: json['productId'] as String, postUnits: json['postUnits'] as int,
+        aiCaptions: json['aiCaptions'] as int, priceThb: json['priceThb'] as int,
+        enabled: json['enabled'] as bool, eligible: json['eligible'] as bool);
+    if (!product.hasApprovedDefinition) {
+      throw const ApiException('Unknown or changed add-on product');
+    }
+    return product;
+  }
+}
+
 class AddonCatalogResult {
   const AddonCatalogResult({required this.enabled, required this.eligible,
     required this.productId, required this.postUnits, required this.aiCaptions,
     required this.priceThb, required this.policyVersion, required this.creditsExpire,
     this.expiresAt, required this.purchasedPacks,
-    this.addonPostUnits = 0, this.addonAiCaptions = 0});
+    this.addonPostUnits = 0, this.addonAiCaptions = 0,
+    this.catalogVersion, this.products});
   final bool enabled;
   final bool eligible;
   final String productId;
@@ -2496,6 +2565,10 @@ class AddonCatalogResult {
   final int purchasedPacks;
   final int addonPostUnits;
   final int addonAiCaptions;
+  final int? catalogVersion;
+  /// Null means the legacy single-product API. An empty list is an explicit
+  /// multi-product catalog with no sale offers, never a legacy fallback.
+  final List<AddonCatalogProduct>? products;
   bool get hasNonExpiringPolicy => policyVersion == 2 && !creditsExpire && expiresAt == null;
 
   factory AddonCatalogResult.fromJson(Map<String, Object?> json) {
@@ -2509,24 +2582,48 @@ class AddonCatalogResult {
         json['purchasedPacks'] is! int) {
       throw const ApiException('Invalid add-on catalog response');
     }
+    List<AddonCatalogProduct>? products;
+    if (json.containsKey('catalogVersion') || json['products'] != null) {
+      final rawProducts = json['products'];
+      if (json['catalogVersion'] != 3 || rawProducts is! List) {
+        throw const ApiException('Invalid add-on catalog version');
+      }
+      final ids = <String>{};
+      final productIds = <String>{};
+      products = [];
+      for (final raw in rawProducts) {
+        if (raw is! Map<String, Object?>) {
+          throw const ApiException('Invalid add-on catalog product');
+        }
+        final product = AddonCatalogProduct.fromJson(raw);
+        if (!ids.add(product.id) || !productIds.add(product.productId)) {
+          throw const ApiException('Duplicate add-on catalog product');
+        }
+        products.add(product);
+      }
+      products = List.unmodifiable(products);
+    }
     return AddonCatalogResult(enabled: json['enabled'] as bool,
       eligible: json['eligible'] as bool, productId: json['productId'] as String,
       postUnits: json['postUnits'] as int, aiCaptions: json['aiCaptions'] as int,
       priceThb: json['priceThb'] as int, policyVersion: 2, creditsExpire: false,
       expiresAt: null, purchasedPacks: json['purchasedPacks'] as int,
-      addonPostUnits: json['addonPostUnits'] as int, addonAiCaptions: json['addonAiCaptions'] as int);
+      addonPostUnits: json['addonPostUnits'] as int, addonAiCaptions: json['addonAiCaptions'] as int,
+      catalogVersion: products == null ? null : 3, products: products);
   }
 }
 
 class AddonConfirmationResult {
   const AddonConfirmationResult({required this.confirmed,
     required this.transactionId, this.transactionIdKind = 'STORE', this.postUnits = 0, this.aiCaptions = 0,
-    required this.policyVersion, required this.creditsExpire, this.expiresAt});
+    required this.policyVersion, required this.creditsExpire, this.expiresAt,
+    this.productId});
   final bool confirmed;
   final String transactionId;
   final String transactionIdKind;
   final int postUnits;
   final int aiCaptions;
+  final String? productId;
   final DateTime? expiresAt;
   final int policyVersion;
   final bool creditsExpire;
@@ -2538,7 +2635,10 @@ class AddonConfirmationResult {
         json['transactionId'] is! String ||
         (json['transactionId'] as String).isEmpty || json['policyVersion'] != 2 ||
         json['creditsExpire'] != false || !json.containsKey('expiresAt') || json['expiresAt'] != null ||
-        (transactionIdKind != 'STORE' && transactionIdKind != 'REVENUECAT')) {
+        (transactionIdKind != 'STORE' && transactionIdKind != 'REVENUECAT') ||
+        (json.containsKey('productId') && (json['productId'] is! String ||
+            (json['productId'] as String).isEmpty ||
+            (json['productId'] as String).trim() != json['productId']))) {
       throw const ApiException('Invalid add-on confirmation response');
     }
     final confirmed = json['confirmed'] as bool;
@@ -2551,6 +2651,7 @@ class AddonConfirmationResult {
       transactionIdKind: transactionIdKind as String,
       postUnits: json['postUnits'] as int? ?? 0,
       aiCaptions: json['aiCaptions'] as int? ?? 0,
+      productId: json['productId'] as String?,
       policyVersion: 2, creditsExpire: false, expiresAt: null);
   }
 }

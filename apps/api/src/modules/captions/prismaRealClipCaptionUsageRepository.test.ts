@@ -5,7 +5,9 @@ import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.j
 
 describe('createPrismaRealClipCaptionUsageRepository', () => {
   it('retries caption quota with the latest transactional addon grants after a concurrent refund', async () => {
-    const transactionGrants = { findMany: vi.fn().mockResolvedValueOnce([{ id: 'grant' }]).mockResolvedValue([]) };
+    const transactionGrants = { findMany: vi.fn().mockResolvedValueOnce([
+      { id: 'grant', postUnitsGranted: 100, aiCaptionsGranted: 50 }
+    ]).mockResolvedValue([]) };
     const transactionUsage = { count: vi.fn(async ({ where }) => where.usesAddonCredit ? 0 : 50),
       create: vi.fn().mockRejectedValue(Object.assign(new Error('serialization conflict'), { code: 'P2034' })) };
     const prisma = { monthlyAddonPurchase: { findMany: vi.fn() },

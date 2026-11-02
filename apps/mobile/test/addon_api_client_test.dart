@@ -21,6 +21,112 @@ void main() {
     'purchasedPacks': 2
   };
 
+  final products = <Map<String, Object?>>[
+    {'id': 'small', 'productId': 'postdee_post40_caption25', 'postUnits': 40,
+      'aiCaptions': 25, 'priceThb': 49, 'enabled': true, 'eligible': true},
+    {'id': 'medium', 'productId': 'postdee_post90_caption50', 'postUnits': 90,
+      'aiCaptions': 50, 'priceThb': 99, 'enabled': true, 'eligible': true},
+    {'id': 'large', 'productId': 'postdee_post190_caption100', 'postUnits': 190,
+      'aiCaptions': 100, 'priceThb': 199, 'enabled': true, 'eligible': true},
+  ];
+
+  test('catalog v3 rejects duplicate, unknown and changed immutable SKU grants', () {
+    for (final malformed in <Map<String, Object?>>[
+      {...catalog, 'catalogVersion': 3, 'products': [products.first, products.first]},
+      {...catalog, 'catalogVersion': 3, 'products': [{...products.first, 'id': 'medium'}]},
+      {...catalog, 'catalogVersion': 3, 'products': [{...products.first, 'productId': 'unknown'}]},
+      {...catalog, 'catalogVersion': 3, 'products': [{...products.first, 'postUnits': 100}]},
+      {...catalog, 'catalogVersion': 3, 'products': [{...products.first, 'aiCaptions': 50}]},
+      {...catalog, 'catalogVersion': 3, 'products': [{...products.first, 'priceThb': 29}]},
+      {...catalog, 'catalogVersion': 3, 'products': [{...products.first, 'enabled': 'yes'}]},
+      {...catalog, 'catalogVersion': 3, 'products': [{...products.first, 'eligible': true, 'enabled': false}]},
+      {...catalog, 'catalogVersion': 2, 'products': products},
+      {...catalog, 'catalogVersion': 3},
+      {...catalog, 'products': products},
+      {...catalog, 'catalogVersion': 3, 'products': null},
+    ]) {
+      expect(() => AddonCatalogResult.fromJson(malformed),
+          throwsA(isA<ApiException>()), reason: malformed.toString());
+    }
+  });
+
+  test('v3 catalog keeps legacy scalar fields and an immutable tier list', () {
+    final result = AddonCatalogResult.fromJson({
+      ...catalog, 'enabled': false, 'eligible': false,
+      'catalogVersion': 3, 'products': products,
+    });
+    expect(result.productId, 'postdee_post100_caption50');
+    expect([result.postUnits, result.aiCaptions, result.priceThb], [100, 50, 49]);
+    expect(result.catalogVersion, 3);
+    expect(result.products!.map((product) => product.id), ['small', 'medium', 'large']);
+    expect(result.products!.map((product) => product.postUnits), [40, 90, 190]);
+    expect(result.products!.map((product) => product.aiCaptions), [25, 50, 100]);
+    expect(AddonCatalogProduct.definitionFor('postdee_post180_caption100'), isNull);
+    expect(result.products!.every((product) => product.enabled && product.eligible), isTrue);
+    expect(() => result.products!.clear(), throwsUnsupportedError);
+    expect(AddonCatalogResult.fromJson(catalog).products, isNull);
+    expect(AddonCatalogResult.fromJson({...catalog, 'products': null}).products, isNull);
+    expect(AddonCatalogResult.fromJson({...catalog, 'catalogVersion': 3, 'products': []}).products, isEmpty);
+  });
+
+  test('confirmation preserves exact product identity without breaking legacy responses', () {
+    final response = <String, Object?>{
+      'status': 'ok', 'confirmed': true, 'transactionId': 'tier-receipt',
+      'transactionIdKind': 'REVENUECAT', 'productId': 'postdee_post40_caption25',
+      'postUnits': 40, 'aiCaptions': 25,
+      'policyVersion': 2, 'creditsExpire': false, 'expiresAt': null,
+    };
+    final result = AddonConfirmationResult.fromJson(response);
+    expect(result.productId, 'postdee_post40_caption25');
+    expect(result.transactionIdKind, 'REVENUECAT');
+    expect([result.postUnits, result.aiCaptions], [40, 25]);
+    expect(AddonConfirmationResult.fromJson({...response}..remove('productId')).productId, isNull);
+    for (final value in [null, '', ' postdee_post40_caption25', 5]) {
+      expect(() => AddonConfirmationResult.fromJson({...response, 'productId': value}),
+          throwsA(isA<ApiException>()));
+    }
+  });
+
+  test('new tier API requests bind each SKU to its verified receipt and quantities', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final requestedProducts = <String>[];
+    server.listen((request) async {
+      request.response.headers.contentType = ContentType.json;
+      if (request.method == 'GET') {
+        request.response.write(jsonEncode({
+          ...catalog, 'catalogVersion': 3, 'products': products,
+        }));
+      } else {
+        final body = jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+        final product = products.singleWhere((row) => row['productId'] == body['productId']);
+        requestedProducts.add(body['productId'] as String);
+        expect(body.keys.toSet(), {'productId', 'transactionId', 'transactionIdKind'});
+        expect(body['transactionId'], 'receipt-${product['id']}');
+        expect(body['transactionIdKind'], 'STORE');
+        request.response.write(jsonEncode({
+          'status': 'ok', 'confirmed': true,
+          'productId': product['productId'], 'transactionId': body['transactionId'],
+          'transactionIdKind': body['transactionIdKind'],
+          'postUnits': product['postUnits'], 'aiCaptions': product['aiCaptions'],
+          'policyVersion': 2, 'creditsExpire': false, 'expiresAt': null,
+        }));
+      }
+      await request.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+    final api = PostDeeApiClient(baseUrl: 'http://127.0.0.1:${server.port}');
+    final result = await api.loadAddonCatalog();
+    expect(result.products, hasLength(3));
+    for (final product in result.products!) {
+      final confirmed = await api.confirmAddonPurchase(
+          product.productId, 'receipt-${product.id}');
+      expect(confirmed.productId, product.productId);
+      expect(confirmed.postUnits, product.postUnits);
+      expect(confirmed.aiCaptions, product.aiCaptions);
+    }
+    expect(requestedProducts, products.map((product) => product['productId']).toList());
+  });
+
   test(
       'subscription parses additive quota fields and remains compatible with older API',
       () {

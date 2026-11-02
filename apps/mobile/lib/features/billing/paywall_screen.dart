@@ -93,6 +93,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Timer? _priceTimer;
   AddonCatalogResult? _addonCatalog;
   StoreProductInfo? _addonProduct;
+  final _addonProducts = <String, StoreProductInfo>{};
+  final _addonProductsLoading = <String>{};
+  final _addonProductFailures = <String>{};
   var _addonLoading = true;
   var _addonLoadFailed = false;
   var _addonLoadGeneration = 0;
@@ -110,30 +113,83 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Future<void> _loadAddon() async {
     if (!_canUpdateScreen) return;
     final generation = ++_addonLoadGeneration;
-    setState(() { _addonLoading = true; _addonLoadFailed = false; _addonProduct = null; });
+    setState(() {
+      _addonLoading = true;
+      _addonLoadFailed = false;
+      _addonProduct = null;
+      _addonProducts.clear();
+      _addonProductsLoading.clear();
+      _addonProductFailures.clear();
+    });
     try {
       final catalog = await _addonService.loadCatalog();
       if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
+      final tiers = catalog.products;
+      if (tiers != null) {
+        final available = tiers.where((tier) =>
+            _addonService.supportsPlatform && tier.enabled && tier.eligible).toList();
+        setState(() {
+          _addonCatalog = catalog;
+          _addonLoading = false;
+          _addonProductsLoading.addAll(available.map((tier) => tier.productId));
+        });
+        await Future.wait(available.map((tier) async {
+          StoreProductInfo? product;
+          try {
+            product = await _addonService.loadProductFor(catalog, tier);
+          } catch (_) {
+            // One unavailable store item must not hide the other packs.
+          }
+          if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
+          final loadedProduct = product;
+          setState(() {
+            _addonProductsLoading.remove(tier.productId);
+            if (loadedProduct != null && loadedProduct.id == tier.productId &&
+                loadedProduct.price.trim().isNotEmpty) {
+              _addonProducts[tier.productId] = loadedProduct;
+            } else {
+              _addonProductFailures.add(tier.productId);
+            }
+          });
+        }));
+        return;
+      }
       final product = _addonService.supportsPlatform && catalog.enabled && catalog.eligible
           ? await _addonService.loadProduct(catalog) : null;
       if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
       setState(() { _addonCatalog = catalog; _addonProduct = product; _addonLoading = false; });
     } catch (_) {
       if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
-      setState(() { _addonCatalog = null; _addonLoading = false; _addonLoadFailed = true; });
+      setState(() { _addonLoading = false; _addonLoadFailed = true; });
     }
   }
 
-  Future<void> _buyAddon({bool retry = false}) async {
+  bool _canBuyAddonTier(AddonCatalogProduct tier) =>
+      _addonService.supportsPlatform && _canUpdateScreen &&
+      !_addonLoading && !_addonLoadFailed && !_isBillingInProgress &&
+      !_service.hasPendingConfirmation && !_addonService.hasPendingPurchase &&
+      !_isSubscriptionLoading && _subscriptionLoadError == null &&
+      _subscription != null && tier.enabled && tier.eligible &&
+      !_addonProductsLoading.contains(tier.productId) &&
+      _addonProducts.containsKey(tier.productId);
+
+  Future<void> _buyAddon({bool retry = false, String? productId}) async {
+    final tier = _addonCatalog?.products
+        ?.where((item) => item.productId == productId).firstOrNull;
+    final canStart = productId == null
+        ? _addonCatalog?.products == null && _addonProduct != null &&
+            _addonCatalog?.enabled == true && _addonCatalog?.eligible == true
+        : tier != null && _canBuyAddonTier(tier);
     if (!_canUpdateScreen || !_addonService.supportsPlatform || _isBillingInProgress || _service.hasPendingConfirmation ||
-        (!retry && (_addonService.hasPendingPurchase || _addonProduct == null ||
-          _addonCatalog?.enabled != true || _addonCatalog?.eligible != true))) {
+        (!retry && (_addonService.hasPendingPurchase || !canStart))) {
       return;
     }
     setState(() => _isBillingInProgress = true);
     final progress = _showProgress(retry ? 'กำลังตรวจสอบการซื้อ...' : 'กำลังซื้อแพ็กเติม...');
     try {
-      final result = retry ? await _addonService.retryPendingPurchase() : await _addonService.purchase();
+      final result = retry ? await _addonService.retryPendingPurchase()
+          : productId == null ? await _addonService.purchase()
+          : await _addonService.purchaseProduct(productId);
       if (!_canUpdateScreen || !result.confirmed) return;
       await _loadSubscription();
       if (!_canUpdateScreen) return;
@@ -141,7 +197,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
       if (!_canUpdateScreen) return;
       _showOwnedDialog((context) => AlertDialog(
         title: const _PaywallText('เติมเครดิตสำเร็จ'),
-        content: const _PaywallText('เพิ่มเครดิตโพสต์ 100 หน่วย และ AI แคปชั่น 50 เครดิตแล้ว เครดิตซื้อเพิ่มไม่หมดอายุ และใช้โควตารายเดือนก่อน'),
+        content: Text(_paywallText(context,
+          'เพิ่มเครดิตโพสต์ ${result.postUnits} หน่วย และ AI แคปชั่น ${result.aiCaptions} เครดิตแล้ว เครดิตซื้อเพิ่มไม่หมดอายุ และใช้โควตารายเดือนก่อน',
+          'Added ${result.postUnits} post units and ${result.aiCaptions} AI caption credits. Purchased credits do not expire. Your monthly quota is used first.')),
         actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const _PaywallText('ตกลง'))],
       ));
       unawaited(_loadAddon());
@@ -279,6 +337,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _isBillingInProgress = false;
       _addonCatalog = null;
       _addonProduct = null;
+      _addonProducts.clear();
+      _addonProductsLoading.clear();
+      _addonProductFailures.clear();
       _addonLoading = false;
     });
   }
@@ -593,7 +654,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 if (index < _plans.length - 1) const SizedBox(height: 13),
               ],
               const SizedBox(height: 16),
-              _buildAddonCard(),
+              if (_addonCatalog?.products != null)
+                _buildAddonTiers()
+              else
+                _buildAddonCard(),
               const SizedBox(height: 16),
               if (_priceLoadFailed)
                 TextButton(
@@ -658,6 +722,127 @@ class _PaywallScreenState extends State<PaywallScreen> {
     ));
   }
 
+  Widget _buildAddonTiers() {
+    final catalog = _addonCatalog!;
+    final tiers = catalog.products!;
+    final allUnavailable = tiers.isEmpty || tiers.every((tier) => !tier.enabled);
+    final pending = _addonService.hasPendingPurchase;
+    return Container(
+      key: const ValueKey('paywall-addon-tiers'),
+      padding: const EdgeInsets.all(AppTheme.spaceLg),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const _PaywallText('แพ็กเติม ซื้อครั้งเดียว',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        if (pending) _buildAddonRecovery(),
+        if (_addonLoading || _addonLoadFailed || allUnavailable) ...[
+          const SizedBox(height: AppTheme.spaceSm),
+          KeyedSubtree(
+            key: allUnavailable && !_addonLoading && !_addonLoadFailed
+                ? const ValueKey('paywall-addon-unavailable') : null,
+            child: _PaywallText(
+              _addonLoading ? 'กำลังตรวจสอบแพ็กเติม...'
+                  : _addonLoadFailed ? 'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่'
+                  : 'แพ็กเติมยังไม่เปิดขาย',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+          ),
+        ],
+        for (var index = 0; index < tiers.length; index++) ...[
+          if (index > 0) const Divider(height: AppTheme.spaceXl),
+          _buildAddonTier(tiers[index], showUnavailable: !allUnavailable),
+        ],
+        if (catalog.addonPostUnits > 0 || catalog.addonAiCaptions > 0) ...[
+          const SizedBox(height: AppTheme.spaceMd),
+          Text(_paywallText(context,
+            'เครดิตคงเหลือ: โพสต์ ${catalog.addonPostUnits} หน่วย · AI ${catalog.addonAiCaptions} เครดิต',
+            'Credits remaining: ${catalog.addonPostUnits} post units · ${catalog.addonAiCaptions} AI caption credits'),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary)),
+        ],
+        const SizedBox(height: AppTheme.spaceMd),
+        _PaywallText('เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน · ไม่ต่ออายุอัตโนมัติ',
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+        const SizedBox(height: AppTheme.spaceXs),
+        _PaywallText('1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่',
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+        if (_addonService.supportsPlatform && !_addonLoading &&
+            (_addonLoadFailed || _addonProductFailures.isNotEmpty))
+          TextButton(
+            key: const ValueKey('paywall-reload-addons'),
+            onPressed: _canUpdateScreen && !_isBillingInProgress ? _loadAddon : null,
+            child: const _PaywallText('โหลดแพ็กเติมอีกครั้ง'),
+          ),
+      ]),
+    );
+  }
+
+  Widget _buildAddonTier(AddonCatalogProduct tier, {required bool showUnavailable}) {
+    final product = _addonProducts[tier.productId];
+    final name = switch (tier.id) {
+      'small' => _paywallText(context, 'เล็ก', 'Small'),
+      'medium' => _paywallText(context, 'กลาง', 'Medium'),
+      'large' => _paywallText(context, 'ใหญ่', 'Large'),
+      _ => _paywallText(context, 'แพ็กเติม', 'Credit pack'),
+    };
+    final message = !_addonService.supportsPlatform
+        ? _addonService.platformUnavailableMessage
+        : _addonLoading || _addonProductsLoading.contains(tier.productId)
+        ? 'กำลังตรวจสอบแพ็กเติม...'
+        : _addonLoadFailed ? 'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่'
+        : !tier.enabled ? 'แพ็กเติมยังไม่เปิดขาย'
+        : !tier.eligible ? 'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครแพ็กเกจด้านบนก่อน'
+        : product == null ? 'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้'
+        : 'ซื้อเพิ่มได้หลายครั้ง';
+    return Padding(
+      key: ValueKey('paywall-addon-card-${tier.productId}'),
+      padding: const EdgeInsets.only(top: AppTheme.spaceMd),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        const SizedBox(height: AppTheme.spaceXs),
+        Text(_paywallText(context,
+          'โพสต์เพิ่ม ${tier.postUnits} หน่วย + AI แคปชั่น ${tier.aiCaptions} เครดิต',
+          '${tier.postUnits} post units + ${tier.aiCaptions} AI caption credits'),
+          style: const TextStyle(fontWeight: FontWeight.w600)),
+        if (showUnavailable || !tier.enabled && !_addonService.supportsPlatform) ...[
+          const SizedBox(height: AppTheme.spaceXs),
+          _PaywallText(message,
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        ],
+        const SizedBox(height: AppTheme.spaceSm),
+        FilledButton(
+          key: ValueKey('paywall-buy-addon-${tier.productId}'),
+          onPressed: _canBuyAddonTier(tier)
+              ? () => _buyAddon(productId: tier.productId) : null,
+          child: product == null ? const _PaywallText('ซื้อแพ็กเติม')
+              : Text(_paywallText(context, 'ซื้อครั้งเดียว ${product.price}',
+                  'One-time purchase ${product.price}')),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildAddonRecovery() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: AppTheme.spaceMd),
+      _PaywallText(const StoreAddonPendingException().message,
+          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+      TextButton(key: const ValueKey('paywall-retry-addon'),
+          onPressed: _addonService.supportsPlatform && _canUpdateScreen && !_isBillingInProgress
+              ? () => _buyAddon(retry: true) : null,
+          child: const _PaywallText('ตรวจสอบการซื้อแพ็กเติมอีกครั้ง')),
+      TextButton.icon(key: const ValueKey('paywall-addon-help'),
+          onPressed: _canUpdateScreen ? _showAddonHelp : null,
+          icon: const Icon(Icons.support_agent, size: 18),
+          label: const _PaywallText('ขอความช่วยเหลือเรื่องการซื้อ')),
+    ],
+  );
+
   Widget _buildAddonCard() {
     final catalog = _addonCatalog;
     final pending = _addonService.hasPendingPurchase;
@@ -695,17 +880,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         const SizedBox(height: 6),
         _PaywallText('1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่',
           style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-        if (pending) ...[
-          const SizedBox(height: 12),
-          _PaywallText(const StoreAddonPendingException().message, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-          TextButton(key: const ValueKey('paywall-retry-addon'),
-            onPressed: _addonService.supportsPlatform && _canUpdateScreen && !_isBillingInProgress ? () => _buyAddon(retry: true) : null,
-            child: const _PaywallText('ตรวจสอบการซื้อแพ็กเติมอีกครั้ง')),
-          TextButton.icon(key: const ValueKey('paywall-addon-help'),
-            onPressed: _canUpdateScreen ? _showAddonHelp : null,
-            icon: const Icon(Icons.support_agent, size: 18),
-            label: const _PaywallText('ขอความช่วยเหลือเรื่องการซื้อ')),
-        ],
+        if (pending) _buildAddonRecovery(),
         const SizedBox(height: 12),
         SizedBox(width: double.infinity, child: FilledButton(
           key: const ValueKey('paywall-buy-addon'), onPressed: canBuy ? () => _buyAddon() : null,

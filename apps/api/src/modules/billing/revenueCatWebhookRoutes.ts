@@ -11,6 +11,7 @@ import { isSameSecret } from '../security/secretCompare.js';
 import type { UserStore } from '../users/userStore.js';
 import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 import { MonthlyAddonPurchaseConflictError, allowMonthlyAddonStore, type MonthlyAddonStore } from './monthlyAddonStore.js';
+import { addonGrantSnapshot, readAddonProductDefinition } from './addonProductCatalog.js';
 import { normalizeRevenueCatAddonStore } from './revenueCatAddonPurchaseClient.js';
 import { isRevenueCatSubscriptionStoreAllowed } from './revenueCatSubscriptionPolicy.js';
 import type { RevenueCatSubscriberClient } from './revenueCatSubscriberClient.js';
@@ -215,12 +216,26 @@ export const registerRevenueCatWebhookRoutes = ({
       return;
     }
 
-    if (event.productId === config.revenueCatAddonProductId) {
-      const raw = isRecord(request.body) && isRecord(request.body.event) ? request.body.event : {};
-      const isPurchase = event.type === 'NON_RENEWING_PURCHASE';
-      // RevenueCat non-subscription cancellations represent refund/revocation,
-      // not subscription auto-renewal cancellation. Keep them sticky.
-      const isRevoke = event.type === 'CANCELLATION' || event.type === 'REFUND';
+    const addonProduct = event.productId ? readAddonProductDefinition(event.productId, config.revenueCatAddonProductId) : undefined;
+    const raw = isRecord(request.body) && isRecord(request.body.event) ? request.body.event : {};
+    const isPurchase = event.type === 'NON_RENEWING_PURCHASE';
+    // RevenueCat non-subscription cancellations represent refund/revocation,
+    // not subscription auto-renewal cancellation. Keep them sticky.
+    const isRevoke = event.type === 'CANCELLATION' || event.type === 'REFUND';
+    const historicalStore = normalizeRevenueCatAddonStore(raw.store);
+    const historicalTransactionId = readString(raw.transaction_id);
+    // Retired configured aliases may disappear from the current registry.
+    // An authenticated exact ledger match can still be revoked, never newly
+    // fulfilled. Exact receipt identity takes priority over incidental
+    // entitlement tags; unmatched subscription events retain their routing.
+    const historicalAddon = !addonProduct && monthlyAddonStore &&
+      event.productId && isRevoke && event.eventId && event.eventTimestampMs !== undefined &&
+      historicalStore && historicalTransactionId && readEventTimestamp(raw.purchased_at_ms) &&
+      raw.environment === config.revenueCatAddonEnvironment
+      ? await monthlyAddonStore.findPurchaseConfirmation({ userId: event.appUserId, productId: event.productId,
+        transactionId: historicalTransactionId, store: historicalStore, environment: config.revenueCatAddonEnvironment })
+      : null;
+    if (addonProduct || historicalAddon) {
       if (!monthlyAddonStore || (!isPurchase && !isRevoke)) {
         response.status(202).json({ status: 'ok', ignored: true, code: 'REVENUECAT_EVENT_NOT_ACTIONABLE' }); return;
       }
@@ -242,8 +257,10 @@ export const registerRevenueCatWebhookRoutes = ({
         if (!ownerMutationLock.isActive(event.appUserId) || !(await userStore.exists(event.appUserId))) {
           response.status(202).json({ status: 'ok', ignored: true, code: 'REVENUECAT_USER_NOT_FOUND' }); return;
         }
-        const purchase = { userId: event.appUserId, productId: config.revenueCatAddonProductId,
-          transactionId, store, environment: raw.environment as string, purchasedAt: new Date(purchasedAtMs).toISOString() };
+        const purchase = { userId: event.appUserId, productId: addonProduct?.productId ?? event.productId!,
+          transactionId, store, environment: raw.environment as string, purchasedAt: new Date(purchasedAtMs).toISOString(),
+          ...(addonProduct ? addonGrantSnapshot(addonProduct) : {
+            postUnitsGranted: historicalAddon!.postUnits, aiCaptionsGranted: historicalAddon!.aiCaptions }) };
         if (isRevoke) {
           await monthlyAddonStore.revokePurchase(purchase);
           response.json({ status: 'ok', eventType: event.type, revoked: true }); return;

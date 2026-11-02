@@ -1,5 +1,19 @@
 # PostDee
 
+## Replacement top-up tiers (2026-11-02, local candidate)
+
+Prepare three one-time credit packs: Small 40 post units / 25 caption credits
+(THB 49 reference), Medium 90 / 50 (THB 99), and Large 190 / 100 (THB 199).
+The payable amount always comes from the selected store product. Historical
+`postdee_post100_caption50` purchases retain 100 / 50; purchased balances,
+pending receipts, eligibility and non-expiry rules are preserved.
+
+This billing branch is separate from category-only PR #52. New-tier sales stay
+disabled by default. No store products, hosted migration or deployment have
+been performed. Apply the additive grant-snapshot migration and compatible API
+to every instance before Mobile and before enabling different-sized SKUs.
+See the [implementation and verification record](docs/superpowers/plans/2026-11-02-multi-sku-topups.md).
+
 ## Caption quality and recovery (2026-11-01, main / Staging API delivered)
 
 AI captions read clip evidence before writing, preserve the original meaning,

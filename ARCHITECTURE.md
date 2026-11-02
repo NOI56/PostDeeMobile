@@ -2,6 +2,29 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Multi-SKU top-up grant snapshots (2026-11-02, local candidate)
+
+An append-only server product registry maps the new 40/25, 90/50 and 190/100
+packs to distinct consumable SKUs. The historical 100/50 product keeps its
+meaning. Receipt identity remains store/environment/canonical transaction,
+bound to its original owner and product. First delivery freezes
+`postUnitsGranted` and `aiCaptionsGranted` in memory and PostgreSQL; duplicate
+confirmation/webhook deliveries and refund tombstones preserve the snapshot.
+The migration defaults historical rows and late old writers to 100/50 and adds
+quantity constraints plus a trigger preventing grant edits.
+
+Grant readers sum the frozen quantities and count actual transactions. Existing
+post allocations and caption usage still consume their separate banks after
+monthly quota, including lifetime spend and refund deficits. New catalog fields
+are additive to the legacy scalar response. Mobile resolves each selection and
+localized quote by SKU while retaining one account-wide unfinished purchase and
+its exact receipt namespace across product changes and app restarts.
+
+New-tier sales are gated off by default. Migration/API rollout must finish on
+every instance before new Mobile and different-sized SKU sales. An old
+count-based reader is no longer a safe rollback after those purchases exist.
+No hosted change is included. See the [implementation record](docs/superpowers/plans/2026-11-02-multi-sku-topups.md).
+
 ## Caption evidence and request lifetime (2026-11-01, Staging API delivered)
 
 The real-clip Gemini provider separates multimodal evidence extraction from

@@ -31,9 +31,13 @@ class AppConfig {
     defaultValue: 'postdee_starter_monthly',
   );
 
+  static const legacyPostCaptionAddonProductId = 'postdee_post100_caption50';
+  static const storeSmallPostCaptionAddonProductId = 'postdee_post40_caption25';
+  static const storeMediumPostCaptionAddonProductId = 'postdee_post90_caption50';
+  static const storeLargePostCaptionAddonProductId = 'postdee_post190_caption100';
   static const storePostCaptionAddonProductId = String.fromEnvironment(
     'STORE_POST_CAPTION_ADDON_PRODUCT_ID',
-    defaultValue: 'postdee_post100_caption50',
+    defaultValue: legacyPostCaptionAddonProductId,
   );
 
   static const mockUserId = String.fromEnvironment(

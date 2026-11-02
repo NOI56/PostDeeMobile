@@ -36,6 +36,35 @@ describe.skipIf(!databaseUrl).sequential('monthly add-on real PostgreSQL transac
     await prisma.managedUploadOwner.deleteMany({ where: { ownerId: { in: userIds } } });
     await prisma.$disconnect();
   });
+  it('preserves historical defaults and sums mixed new-SKU snapshots across duplicate and refund delivery', async () => {
+    const userId = await member();
+    const legacy = purchase(userId);
+    await prisma.monthlyAddonPurchase.create({ data: { ...legacy, productId: 'historical-configured-alias',
+      id: monthlyAddonPurchaseKey(legacy), ownerHash: monthlyAddonOwnerHash(userId), purchasedAt: new Date(legacy.purchasedAt) } });
+    expect(await prisma.monthlyAddonPurchase.findUnique({ where: { id: monthlyAddonPurchaseKey(legacy) } }))
+      .toMatchObject({ postUnitsGranted: 100, aiCaptionsGranted: 50 });
+    const small = { ...purchase(userId), productId: 'postdee_post40_caption25', postUnitsGranted: 40, aiCaptionsGranted: 25 };
+    await Promise.all(Array.from({ length: 4 }, () => store.applyPurchase(small)));
+    await store.applyPurchase({ ...purchase(userId), productId: 'postdee_post90_caption50', postUnitsGranted: 90, aiCaptionsGranted: 50 });
+    await store.applyPurchase({ ...purchase(userId), productId: 'postdee_post190_caption100', postUnitsGranted: 190, aiCaptionsGranted: 100 });
+    expect(await store.readCredits({ userId, now: '2030-01-01T00:00:00.000Z' })).toEqual({ postUnits: 420, aiCaptions: 225 });
+    expect(await store.countPurchases({ userId })).toBe(4);
+    expect(await store.applyPurchase({ ...small, postUnitsGranted: 190, aiCaptionsGranted: 100 }))
+      .toMatchObject({ applied: false, postUnits: 40, aiCaptions: 25 });
+    await store.revokePurchase({ ...small, postUnitsGranted: 190, aiCaptionsGranted: 100 });
+    expect(await store.findPurchaseConfirmation(small)).toMatchObject({ revoked: true, postUnits: 40, aiCaptions: 25 });
+    expect(await store.readCredits({ userId, now: legacy.purchasedAt })).toEqual({ postUnits: 380, aiCaptions: 200 });
+    expect(await store.countPurchases({ userId })).toBe(3);
+  });
+  it('stores a new-SKU refund-first tombstone without accepting a later changed grant', async () => {
+    const userId = await member();
+    const large = { ...purchase(userId), productId: 'postdee_post190_caption100', postUnitsGranted: 190, aiCaptionsGranted: 100 };
+    await store.revokePurchase(large);
+    expect(await store.applyPurchase({ ...large, postUnitsGranted: 40, aiCaptionsGranted: 25 }))
+      .toMatchObject({ applied: false, revoked: true, postUnits: 190, aiCaptions: 100 });
+    expect(await store.readCredits({ userId, now: large.purchasedAt })).toEqual({ postUnits: 0, aiCaptions: 0 });
+    expect(await store.countPurchases({ userId })).toBe(0);
+  });
   it('grants a concurrent duplicate only once and preserves distinct purchases', async () => {
     const userId = await member(); const one = purchase(userId);
     const results = await Promise.allSettled(Array.from({ length: 4 }, () => store.applyPurchase(one)));

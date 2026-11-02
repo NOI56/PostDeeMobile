@@ -8,8 +8,9 @@ import type { RealClipCaptionUsageStore } from '../captions/captionUsageStore.js
 import { monthlyAddonPostUnits, monthlyAddonAiCaptions, allowMonthlyAddonStore,
   MonthlyAddonPurchaseConflictError, type MonthlyAddonStore } from './monthlyAddonStore.js';
 import { RevenueCatAddonLookupError, type RevenueCatAddonPurchaseClient } from './revenueCatAddonPurchaseClient.js';
+import { addonCatalogVersion, addonTierProducts, addonGrantSnapshot, readAddonProductDefinition } from './addonProductCatalog.js';
 
-export type AddonConfig = Pick<ServerConfig, 'billingAddonsEnabled' | 'billingProvider' | 'revenueCatRestApiV1Key' |
+export type AddonConfig = Pick<ServerConfig, 'billingAddonsEnabled' | 'billingAddonTiersEnabled' | 'billingProvider' | 'revenueCatRestApiV1Key' |
   'revenueCatAddonProductId' | 'revenueCatAddonEnvironment'>;
 const addonVerificationConfigured = (config: AddonConfig) =>
   config.billingProvider === 'revenuecat' && Boolean(config.revenueCatRestApiV1Key);
@@ -30,15 +31,19 @@ export const registerAddonRoutes = ({ router, authMiddleware, config, userStore,
     const current = now().toISOString();
     const enabled = monthlyAddonPurchasesEnabled(config);
     const plan = await subscriptionStore.getPlan(user);
-    const [credits, spentPostUnits, spentAiCaptions] = await Promise.all([
+    const [credits, spentPostUnits, spentAiCaptions, purchasedPacks] = await Promise.all([
       monthlyAddonStore.readCredits({ userId: user.id, now: current }),
-      postStore.countAddonPostUnits({ userId: user.id }), captionUsageStore.countAddonUsages({ userId: user.id })
+      postStore.countAddonPostUnits({ userId: user.id }), captionUsageStore.countAddonUsages({ userId: user.id }),
+      monthlyAddonStore.countPurchases({ userId: user.id })
     ]);
+    const tiersEnabled = enabled && config.billingAddonTiersEnabled;
     response.json({ status: 'ok', enabled, eligible: enabled && plan !== 'BASIC', productId: config.revenueCatAddonProductId,
       postUnits: monthlyAddonPostUnits, aiCaptions: monthlyAddonAiCaptions, priceThb: 49,
+      catalogVersion: addonCatalogVersion,
+      products: addonTierProducts.map(product => ({ ...product, enabled: tiersEnabled, eligible: tiersEnabled && plan !== 'BASIC' })),
       ...addonCreditPolicy, addonPostUnits: Math.max(credits.postUnits - spentPostUnits, 0),
       addonAiCaptions: Math.max(credits.aiCaptions - spentAiCaptions, 0),
-      purchasedPacks: credits.postUnits / monthlyAddonPostUnits });
+      purchasedPacks });
   });
   router.post('/billing/addons/confirm', authMiddleware, async (request, response) => {
     const user = readAuthUser(response.locals);
@@ -48,7 +53,8 @@ export const registerAddonRoutes = ({ router, authMiddleware, config, userStore,
     }
     const { productId, transactionId } = request.body ?? {};
     const transactionIdKind = request.body?.transactionIdKind ?? 'STORE';
-    if (productId !== config.revenueCatAddonProductId || typeof transactionId !== 'string' ||
+    if (typeof productId !== 'string' || !productId.trim() || productId.length > 256 || productId !== productId.trim() ||
+      typeof transactionId !== 'string' ||
       !transactionId.trim() || transactionId.length > 512 || transactionId !== transactionId.trim() ||
       (transactionIdKind !== 'STORE' && transactionIdKind !== 'REVENUECAT')) {
       response.status(400).json({ status: 'error', code: 'ADDON_PURCHASE_INVALID', message: 'A configured product and store transaction are required.' }); return;
@@ -62,8 +68,12 @@ export const registerAddonRoutes = ({ router, authMiddleware, config, userStore,
       if (confirmed.revoked) {
         response.status(409).json({ status: 'error', code: 'ADDON_PURCHASE_REVOKED', message: 'This transaction has been refunded or revoked.' }); return;
       }
-      response.json({ status: 'ok', confirmed: true, transactionId, transactionIdKind, postUnits: monthlyAddonPostUnits,
-        aiCaptions: monthlyAddonAiCaptions, ...addonCreditPolicy }); return;
+      response.json({ status: 'ok', confirmed: true, productId, transactionId, transactionIdKind, postUnits: confirmed.postUnits,
+        aiCaptions: confirmed.aiCaptions, ...addonCreditPolicy }); return;
+    }
+    const product = readAddonProductDefinition(productId, config.revenueCatAddonProductId);
+    if (!product && transactionIdKind !== 'REVENUECAT') {
+      response.status(400).json({ status: 'error', code: 'ADDON_PURCHASE_INVALID', message: 'A configured product and store transaction are required.' }); return;
     }
     let purchase;
     try { purchase = await purchaseClient.findPurchase({ userId: user.id, productId, transactionId,
@@ -72,9 +82,9 @@ export const registerAddonRoutes = ({ router, authMiddleware, config, userStore,
       if (!(error instanceof RevenueCatAddonLookupError)) throw error;
       // The store charge has already happened. Keep the exact transaction
       // pending instead of starting another purchase during an RC outage.
-      response.status(202).json({ status: 'ok', confirmed: false, transactionId, transactionIdKind, ...addonCreditPolicy }); return;
+      response.status(202).json({ status: 'ok', confirmed: false, productId, transactionId, transactionIdKind, ...addonCreditPolicy }); return;
     }
-    if (!purchase) { response.status(202).json({ status: 'ok', confirmed: false, transactionId, transactionIdKind, ...addonCreditPolicy }); return; }
+    if (!purchase) { response.status(202).json({ status: 'ok', confirmed: false, productId, transactionId, transactionIdKind, ...addonCreditPolicy }); return; }
     if (!allowMonthlyAddonStore(purchase.store, purchase.environment) && !purchase.revoked) {
       response.status(403).json({ status: 'error', code: 'ADDON_STORE_UNSUPPORTED', message: 'Add-on purchases are not supported by this store.' }); return;
     }
@@ -87,17 +97,33 @@ export const registerAddonRoutes = ({ router, authMiddleware, config, userStore,
       if (purchase.revoked) {
         response.status(409).json({ status: 'error', code: 'ADDON_PURCHASE_REVOKED', message: 'This transaction has been refunded or revoked.' }); return;
       }
-      response.status(202).json({ status: 'ok', confirmed: false, transactionId, transactionIdKind, ...addonCreditPolicy }); return;
+      response.status(202).json({ status: 'ok', confirmed: false, productId, transactionId, transactionIdKind, ...addonCreditPolicy }); return;
     }
-    const canonicalPurchase = { ...purchase, transactionId: purchase.transactionId };
+    if (!product) {
+      // A retired configured alias may still exist in old durable receipts.
+      // Exact provider proof may acknowledge its original ledger grant, but
+      // can never create a new grant for an unregistered product.
+      const historical = await monthlyAddonStore.findPurchaseConfirmation({ userId: user.id, productId,
+        transactionId: purchase.transactionId, environment: purchase.environment, store: purchase.store });
+      if (!historical) {
+        response.status(400).json({ status: 'error', code: 'ADDON_PURCHASE_INVALID', message: 'A configured product and store transaction are required.' }); return;
+      }
+      if (purchase.revoked) await monthlyAddonStore.revokePurchase({ ...purchase, transactionId: purchase.transactionId });
+      if (historical.revoked || purchase.revoked) {
+        response.status(409).json({ status: 'error', code: 'ADDON_PURCHASE_REVOKED', message: 'This transaction has been refunded or revoked.' }); return;
+      }
+      response.json({ status: 'ok', confirmed: true, productId, transactionId, transactionIdKind,
+        postUnits: historical.postUnits, aiCaptions: historical.aiCaptions, ...addonCreditPolicy }); return;
+    }
+    const canonicalPurchase = { ...purchase, transactionId: purchase.transactionId, ...addonGrantSnapshot(product) };
     try {
       if (purchase.revoked) await monthlyAddonStore.revokePurchase(canonicalPurchase);
       const result = purchase.revoked ? undefined : await monthlyAddonStore.applyPurchase(canonicalPurchase);
       if (!result || result.revoked) {
         response.status(409).json({ status: 'error', code: 'ADDON_PURCHASE_REVOKED', message: 'This transaction has been refunded or revoked.' }); return;
       }
-      response.json({ status: 'ok', confirmed: true, transactionId, transactionIdKind, postUnits: monthlyAddonPostUnits,
-        aiCaptions: monthlyAddonAiCaptions, ...addonCreditPolicy });
+      response.json({ status: 'ok', confirmed: true, productId, transactionId, transactionIdKind, postUnits: result.postUnits,
+        aiCaptions: result.aiCaptions, ...addonCreditPolicy });
     } catch (error) {
       if (!(error instanceof MonthlyAddonPurchaseConflictError)) throw error;
       response.status(409).json({ status: 'error', code: 'PURCHASE_ALREADY_LINKED', message: error.message });

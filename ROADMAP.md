@@ -2,6 +2,21 @@
 
 Build roadmap for PostDee.
 
+## Replacement credit packs (2026-11-02, local candidate)
+
+- Prepare approved Small 40 post / 25 caption credits (THB 49 reference), Medium
+  90 / 50 (THB 99) and Large 190 / 100 (THB 199), using distinct consumable SKUs.
+- Preserve all historical 100/50 grants, paid balances, pending receipt recovery,
+  Starter/Pro eligibility and non-expiry. Use actual store checkout quotes.
+- Add immutable grant snapshots, a backward-compatible product catalog, per-SKU
+  confirmation/webhook fulfillment and Mobile selection with a shared payment lock.
+- Keep new-tier sales disabled. Migration/API on all instances precedes Mobile,
+  store/sandbox verification and separately authorized activation. Do not revert
+  to count-based grant readers after new-sized purchases exist.
+- Separate billing expansion from PR #52's package categories. No remote
+  submission, live product setup, production migration, merge or deployment in
+  this preparation. [Work record](docs/superpowers/plans/2026-11-02-multi-sku-topups.md).
+
 ## Caption quality and recovery (2026-11-01, main / Staging API delivered)
 
 - Read actual clip evidence before writing; preserve negative meaning and stop

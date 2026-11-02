@@ -149,8 +149,11 @@ void main() {
       loadSubscription: () async => _subscription(plan: 'BASIC'),
     )));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('สมัคร Pro'));
-    await tester.tap(find.text('สมัคร Pro'));
+    final subscribe = find.widgetWithText(FilledButton, 'สมัคร Pro');
+    await tester.ensureVisible(subscribe);
+    await tester.pumpAndSettle();
+    expect(subscribe.hitTestable(), findsOneWidget);
+    await tester.tap(subscribe);
     await tester.pumpAndSettle();
     expect(find.text('ระบบสมาชิกยังไม่พร้อมสำหรับแอปเวอร์ชันนี้ กรุณาลองใหม่ภายหลัง'), findsOneWidget);
     expect(gateway.purchaseCalls, 0);
@@ -416,8 +419,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('สมัคร Pro'));
-    await tester.tap(find.text('สมัคร Pro'));
+    final subscribe = find.widgetWithText(FilledButton, 'สมัคร Pro');
+    await tester.ensureVisible(subscribe);
+    await tester.pumpAndSettle();
+    expect(subscribe.hitTestable(), findsOneWidget);
+    await tester.tap(subscribe);
     await tester.pumpAndSettle();
 
     expect(find.text('สมัคร Pro สำเร็จ'), findsOneWidget);
@@ -711,8 +717,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('สมัคร Pro'));
-    await tester.tap(find.text('สมัคร Pro'));
+    final subscribe = find.widgetWithText(FilledButton, 'สมัคร Pro');
+    await tester.ensureVisible(subscribe);
+    await tester.pumpAndSettle();
+    expect(subscribe.hitTestable(), findsOneWidget);
+    await tester.tap(subscribe);
     await tester.pump();
     expect(find.text('กำลังดำเนินการสั่งซื้อ...'), findsOneWidget);
 

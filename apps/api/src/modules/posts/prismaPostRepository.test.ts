@@ -27,7 +27,9 @@ describe('createPrismaPostRepository', () => {
   });
 
   it('reads addon grants inside the quota transaction and rechecks a refunded grant after a conflict', async () => {
-    const transactionGrants = { findMany: vi.fn().mockResolvedValueOnce([{ id: 'grant' }]).mockResolvedValue([]) };
+    const transactionGrants = { findMany: vi.fn().mockResolvedValueOnce([
+      { id: 'grant', postUnitsGranted: 100, aiCaptionsGranted: 50 }
+    ]).mockResolvedValue([]) };
     const post = { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]),
       aggregate: vi.fn().mockResolvedValue({ _sum: { addonPostUnits: 0 } }),
       create: vi.fn().mockRejectedValue(Object.assign(new Error('serialization conflict'), { code: 'P2034' })) };
@@ -42,7 +44,7 @@ describe('createPrismaPostRepository', () => {
       .toEqual({ ok: false });
     expect(transactionGrants.findMany).toHaveBeenCalledTimes(2);
     expect(transactionGrants.findMany).toHaveBeenCalledWith({ where: { userId: 'addon-refund', revoked: false },
-      select: { id: true } });
+      select: { id: true, postUnitsGranted: true, aiCaptionsGranted: true } });
     expect(rootGrants.findMany).not.toHaveBeenCalled();
     expect(post.create).toHaveBeenCalledTimes(1);
   });

@@ -19,7 +19,7 @@ void main() {
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
   Future<void> show(WidgetTester tester, _Addon addon,
-      {VoidCallback? onPurchased}) async {
+      {VoidCallback? onPurchased, bool revealCard = true}) async {
     await tester.pumpWidget(MaterialApp(
         home: PaywallScreen(
             service: StoreSubscriptionService(
@@ -34,6 +34,9 @@ void main() {
                 canUseAiCaptions: true,
                 canUseAnalytics: true))));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+    await tester.pumpAndSettle();
+    if (!revealCard) return;
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('paywall-addon-card')), 400);
   }
@@ -57,11 +60,23 @@ void main() {
     expect(find.text('เติมเครดิตสำเร็จ'), findsOneWidget);
   });
 
-  for (final state in ['disabled', 'basic', 'missing']) {
+  testWidgets('an unsold add-on is hidden instead of shown disabled',
+      (tester) async {
+    final addon = _Addon(enabled: false);
+    await show(tester, addon, revealCard: false);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -4000));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('paywall-addon-card')), findsNothing);
+    expect(find.byKey(const ValueKey('paywall-addons-empty')), findsOneWidget);
+    expect(find.text('ยังไม่มีแพ็กเกจเสริมเปิดขาย'), findsOneWidget);
+    expect(find.text('แพ็กเติมยังไม่เปิดขาย'), findsNothing);
+    expect(addon.purchaseCalls, 0);
+  });
+
+  for (final state in ['basic', 'missing']) {
     testWidgets('$state prevents add-on checkout before payment',
         (tester) async {
       final addon = _Addon(
-          enabled: state != 'disabled',
           eligible: state != 'basic',
           hasProduct: state != 'missing');
       await show(tester, addon);
@@ -87,6 +102,29 @@ void main() {
             .onPressed,
         isNull);
     expect(addon.purchaseCalls, 0);
+  });
+
+  testWidgets('an unsold pack keeps pending receipts visible without buying again',
+      (tester) async {
+    final addon = _Addon(enabled: false, waiting: true);
+    await show(tester, addon);
+    expect(find.byKey(const ValueKey('paywall-addon-card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('paywall-addons-empty')), findsNothing);
+    expect(find.byKey(const ValueKey('paywall-retry-addon')), findsOneWidget);
+    expect(find.byKey(const ValueKey('paywall-addon-help')), findsOneWidget);
+    expect(
+        tester.widget<FilledButton>(
+            find.byKey(const ValueKey('paywall-buy-addon'))).onPressed,
+        isNull);
+    await tester.tap(find.byKey(const ValueKey('paywall-main-plans-category')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('paywall-addon-pending-main')),
+        findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('paywall-retry-addon')), findsOneWidget);
+    expect(addon.purchaseCalls, 0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -175,6 +213,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ตกลง'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('paywall-buy-addon')), 250);
     await tester.pumpAndSettle();
@@ -238,29 +278,35 @@ void main() {
                     canUseAnalytics: true)),
           )));
       await tester.pumpAndSettle();
-      final card = find.byKey(const ValueKey('paywall-addon-card'));
-      await tester.scrollUntilVisible(card, 350);
-      await Scrollable.ensureVisible(tester.element(card), alignment: .5);
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      final rect = tester.getRect(card);
-      expect(rect.top, greaterThanOrEqualTo(0));
-      expect(rect.bottom, lessThanOrEqualTo(812));
-      final boundary = boundaryKey.currentContext!.findRenderObject()!
-          as RenderRepaintBoundary;
-      await tester.runAsync(() async {
-        final image = await boundary.toImage(pixelRatio: 2);
-        try {
-          final png = await image.toByteData(format: ui.ImageByteFormat.png);
-          final directory = Directory(previewDirectory!);
-          await directory.create(recursive: true);
-          await File(
-                  '${directory.path}/addon-card-${scale == 1 ? 'normal' : 'large-text'}.png')
-              .writeAsBytes(png!.buffer.asUint8List());
-        } finally {
-          image.dispose();
+      for (final category in ['main-plans', 'addons']) {
+        await tester.tap(find.byKey(ValueKey('paywall-$category-category')));
+        await tester.pumpAndSettle();
+        if (category == 'addons') {
+          final card = find.byKey(const ValueKey('paywall-addon-card'));
+          await tester.scrollUntilVisible(card, 350);
+          await Scrollable.ensureVisible(tester.element(card), alignment: .5);
+          await tester.pumpAndSettle();
+          final rect = tester.getRect(card);
+          expect(rect.top, greaterThanOrEqualTo(0));
+          expect(rect.bottom, lessThanOrEqualTo(812));
         }
-      });
+        expect(tester.takeException(), isNull);
+        final boundary = boundaryKey.currentContext!.findRenderObject()!
+            as RenderRepaintBoundary;
+        await tester.runAsync(() async {
+          final image = await boundary.toImage(pixelRatio: 2);
+          try {
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            final directory = Directory(previewDirectory!);
+            await directory.create(recursive: true);
+            await File(
+                    '${directory.path}/$category-${scale == 1 ? 'normal' : 'large-text'}.png')
+                .writeAsBytes(png!.buffer.asUint8List());
+          } finally {
+            image.dispose();
+          }
+        });
+      }
     }
   }, skip: previewDirectory == null);
 }
@@ -271,6 +317,7 @@ class _Addon extends StoreAddonService {
       this.eligible = true,
       this.hasProduct = true,
       this.pending = false,
+      this.waiting = false,
       this.price = '€1.49',
       this.addonPostUnits = 0,
       this.addonAiCaptions = 0});
@@ -279,7 +326,7 @@ class _Addon extends StoreAddonService {
   final bool enabled, hasProduct, pending;
   bool eligible;
   var purchaseCalls = 0;
-  var waiting = false;
+  bool waiting;
   @override
   bool get hasPendingPurchase => waiting;
   @override

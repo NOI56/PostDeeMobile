@@ -23,6 +23,9 @@ class AddonPendingRecord {
   AddonPendingRecord(
       {required this.productId,
       required this.intentId,
+      this.version = 1,
+      this.expectedPostUnits,
+      this.expectedAiCaptions,
       this.transactionId,
       this.transactionIdKind = 'STORE',
       List<String>? baselineTransactionIds})
@@ -31,6 +34,12 @@ class AddonPendingRecord {
             : List<String>.unmodifiable(baselineTransactionIds) {
     if (!_validId(productId, 256) ||
         !_validId(intentId, 128) ||
+        (version != 1 && version != 2) ||
+        (version == 1 &&
+            (expectedPostUnits != null || expectedAiCaptions != null)) ||
+        (version == 2 &&
+            (!_validExpectedUnits(expectedPostUnits) ||
+                !_validExpectedUnits(expectedAiCaptions))) ||
         (transactionIdKind != 'STORE' && transactionIdKind != 'REVENUECAT') ||
         (transactionId == null && transactionIdKind != 'STORE') ||
         (transactionId != null && !_validId(transactionId!, 512)) ||
@@ -45,16 +54,23 @@ class AddonPendingRecord {
 
   final String productId;
   final String intentId;
+  final int version;
+  final int? expectedPostUnits;
+  final int? expectedAiCaptions;
   final String? transactionId;
   final String transactionIdKind;
   final List<String>? baselineTransactionIds;
   static bool _validId(String value, int length) =>
       value.isNotEmpty && value.length <= length && value.trim() == value;
+  static bool _validExpectedUnits(int? value) =>
+      value != null && value > 0 && value <= 1000000;
 
   Map<String, Object?> toJson() => {
-        'version': 1,
+        'version': version,
         'productId': productId,
         'intentId': intentId,
+        if (version == 2) 'expectedPostUnits': expectedPostUnits,
+        if (version == 2) 'expectedAiCaptions': expectedAiCaptions,
         if (transactionId != null) 'transactionId': transactionId,
         if (transactionId != null) 'transactionIdKind': transactionIdKind,
         if (baselineTransactionIds != null)
@@ -66,13 +82,22 @@ class AddonPendingRecord {
       'version',
       'productId',
       'intentId',
+      'expectedPostUnits',
+      'expectedAiCaptions',
       'transactionId',
       'transactionIdKind',
       'baselineTransactionIds'
     };
     final baseline = json['baselineTransactionIds'];
     if (json.keys.any((key) => !allowed.contains(key)) ||
-        json['version'] != 1 ||
+        json['version'] is! int ||
+        (json['version'] != 1 && json['version'] != 2) ||
+        (json['version'] == 1 &&
+            (json.containsKey('expectedPostUnits') ||
+                json.containsKey('expectedAiCaptions'))) ||
+        (json['version'] == 2 &&
+            (json['expectedPostUnits'] is! int ||
+                json['expectedAiCaptions'] is! int)) ||
         json['productId'] is! String ||
         json['intentId'] is! String ||
         (json.containsKey('transactionId') &&
@@ -86,6 +111,9 @@ class AddonPendingRecord {
     return AddonPendingRecord(
         productId: json['productId'] as String,
         intentId: json['intentId'] as String,
+        version: json['version'] as int,
+        expectedPostUnits: json['expectedPostUnits'] as int?,
+        expectedAiCaptions: json['expectedAiCaptions'] as int?,
         transactionId: json['transactionId'] as String?,
         transactionIdKind: json['transactionIdKind'] as String? ?? 'STORE',
         baselineTransactionIds:
@@ -103,6 +131,9 @@ void _assertSameIntent(AddonPendingRecord? current, AddonPendingRecord next) {
   if (current != null &&
       (current.intentId != next.intentId ||
           current.productId != next.productId ||
+          current.version != next.version ||
+          current.expectedPostUnits != next.expectedPostUnits ||
+          current.expectedAiCaptions != next.expectedAiCaptions ||
           (current.transactionId != null &&
               (current.transactionId != next.transactionId ||
                   current.transactionIdKind != next.transactionIdKind)))) {

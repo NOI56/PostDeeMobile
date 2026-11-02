@@ -7,6 +7,18 @@ import 'package:postdee_mobile/features/billing/addon_pending_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _api = 'https://staging.example.test';
+const _addonProductIds = [
+  'postdee_post100_caption50',
+  'postdee_post40_caption25',
+  'postdee_post90_caption50',
+  'postdee_post190_caption100',
+];
+const _grantSnapshots = <String, List<int>>{
+  'postdee_post100_caption50': [100, 50],
+  'postdee_post40_caption25': [40, 25],
+  'postdee_post90_caption50': [90, 50],
+  'postdee_post190_caption100': [190, 100],
+};
 AuthSession _session(String owner) =>
     AuthSession(userId: owner, idToken: 'test-token');
 AddonPendingRecord _record(String intent, {String? transaction}) =>
@@ -30,6 +42,208 @@ void main() {
           sessionStore: sessions,
           apiBaseUrl: api,
           loadPreferences: loadPreferences);
+
+  for (final productId in _addonProductIds) {
+    test('v1 receipts retain exact $productId across restart and account scopes',
+        () async {
+      final receipt = AddonPendingRecord.fromJson({
+        'version': 1,
+        'productId': productId,
+        'intentId': 'persisted-$productId',
+        'transactionId': 'same-opaque-store-id',
+        'baselineTransactionIds': ['older-transaction'],
+      });
+      await store().save(receipt);
+      final restored = (await store().load())!;
+      expect(restored.productId, productId);
+      expect(restored.transactionId, 'same-opaque-store-id');
+      expect(restored.transactionIdKind, 'STORE');
+      expect(restored.baselineTransactionIds, ['older-transaction']);
+      expect(restored.toJson()['version'], 1);
+      expect(await store(api: 'https://production.example.test').load(), isNull);
+      sessions.signIn(_session('owner-b'));
+      expect(await store().load(), isNull);
+      sessions.signIn(_session('owner-a'));
+      expect((await store().load())!.toJson(), receipt.toJson());
+    });
+  }
+
+  for (final grant in _grantSnapshots.entries) {
+    test('v2 ${grant.key} snapshot survives intent and receipt persistence',
+        () async {
+      final intent = AddonPendingRecord(version: 2,
+          productId: grant.key, intentId: 'snapshot-${grant.key}',
+          expectedPostUnits: grant.value[0],
+          expectedAiCaptions: grant.value[1],
+          baselineTransactionIds: ['before-checkout']);
+      final json = intent.toJson();
+      expect(json['version'], 2);
+      expect(json['expectedPostUnits'], grant.value[0]);
+      expect(json['expectedAiCaptions'], grant.value[1]);
+      expect(AddonPendingRecord.fromJson(json).toJson(), json);
+      await store().save(intent);
+      final restored = (await store().load())!;
+      expect(restored.version, 2);
+      expect(restored.expectedPostUnits, grant.value[0]);
+      expect(restored.expectedAiCaptions, grant.value[1]);
+      await store().save(AddonPendingRecord(version: restored.version,
+          productId: restored.productId, intentId: restored.intentId,
+          expectedPostUnits: restored.expectedPostUnits,
+          expectedAiCaptions: restored.expectedAiCaptions,
+          transactionId: 'snapshot-receipt', transactionIdKind: 'REVENUECAT',
+          baselineTransactionIds: restored.baselineTransactionIds));
+      final receipt = (await store().load())!;
+      expect(receipt.transactionId, 'snapshot-receipt');
+      expect(receipt.transactionIdKind, 'REVENUECAT');
+      expect(receipt.expectedPostUnits, grant.value[0]);
+      expect(receipt.expectedAiCaptions, grant.value[1]);
+      expect(await store(api: 'https://production.example.test').load(), isNull);
+    });
+  }
+
+  test('v1 serialization keeps its exact legacy shape without snapshots', () {
+    final original = <String, Object?>{
+      'version': 1, 'productId': 'unknown-historical-sku', 'intentId': 'legacy',
+      'transactionId': 'legacy-receipt', 'transactionIdKind': 'STORE',
+    };
+    final restored = AddonPendingRecord.fromJson(original);
+    expect(restored.version, 1);
+    expect(restored.expectedPostUnits, isNull);
+    expect(restored.expectedAiCaptions, isNull);
+    expect(restored.toJson(), original);
+  });
+
+  test('snapshot schema rejects partial malformed or unbounded grants', () {
+    final valid = <String, Object?>{
+      'version': 2, 'productId': 'postdee_post40_caption25',
+      'intentId': 'snapshot', 'expectedPostUnits': 40, 'expectedAiCaptions': 25,
+    };
+    for (final invalid in [
+      {...valid}..remove('expectedPostUnits'),
+      {...valid}..remove('expectedAiCaptions'),
+      {...valid, 'version': 1},
+      {...valid, 'version': 3},
+      {...valid, 'version': 2.0},
+      {...valid, 'arbitraryGrant': 100},
+      for (final field in ['expectedPostUnits', 'expectedAiCaptions'])
+        for (final value in [null, 0, -1, 1000001, 40.0, '40', true])
+          {...valid, field: value},
+    ]) {
+      expect(() => AddonPendingRecord.fromJson(invalid),
+          throwsA(isA<AddonPendingDataException>()), reason: '$invalid');
+    }
+    for (final field in ['expectedPostUnits', 'expectedAiCaptions']) {
+      expect(() => AddonPendingRecord.fromJson({
+        'version': 1, 'productId': 'old', 'intentId': 'old', field: null,
+      }), throwsA(isA<AddonPendingDataException>()));
+    }
+    expect(() => AddonPendingRecord(version: 2,
+        productId: 'sku', intentId: 'partial', expectedPostUnits: 40),
+        throwsA(isA<AddonPendingDataException>()));
+    expect(() => AddonPendingRecord(productId: 'sku', intentId: 'v1',
+        expectedPostUnits: 40, expectedAiCaptions: 25),
+        throwsA(isA<AddonPendingDataException>()));
+    final bounded = AddonPendingRecord(version: 2,
+        productId: 'sku', intentId: 'bounded',
+        expectedPostUnits: 1000000, expectedAiCaptions: 1000000);
+    expect(AddonPendingRecord.fromJson(bounded.toJson()).expectedPostUnits,
+        1000000);
+  });
+
+  test('both stores keep grant snapshots immutable while a receipt is pending',
+      () async {
+    for (final pending in <AddonPendingStore>[
+      store(), InMemoryAddonPendingStore(),
+    ]) {
+      final original = AddonPendingRecord(version: 2,
+          productId: 'postdee_post40_caption25', intentId: 'immutable-snapshot',
+          expectedPostUnits: 40, expectedAiCaptions: 25);
+      await pending.save(original);
+      for (final changed in [
+        AddonPendingRecord(version: 2, productId: original.productId,
+            intentId: original.intentId,
+            expectedPostUnits: 90, expectedAiCaptions: 25),
+        AddonPendingRecord(version: 2, productId: original.productId,
+            intentId: original.intentId,
+            expectedPostUnits: 40, expectedAiCaptions: 50),
+        AddonPendingRecord(productId: original.productId,
+            intentId: original.intentId),
+      ]) {
+        await expectLater(pending.save(changed),
+            throwsA(isA<AddonPendingConflictException>()));
+        expect((await pending.load())!.toJson(), original.toJson());
+      }
+      final receipt = AddonPendingRecord(version: 2,
+          productId: original.productId, intentId: original.intentId,
+          expectedPostUnits: 40, expectedAiCaptions: 25,
+          transactionId: 'immutable-receipt');
+      await pending.save(receipt);
+      expect((await pending.load())!.toJson(), receipt.toJson());
+      await expectLater(pending.save(AddonPendingRecord(
+          productId: original.productId, intentId: original.intentId,
+          transactionId: receipt.transactionId)),
+          throwsA(isA<AddonPendingConflictException>()));
+      expect((await pending.load())!.toJson(), receipt.toJson());
+    }
+  });
+
+  test('an existing v1 intent cannot silently upgrade its recorded grant',
+      () async {
+    for (final pending in <AddonPendingStore>[
+      store(), InMemoryAddonPendingStore(),
+    ]) {
+      final original = _record('retain-v1', transaction: 'old-receipt');
+      await pending.save(original);
+      await expectLater(pending.save(AddonPendingRecord(version: 2,
+          productId: original.productId, intentId: original.intentId,
+          transactionId: original.transactionId,
+          expectedPostUnits: 100, expectedAiCaptions: 50)),
+          throwsA(isA<AddonPendingConflictException>()));
+      expect((await pending.load())!.toJson(), original.toJson());
+    }
+  });
+
+  test('different SKU claims still share one persisted account-wide lock',
+      () async {
+    final results = await Future.wait(_addonProductIds.map((productId) async {
+      try {
+        await store().save(AddonPendingRecord(
+            productId: productId, intentId: 'intent-$productId'));
+        return productId;
+      } on AddonPendingConflictException {
+        return null;
+      }
+    }));
+    final winner = results.whereType<String>().single;
+    final claimed = (await store().load())!;
+    expect(claimed.productId, winner);
+    expect(claimed.intentId, 'intent-$winner');
+    expect((await SharedPreferences.getInstance()).getKeys(), hasLength(1));
+    await store().clear(intentId: 'different-intent');
+    expect((await store().load())!.productId, winner);
+  });
+
+  test('a pending SKU cannot be replaced even when the intent ID matches',
+      () async {
+    final original = AddonPendingRecord(
+        productId: _addonProductIds.first,
+        intentId: 'shared-intent',
+        transactionId: 'legacy-receipt');
+    final persisted = store();
+    final memory = InMemoryAddonPendingStore();
+    for (final pending in <AddonPendingStore>[persisted, memory]) {
+      await pending.save(original);
+      for (final productId in _addonProductIds.skip(1)) {
+        await expectLater(
+            pending.save(AddonPendingRecord(
+                productId: productId,
+                intentId: original.intentId,
+                transactionId: original.transactionId)),
+            throwsA(isA<AddonPendingConflictException>()));
+        expect((await pending.load())!.toJson(), original.toJson());
+      }
+    }
+  });
 
   test('strict records round-trip and never retain a mutable baseline', () {
     final source = ['old'];

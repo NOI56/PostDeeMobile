@@ -200,7 +200,12 @@ class _Fixture {
   }
 }
 
-Future<void> _start(WidgetTester tester, Finder action) async {
+Future<void> _start(WidgetTester tester, Finder action,
+    {bool addon = false}) async {
+  if (addon) {
+    await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+    await tester.pumpAndSettle();
+  }
   if (action.evaluate().isEmpty) {
     await tester.scrollUntilVisible(action, 300,
         scrollable: find.byType(Scrollable).last);
@@ -217,6 +222,91 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     AppTheme.applyThemeMode(ThemeMode.light);
     fixture = _Fixture();
+  });
+
+  for (final plan in ['Starter', 'Pro']) {
+    testWidgets('switching categories keeps the $plan checkout action',
+        (tester) async {
+      await tester.pumpWidget(fixture.app());
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('paywall-main-plans-category')));
+      await tester.pumpAndSettle();
+      await _start(tester, find.text('Subscribe $plan'));
+      await tester.pumpAndSettle();
+      expect(fixture.service.calls, [plan.toLowerCase()]);
+      expect(fixture.addon.purchases, 0);
+      expect(fixture.addon.retries, 0);
+      expect(fixture.callbacks, [plan.toLowerCase()]);
+      expect(find.text('Subscribed to $plan'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final language in ['en', 'th']) {
+    testWidgets(
+        'pending add-on is discoverable from Main plans before switching ($language)',
+        (tester) async {
+      fixture.addon.pending = true;
+      await tester.pumpWidget(fixture.app(languageCode: language));
+      await tester.pumpAndSettle();
+      final notice = find.byKey(const ValueKey('paywall-addon-pending-main'));
+      final openAddons =
+          find.byKey(const ValueKey('paywall-open-pending-addon'));
+      expect(
+          tester
+              .widget<ChoiceChip>(
+                  find.byKey(const ValueKey('paywall-main-plans-category')))
+              .selected,
+          isTrue);
+      expect(notice, findsOneWidget);
+      expect(
+          find.descendant(
+              of: notice,
+              matching: find.text(
+                  language == 'en' ? 'View add-ons' : 'ดูแพ็กเกจเสริม')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('paywall-addon-card')), findsNothing);
+      await _start(tester, openAddons);
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<ChoiceChip>(
+                  find.byKey(const ValueKey('paywall-addons-category')))
+              .selected,
+          isTrue);
+      expect(find.byKey(const ValueKey('paywall-retry-addon')), findsOneWidget);
+      expect(find.byKey(const ValueKey('paywall-addon-help')), findsOneWidget);
+      expect(fixture.service.calls, isEmpty);
+      expect(fixture.addon.purchases, 0);
+      expect(fixture.addon.retries, 0);
+      expect(fixture.reads, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('pending add-on keeps main plan payments locked across categories',
+      (tester) async {
+    fixture.addon.pending = true;
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('paywall-retry-addon')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('paywall-main-plans-category')));
+    await tester.pumpAndSettle();
+    for (final plan in ['Starter', 'Pro']) {
+      final button = find.widgetWithText(FilledButton, 'Subscribe $plan');
+      await tester.scrollUntilVisible(button, 250);
+      expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    }
+    await tester.tap(find.byKey(const ValueKey('paywall-addons-category')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('paywall-retry-addon')), findsOneWidget);
+    expect(fixture.service.calls, isEmpty);
+    expect(fixture.addon.purchases, 0);
+    expect(fixture.addon.retries, 0);
   });
   tearDown(() => fixture.sessions.dispose());
 
@@ -453,7 +543,8 @@ void main() {
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
     expect(fixture.addon.purchases, 0);
-    await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')));
+    await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')),
+        addon: true);
     expect(find.text('Buying credit pack...'), findsOneWidget);
     expect(fixture.addonCallbacks, 0);
     expect(fixture.addon.purchases, 1);
@@ -482,7 +573,8 @@ void main() {
     };
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
-    await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')));
+    await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')),
+        addon: true);
     await tester.pumpAndSettle();
     expect(find.text('Credits added'), findsNothing);
     expect(fixture.addonCallbacks, 0);
@@ -492,7 +584,8 @@ void main() {
                 find.byKey(const ValueKey('paywall-buy-addon')))
             .onPressed,
         isNull);
-    await _start(tester, find.byKey(const ValueKey('paywall-addon-help')));
+    await _start(tester, find.byKey(const ValueKey('paywall-addon-help')),
+        addon: true);
     await tester.pumpAndSettle();
     expect(find.text('Purchase help'), findsOneWidget);
     expect(find.textContaining('postdee.support@gmail.com'), findsOneWidget);
@@ -512,7 +605,8 @@ void main() {
     expect(fixture.addon.retries, 0);
     await tester.tap(find.text('Got it'));
     await tester.pumpAndSettle();
-    await _start(tester, find.byKey(const ValueKey('paywall-retry-addon')));
+    await _start(tester, find.byKey(const ValueKey('paywall-retry-addon')),
+        addon: true);
     await tester.pumpAndSettle();
     expect(find.text('Credits added'), findsOneWidget);
     expect(fixture.addon.purchases, 1);
@@ -527,7 +621,8 @@ void main() {
     fixture.addon.buy = () async => throw StateError('opaque-addon-error');
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
-    await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')));
+    await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')),
+        addon: true);
     await tester.pumpAndSettle();
     expect(find.text('Could not buy the credit pack. Please try again.'),
         findsOneWidget);
@@ -544,7 +639,8 @@ void main() {
         'รายการนี้ได้รับการคืนเงินหรือยกเลิกแล้ว จึงไม่เพิ่มเครดิต');
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
-    await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')));
+    await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')),
+        addon: true);
     await tester.pumpAndSettle();
     expect(
         find.text(
@@ -575,7 +671,7 @@ void main() {
             'restore' => find.text('Restore purchases'),
             'retry' => find.byKey(const ValueKey('paywall-retry-purchase')),
             _ => find.byKey(const ValueKey('paywall-buy-addon')),
-          });
+          }, addon: operation == 'addon');
       fixture.sessions.signIn(const AuthSession(
           userId: 'replacement-owner', idToken: 'replacement'));
       await tester.pump();
@@ -628,11 +724,13 @@ void main() {
           expect(find.text('Subscribed to Pro'), findsOneWidget);
         } else if (kind == 'help') {
           await _start(
-              tester, find.byKey(const ValueKey('paywall-addon-help')));
+              tester, find.byKey(const ValueKey('paywall-addon-help')),
+              addon: true);
           await tester.pumpAndSettle();
           expect(find.text('Purchase help'), findsOneWidget);
         } else {
-          await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')));
+          await _start(tester, find.byKey(const ValueKey('paywall-buy-addon')),
+              addon: true);
           await tester.pumpAndSettle();
           expect(find.text('Credits added'), findsOneWidget);
         }

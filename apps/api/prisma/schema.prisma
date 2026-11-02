@@ -106,6 +106,8 @@ model MonthlyAddonPurchase {
   environment String
   transactionId String
   purchasedAt DateTime
+  postUnitsGranted Int @default(100)
+  aiCaptionsGranted Int @default(50)
   revoked Boolean @default(false)
   createdAt DateTime @default(now())
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)

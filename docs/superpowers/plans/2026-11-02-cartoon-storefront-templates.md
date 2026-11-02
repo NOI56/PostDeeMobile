@@ -99,14 +99,34 @@ must keep a catalog-4 reader; never clear stored designs.
 - [x] API link-in-bio suites: 932 pass, including per-release GET/POST/DELETE
   compatibility (catalogs 1–5), exact replay and conflict, cover/colour
   overrides, layout CSS, fill turns and PNG parity for all 30 decoration files.
-- [x] Mobile: `flutter analyze` reports no issues; the new cartoon widget tests
-  (33) and updated picker/catalog tests pass, including 320px with text scale
-  1.6, long Thai names, light/dark app themes, English names, cover
-  replacement and owner colours.
-- [x] Native previews (exported widgets with bundled fonts and artwork) and the
+  Earlier tests that used `4` as an "unknown future" header now use `5`.
+- [x] Full API: typecheck and build pass; 3,425 passed / 67 opt-in skipped,
+  with 4 cases in 3 unrelated files (Sentry fatal process, owner-operation
+  coordinator, platform-logo catalog) timing out while the Flutter suite ran
+  alongside; all 3 files pass alone (39/39).
+- [x] Mobile: `flutter analyze` reports no issues; full suite 4,680 passed /
+  7 optional visual previews skipped (two workers). The 33 new cartoon widget
+  tests cover 320px with text scale 1.6, long Thai names, light/dark app
+  themes, English names, cover replacement and owner colours. Three existing
+  assertions were updated for the third category chip and the cartoon
+  compositions.
+- [x] Native previews (widgets exported with bundled fonts and artwork) and the
   public pages at 360px match; public pages at 320px with a long Thai name and
-  at 1280px have no horizontal overflow.
-- [ ] Full API / Mobile suites, APK hash and emulator screenshots: see the
-  delivery notes added when they are run.
+  at 1280px have no horizontal overflow. Comic avatars shrink to 64px at 400px
+  and below so long names keep room, on both renderers.
+- [x] Android x64 Staging debug APK 12094 built with the guarded helper from
+  commit `d7b61937` (SHA-256
+  `0d5c3776bc6b9313529cc23d7adcb5ee93efa6c6518dca9c75c3b91f40979da3`,
+  235,432,511 bytes, package `com.postdee.postdee_mobile.staging`, all ten
+  cartoon PNGs bundled). Installed on `emulator-5554` (AVD `Pixel_8`) with the
+  shared updater: previous build 12093 (`be16102f…`, the PR #51 build), package
+  UID 10197 and internal storage kept, installed hash matches. The app starts
+  natively with the STAGING strip and the signed-in session, saved draft and
+  posts intact. Store link → Decorate shows three chips; การ์ตูน lists ten
+  thumbnails with the neutral name; the Cartoon rocket preview opened and was
+  closed without applying, so the draft stayed unsaved as before.
+- [x] Emulator note: the cold boot under test load showed a system
+  "isn't responding" dialog (Wait was chosen) and a stale USB-debugging prompt
+  (Cancel); adb was already authorized after restarting the adb server.
 - [ ] Saving or publishing a cartoon design against Staging needs PR #51 and this
   API deployed first (owner authorization). Production untouched.

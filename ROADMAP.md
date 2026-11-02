@@ -2,6 +2,16 @@
 
 Build roadmap for PostDee.
 
+## Cartoon storefront category (2026-11-02, local candidate)
+
+- Add an owner-approved Cartoon category of ten original drawn designs on five
+  cartoon layouts, distinct from Minimal and 3D and from the planned "by store
+  type" category. No package gate.
+- Copyright: drawings are code-generated originals with no characters, brands,
+  text or fonts; guarded by tests. Catalog 4 negotiation keeps older apps on
+  templates they know. Deliver after PR #51, API before Mobile; no migration.
+  Device and published-page checks are recorded in the [cartoon plan](docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
+
 ## Second 3D storefront set (2026-11-02, local candidate)
 
 - Add ten more 3D designs that differ from the first set in material, lighting,

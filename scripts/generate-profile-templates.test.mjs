@@ -5,12 +5,12 @@ import { test } from 'node:test';
 import { validateProfileTemplateCatalog, generateProfileTemplateTypeScript, generateProfileTemplateDart } from './generate-profile-templates.mjs';
 
 const source = JSON.parse(await readFile(new URL('../shared/profile-templates.json', import.meta.url), 'utf8'));
-test('authored catalog adds twenty 3D templates to the existing one hundred', () => {
-  assert.equal(source.version, 3);
-  assert.equal(validateProfileTemplateCatalog(source).templates.length, 120);
-  assert.deepEqual(source.categories.map((category) => category.id), ['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional']);
-  assert.match(generateProfileTemplateTypeScript(source), /export const profileTemplateCatalogVersion = 3/);
-  assert.match(generateProfileTemplateDart(source), /const profileTemplateCatalogVersion = 3/);
+test('authored catalog adds twenty 3D and ten cartoon templates to the existing one hundred', () => {
+  assert.equal(source.version, 4);
+  assert.equal(validateProfileTemplateCatalog(source).templates.length, 130);
+  assert.deepEqual(source.categories.map((category) => category.id), ['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional', 'cartoon']);
+  assert.match(generateProfileTemplateTypeScript(source), /export const profileTemplateCatalogVersion = 4/);
+  assert.match(generateProfileTemplateDart(source), /const profileTemplateCatalogVersion = 4/);
   assert.match(generateProfileTemplateTypeScript(source), /getProfileTemplate/);
   assert.match(generateProfileTemplateDart(source), /ProfileTemplatePalette/);
 });
@@ -43,7 +43,7 @@ test('each category exposes twenty distinct page compositions with the three agr
   ]
 };
   const compositions = ["editorial","bicolor","portrait","scallop","collage","window","botanical","glass","torn","seal","tag","gallery","poster","window-grid","ticket","rail","ribbon","notebook","arch","staircase"];
-  for (const category of source.categories.filter((category) => category.id !== 'dimensional')) {
+  for (const category of source.categories.filter((category) => !['dimensional', 'cartoon'].includes(category.id))) {
     const templates = source.templates.filter((template) => template.category === category.id);
     assert.deepEqual(templates.slice(0, 3).map((template) => template.layout.composition), representatives[category.id]);
     assert.deepEqual(templates.map((template) => template.layout.composition).sort(), [...compositions].sort());
@@ -69,23 +69,59 @@ test('the second 3D release adds ten scenes on five new layouts after the first 
   assert.ok(dimensional.slice(0, 10).every((template) => template.since === undefined));
   assert.deepEqual(['showcase', 'split-art', 'tile-grid', 'neon', 'slab'].map((composition) => added.filter((template) => template.layout.composition === composition).length), [3, 2, 2, 1, 2]);
   assert.ok(added.every((template) => !['clay', 'paper-stack', 'frosted'].includes(template.layout.composition)));
-  assert.match(generateProfileTemplateTypeScript(source), /since\?: 3/);
+  assert.match(generateProfileTemplateTypeScript(source), /since\?: 3 \| 4/);
 });
 
-test('catalog release markers stay on new 3D templates only', () => {
+test('the cartoon release adds ten original designs on five cartoon layouts', () => {
+  const cartoon = source.templates.filter((template) => template.category === 'cartoon');
+  assert.equal(source.categories.at(-1).name, 'การ์ตูน');
+  assert.deepEqual(cartoon.map((template) => template.id), [
+    'cartoon-doodle-shop', 'cartoon-comic-panels', 'cartoon-tag-buddy', 'cartoon-sticker-sheet', 'cartoon-chalkboard',
+    'cartoon-street-front', 'cartoon-chat-bubbles', 'cartoon-signposts', 'cartoon-crayon-sky', 'cartoon-rocket-night'
+  ]);
+  assert.deepEqual(source.templates.slice(120).map((template) => template.category), Array(10).fill('cartoon'));
+  assert.equal(new Set(cartoon.map((template) => template.name)).size, 10);
+  assert.ok(cartoon.every((template) => template.since === 4 && template.themeId === 'minimal'));
+  assert.deepEqual(['banner', 'beside', 'signboard', 'panels', 'chat'].map((composition) => cartoon.filter((template) => template.layout.composition === composition).length), [5, 2, 1, 1, 1]);
+  assert.ok(cartoon.every((template) => template.effects.stickers === 'none' && template.effects.background === false));
+  assert.match(generateProfileTemplateTypeScript(source), /'cartoon'/);
+  assert.match(generateProfileTemplateTypeScript(source), /'signboard'/);
+});
+
+test('cartoon layouts stay inside their category and every cartoon design names its release', () => {
+  const borrowed = structuredClone(source);
+  borrowed.templates[120].layout.composition = 'showcase';
+  assert.throws(() => validateProfileTemplateCatalog(borrowed), /composition does not belong/);
+  const leaked = structuredClone(source);
+  leaked.templates[0].layout.composition = 'banner';
+  assert.throws(() => validateProfileTemplateCatalog(leaked), /composition does not belong/);
+  const unmarked = structuredClone(source);
+  delete unmarked.templates[120].since;
+  assert.throws(() => validateProfileTemplateCatalog(unmarked), /release marker/);
+  const older = structuredClone(source);
+  older.templates[120].since = 3;
+  assert.throws(() => validateProfileTemplateCatalog(older), /release marker/);
+});
+
+test('catalog release markers stay on templates added after release 2', () => {
   const marked = structuredClone(source);
   marked.templates[0].since = 3;
   assert.throws(() => validateProfileTemplateCatalog(marked), /release marker/);
+  const borrowed = structuredClone(source);
+  borrowed.templates[119].since = 4;
+  assert.throws(() => validateProfileTemplateCatalog(borrowed), /release marker/);
   const future = structuredClone(source);
-  future.templates[119].since = 4;
+  future.templates[129].since = 5;
   assert.throws(() => validateProfileTemplateCatalog(future), /release marker/);
 });
 
 test('all existing published template values and their order remain unchanged', () => {
-  const legacy = source.templates.filter((template) => template.category !== 'dimensional');
+  const legacy = source.templates.filter((template) => !['dimensional', 'cartoon'].includes(template.category));
   assert.equal(createHash('sha256').update(JSON.stringify(legacy)).digest('hex'), 'dbb85250b867a68d924d15968835bed51238434a260690d33e14ef9716f96756');
   // The first 3D release (catalog 2) is also frozen for saved pages.
   assert.equal(createHash('sha256').update(JSON.stringify(source.templates.slice(0, 110))).digest('hex'), '73e4332758fc7785a9a18d3a5f9b0ad682a1c6cb02724c18991b30190c5d61d4');
+  // Catalog 3 (both 3D releases) is frozen too; cartoon designs are appended.
+  assert.equal(createHash('sha256').update(JSON.stringify(source.templates.slice(0, 120))).digest('hex'), '8ede8e0242d40a9d9204403d05c62e73688e0b0b4ec47b510ac05b437b78f940');
 });
 
 test('bicolor and scallop keep the accepted hairline links with readable surface text', () => {
@@ -255,7 +291,7 @@ test('retains every previously published template ID so saved pages keep their s
   "nature-wood-layers",
   "nature-wooden-desk"
 ];
-  assert.deepEqual(source.templates.filter((template) => template.category !== 'dimensional').map((template) => template.id).sort(), publishedIds);
+  assert.deepEqual(source.templates.filter((template) => !['dimensional', 'cartoon'].includes(template.category)).map((template) => template.id).sort(), publishedIds);
 });
 for (const [label, mutate] of [
   ['missing category', (value) => value.categories.pop()],

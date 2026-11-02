@@ -2,6 +2,22 @@
 
 PostDee backend API reference.
 
+## Cartoon storefront category (2026-11-02, local candidate)
+
+The shared profile-template catalog is version 4 and appends category
+`cartoon` with ten `cartoon-*` templates marked `"since": 4`; the first 120
+entries are byte-identical. `X-PostDee-Profile-Catalog: 4` sees every template.
+Header `3` keeps both 3D sets, `2` the first 3D set, and missing, malformed or
+other values (now including `5`) see classic templates only. Cartoon templates
+are serialized to those clients as `templateId: null` with their editable
+appearance on authenticated GET/POST/DELETE; storage and `/p/:slug` keep the
+real design, and the exact-replay / `409 LINK_IN_BIO_APPEARANCE_CONFLICT` rules
+are unchanged. Published pages carry `data-template-category="cartoon"`;
+`/profile-decorations/` serves the ten new PNGs from the catalog-derived
+allowlist. No route, schema, entitlement or environment change. **Delivery
+order: PR #51, then API before Mobile.** See the
+[cartoon plan](docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
+
 ## Second 3D storefront set (2026-11-02, local candidate)
 
 The shared profile-template catalog is version 3 and adds ten `dimensional-*`

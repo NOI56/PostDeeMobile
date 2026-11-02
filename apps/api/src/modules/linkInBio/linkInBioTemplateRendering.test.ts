@@ -6,7 +6,7 @@ import { createDefaultLinkInBioAppearance, createDefaultLinkInBioTemplateAppeara
 import { renderLinkInBioPage } from './linkInBioRenderer.js';
 import { registerLinkInBioRoutes } from './linkInBioRoutes.js';
 import { createInMemoryLinkInBioStore, type LinkInBioProfile } from './linkInBioStore.js';
-import { profileTemplates } from './profileTemplateCatalog.generated.js';
+import { profileTemplateCatalogVersion, profileTemplates } from './profileTemplateCatalog.generated.js';
 
 const links = [
   { id: 'buy', title: 'ซื้อ <สินค้า>', url: 'https://shopee.co.th/shop', category: 'ร้าน <วันนี้>', icon: 'shopee' as const, buttonColor: '#123456', textColor: '#ffffff', font: 'prompt' as const },
@@ -79,7 +79,7 @@ describe('categorized profile template rendering', () => {
       const html = renderLinkInBioPage(profile, 'nonce');
       expect(html.includes(`data-composition="${template.layout.composition}"] img.logo{object-fit:contain;object-position:center}`)).toBe(true);
       expect(html).toContain('<img class="logo" src="/p/template-shop/images/logo"');
-      expect(html).toMatch(/<img class="cover(?: profile-3d-cover)?" src="\/p\/template-shop\/images\/cover"/);
+      expect(html).toMatch(/<img class="cover(?: profile-3d-cover| profile-cartoon-cover)?" src="\/p\/template-shop\/images\/cover"/);
       expect(html).toMatch(/\.cover\{[^}]*object-fit:cover/);
       expect(html).toContain('background-size:cover;background-position:center;');
       expect(html).toContain('/p/template-shop/images/background');
@@ -475,9 +475,9 @@ describe('categorized profile template publication routes', () => {
     app.use(router);
     for (const template of profileTemplates) {
       const page = { storeName: 'ร้าน', slug: 'templates', links, appearance: { templateId: template.id } };
-      const published = await request(app).post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '3').send(page).expect(200);
+      const published = await request(app).post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', String(profileTemplateCatalogVersion)).send(page).expect(200);
       expect(published.body.profile.appearance.templateId).toBe(template.id);
-      const saved = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200);
+      const saved = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', String(profileTemplateCatalogVersion)).expect(200);
       expect(saved.body.profile.appearance.templateId).toBe(template.id);
       const rendered = await request(app).get('/p/templates').expect(200);
       expect(rendered.text).toContain(`data-template="${template.id}"`);
@@ -488,10 +488,10 @@ describe('categorized profile template publication routes', () => {
     }
     const latestId = profileTemplates.at(-1)!.id;
     await request(app).post('/link-in-bio/publish').send({ storeName: 'ร้าน', slug: 'templates', links }).expect(200);
-    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200)).body.profile.appearance.templateId).toBe(latestId);
+    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', String(profileTemplateCatalogVersion)).expect(200)).body.profile.appearance.templateId).toBe(latestId);
     for (const templateId of ['unknown', 'minimal-99', '" onclick="bad', {}, 7]) {
       await request(app).post('/link-in-bio/publish').send({ storeName: 'ร้าน', slug: 'templates', links, appearance: { templateId } }).expect(400);
-      expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200)).body.profile.appearance.templateId).toBe(latestId);
+      expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', String(profileTemplateCatalogVersion)).expect(200)).body.profile.appearance.templateId).toBe(latestId);
     }
   });
 });

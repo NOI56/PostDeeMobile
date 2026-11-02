@@ -2,6 +2,20 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Cartoon storefront category (2026-11-02, local candidate)
+
+Catalog version 4 adds the `cartoon` category on five cartoon-only
+compositions: `banner` (cropped full-width drawing, overlapping avatar),
+`beside` (transparent drawing beside the avatar), `signboard` (the logo hangs as
+a shop sign over the drawing), `panels` (framed comic panel, avatar panel and
+caption box) and `chat` (bubble cluster, name in a bubble, alternating bubble
+links). Public CSS is `linkInBioCartoonStyles.ts`; native widgets are
+`link_in_bio_cartoon_scenes.dart`; both share one geometry table and link
+edges. Drawings are SVG written as code in `scripts/cartoon-storefront-art/`
+(original, no text, fonts or third-party assets, enforced by
+`scenes.test.mjs`) and bundled as byte-identical PNGs for API and Mobile. See
+the [cartoon plan](docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
+
 ## Second 3D storefront set (2026-11-02, local candidate)
 
 Catalog version 3 adds ten 3D scenes on five new compositions: `showcase`

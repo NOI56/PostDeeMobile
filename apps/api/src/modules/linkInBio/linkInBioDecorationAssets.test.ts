@@ -13,7 +13,9 @@ const files = ['botanical-frame', 'forest', 'meadow', 'paper', 'letter-frame', '
   'dimensional-glass-lavender', 'dimensional-glass-mist', 'dimensional-glass-sage',
   'dimensional-chrome-night', 'dimensional-lowpoly-dawn', 'dimensional-zen-garden', 'dimensional-wood-blocks',
   'dimensional-parcel-stack', 'dimensional-ceramic-tiles', 'dimensional-pop-shapes', 'dimensional-neon-sign',
-  'dimensional-concrete-slab', 'dimensional-terrazzo-steps'];
+  'dimensional-concrete-slab', 'dimensional-terrazzo-steps',
+  'cartoon-doodle-shop', 'cartoon-comic-panels', 'cartoon-tag-buddy', 'cartoon-sticker-sheet', 'cartoon-chalkboard',
+  'cartoon-street-front', 'cartoon-chat-bubbles', 'cartoon-signposts', 'cartoon-crayon-sky', 'cartoon-rocket-night'];
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 describe('bundled profile decoration artwork', () => {
@@ -36,7 +38,7 @@ describe('bundled profile decoration artwork', () => {
     expect(hash(mobile)).toBe(hash(api));
   }, 15000);
 
-  it.each(['unknown.png', 'forest.jpg', 'FOREST.png', 'paper.svg', '..%2Fforest.png', '%2Eenv'])('rejects non-allowlisted asset %s', async (file) => {
+  it.each(['unknown.png', 'forest.jpg', 'FOREST.png', 'paper.svg', '..%2Fforest.png', '%2Eenv', 'cartoon-doodle-shop.svg', 'cartoon-unknown.png'])('rejects non-allowlisted asset %s', async (file) => {
     const app = express();
     const router = express.Router();
     registerLinkInBioRoutes(router, (_request, response) => { response.status(401).end(); }, createInMemoryLinkInBioStore());

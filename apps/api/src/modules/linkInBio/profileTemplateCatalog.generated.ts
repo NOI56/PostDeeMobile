@@ -1,10 +1,10 @@
 // Generated from shared/profile-templates.json by scripts/generate-profile-templates.mjs.
 // Do not edit; maintain the authored source catalog and regenerate both clients.
 
-export const profileTemplateCatalogVersion = 3;
+export const profileTemplateCatalogVersion = 4;
 
-export type ProfileTemplateCategoryId = 'minimal' | 'cute' | 'nature' | 'luxury' | 'creative' | 'dimensional';
-export type ProfileTemplateComposition = 'editorial' | 'bicolor' | 'portrait' | 'scallop' | 'collage' | 'window' | 'botanical' | 'glass' | 'torn' | 'seal' | 'tag' | 'gallery' | 'poster' | 'window-grid' | 'ticket' | 'rail' | 'ribbon' | 'notebook' | 'arch' | 'staircase' | 'clay' | 'paper-stack' | 'frosted' | 'showcase' | 'split-art' | 'tile-grid' | 'neon' | 'slab';
+export type ProfileTemplateCategoryId = 'minimal' | 'cute' | 'nature' | 'luxury' | 'creative' | 'dimensional' | 'cartoon';
+export type ProfileTemplateComposition = 'editorial' | 'bicolor' | 'portrait' | 'scallop' | 'collage' | 'window' | 'botanical' | 'glass' | 'torn' | 'seal' | 'tag' | 'gallery' | 'poster' | 'window-grid' | 'ticket' | 'rail' | 'ribbon' | 'notebook' | 'arch' | 'staircase' | 'clay' | 'paper-stack' | 'frosted' | 'showcase' | 'split-art' | 'tile-grid' | 'neon' | 'slab' | 'banner' | 'beside' | 'signboard' | 'panels' | 'chat';
 export type ProfileTemplateLayout = {
   composition: ProfileTemplateComposition;
   header: 'centered' | 'left' | 'split' | 'cover' | 'badge';
@@ -17,7 +17,7 @@ export type ProfileTemplatePalette = { background: string; gradient: string; sur
 export type ProfileTemplateDefinition = {
   id: string; name: string; category: ProfileTemplateCategoryId;
   /** Catalog release that added this template; absent for releases 1 and 2. */
-  since?: 3;
+  since?: 3 | 4;
   themeId: 'minimal' | 'shop' | 'pastel' | 'dark' | 'pink' | 'garden' | 'cards';
   layout: ProfileTemplateLayout; palette: ProfileTemplatePalette;
   font: 'anuphan' | 'prompt' | 'system'; buttonRadius: 'rounded' | 'pill' | 'square';
@@ -48,6 +48,10 @@ export const profileTemplateCategories: readonly { id: ProfileTemplateCategoryId
   {
     "id": "dimensional",
     "name": "3D"
+  },
+  {
+    "id": "cartoon",
+    "name": "การ์ตูน"
   }
 ];
 
@@ -4021,6 +4025,346 @@ export const profileTemplates: readonly ProfileTemplateDefinition[] = [
       "stickers": "none"
     },
     "since": 3
+  },
+  {
+    "id": "cartoon-doodle-shop",
+    "name": "ร้านวาดมือ",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "banner",
+      "header": "centered",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#fff4df",
+      "gradient": "#ffe9c2",
+      "surface": "#fffbf2",
+      "button": "#ffffff",
+      "name": "#1f1b16",
+      "description": "#4a4238",
+      "category": "#8a3b12",
+      "buttonText": "#1f1b16",
+      "brand": "#4a4238"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-comic-panels",
+    "name": "ช่องการ์ตูน",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "panels",
+      "header": "split",
+      "links": "list",
+      "button": "raised",
+      "decoration": "none",
+      "avatar": "square"
+    },
+    "palette": {
+      "background": "#fff5c9",
+      "gradient": "#ffe46b",
+      "surface": "#ffffff",
+      "button": "#ffffff",
+      "name": "#141414",
+      "description": "#333333",
+      "category": "#b3131b",
+      "buttonText": "#141414",
+      "brand": "#333333"
+    },
+    "font": "prompt",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-tag-buddy",
+    "name": "เจ้าป้ายจิ๋ว",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "beside",
+      "header": "left",
+      "links": "list",
+      "button": "soft",
+      "decoration": "none",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#e8f6f0",
+      "gradient": "#d2eee3",
+      "surface": "#ffffff",
+      "button": "#ffe3d8",
+      "name": "#16302b",
+      "description": "#3d5650",
+      "category": "#0f6b5c",
+      "buttonText": "#16302b",
+      "brand": "#3d5650"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-sticker-sheet",
+    "name": "แผ่นสติกเกอร์",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "banner",
+      "header": "centered",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#f3eefe",
+      "gradient": "#e7ddfd",
+      "surface": "#fbf9ff",
+      "button": "#fff0a6",
+      "name": "#2a2140",
+      "description": "#4e4566",
+      "category": "#6a3dbd",
+      "buttonText": "#2a2140",
+      "brand": "#4e4566"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-chalkboard",
+    "name": "กระดานชอล์ก",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "banner",
+      "header": "centered",
+      "links": "list",
+      "button": "outline",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#1c2a23",
+      "gradient": "#22342b",
+      "surface": "#26392f",
+      "button": "#f1ece0",
+      "name": "#f7f4ea",
+      "description": "#d9d5c7",
+      "category": "#f3d27a",
+      "buttonText": "#f7f4ea",
+      "brand": "#d9d5c7"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-street-front",
+    "name": "หน้าร้านริมทาง",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "signboard",
+      "header": "centered",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#fdf0e6",
+      "gradient": "#fae0cc",
+      "surface": "#fffaf5",
+      "button": "#ffffff",
+      "name": "#2b1d16",
+      "description": "#574339",
+      "category": "#a63b27",
+      "buttonText": "#2b1d16",
+      "brand": "#574339"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-chat-bubbles",
+    "name": "บับเบิลคุยกัน",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "chat",
+      "header": "left",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#e9f3ff",
+      "gradient": "#d5e8ff",
+      "surface": "#ffffff",
+      "button": "#fff3cf",
+      "name": "#14233a",
+      "description": "#3a4a62",
+      "category": "#1d5aa6",
+      "buttonText": "#14233a",
+      "brand": "#3a4a62"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-signposts",
+    "name": "ป้ายบอกทาง",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "beside",
+      "header": "left",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "rounded"
+    },
+    "palette": {
+      "background": "#eef6e3",
+      "gradient": "#dcebc6",
+      "surface": "#fffdf5",
+      "button": "#d9a066",
+      "name": "#24301a",
+      "description": "#4a5540",
+      "category": "#7a4a1d",
+      "buttonText": "#2a1a0c",
+      "brand": "#4a5540"
+    },
+    "font": "prompt",
+    "buttonRadius": "square",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-crayon-sky",
+    "name": "สีเทียนท้องฟ้า",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "banner",
+      "header": "centered",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#fffdf7",
+      "gradient": "#fff3d9",
+      "surface": "#ffffff",
+      "button": "#ffffff",
+      "name": "#22202a",
+      "description": "#4a4752",
+      "category": "#c0392b",
+      "buttonText": "#22202a",
+      "brand": "#4a4752"
+    },
+    "font": "prompt",
+    "buttonRadius": "rounded",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
+  },
+  {
+    "id": "cartoon-rocket-night",
+    "name": "จรวดการ์ตูน",
+    "category": "cartoon",
+    "themeId": "minimal",
+    "layout": {
+      "composition": "banner",
+      "header": "centered",
+      "links": "list",
+      "button": "solid",
+      "decoration": "none",
+      "avatar": "circle"
+    },
+    "palette": {
+      "background": "#11183a",
+      "gradient": "#1a2453",
+      "surface": "#172049",
+      "button": "#26336f",
+      "name": "#f5f7ff",
+      "description": "#c9d1f2",
+      "category": "#ffcf5c",
+      "buttonText": "#f5f7ff",
+      "brand": "#c9d1f2"
+    },
+    "font": "prompt",
+    "buttonRadius": "pill",
+    "effects": {
+      "background": false,
+      "entrance": true,
+      "featured": false,
+      "stickers": "none"
+    },
+    "since": 4
   }
 ];
 

@@ -125,5 +125,42 @@ describe.skipIf(!databaseUrl)('nonexpiring addon PostgreSQL quota concurrency', 
     expect(await posts.countAddonPostUnits({ userId })).toBe(100);
     await posts.createWithinMonthlyLimit({ ...postInput, clientRequestId: 'upgraded-plan', monthlyPostUnitLimit: 250 });
     expect(await posts.countAddonPostUnits({ userId })).toBe(100);
+
+    // Different-sized grants share the same independent post/caption banks.
+    // Included quota is still allocated first and old bank usage is retained.
+    const small = { ...purchase, productId: 'postdee_post40_caption25', transactionId: `${purchase.transactionId}-small`,
+      postUnitsGranted: 40, aiCaptionsGranted: 25, purchasedAt: now };
+    await addons.applyPurchase(small);
+    expect(await addons.readCredits({ userId, now })).toEqual({ postUnits: 240, aiCaptions: 125 });
+    const newMixed = await posts.createWithinMonthlyLimit({ ...postInput, clientRequestId: 'mixed-sku-allocation',
+      platforms: ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS'] });
+    if (!newMixed.ok) throw new Error('Expected new-SKU mixed allocation');
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: newMixed.post.id } })).addonPostUnits).toBe(2);
+    expect(await posts.countMonthlyPostUnits({ userId, now })).toBe(120);
+    expect(await posts.countAddonPostUnits({ userId })).toBe(102);
+    const monthlyCaptions = await prisma.realClipCaptionUsage.findMany({ where: { userId, monthKey, usesAddonCredit: false }, take: 2 });
+    for (const row of monthlyCaptions) await captions.release!({ id: row.id, userId, monthKey,
+      createdAt: row.createdAt.toISOString(), usesAddonCredit: false });
+    const mixedCaptions = await captions.reserve({ ...captionInput, units: 3 });
+    if (!mixedCaptions.ok) throw new Error('Expected mixed monthly/purchased caption allocation');
+    expect((mixedCaptions.records ?? [mixedCaptions.record]).map(row => Boolean(row.usesAddonCredit)))
+      .toEqual([false, false, true]);
+    expect(await captions.countForMonth({ userId, monthKey })).toBe(50);
+    expect(await captions.countAddonUsages({ userId })).toBe(51);
+
+    // Refund all grants, then prove a medium pack first covers the historical
+    // deficit: neither purchased bank may silently reset its previous usage.
+    await addons.revokePurchase(small);
+    await addons.revokePurchase({ ...purchase, transactionId: `${purchase.transactionId}-replacement` });
+    await addons.revokePurchase({ ...purchase, transactionId: `${purchase.transactionId}-additional` });
+    await addons.applyPurchase({ ...purchase, productId: 'postdee_post90_caption50', transactionId: `${purchase.transactionId}-medium`,
+      postUnitsGranted: 90, aiCaptionsGranted: 50, purchasedAt: now });
+    expect(await posts.createWithinMonthlyLimit({ ...postInput, clientRequestId: 'new-sku-debt-uncovered' })).toEqual({ ok: false });
+    expect(await captions.reserve(captionInput)).toMatchObject({ ok: false, usedThisMonth: 50 });
+    await addons.applyPurchase({ ...small, transactionId: `${small.transactionId}-replacement` });
+    expect(await addons.readCredits({ userId, now })).toEqual({ postUnits: 130, aiCaptions: 75 });
+    expect(await posts.createWithinMonthlyLimit({ ...postInput, clientRequestId: 'new-sku-debt-covered' }))
+      .toMatchObject({ ok: true, created: true });
+    expect(await captions.reserve(captionInput)).toMatchObject({ ok: true, usedThisMonth: 50 });
   }, 30000);
 });

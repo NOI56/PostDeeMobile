@@ -17,6 +17,14 @@ const _product = purchases.StoreProduct(
 const _addonProduct = purchases.StoreProduct(
   'postdee_post100_caption50', '100 + 50', 'PostDee add-on', 49, '฿49', 'THB',
 );
+const _tierAddonProducts = [
+  purchases.StoreProduct('postdee_post40_caption25', '40 + 25',
+      'Small add-on', 1.49, '€1,49', 'EUR'),
+  purchases.StoreProduct('postdee_post90_caption50', '90 + 50',
+      'Medium add-on', 490, '¥490', 'JPY'),
+  purchases.StoreProduct('postdee_post190_caption100', '190 + 100',
+      'Large add-on', 4.25, 'CHF 4.25', 'CHF'),
+];
 
 PostDeeAuthSessionStore _session(String userId) => PostDeeAuthSessionStore(
   initialSession: AuthSession(userId: userId, idToken: 'dummy-$userId-token'),
@@ -31,6 +39,87 @@ PurchasesRevenueCatBillingGateway _gateway(
 );
 
 void main() {
+  test('multi-SKU add-on queries and checkout keep each store product and price',
+      () async {
+    final session = _session('account-a');
+    final sdk = _FakePurchasesSdk()
+      ..addonProducts = [_addonProduct, ..._tierAddonProducts];
+    final gateway = _gateway(session, sdk);
+    final ids = sdk.addonProducts.map((product) => product.identifier).toSet();
+    final products = await gateway.queryAddonProducts(ids);
+    expect({for (final product in products) product.id: product.price}, {
+      for (final product in sdk.addonProducts)
+        product.identifier: product.priceString,
+    });
+    expect(sdk.addonProductRequests.single.toSet(), ids);
+    for (final product in sdk.addonProducts.reversed) {
+      final receipt = await gateway.buyAddon(product.identifier);
+      expect(receipt.productId, product.identifier);
+      expect(receipt.transactionId, 'addon-transaction');
+      expect(receipt.transactionIdKind, 'STORE');
+      expect(sdk.addonProductRequests.last, [product.identifier]);
+    }
+    expect(sdk.addonPurchasedProductIds,
+        sdk.addonProducts.reversed.map((product) => product.identifier).toList());
+    expect(sdk.purchaseUserIds, List.filled(4, 'account-a'));
+    expect(sdk.calls, isNot(contains('products')));
+  });
+
+  for (final product in [_addonProduct, ..._tierAddonProducts]) {
+    test('durable recovery selects only the exact ${product.identifier} SKU',
+        () async {
+      final sdk = _FakePurchasesSdk();
+      final gateway = _gateway(_session('account-a'), sdk);
+      final otherSku = product.identifier == _addonProduct.identifier
+          ? _tierAddonProducts.first.identifier
+          : _addonProduct.identifier;
+      sdk.addonTransactions = [
+        StoreAddonTransaction(productId: product.identifier, transactionId: 'old'),
+        StoreAddonTransaction(productId: otherSku, transactionId: 'other-new'),
+      ];
+      expect(await gateway.recoverAddonPurchase(product.identifier, {'old'}),
+          isNull);
+      sdk.addonTransactions.add(StoreAddonTransaction(
+          productId: product.identifier, transactionId: 'matching-new'));
+      final recovered =
+          (await gateway.recoverAddonPurchase(product.identifier, {'old'}))!;
+      expect(recovered.productId, product.identifier);
+      expect(recovered.transactionId, 'matching-new');
+      expect(recovered.transactionIdKind, 'REVENUECAT');
+      sdk.addonTransactions.add(StoreAddonTransaction(
+          productId: product.identifier, transactionId: 'ambiguous-new'));
+      expect(await gateway.recoverAddonPurchase(product.identifier, {'old'}),
+          isNull);
+      expect(sdk.purchaseUserIds, isEmpty);
+    });
+  }
+
+  test('pending tier checkout ignores another SKU until its own receipt arrives',
+      () async {
+    final selected = _tierAddonProducts[1];
+    final sdk = _FakePurchasesSdk(onStep: (step) async {
+      if (step == 'addonPurchase') {
+        throw PlatformException(
+            code: purchases.PurchasesErrorCode.paymentPendingError.index
+                .toString());
+      }
+    })..addonProducts = [..._tierAddonProducts, _addonProduct];
+    final gateway = _gateway(_session('account-a'), sdk);
+    await expectLater(gateway.buyAddon(selected.identifier),
+        throwsA(isA<StoreAddonStorePendingException>()));
+    sdk.addonTransactions.add(StoreAddonTransaction(
+        productId: _tierAddonProducts.first.identifier,
+        transactionId: 'wrong-product'));
+    expect(await gateway.reconcilePendingAddonPurchase(), isNull);
+    sdk.addonTransactions.add(StoreAddonTransaction(
+        productId: selected.identifier, transactionId: 'selected-product'));
+    final recovered = (await gateway.reconcilePendingAddonPurchase())!;
+    expect(recovered.productId, selected.identifier);
+    expect(recovered.transactionId, 'selected-product');
+    expect(sdk.addonPurchasedProductIds, [selected.identifier]);
+    expect(sdk.purchaseUserIds, ['account-a']);
+  });
+
   test('store checkout ID and RevenueCat history selector remain distinct opaque identifiers', () async {
     final session = _session('account-a');
     final sdk = _FakePurchasesSdk()..addonPurchaseTransactionId = 'GPA.store-1';
@@ -390,6 +479,9 @@ class _FakePurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsumableP
   final purchaseUserIds = <String>[];
   final restoreUserIds = <String>[];
   var addonPurchaseTransactionId = 'addon-transaction';
+  List<purchases.StoreProduct> addonProducts = [_addonProduct];
+  final addonProductRequests = <List<String>>[];
+  final addonPurchasedProductIds = <String>[];
   List<StoreAddonTransaction> addonTransactions = [];
 
   Future<void> _step(String name) async {
@@ -453,12 +545,14 @@ class _FakePurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsumableP
 
   @override
   Future<List<purchases.StoreProduct>> getNonSubscriptionProducts(List<String> ids) async {
+    addonProductRequests.add(List.of(ids));
     await _step('addonProducts');
-    return [_addonProduct];
+    return addonProducts;
   }
 
   @override
   Future<StoreAddonTransaction> purchaseConsumable(purchases.StoreProduct product) async {
+    addonPurchasedProductIds.add(product.identifier);
     purchaseUserIds.add(currentUserId);
     await _step('addonPurchase');
     return StoreAddonTransaction(productId: product.identifier, transactionId: addonPurchaseTransactionId);

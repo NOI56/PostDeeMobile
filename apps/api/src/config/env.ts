@@ -1,6 +1,7 @@
 import { readAdminConsoleConfig, type AdminConsoleConfig } from '../modules/admin/adminConfig.js';
 import { readSentryConfig, type SentryMonitoringConfig } from '../monitoring/sentryConfig.js';
 import { readSentrySignalsConfig, type SentrySignalsConfig } from '../monitoring/sentrySignals.js';
+import { addonTierProducts, legacyAddonProductId } from '../modules/billing/addonProductCatalog.js';
 type EnvSource = Record<string, string | undefined>;
 export type TemplateStoreKind = 'memory' | 'prisma';
 export type PostStoreKind = 'memory' | 'prisma';
@@ -57,6 +58,7 @@ export type ServerConfig = {
   revenueCatRestApiV1Key?: string;
   revenueCatSubscriptionEnvironment: 'SANDBOX' | 'PRODUCTION';
   billingAddonsEnabled: boolean;
+  billingAddonTiersEnabled: boolean;
   revenueCatAddonProductId: string;
   revenueCatAddonEnvironment: 'SANDBOX' | 'PRODUCTION';
   revenueCatStarterEntitlementId: string;
@@ -577,6 +579,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
       return value;
     })(),
     billingAddonsEnabled: readBoolean(env, 'BILLING_ADDONS_ENABLED', false),
+    billingAddonTiersEnabled: readBoolean(env, 'BILLING_ADDON_TIERS_ENABLED', false),
     revenueCatAddonProductId: readOptional(env, 'REVENUECAT_ADDON_PRODUCT_ID') ?? 'postdee_post100_caption50',
     revenueCatAddonEnvironment: (() => {
       const value = readOptional(env, 'REVENUECAT_ADDON_ENVIRONMENT') ?? 'PRODUCTION';
@@ -665,6 +668,15 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
   if ([config.revenueCatStarterProductId, config.revenueCatProProductId,
     config.storeStarterMonthlyProductId, config.storeProMonthlyProductId].includes(config.revenueCatAddonProductId)) {
     throw new Error('REVENUECAT_ADDON_PRODUCT_ID must differ from subscription product identifiers');
+  }
+  if (addonTierProducts.some(product => product.productId === config.revenueCatAddonProductId)) {
+    throw new Error('REVENUECAT_ADDON_PRODUCT_ID must not reuse a replacement tier identifier');
+  }
+  const subscriptionProductIds = [config.revenueCatStarterProductId, config.revenueCatProProductId,
+    config.storeStarterMonthlyProductId, config.storeProMonthlyProductId];
+  if (subscriptionProductIds.includes(legacyAddonProductId) ||
+      addonTierProducts.some(product => subscriptionProductIds.includes(product.productId))) {
+    throw new Error('Add-on tier identifiers must differ from subscription product identifiers');
   }
   assertRuntimeStoreConfig(config);
   assertPostPeerLegacyRecoveryConfig(config);

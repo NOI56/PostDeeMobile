@@ -1,5 +1,23 @@
 # PostDee Mobile
 
+## Package categories and top-up products (2026-11-02, consolidated draft)
+
+Separate Main plans and Add-ons with Thai/English labels, retaining the
+per-channel unit explanation, shared purchase locks and pending recovery.
+Disabled sales do not hide loading/errors, owned balances or unfinished receipts.
+
+The v3 add-on catalog offers Small 40 post units / 25 caption credits, Medium
+90 / 50 and Large 190 / 100. Each card loads the quote and dispatches checkout
+for its exact consumable product ID; the payable string comes from the native
+store. An older API without `products` keeps the legacy 100/50 card.
+Historical balances and pending receipts remain available independently of the
+currently offered products, with one payment lock shared across all tiers.
+
+The new API must be delivered first and new-tier sales remain disabled until
+the owner sets up the three store products and authorizes activation. No live
+products or device install are included. See the
+[consolidated work record](../../docs/superpowers/plans/2026-11-02-packages-consolidated.md).
+
 Flutter mobile app scaffold for PostDee.
 
 ## Preserved-work integration (2026-11-01, source on main / APK not installed)

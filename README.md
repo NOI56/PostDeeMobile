@@ -1,5 +1,24 @@
 # PostDee
 
+## Package categories and replacement top-ups (2026-11-02, consolidated draft)
+
+Separate Thai/English Main plans and Add-ons categories while retaining Basic,
+Starter and Pro. Add-ons keep owned credits and pending recovery visible even
+when sales are disabled; loading and error states remain retryable.
+
+Prepare three one-time credit packs: Small 40 post units / 25 caption credits
+(THB 49 reference), Medium 90 / 50 (THB 99), and Large 190 / 100 (THB 199).
+The payable amount always comes from the selected store product. Historical
+`postdee_post100_caption50` purchases retain 100 / 50; purchased balances,
+pending receipts, eligibility and non-expiry rules are preserved.
+
+This consolidated draft combines the package scope of PR #52/#53 and only the
+paywall safeguards from PR #50; unrelated PR #50 work is excluded. The existing
+PR branches remain unchanged. New-tier sales stay disabled by default. No store
+products, hosted migration or deployment have been performed. Apply the additive
+grant-snapshot migration and compatible API to every instance before Mobile and
+before enabling different-sized SKUs. See the [consolidation record](docs/superpowers/plans/2026-11-02-packages-consolidated.md).
+
 ## Caption quality and recovery (2026-11-01, main / Staging API delivered)
 
 AI captions read clip evidence before writing, preserve the original meaning,

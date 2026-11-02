@@ -165,3 +165,17 @@ must keep a catalog-4 reader; never clear stored designs.
   public pages at 360px match for all ten; public pages at 320px with a long
   Thai name have no horizontal overflow. Review fixed a web-only centring bug
   (the corkboard initial) and moved a sea bubble off the arrow icon.
+- [x] Generator 28/28 and `--check`; art guard 61/61 (twenty drawings, the
+  first ten PNGs unchanged by the helper move); API typecheck and build pass;
+  API link-in-bio suites pass; full API 3,484 passed / 67 opt-in skipped with
+  one unrelated platform-logo timeout whose file passes alone (20/20);
+  `flutter analyze` clean; full Flutter 4,714 passed / 7 optional skipped.
+- [x] Android x64 Staging debug APK 12095 from commit `a649eea6` (SHA-256
+  `44087b637daf815b77fd8350e2cb043e4ba2e74ff8653151fd20184a10771e17`,
+  236,945,176 bytes, all twenty cartoon PNGs bundled) installed on
+  `emulator-5554` with the shared updater over 12094; UID 10197 and app data
+  (drafts, preferences, sign-in store) kept and the installed hash matches.
+- [ ] On-device check of the second set: after this install the app opened on
+  the sign-in screen (session not restored, as also seen after an earlier cold
+  start), so no account was chosen; the owner signs in to view the picker.
+

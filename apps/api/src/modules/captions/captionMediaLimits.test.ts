@@ -154,7 +154,8 @@ describe('real-clip caption media limits', () => {
 
     await sendProClipCaption(app, userId, { videoS3Key: ownedUploadKey(userId, 'next.mp4', 'next') }).expect(200);
     expect(transcribe).toHaveBeenCalledTimes(2);
-    expect(await usage.countForMonth({ userId, monthKey })).toBe(2);
+    // Transcription alone only produces an explicitly editable local template.
+    expect(await usage.countForMonth({ userId, monthKey })).toBe(1);
   });
 
   it('rejects a non-image frame key before downloading any media', async () => {
@@ -195,9 +196,9 @@ describe('real-clip caption media limits', () => {
 
     expect(fetchClipMedia).toHaveBeenCalledTimes(2);
     expect(fetchClipMedia).toHaveBeenNthCalledWith(1, videoS3Key, {
-      kind: 'video', maxBytes: realClipCaptionClipMaxBytes
+      kind: 'video', maxBytes: realClipCaptionClipMaxBytes, signal: expect.any(AbortSignal)
     });
-    expect(fetchClipMedia).toHaveBeenNthCalledWith(2, frameKey, { kind: 'frame', maxBytes: aiCaptionFrameMaxBytes });
+    expect(fetchClipMedia).toHaveBeenNthCalledWith(2, frameKey, { kind: 'frame', maxBytes: aiCaptionFrameMaxBytes, signal: expect.any(AbortSignal) });
     expect(receivedFrameCount).toBe(1);
   });
 

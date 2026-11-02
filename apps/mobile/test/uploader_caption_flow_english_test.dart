@@ -18,6 +18,7 @@ RealClipCaptionResult _result({
   String caption = 'ข้อความ AI ที่ไม่ต้องแปล',
   Map<String, CaptionResult> platforms = const {},
   bool fallback = false,
+  String? fallbackReason,
   bool charged = true,
   int used = 1,
   List<String> keywords = const ['คำค้นลูกค้า'],
@@ -32,6 +33,7 @@ RealClipCaptionResult _result({
     searchTitle: base.searchTitle,
     source: base.source,
     isFallback: fallback,
+    fallbackReason: fallbackReason,
     platformCaptions: platforms,
     quota: RealClipCaptionQuota(
         limit: 120, usedThisMonth: used, remainingThisMonth: 120 - used,
@@ -199,24 +201,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('shared uncharged fallback retains review and a truthful notice',
+  testWidgets('shared uncharged fallback keeps blank text and a truthful notice',
       (tester) async {
     final fixture = CaptionEnglishFixture()
       ..result = _result(fallback: true, charged: false, used: 0);
     await _mount(tester, fixture);
     await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
-    expect(await _value(tester, _sharedField), 'ข้อความ AI ที่ไม่ต้องแปล\n\n#สินค้า');
+    expect(await _value(tester, _sharedField), isEmpty);
     final notice = find.byKey(const ValueKey('uploader-ai-caption-fallback'));
     await revealCaptionEnglishControl(tester, notice);
     final text = tester.widget<Text>(
         find.descendant(of: notice, matching: find.byType(Text))).data!;
-    expect(text, contains('fallback'));
+    expect(text, contains('original text is unchanged'));
     expect(text, contains('No AI quota charged'));
     expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
-        findsOneWidget);
+        findsNothing);
     expect(fixture.styles.saves, isEmpty);
     expect(fixture.requests, hasLength(1));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('insufficient evidence asks for clearer media without replacing writing',
+      (tester) async {
+    final fixture = CaptionEnglishFixture()
+      ..result = _result(fallback: true, fallbackReason: 'INSUFFICIENT_EVIDENCE',
+          charged: false, used: 0);
+    await _mount(tester, fixture);
+    await _type(tester, _sharedField, 'ข้อมูลสินค้าที่ร้านยืนยันแล้ว');
+    await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
+    expect(await _value(tester, _sharedField), 'ข้อมูลสินค้าที่ร้านยืนยันแล้ว');
+    final notice = find.byKey(const ValueKey('uploader-ai-caption-fallback'));
+    await revealCaptionEnglishControl(tester, notice);
+    final text = tester.widget<Text>(
+        find.descendant(of: notice, matching: find.byType(Text))).data!;
+    expect(text, contains('clearer speech or visuals'));
+    expect(text, contains('No AI quota charged'));
+    expect(find.byKey(const ValueKey('uploader-shared-ai-preview')), findsNothing);
   });
 
   testWidgets('canceling an advanced preview keeps manual captions and usage',
@@ -283,7 +303,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('advanced uncharged fallback applies only after confirmation',
+  testWidgets('advanced uncharged fallback preserves the original captions',
       (tester) async {
     final fixture = CaptionEnglishFixture()
       ..result = _result(fallback: true, charged: false, used: 0,
@@ -293,11 +313,10 @@ void main() {
     await _type(tester, _sharedField, 'ข้อความของลูกค้า');
     await _advanced(tester, const ['TIKTOK']);
     await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
-    expect(find.text('ข้อความสำรองของผู้ให้บริการ'), findsOneWidget);
+    expect(find.text('ข้อความสำรองของผู้ให้บริการ'), findsNothing);
     expect(find.textContaining('No AI quota charged'), findsOneWidget);
-    await tapCaptionEnglishControl(tester, 'uploader-platform-ai-apply');
     expect(await _value(tester, 'uploader-caption-TIKTOK'),
-        'ข้อความสำรองของผู้ให้บริการ');
+        'ข้อความของลูกค้า');
     final notice = find.byKey(const ValueKey('uploader-ai-caption-fallback'));
     await revealCaptionEnglishControl(tester, notice);
     expect(tester.widget<Text>(

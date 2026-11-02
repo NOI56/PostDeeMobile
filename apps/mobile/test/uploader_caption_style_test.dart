@@ -89,6 +89,8 @@ class _Fixture {
   final requests = <GenerateRealClipCaptionRequest>[];
   File? replacement;
   bool fallback = false;
+  RealClipCaptionResult? generatedResult;
+  ApiException? generationError;
   Completer<RealClipCaptionResult>? resultGate;
   int uploads = 0;
   double textScale = 1;
@@ -131,7 +133,8 @@ class _Fixture {
             uploadVideoFile: (_, __) async {},
             generateRealClipCaption: (request) async {
               requests.add(request);
-              return resultGate?.future ?? _aiResult(fallback: fallback);
+              if (generationError != null) throw generationError!;
+              return resultGate?.future ?? generatedResult ?? _aiResult(fallback: fallback);
             },
             pickVideo: () async => PickedVideoFile(
               path: (replacement ?? video).path,
@@ -238,6 +241,118 @@ void main() {
         AuthSession.authenticated(userId: 'owner-a', idToken: 'token-a'));
   });
 
+  testWidgets('shared captions preview alternatives once and restore original text',
+      (tester) async {
+    final fixture = _Fixture()
+      ..generatedResult = RealClipCaptionResult.fromJson({
+        'caption': 'ตัวเลือกหลัก',
+        'captionOptions': ['ตัวเลือกหลัก', 'ตัวเลือกที่สอง', 'ตัวเลือกที่สาม', 'ไม่ควรแสดง'],
+        'hooks': <String>[], 'hashtags': ['review'], 'seoKeywords': <String>[],
+        'searchTitle': '',
+        'source': {'videoS3Key': 'uploads/owner-a/clip.mp4', 'mode': 'AUDIO_ONLY', 'selectedFrameCount': 0},
+        'quota': {'limit': 50, 'usedThisMonth': 1, 'remainingThisMonth': 49}
+      });
+    await _showAiPanel(tester, fixture);
+    await _show(tester, find.byKey(_captionField));
+    await tester.enterText(find.byKey(_captionField), 'ข้อความร้านเดิม');
+    await _generate(tester);
+    expect(find.byKey(const ValueKey('uploader-shared-ai-preview')), findsOneWidget);
+    expect(find.text('ไม่ควรแสดง'), findsNothing);
+    final field = find.byKey(_captionField, skipOffstage: false);
+    expect(tester.widget<TextField>(field).controller!.text, 'ข้อความร้านเดิม');
+    await tester.tap(find.byKey(const ValueKey('uploader-shared-ai-option-1')));
+    await tester.tap(find.byKey(const ValueKey('uploader-shared-ai-apply')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+        'ตัวเลือกที่สอง\n\n#review');
+    expect(fixture.requests, hasLength(1));
+    final undo = find.byKey(const ValueKey('uploader-shared-ai-undo'));
+    await _show(tester, undo);
+    await tester.tap(undo);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+        'ข้อความร้านเดิม');
+  });
+
+  testWidgets('dismissing the shared preview preserves existing writing',
+      (tester) async {
+    final fixture = _Fixture();
+    await _showAiPanel(tester, fixture);
+    await _show(tester, find.byKey(_captionField));
+    await tester.enterText(find.byKey(_captionField), 'ข้อความที่อยากเก็บ');
+    await _generate(tester);
+    expect(find.byKey(const ValueKey('uploader-shared-ai-preview')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('uploader-shared-ai-close')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+        'ข้อความที่อยากเก็บ');
+    expect(find.byKey(const ValueKey('uploader-shared-ai-undo')), findsNothing);
+  });
+
+  testWidgets('fallback leaves manual or blank shared captions intact',
+      (tester) async {
+    final fixture = _Fixture()..fallback = true;
+    await _showAiPanel(tester, fixture);
+    await _generate(tester);
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text, isEmpty);
+    await _show(tester, find.byKey(_captionField));
+    await tester.enterText(find.byKey(_captionField), 'ข้อความร้านที่ตรวจแล้ว');
+    await _generate(tester);
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+        'ข้อความร้านที่ตรวจแล้ว');
+    expect(find.byKey(const ValueKey('uploader-shared-ai-preview')), findsNothing);
+    expect(find.byKey(const ValueKey('uploader-caption-review-notice')), findsNothing);
+    expect(find.byKey(const ValueKey('uploader-ai-caption-fallback')), findsOneWidget);
+  });
+
+  testWidgets('a timeout preserves writing and offers a truthful retry',
+      (tester) async {
+    final fixture = _Fixture()
+      ..generationError = const ApiException('timeout', statusCode: 504,
+          code: 'CAPTION_GENERATION_TIMEOUT');
+    await _showAiPanel(tester, fixture);
+    await _show(tester, find.byKey(_captionField));
+    await tester.enterText(find.byKey(_captionField), 'ข้อความที่ร้านเขียนไว้');
+    await _generate(tester);
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+        'ข้อความที่ร้านเขียนไว้');
+    expect(find.text('AI ใช้เวลานานเกินไป ข้อความเดิมยังอยู่ ลองใหม่อีกครั้ง'),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-shared-ai-preview')), findsNothing);
+  });
+
+  testWidgets('owner changes dismiss a shared preview without applying it',
+      (tester) async {
+    final fixture = _Fixture();
+    await _showAiPanel(tester, fixture);
+    await _show(tester, find.byKey(_captionField));
+    await tester.enterText(find.byKey(_captionField), 'ข้อความบัญชีแรก');
+    await _generate(tester);
+    expect(find.byKey(const ValueKey('uploader-shared-ai-preview')), findsOneWidget);
+    PostDeeAuthSessionStore.instance.signIn(
+        AuthSession.authenticated(userId: 'owner-b', idToken: 'token-b'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-shared-ai-preview')), findsNothing);
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+        isNot(contains('ข้อความจาก AI')));
+  });
+
+  testWidgets('text changed behind a shared preview cannot be overwritten',
+      (tester) async {
+    final fixture = _Fixture();
+    await _showAiPanel(tester, fixture);
+    await _show(tester, find.byKey(_captionField));
+    await tester.enterText(find.byKey(_captionField), 'ข้อความตอนเริ่ม');
+    await _generate(tester);
+    final field = find.byKey(_captionField, skipOffstage: false);
+    tester.widget<TextField>(field).controller!.text = 'ข้อความใหม่ระหว่างดูตัวอย่าง';
+    await tester.tap(find.byKey(const ValueKey('uploader-shared-ai-apply')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+        'ข้อความใหม่ระหว่างดูตัวอย่าง');
+    expect(find.byKey(const ValueKey('uploader-shared-ai-undo')), findsNothing);
+  });
+
   testWidgets('offers a compact style control inside the AI panel',
       (tester) async {
     await _showAiPanel(tester, _Fixture());
@@ -299,11 +414,8 @@ void main() {
       await _showAiPanel(tester, fixture);
       if (kind != 'manual') await _generate(tester);
       if (kind == 'fallback') {
-        await _show(
-            tester, find.byKey(const ValueKey('uploader-caption-reviewed')));
-        await tester
-            .tap(find.byKey(const ValueKey('uploader-caption-reviewed')));
-        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+            isEmpty);
       }
       if (kind == 'progress jump') {
         await _show(tester, find.byKey(_captionField));

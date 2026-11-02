@@ -235,6 +235,91 @@ class _PlatformCaptionFieldsState extends State<PlatformCaptionFields> {
       );
 }
 
+class CaptionOptionsPreviewSheet extends StatefulWidget {
+  const CaptionOptionsPreviewSheet({super.key, required this.captions});
+
+  final List<String> captions;
+
+  @override
+  State<CaptionOptionsPreviewSheet> createState() => _CaptionOptionsPreviewSheetState();
+}
+
+class _CaptionOptionsPreviewSheetState extends State<CaptionOptionsPreviewSheet> {
+  int _selected = 0;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        key: const ValueKey('uploader-shared-ai-preview'),
+        height: MediaQuery.sizeOf(context).height * .85,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+            child: Row(children: [
+              Expanded(child: CaptionText('เลือกแคปชั่นที่ชอบ',
+                  style: Theme.of(context).textTheme.titleMedium)),
+              IconButton(
+                key: const ValueKey('uploader-shared-ai-close'),
+                tooltip: localizeCaptionMessage(context, 'กลับไปเขียนเอง'),
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
+              ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: CaptionText('เลือกได้โดยไม่ใช้เครดิตเพิ่ม ข้อความเดิมจะอยู่จนกดใช้',
+                style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          Expanded(child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: PostDeeCard(
+              padding: EdgeInsets.zero,
+              child: Column(children: [
+                for (var index = 0; index < widget.captions.length; index++) ...[
+                  if (index > 0) const Divider(height: 1),
+                  Semantics(
+                    selected: _selected == index,
+                    button: true,
+                    child: InkWell(
+                      key: ValueKey('uploader-shared-ai-option-$index'),
+                      onTap: () => setState(() => _selected = index),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Icon(_selected == index ? Icons.radio_button_checked : Icons.radio_button_off,
+                              color: _selected == index ? AppTheme.accent : AppTheme.textMuted),
+                          const SizedBox(width: 12),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(captionText(context, 'แบบที่ ${index + 1}', 'Option ${index + 1}'),
+                                style: Theme.of(context).textTheme.labelLarge),
+                            const SizedBox(height: 8),
+                            Text(widget.captions[index]),
+                          ])),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          )),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+              child: FilledButton.icon(
+                key: const ValueKey('uploader-shared-ai-apply'),
+                onPressed: widget.captions.isEmpty ? null
+                    : () => Navigator.pop(context, widget.captions[_selected]),
+                icon: const Icon(Icons.check),
+                label: const CaptionText('ใช้แคปชั่นนี้'),
+              ),
+            ),
+          ),
+        ]),
+      );
+}
+
 class PlatformCaptionPreviewSheet extends StatelessWidget {
   const PlatformCaptionPreviewSheet({
     super.key,

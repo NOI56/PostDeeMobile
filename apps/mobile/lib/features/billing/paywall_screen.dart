@@ -7,6 +7,7 @@ import '../../core/auth/auth_session.dart';
 import '../../core/localization/postdee_localizations.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../shared/postdee_notice.dart';
 import 'store_subscription_service.dart';
 import 'store_addon_service.dart';
 
@@ -93,9 +94,13 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Timer? _priceTimer;
   AddonCatalogResult? _addonCatalog;
   StoreProductInfo? _addonProduct;
+  final _addonProducts = <String, StoreProductInfo>{};
+  final _addonProductsLoading = <String>{};
+  final _addonProductFailures = <String>{};
   var _addonLoading = true;
   var _addonLoadFailed = false;
   var _addonLoadGeneration = 0;
+  var _showAddons = false;
 
   @override
   void initState() {
@@ -110,30 +115,83 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Future<void> _loadAddon() async {
     if (!_canUpdateScreen) return;
     final generation = ++_addonLoadGeneration;
-    setState(() { _addonLoading = true; _addonLoadFailed = false; _addonProduct = null; });
+    setState(() {
+      _addonLoading = true;
+      _addonLoadFailed = false;
+      _addonProduct = null;
+      _addonProducts.clear();
+      _addonProductsLoading.clear();
+      _addonProductFailures.clear();
+    });
     try {
       final catalog = await _addonService.loadCatalog();
       if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
+      final tiers = catalog.products;
+      if (tiers != null) {
+        final available = tiers.where((tier) =>
+            _addonService.supportsPlatform && tier.enabled && tier.eligible).toList();
+        setState(() {
+          _addonCatalog = catalog;
+          _addonLoading = false;
+          _addonProductsLoading.addAll(available.map((tier) => tier.productId));
+        });
+        await Future.wait(available.map((tier) async {
+          StoreProductInfo? product;
+          try {
+            product = await _addonService.loadProductFor(catalog, tier);
+          } catch (_) {
+            // One unavailable store item must not hide the other packs.
+          }
+          if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
+          final loadedProduct = product;
+          setState(() {
+            _addonProductsLoading.remove(tier.productId);
+            if (loadedProduct != null && loadedProduct.id == tier.productId &&
+                loadedProduct.price.trim().isNotEmpty) {
+              _addonProducts[tier.productId] = loadedProduct;
+            } else {
+              _addonProductFailures.add(tier.productId);
+            }
+          });
+        }));
+        return;
+      }
       final product = _addonService.supportsPlatform && catalog.enabled && catalog.eligible
           ? await _addonService.loadProduct(catalog) : null;
       if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
       setState(() { _addonCatalog = catalog; _addonProduct = product; _addonLoading = false; });
     } catch (_) {
       if (!_canUpdateScreen || generation != _addonLoadGeneration) return;
-      setState(() { _addonCatalog = null; _addonLoading = false; _addonLoadFailed = true; });
+      setState(() { _addonLoading = false; _addonLoadFailed = true; });
     }
   }
 
-  Future<void> _buyAddon({bool retry = false}) async {
+  bool _canBuyAddonTier(AddonCatalogProduct tier) =>
+      _addonService.supportsPlatform && _canUpdateScreen &&
+      !_addonLoading && !_addonLoadFailed && !_isBillingInProgress &&
+      !_service.hasPendingConfirmation && !_addonService.hasPendingPurchase &&
+      !_isSubscriptionLoading && _subscriptionLoadError == null &&
+      _subscription != null && tier.enabled && tier.eligible &&
+      !_addonProductsLoading.contains(tier.productId) &&
+      _addonProducts.containsKey(tier.productId);
+
+  Future<void> _buyAddon({bool retry = false, String? productId}) async {
+    final tier = _addonCatalog?.products
+        ?.where((item) => item.productId == productId).firstOrNull;
+    final canStart = productId == null
+        ? _addonCatalog?.products == null && _addonProduct != null &&
+            _addonCatalog?.enabled == true && _addonCatalog?.eligible == true
+        : tier != null && _canBuyAddonTier(tier);
     if (!_canUpdateScreen || !_addonService.supportsPlatform || _isBillingInProgress || _service.hasPendingConfirmation ||
-        (!retry && (_addonService.hasPendingPurchase || _addonProduct == null ||
-          _addonCatalog?.enabled != true || _addonCatalog?.eligible != true))) {
+        (!retry && (_addonService.hasPendingPurchase || !canStart))) {
       return;
     }
     setState(() => _isBillingInProgress = true);
     final progress = _showProgress(retry ? 'กำลังตรวจสอบการซื้อ...' : 'กำลังซื้อแพ็กเติม...');
     try {
-      final result = retry ? await _addonService.retryPendingPurchase() : await _addonService.purchase();
+      final result = retry ? await _addonService.retryPendingPurchase()
+          : productId == null ? await _addonService.purchase()
+          : await _addonService.purchaseProduct(productId);
       if (!_canUpdateScreen || !result.confirmed) return;
       await _loadSubscription();
       if (!_canUpdateScreen) return;
@@ -141,7 +199,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
       if (!_canUpdateScreen) return;
       _showOwnedDialog((context) => AlertDialog(
         title: const _PaywallText('เติมเครดิตสำเร็จ'),
-        content: const _PaywallText('เพิ่มเครดิตโพสต์ 100 หน่วย และ AI แคปชั่น 50 เครดิตแล้ว เครดิตซื้อเพิ่มไม่หมดอายุ และใช้โควตารายเดือนก่อน'),
+        content: Text(_paywallText(context,
+          'เพิ่มเครดิตโพสต์ ${result.postUnits} หน่วย และ AI แคปชั่น ${result.aiCaptions} เครดิตแล้ว เครดิตซื้อเพิ่มไม่หมดอายุ และใช้โควตารายเดือนก่อน',
+          'Added ${result.postUnits} post units and ${result.aiCaptions} AI caption credits. Purchased credits do not expire. Your monthly quota is used first.')),
         actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const _PaywallText('ตกลง'))],
       ));
       unawaited(_loadAddon());
@@ -279,6 +339,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _isBillingInProgress = false;
       _addonCatalog = null;
       _addonProduct = null;
+      _addonProducts.clear();
+      _addonProductsLoading.clear();
+      _addonProductFailures.clear();
       _addonLoading = false;
     });
   }
@@ -534,112 +597,188 @@ class _PaywallScreenState extends State<PaywallScreen> {
       body: SafeArea(
         child: DecoratedBox(
           decoration: AppTheme.screenBackground,
-          child: ListView(
-            padding: AppTheme.screenPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _PaywallText(
-                'อัปเกรดเพื่อปลดล็อกการตั้งเวลาและ AI แคปชั่น',
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  height: 1.45,
-                  color: AppTheme.textSecondary,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppTheme.spaceLg,
+                  AppTheme.spaceMd,
+                  AppTheme.spaceLg,
+                  AppTheme.spaceXs,
+                ),
+                child: Wrap(
+                  spacing: AppTheme.spaceSm,
+                  runSpacing: AppTheme.spaceXs,
+                  children: [
+                    ChoiceChip(
+                      key: const ValueKey('paywall-main-plans-category'),
+                      label: const _PaywallText('แพ็กเกจหลัก'),
+                      selected: !_showAddons,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() => _showAddons = false),
+                    ),
+                    ChoiceChip(
+                      key: const ValueKey('paywall-addons-category'),
+                      label: const _PaywallText('แพ็กเกจเสริม'),
+                      selected: _showAddons,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() => _showAddons = true),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
-              _PaywallText(
-                '1 หน่วย = โพสต์ 1 ช่องทาง เช่น โพสต์คลิปเดียวลง 3 ช่องทางใช้ 3 หน่วย',
-                key: const ValueKey('paywall-unit-explainer'),
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              if (_isSubscriptionLoading)
-                const _PaywallSubscriptionStatus(
-                  key: ValueKey('paywall-subscription-loading'),
-                  message: 'กำลังตรวจสอบแพ็กเกจปัจจุบัน...',
-                  isLoading: true,
-                )
-              else if (_subscriptionLoadError != null)
-                _PaywallSubscriptionStatus(
-                  key: const ValueKey('paywall-subscription-error'),
-                  message: _screenBinding.isCurrent
-                      ? 'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ กรุณาลองใหม่ก่อนสมัคร หรือกู้คืนการซื้อเดิม'
-                      : 'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่',
-                  onRetry: _screenBinding.isCurrent ? _loadSubscription : null,
-                ),
-              if (_isSubscriptionLoading || _subscriptionLoadError != null)
-                const SizedBox(height: 13),
-              if (_screenBinding.isCurrent && _service.hasPendingConfirmation) ...[
-                _PaywallSubscriptionStatus(
-                  key: const ValueKey('paywall-purchase-awaiting-confirmation'),
-                  message: _service.hasPendingStoreAcknowledgement
-                      ? 'ร้านค้ายังปิดรายการซื้อไม่สำเร็จ กรุณาตรวจสอบรายการเดิมก่อนซื้อซ้ำ'
-                      : _service.hasPendingStoreOperation
-                          ? const StoreSubscriptionStorePendingException().message
-                          : const StoreSubscriptionConfirmationPendingException().message,
-                  onRetry: _isBillingInProgress ? null : _recheckPurchase,
-                  retryKey: const ValueKey('paywall-retry-purchase'),
-                  retryLabel: 'ตรวจสอบการซื้ออีกครั้ง',
-                ),
-                const SizedBox(height: 13),
-              ],
-              for (var index = 0; index < _plans.length; index += 1) ...[
-                _PlanCard(
-                  plan: _plans[index],
-                  onSubscribe: _screenBinding.isCurrent &&
-                          !_isSubscriptionLoading &&
-                          !_isBillingInProgress &&
-                          !_service.hasPendingConfirmation &&
-                          !_addonService.hasPendingPurchase &&
-                          _subscriptionLoadError == null &&
-                          _subscription != null
-                      ? () => _subscribe(_plans[index])
-                      : null,
-                ),
-                if (index < _plans.length - 1) const SizedBox(height: 13),
-              ],
-              if (_showsAddonCard) ...[
-                const SizedBox(height: 16),
-                _buildAddonCard(),
-              ],
-              const SizedBox(height: 16),
-              if (_priceLoadFailed)
-                TextButton(
-                  key: const ValueKey('paywall-price-error'),
-                  onPressed: !_screenBinding.isCurrent || _isBillingInProgress
-                      ? null : _loadPrices,
-                  child: const _PaywallText('โหลดราคาจากร้านค้าอีกครั้ง'),
-                ),
-              if (_service.supportsUnifiedRestore) ...[
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  child: OutlinedButton.icon(
-                    onPressed: !_screenBinding.isCurrent || _isBillingInProgress || _addonService.hasPendingPurchase
-                        ? null : _restorePurchase,
-                    icon: const Icon(Icons.restore, size: 19),
-                    label: const _PaywallText('กู้คืนการซื้อ'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.accentCyanInk,
-                      side: BorderSide(color: AppTheme.border),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(13),
+              Expanded(
+                child: ListView(
+                  key: ValueKey(_showAddons),
+                  padding: AppTheme.screenPadding,
+                  children: [
+                    if (!_showAddons) ...[
+                      _PaywallText(
+                        'อัปเกรดเพื่อปลดล็อกการตั้งเวลาและ AI แคปชั่น',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.45,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
-                      textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                      const SizedBox(height: AppTheme.spaceXs),
+                      _PaywallText(
+                        '1 หน่วย = โพสต์ 1 ช่องทาง เช่น โพสต์คลิปเดียวลง 3 ช่องทางใช้ 3 หน่วย',
+                        key: const ValueKey('paywall-unit-explainer'),
+                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (_isSubscriptionLoading)
+                      const _PaywallSubscriptionStatus(
+                        key: ValueKey('paywall-subscription-loading'),
+                        message: 'กำลังตรวจสอบแพ็กเกจปัจจุบัน...',
+                        isLoading: true,
+                      )
+                    else if (_subscriptionLoadError != null)
+                      _PaywallSubscriptionStatus(
+                        key: const ValueKey('paywall-subscription-error'),
+                        message: _screenBinding.isCurrent
+                            ? 'โหลดแพ็กเกจปัจจุบันไม่สำเร็จ กรุณาลองใหม่ก่อนสมัคร หรือกู้คืนการซื้อเดิม'
+                            : 'บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่',
+                        onRetry: _screenBinding.isCurrent
+                            ? _loadSubscription
+                            : null,
+                      ),
+                    if (_isSubscriptionLoading ||
+                        _subscriptionLoadError != null)
+                      const SizedBox(height: 13),
+                    if (_screenBinding.isCurrent &&
+                        _service.hasPendingConfirmation) ...[
+                      _PaywallSubscriptionStatus(
+                        key: const ValueKey(
+                          'paywall-purchase-awaiting-confirmation',
+                        ),
+                        message: _service.hasPendingStoreAcknowledgement
+                            ? 'ร้านค้ายังปิดรายการซื้อไม่สำเร็จ กรุณาตรวจสอบรายการเดิมก่อนซื้อซ้ำ'
+                            : _service.hasPendingStoreOperation
+                            ? const StoreSubscriptionStorePendingException()
+                                  .message
+                            : const StoreSubscriptionConfirmationPendingException()
+                                  .message,
+                        onRetry: _isBillingInProgress ? null : _recheckPurchase,
+                        retryKey: const ValueKey('paywall-retry-purchase'),
+                        retryLabel: 'ตรวจสอบการซื้ออีกครั้ง',
+                      ),
+                      const SizedBox(height: 13),
+                    ],
+                    if (!_showAddons && _screenBinding.isCurrent &&
+                        _addonService.hasPendingPurchase) ...[
+                      _PaywallSubscriptionStatus(
+                        key: const ValueKey('paywall-addon-pending-main'),
+                        message: const StoreAddonPendingException().message,
+                        onRetry: () => setState(() => _showAddons = true),
+                        retryKey: const ValueKey('paywall-open-pending-addon'),
+                        retryLabel: 'ดูแพ็กเกจเสริม',
+                      ),
+                      const SizedBox(height: AppTheme.spaceMd),
+                    ],
+                    if (!_showAddons)
+                      for (
+                        var index = 0;
+                        index < _plans.length;
+                        index += 1
+                      ) ...[
+                        _PlanCard(
+                          plan: _plans[index],
+                          onSubscribe:
+                              _screenBinding.isCurrent &&
+                                  !_isSubscriptionLoading &&
+                                  !_isBillingInProgress &&
+                                  !_service.hasPendingConfirmation &&
+                                  !_addonService.hasPendingPurchase &&
+                                  _subscriptionLoadError == null &&
+                                  _subscription != null
+                              ? () => _subscribe(_plans[index])
+                              : null,
+                        ),
+                        if (index < _plans.length - 1)
+                          const SizedBox(height: 13),
+                      ],
+                    if (_showAddons && _showsAddonCard)
+                      _addonCatalog?.products != null
+                          ? _buildAddonTiers() : _buildAddonCard(),
+                    if (_showAddons && !_showsAddonCard)
+                      PostDeeNotice(
+                        key: const ValueKey('paywall-addons-empty'),
+                        message: _paywallMessage(context, 'ยังไม่มีแพ็กเกจเสริมเปิดขาย'),
+                        icon: Icons.inventory_2_outlined,
+                        color: AppTheme.textSecondary,
+                      ),
+                    const SizedBox(height: 16),
+                    if (_priceLoadFailed)
+                      TextButton(
+                        key: const ValueKey('paywall-price-error'),
+                        onPressed:
+                            !_screenBinding.isCurrent || _isBillingInProgress
+                            ? null
+                            : _loadPrices,
+                        child: const _PaywallText('โหลดราคาจากร้านค้าอีกครั้ง'),
+                      ),
+                    if (_service.supportsUnifiedRestore) ...[
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: OutlinedButton.icon(
+                          onPressed:
+                              !_screenBinding.isCurrent ||
+                                  _isBillingInProgress ||
+                                  _addonService.hasPendingPurchase
+                              ? null
+                              : _restorePurchase,
+                          icon: const Icon(Icons.restore, size: 19),
+                          label: const _PaywallText('กู้คืนการซื้อ'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.accentCyanInk,
+                            side: BorderSide(color: AppTheme.border),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    _PaywallText(
+                      'ราคาจริงจะแสดงตามร้านค้าของแต่ละประเทศ · แพ็กเกจรายเดือนยกเลิกได้ทุกเมื่อ',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        height: 1.5,
+                        color: AppTheme.textMuted,
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              _PaywallText(
-                'ราคาจริงจะแสดงตามร้านค้าของแต่ละประเทศ · แพ็กเกจรายเดือนยกเลิกได้ทุกเมื่อ',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1.5,
-                  color: AppTheme.textMuted,
+                  ],
                 ),
               ),
             ],
@@ -666,16 +805,138 @@ class _PaywallScreenState extends State<PaywallScreen> {
     ));
   }
 
-  // A pack that is not on sale is noise on the plan list. Keep the card only
-  // while it can matter: on sale, still loading, a pending purchase, or
-  // credits the seller already owns.
+  // A new catalog owns its sale offers; the scalar flags belong to the legacy
+  // pack. Loading, recovery, and owned credits remain visible in either format.
   bool get _showsAddonCard {
     final catalog = _addonCatalog;
-    if (catalog == null || catalog.enabled) return true;
-    return _addonService.hasPendingPurchase ||
+    if (_addonLoading || _addonLoadFailed || catalog == null) return true;
+    final hasSaleOffer = catalog.products?.any((tier) => tier.enabled)
+        ?? catalog.enabled;
+    return hasSaleOffer || _addonService.hasPendingPurchase ||
         catalog.addonPostUnits > 0 ||
         catalog.addonAiCaptions > 0;
   }
+
+  Widget _buildAddonTiers() {
+    final catalog = _addonCatalog!;
+    final tiers = catalog.products!;
+    final allUnavailable = tiers.isEmpty || tiers.every((tier) => !tier.enabled);
+    final pending = _addonService.hasPendingPurchase;
+    return Container(
+      key: const ValueKey('paywall-addon-tiers'),
+      padding: const EdgeInsets.all(AppTheme.spaceLg),
+      decoration: BoxDecoration(
+        color: AppTheme.glass,
+        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const _PaywallText('แพ็กเติม ซื้อครั้งเดียว',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        if (pending) _buildAddonRecovery(),
+        if (_addonLoading || _addonLoadFailed || allUnavailable) ...[
+          const SizedBox(height: AppTheme.spaceSm),
+          KeyedSubtree(
+            key: allUnavailable && !_addonLoading && !_addonLoadFailed
+                ? const ValueKey('paywall-addon-unavailable') : null,
+            child: _PaywallText(
+              _addonLoading ? 'กำลังตรวจสอบแพ็กเติม...'
+                  : _addonLoadFailed ? 'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่'
+                  : 'แพ็กเติมยังไม่เปิดขาย',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+          ),
+        ],
+        for (var index = 0; index < tiers.length; index++) ...[
+          if (index > 0) const Divider(height: AppTheme.spaceXl),
+          _buildAddonTier(tiers[index], showUnavailable: !allUnavailable),
+        ],
+        if (catalog.addonPostUnits > 0 || catalog.addonAiCaptions > 0) ...[
+          const SizedBox(height: AppTheme.spaceMd),
+          Text(_paywallText(context,
+            'เครดิตคงเหลือ: โพสต์ ${catalog.addonPostUnits} หน่วย · AI ${catalog.addonAiCaptions} เครดิต',
+            'Credits remaining: ${catalog.addonPostUnits} post units · ${catalog.addonAiCaptions} AI caption credits'),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary)),
+        ],
+        const SizedBox(height: AppTheme.spaceMd),
+        _PaywallText('เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน · ไม่ต่ออายุอัตโนมัติ',
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+        const SizedBox(height: AppTheme.spaceXs),
+        _PaywallText('1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่',
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+        if (_addonService.supportsPlatform && !_addonLoading &&
+            (_addonLoadFailed || _addonProductFailures.isNotEmpty))
+          TextButton(
+            key: const ValueKey('paywall-reload-addons'),
+            onPressed: _canUpdateScreen && !_isBillingInProgress ? _loadAddon : null,
+            child: const _PaywallText('โหลดแพ็กเติมอีกครั้ง'),
+          ),
+      ]),
+    );
+  }
+
+  Widget _buildAddonTier(AddonCatalogProduct tier, {required bool showUnavailable}) {
+    final product = _addonProducts[tier.productId];
+    final name = switch (tier.id) {
+      'small' => _paywallText(context, 'เล็ก', 'Small'),
+      'medium' => _paywallText(context, 'กลาง', 'Medium'),
+      'large' => _paywallText(context, 'ใหญ่', 'Large'),
+      _ => _paywallText(context, 'แพ็กเติม', 'Credit pack'),
+    };
+    final message = !_addonService.supportsPlatform
+        ? _addonService.platformUnavailableMessage
+        : _addonLoading || _addonProductsLoading.contains(tier.productId)
+        ? 'กำลังตรวจสอบแพ็กเติม...'
+        : _addonLoadFailed ? 'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่'
+        : !tier.enabled ? 'แพ็กเติมยังไม่เปิดขาย'
+        : !tier.eligible ? 'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครในหมวดแพ็กเกจหลักก่อน'
+        : product == null ? 'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้'
+        : 'ซื้อเพิ่มได้หลายครั้ง';
+    return Padding(
+      key: ValueKey('paywall-addon-card-${tier.productId}'),
+      padding: const EdgeInsets.only(top: AppTheme.spaceMd),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        const SizedBox(height: AppTheme.spaceXs),
+        Text(_paywallText(context,
+          'โพสต์เพิ่ม ${tier.postUnits} หน่วย + AI แคปชั่น ${tier.aiCaptions} เครดิต',
+          '${tier.postUnits} post units + ${tier.aiCaptions} AI caption credits'),
+          style: const TextStyle(fontWeight: FontWeight.w600)),
+        if (showUnavailable || !tier.enabled && !_addonService.supportsPlatform) ...[
+          const SizedBox(height: AppTheme.spaceXs),
+          _PaywallText(message,
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        ],
+        const SizedBox(height: AppTheme.spaceSm),
+        FilledButton(
+          key: ValueKey('paywall-buy-addon-${tier.productId}'),
+          onPressed: _canBuyAddonTier(tier)
+              ? () => _buyAddon(productId: tier.productId) : null,
+          child: product == null ? const _PaywallText('ซื้อแพ็กเติม')
+              : Text(_paywallText(context, 'ซื้อครั้งเดียว ${product.price}',
+                  'One-time purchase ${product.price}')),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildAddonRecovery() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: AppTheme.spaceMd),
+      _PaywallText(const StoreAddonPendingException().message,
+          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+      TextButton(key: const ValueKey('paywall-retry-addon'),
+          onPressed: _addonService.supportsPlatform && _canUpdateScreen && !_isBillingInProgress
+              ? () => _buyAddon(retry: true) : null,
+          child: const _PaywallText('ตรวจสอบการซื้อแพ็กเติมอีกครั้ง')),
+      TextButton.icon(key: const ValueKey('paywall-addon-help'),
+          onPressed: _canUpdateScreen ? _showAddonHelp : null,
+          icon: const Icon(Icons.support_agent, size: 18),
+          label: const _PaywallText('ขอความช่วยเหลือเรื่องการซื้อ')),
+    ],
+  );
 
   Widget _buildAddonCard() {
     final catalog = _addonCatalog;
@@ -688,7 +949,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         : _addonLoading ? 'กำลังตรวจสอบแพ็กเติม...'
         : _addonLoadFailed ? 'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่'
         : catalog?.enabled != true ? 'แพ็กเติมยังไม่เปิดขาย'
-        : catalog?.eligible == false ? 'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครแพ็กเกจด้านบนก่อน'
+        : catalog?.eligible == false ? 'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครในหมวดแพ็กเกจหลักก่อน'
         : _addonProduct == null ? 'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้'
         : 'ซื้อเพิ่มได้หลายครั้ง';
     return Container(
@@ -714,17 +975,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         const SizedBox(height: 6),
         _PaywallText('1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่',
           style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-        if (pending) ...[
-          const SizedBox(height: 12),
-          _PaywallText(const StoreAddonPendingException().message, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-          TextButton(key: const ValueKey('paywall-retry-addon'),
-            onPressed: _addonService.supportsPlatform && _canUpdateScreen && !_isBillingInProgress ? () => _buyAddon(retry: true) : null,
-            child: const _PaywallText('ตรวจสอบการซื้อแพ็กเติมอีกครั้ง')),
-          TextButton.icon(key: const ValueKey('paywall-addon-help'),
-            onPressed: _canUpdateScreen ? _showAddonHelp : null,
-            icon: const Icon(Icons.support_agent, size: 18),
-            label: const _PaywallText('ขอความช่วยเหลือเรื่องการซื้อ')),
-        ],
+        if (pending) _buildAddonRecovery(),
         const SizedBox(height: 12),
         SizedBox(width: double.infinity, child: FilledButton(
           key: const ValueKey('paywall-buy-addon'), onPressed: canBuy ? () => _buyAddon() : null,
@@ -998,6 +1249,10 @@ String _paywallMessage(BuildContext context, String message) =>
 // provider errors retain their original values; billing services stay unchanged.
 const _englishPaywallMessages = <String, String>{
   'เลือกแพ็กเกจ': 'Choose a plan',
+  'แพ็กเกจหลัก': 'Main plans',
+  'แพ็กเกจเสริม': 'Add-ons',
+  'ดูแพ็กเกจเสริม': 'View add-ons',
+  'ยังไม่มีแพ็กเกจเสริมเปิดขาย': 'No add-ons are on sale right now',
   'อัปเกรดเพื่อปลดล็อกการตั้งเวลาและ AI แคปชั่น':
       'Upgrade to unlock scheduling and AI captions',
   'กำลังโหลดราคา...': 'Loading prices...',
@@ -1065,8 +1320,8 @@ const _englishPaywallMessages = <String, String>{
   'แพ็กเติมยังไม่เปิดขาย': 'Credit packs are not on sale yet',
   '1 หน่วย = โพสต์ 1 ช่องทาง เช่น โพสต์คลิปเดียวลง 3 ช่องทางใช้ 3 หน่วย':
       '1 unit = 1 post to 1 channel. Posting one video to 3 channels uses 3 units.',
-  'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครแพ็กเกจด้านบนก่อน':
-      'For Starter or Pro members · Subscribe to a plan above first',
+  'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครในหมวดแพ็กเกจหลักก่อน':
+      'For Starter or Pro members · Subscribe in Main plans first',
   'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้':
       'Could not load the credit pack from your store.',
   'ซื้อเพิ่มได้หลายครั้ง': 'Available for repeat purchases',

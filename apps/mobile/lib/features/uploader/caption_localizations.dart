@@ -107,6 +107,10 @@ const _captionLimits = <String, (String, String, String)>{
 };
 
 const _fallbackMessages = <String, String>{
+  'AI ยังจับเนื้อหาคลิปได้ไม่พอ ลองใช้คลิปที่มีเสียงพูดหรือภาพชัดเจนขึ้น ข้อความเดิมยังอยู่':
+      'AI could not identify enough content. Try a video with clearer speech or visuals. Your original text is unchanged.',
+  'AI วิเคราะห์คลิปไม่สำเร็จ ข้อความเดิมยังอยู่ ลองใหม่ได้ภายหลัง':
+      'AI could not analyze the video. Your original text is unchanged. Please try again later.',
   'AI วิเคราะห์คลิปไม่สำเร็จ กรุณาตรวจข้อความสำรองก่อนใช้':
       'AI could not analyze the video. Review the fallback text before using it.',
   'AI วิเคราะห์คลิปไม่สำเร็จ แคปชันนี้เป็นข้อความสำรอง กรุณาตรวจและแก้ไขก่อนใช้':
@@ -114,6 +118,14 @@ const _fallbackMessages = <String, String>{
 };
 
 const _englishMessages = <String, String>{
+  'เลือกแคปชั่นที่ชอบ': 'Choose a caption',
+  'เลือกได้โดยไม่ใช้เครดิตเพิ่ม ข้อความเดิมจะอยู่จนกดใช้':
+      'Choose without spending more credits. Your original text stays until you tap Use.',
+  'ใช้แคปชั่นนี้': 'Use this caption',
+  'เตรียมคลิปสำหรับ AI ไม่สำเร็จ ลองเลือกคลิปที่สั้นลงแล้วลองใหม่':
+      'Could not prepare the video for AI. Choose a shorter video and try again.',
+  'AI ใช้เวลานานเกินไป ข้อความเดิมยังอยู่ ลองใหม่อีกครั้ง':
+      'AI took too long. Your original text is unchanged. Please try again.',
   'เขียนเอง หรือกดให้ AI ช่วยเมื่อพร้อม':
       'Write your own caption, or let AI help when you are ready.',
   'ตั้งค่าขั้นสูง': 'Advanced settings',

@@ -2,6 +2,56 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Package categories and immutable top-up grants (2026-11-02, consolidated draft)
+
+The paywall separates Main plans and Add-ons without changing plan products.
+For catalog v3, each offer owns its sale state; the legacy scalar flag cannot
+override disabled replacement offers. Loading, errors, owned balances and pending
+recovery retain the Add-ons content, while a completed empty disabled catalog
+shows a localized empty state. Only these paywall safeguards are taken from
+pending PR #50; its auth/home/profile/shell/uploader changes are excluded.
+
+An append-only server product registry maps the new 40/25, 90/50 and 190/100
+packs to distinct consumable SKUs. The historical 100/50 product keeps its
+meaning. Receipt identity remains store/environment/canonical transaction,
+bound to its original owner and product. First delivery freezes
+`postUnitsGranted` and `aiCaptionsGranted` in memory and PostgreSQL; duplicate
+confirmation/webhook deliveries and refund tombstones preserve the snapshot.
+The migration defaults historical rows and late old writers to 100/50 and adds
+quantity constraints plus a trigger preventing grant edits.
+
+Grant readers sum the frozen quantities and count actual transactions. Existing
+post allocations and caption usage still consume their separate banks after
+monthly quota, including lifetime spend and refund deficits. New catalog fields
+are additive to the legacy scalar response. Mobile resolves each selection and
+localized quote by SKU while retaining one account-wide unfinished purchase and
+its exact receipt namespace across product changes and app restarts.
+
+New-tier sales are gated off by default. Migration/API rollout must finish on
+every instance before new Mobile and different-sized SKU sales. An old
+count-based reader is no longer a safe rollback after those purchases exist.
+No hosted change is included. See the [consolidation record](docs/superpowers/plans/2026-11-02-packages-consolidated.md).
+
+## Caption evidence and request lifetime (2026-11-01, Staging API delivered)
+
+The real-clip Gemini provider separates multimodal evidence extraction from
+text-only caption writing and a final evidence audit/repair. Pure audio cannot contribute visual observations;
+seller guidance and style samples never become product facts. All three stages
+share a bounded, cancellable lifetime. The route owns cancellation/refunds and
+media admission, and validates generated text using publishing constraints.
+Evidence is request-local: no transcript cache, new database model or additional
+retention is introduced. User credit costs remain per selected channel.
+
+Mobile reuses retained media-preparation helpers to make a bounded visual proxy
+when large clips lack extractable audio; this does not restore retired editing.
+Shared-caption preview/selection/undo follows the existing owner, source and
+text-staleness guards. Fallback leaves current text intact. API first, then
+Mobile, with no schema migration or new environment variable. See [implementation
+and verification](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+Staging runs `604ecad7` with unchanged schema/environment; English live quality,
+native proxy preparation and hosted end-to-end acceptance remain pending.
+Production is unchanged. See the [delivery record](docs/STAGING.md).
+
 ## Preserved-work integration (2026-11-01, main / Staging API delivered)
 
 Storefront readability stays in the existing HTML renderer and native preview

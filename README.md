@@ -1,5 +1,40 @@
 # PostDee
 
+## Package categories and replacement top-ups (2026-11-02, consolidated draft)
+
+Separate Thai/English Main plans and Add-ons categories while retaining Basic,
+Starter and Pro. Add-ons keep owned credits and pending recovery visible even
+when sales are disabled; loading and error states remain retryable.
+
+Prepare three one-time credit packs: Small 40 post units / 25 caption credits
+(THB 49 reference), Medium 90 / 50 (THB 99), and Large 190 / 100 (THB 199).
+The payable amount always comes from the selected store product. Historical
+`postdee_post100_caption50` purchases retain 100 / 50; purchased balances,
+pending receipts, eligibility and non-expiry rules are preserved.
+
+This consolidated draft combines the package scope of PR #52/#53 and only the
+paywall safeguards from PR #50; unrelated PR #50 work is excluded. The existing
+PR branches remain unchanged. New-tier sales stay disabled by default. No store
+products, hosted migration or deployment have been performed. Apply the additive
+grant-snapshot migration and compatible API to every instance before Mobile and
+before enabling different-sized SKUs. See the [consolidation record](docs/superpowers/plans/2026-11-02-packages-consolidated.md).
+
+## Caption quality and recovery (2026-11-01, main / Staging API delivered)
+
+AI captions read clip evidence before writing, preserve the original meaning,
+and return an uncharged fallback when evidence is insufficient. Generation has
+a bounded lifetime and validates platform text before charging success. Mobile
+adds shared-caption choices and undo, preserves manual text on fallback, and
+prepares a small visual proxy for large clips without extractable audio.
+Per-channel credits and package rights stay unchanged. No migration or new
+environment variable; deploy API before Mobile. See the [change and verification
+record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+Staging API runs `604ecad7`; the Staging APK is installed on the test emulator.
+English live quality still awaits the same test key's daily quota reset, and
+silent visual clips/native proxy/R2 end-to-end checks remain pending. CI and
+deployment health do not establish caption accuracy for every clip. Production
+is unchanged; see the [delivery record](docs/STAGING.md).
+
 ## Preserved-work integration (2026-11-01, main / Staging API delivered)
 
 Integrate Thai store-link readability, publishing error contrast in both themes,

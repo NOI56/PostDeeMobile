@@ -2,6 +2,87 @@
 
 PostDee backend API reference.
 
+## Replacement top-up catalog and immutable grants (2026-11-02, consolidated draft)
+
+The consolidated paywall presents the product list in Add-ons and subscriptions
+in Main plans. Per-item sale flags are authoritative for the new list; legacy
+scalar flags remain solely for old-client compatibility. Category navigation
+does not change confirmation, purchase recovery or quota-consumption contracts.
+
+`GET /billing/addons` keeps the installed-client scalar fields for the legacy
+100-post / 50-caption SKU, reference `priceThb: 49`, and non-expiring
+`policyVersion: 2`. It adds `catalogVersion: 3` and `products`, with per-item
+`id`, `productId`, `postUnits`, `aiCaptions`, `priceThb`, `enabled` and `eligible`:
+
+| ID | Store product ID | Post units | Caption credits | THB reference |
+| --- | --- | ---: | ---: | ---: |
+| small | `postdee_post40_caption25` | 40 | 25 | 49 |
+| medium | `postdee_post90_caption50` | 90 | 50 | 99 |
+| large | `postdee_post190_caption100` | 190 | 100 | 199 |
+
+The reference price is not the checkout quote; Mobile uses the exact matching
+store product's localized `price`. The legacy `postdee_post100_caption50` and
+configured historical alias remain 100 / 50. `purchasedPacks` counts valid ledger
+transactions, rather than dividing accumulated credits by 100. New Mobile falls
+back to the legacy single pack when an older API omits the product list.
+
+The legacy scalar offer keeps its existing sale gate for installed old clients;
+the new product list presents only the three replacements. Retiring new sales
+of the legacy store product is a separate rollout decision. It must not delete
+its receipt history, disable fulfillment, or change its 100/50 grant.
+
+`POST /billing/addons/confirm` retains its request shape. The server selects the
+grant from the verified SKU and stores it once per canonical transaction.
+Confirmed responses include `productId` and that transaction's stored
+`postUnits` / `aiCaptions`; duplicates, restored receipts and refunds cannot
+rewrite them. Old clients may ignore the added product field. Verification and
+pending recovery remain available when sales are off or membership has expired.
+Unknown products cannot create new grants. Existing stored historical receipts
+retain their original grant and exact owner, environment and receipt namespace
+checks. Post and caption balances/consumption stay separate, monthly quota is
+used first, and purchased-credit deficits after refunds remain charged.
+
+`BILLING_ADDON_TIERS_ENABLED=false` is the additional default-off gate for the
+three replacements. It requires the existing add-on sale/provider readiness
+gate as well. It does not activate store products or alter old subscription
+rights. The additive migration `20261102010000_addon_grant_snapshots` adds frozen
+per-purchase quantities, with 100 / 50 defaults for every historical row and
+late legacy writer. Deploy migration and compatible API readers to **all**
+instances, then Mobile, then separately authorized store setup/sandbox checks
+and sales activation. Once a different-sized SKU has a ledger row, do not roll
+back to the former purchase-count × 100 / 50 reader. See the
+[verification and rollout record](docs/superpowers/plans/2026-11-02-multi-sku-topups.md).
+
+## Caption evidence and bounded generation (2026-11-01, Staging API delivered)
+
+`POST /captions/generate-from-clip` retains the existing request, response fields,
+per-channel `expectedCredits` and atomic monthly/purchased-credit accounting.
+The Gemini provider reads actual media into evidence, writes from those facts,
+then audits/repairs the draft against the same evidence. These three bounded
+provider calls still cost the same number of user caption credits; only the
+first sends media. The later calls send request-local text, with no extra storage.
+
+- Insufficient evidence returns the existing `200` fallback shape with optional
+  `fallbackReason: "INSUFFICIENT_EVIDENCE"`, `isFallback: true` and zero charged
+  credits. Provider failure may add `fallbackReason: "PROVIDER_UNAVAILABLE"`.
+  Local fallback text is an editable placeholder with no fabricated clip facts.
+- The request has a finite lifetime; timeout returns `504
+  CAPTION_GENERATION_TIMEOUT` after refunding its reservation. Disconnects cancel
+  pending media/provider work and release the request's media slot.
+- Generated platform text, including appended hashtags, must pass the same
+  constraints as publishing before it counts as a successful generation.
+- All additional fields are optional. Existing installed clients retain their
+  generic fallback behavior; the new Mobile candidate explains the reason and
+  preserves manual text. Media ownership and paid-plan checks are unchanged.
+
+Deploy API first, then Mobile. No database migration, destructive cleanup,
+dependency upgrade or new environment variable is required. Live/native limits
+and validation are in the [verification
+record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md).
+Staging is Live at `604ecad7` after exact-commit CI; no environment value or
+migration changed. English real-provider quality and hosted end-to-end acceptance
+remain pending. See [delivery evidence](docs/STAGING.md). Production is unchanged.
+
 ## Readability and push diagnostic follow-up (2026-11-01, Staging API delivered)
 
 Public storefront HTML improves Thai avatar initials, telephone wrapping,

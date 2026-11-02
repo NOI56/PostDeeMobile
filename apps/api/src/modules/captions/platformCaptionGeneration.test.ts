@@ -28,9 +28,14 @@ const providerPayload = {
   searchTitle: 'เมนูร้าน', detectedSpokenLanguage: 'und', captionLanguage: 'th', targetMarket: 'th'
 };
 const makeProvider = (payload: unknown) => {
-  const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => ({
+  const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => ({
     ok: true,
-    json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] } }] })
+    json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(
+      JSON.parse(init.body as string).contents[0].parts.some((part: { inlineData?: unknown }) => part.inlineData)
+        ? { transcript: '', detectedSpokenLanguage: 'und', visibleText: ['เมนูร้าน'],
+          visualObservations: ['หน้าเมนูร้าน'], enoughEvidence: true }
+        : payload
+    ) }] } }] })
   }));
   return { fetchImpl, provider: createGeminiRealClipCaptionProvider({ apiKey: 'test-key', model: 'test-model', fetchImpl }) };
 };
@@ -65,15 +70,19 @@ describe('platform-specific real-clip captions', () => {
     }
   );
 
-  it('requests four adapted captions with the same clip evidence and writing style in one provider call', async () => {
+  it('extracts evidence once then writes four adapted captions in one text-only writing call', async () => {
     const { provider, fetchImpl } = makeProvider({ ...providerPayload, platformCaptions });
     const generationInput = input();
     generationInput.request.writingStyle = { tone: 'friendly', length: 'short', emoji: 'light', examples: ['ลองดูตรงนี้กันนะ'] };
     const result = await provider.generate(generationInput);
     expect(result.platformCaptions).toEqual(platformCaptions);
     expect(new Set(Object.values(result.platformCaptions!).map((entry) => entry!.caption)).size).toBe(4);
-    expect(fetchImpl).toHaveBeenCalledOnce();
-    const body = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    const extraction = JSON.parse(fetchImpl.mock.calls[0][1].body as string);
+    expect(extraction.contents[0].parts[0]).toHaveProperty('inlineData');
+    expect(JSON.stringify(extraction)).not.toContain('ลองดูตรงนี้กันนะ');
+    const body = JSON.parse(fetchImpl.mock.calls[1][1].body as string);
+    expect(body.contents[0].parts[0]).not.toHaveProperty('inlineData');
     const instruction = body.contents[0].parts.at(-1).text as string;
     for (const platform of platforms) expect(instruction).toContain(platform);
     expect(instruction).toContain('platformCaptions');
@@ -120,7 +129,7 @@ describe('platform-specific real-clip captions', () => {
     expect(response.body.isFallback).toBeUndefined();
     expect(reserve).toHaveBeenCalledOnce();
     expect(generate).toHaveBeenCalledOnce();
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(deleteObject).toHaveBeenCalledExactlyOnceWith({ bucket: 'caption-test-bucket', key: videoS3Key });
   });
 
@@ -149,7 +158,7 @@ describe('platform-specific real-clip captions', () => {
     expect(generate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       request: expect.objectContaining({ platforms: selected })
     }));
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it.each([
@@ -195,7 +204,7 @@ describe('platform-specific real-clip captions', () => {
     }
     expect(await usage.countForMonth({ userId: 'platform-caption-owner', monthKey })).toBe(1);
     expect(generate).toHaveBeenCalledOnce();
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('returns complete transparent uncharged fallback variants when the provider omits a channel', async () => {

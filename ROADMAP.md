@@ -2,6 +2,42 @@
 
 Build roadmap for PostDee.
 
+## Package categories and credit packs (2026-11-02, consolidated draft)
+
+- Consolidate the package categories from PR #52 and billing from PR #53 with
+  relevant PR #50 paywall guards. Keep its unrelated work and all PR #51 work out
+  of this change; preserve the existing branches and open PRs.
+
+- Prepare approved Small 40 post / 25 caption credits (THB 49 reference), Medium
+  90 / 50 (THB 99) and Large 190 / 100 (THB 199), using distinct consumable SKUs.
+- Preserve all historical 100/50 grants, paid balances, pending receipt recovery,
+  Starter/Pro eligibility and non-expiry. Use actual store checkout quotes.
+- Add immutable grant snapshots, a backward-compatible product catalog, per-SKU
+  confirmation/webhook fulfillment and Mobile selection with a shared payment lock.
+- Keep new-tier sales disabled. Migration/API on all instances precedes Mobile,
+  store/sandbox verification and separately authorized activation. Do not revert
+  to count-based grant readers after new-sized purchases exist.
+- Prepare one consolidated draft for review. Live product setup, production
+  migration, activation, PR approval/merge and deployment remain separate actions.
+  [Work record](docs/superpowers/plans/2026-11-02-packages-consolidated.md).
+
+## Caption quality and recovery (2026-11-01, main / Staging API delivered)
+
+- Read actual clip evidence before writing; preserve negative meaning and stop
+  when no usable evidence exists, with no caption credit charged for fallback.
+- Bound media/AI work and recover reservations on timeout/disconnect; validate
+  generated text before accepting it as publishable output.
+- Offer shared-caption choices and undo; preserve manual text on fallback.
+- Prepare a bounded visual proxy for large clips without extractable audio.
+- Keep per-channel costs, purchased credits, owner isolation, saved drafts,
+  writing styles, publishing settings and retired features unchanged.
+- Staging API is Live at `604ecad7` after exact-commit CI, with no migration or
+  environment change. Production is unchanged. The Staging APK is on the test
+  emulator; English live quality awaits the same key's daily quota reset and
+  silent visual/native proxy/R2 end-to-end checks remain pending. See the [work
+  record](docs/superpowers/plans/2026-11-01-caption-quality-reliability.md) and
+  [delivery evidence](docs/STAGING.md). Future rollout remains API first, then Mobile.
+
 ## Preserved-work integration (2026-11-01, delivered / native acceptance pending)
 
 - Bring the preserved Thai storefront-readability and publishing-contrast fixes

@@ -1,4 +1,5 @@
 import type { Platform } from '../posts/postStore.js';
+import { readCaptionStorageIssue, readPlatformCaptionIssue } from '../posts/platformCaptionValidation.js';
 
 const affiliateLinkPlaceholder = '[ใส่ลิงก์ Affiliate ที่นี่]';
 const trendingHashtags = ['#ของดีบอกต่อ', '#ช้อปออนไลน์', '#โปรดีบอกต่อ', '#รีวิวจริง', '#สายช้อป'];
@@ -65,9 +66,6 @@ export const generateLocalAffiliateCaption = (keywords: string[]): GeneratedCapt
     ].join('\n')
   };
 };
-
-const realClipHashtags = ['#PostDee', '#ShortVideo', '#Affiliate', '#ViralClip', '#OnlineSeller'];
-const defaultSeoKeywords = ['short video', 'affiliate seller', 'online shop', 'viral hook', 'product clip'];
 
 export type RealClipCaptionMode = 'AUDIO_ONLY' | 'AUDIO_WITH_FRAMES';
 
@@ -139,7 +137,13 @@ export const readRealClipPlatformCaptions = (value: unknown, platforms: readonly
     const { caption, hashtags } = entry as Record<string, unknown>;
     if (typeof caption !== 'string' || !caption.trim() || !Array.isArray(hashtags) ||
       !hashtags.every((tag) => typeof tag === 'string' && tag.trim().length > 0)) return undefined;
-    captions[platform] = { caption: caption.trim(), hashtags: hashtags.map((tag: string) => tag.trim()) };
+    const normalizedCaption = caption.trim();
+    const normalizedHashtags = hashtags.map((tag: string) => tag.trim());
+    // Mobile appends the tags after a blank line. Validate that delivered text,
+    // including multibyte Thai characters, before accepting a paid AI result.
+    const deliveredCaption = [normalizedCaption, normalizedHashtags.join(' ')].filter(Boolean).join('\n\n');
+    if (readCaptionStorageIssue(deliveredCaption, [platform]) || readPlatformCaptionIssue(deliveredCaption, [platform])) return undefined;
+    captions[platform] = { caption: normalizedCaption, hashtags: normalizedHashtags };
   }
   return captions;
 };
@@ -270,11 +274,6 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
   };
 };
 
-const readClipName = (videoS3Key: string) => {
-  const parts = videoS3Key.split(/[\\/]/);
-  return parts.at(-1) ?? videoS3Key;
-};
-
 const languageProfiles: Record<string, { language: string; market: string }> = {
   ar: { language: 'Arabic', market: 'Middle East' },
   de: { language: 'German', market: 'Germany' },
@@ -333,16 +332,6 @@ const buildRealClipCaptionContext = (
   };
 };
 
-const readTranscriptExcerpt = (transcript?: RealClipCaptionTranscriptContext) => {
-  const text = transcript?.text.trim();
-
-  if (!text) {
-    return undefined;
-  }
-
-  return text.length > 180 ? `${text.slice(0, 180)}...` : text;
-};
-
 export const generateLocalRealClipCaption = ({
   request,
   mode,
@@ -352,49 +341,20 @@ export const generateLocalRealClipCaption = ({
   mode: RealClipCaptionMode;
   transcript?: RealClipCaptionTranscriptContext;
 }): RealClipCaptionResult => {
-  const clipName = readClipName(request.videoS3Key);
-  const modeLabel = mode === 'AUDIO_ONLY' ? 'clip audio' : 'clip audio and selected frames';
   const context = buildRealClipCaptionContext(transcript);
-  if (request.platforms) {
-    // A template has no visual/audio evidence. Keep the fallback visibly blank
-    // for editing instead of presenting seller guidance or filenames as facts.
-    const caption = '[เขียนเรื่องที่เห็นจริงในคลิปของคุณที่นี่]';
-    return {
-      model: 'local-real-clip-template', caption, captionOptions: [caption], hooks: [], hashtags: [],
-      platformCaptions: Object.fromEntries(request.platforms.map((platform) => [platform, {
-        caption, hashtags: []
-      }])) as RealClipPlatformCaptions,
-      seoKeywords: [], searchTitle: '', affiliateLinkPlaceholder, context,
-      source: { videoS3Key: request.videoS3Key, mode,
-        selectedFrameCount: mode === 'AUDIO_WITH_FRAMES' ? request.selectedFrameKeys.length : 0 }
-    };
-  }
-  const guidanceText = request.guidance ? ` Extra direction: ${request.guidance}.` : '';
-  const transcriptExcerpt = readTranscriptExcerpt(transcript);
-  const transcriptText = transcriptExcerpt ? ` Transcript excerpt: ${transcriptExcerpt}.` : '';
-  const globalDirection =
-    context.detectedSpokenLanguage === 'auto'
-      ? 'Auto-detect caption language and market from the selected clip.'
-      : `Detected spoken language: ${context.selectedCaptionLanguage} (${context.detectedSpokenLanguage}). Target market suggestion: ${context.selectedTargetMarket}.`;
-  const hooks = [
-    `Stop scrolling if this problem sounds familiar: ${clipName}`,
-    `Before you buy, watch what this clip shows about ${clipName}`,
-    `The quick reason this product clip can convert viewers`
-  ];
-  const captionOptions = [
-    `${hooks[0]}\nThis caption is drafted from ${modeLabel}. ${globalDirection}${transcriptText}${guidanceText}\n${realClipHashtags.join(' ')}`,
-    `${hooks[1]}\nUse the strongest moment in ${clipName} as the first line. ${globalDirection}${transcriptText}${guidanceText}\n${realClipHashtags.join(' ')}`,
-    `${hooks[2]}\nKeep the CTA simple and send viewers to the bio or product link. ${globalDirection}${transcriptText}${guidanceText}\n${realClipHashtags.join(' ')}`
-  ];
-
+  // A local template cannot verify the current media. Keep both shared and
+  // advanced fallbacks visibly blank instead of inventing a sales caption.
+  const caption = '[เขียนเรื่องที่เห็นจริงในคลิปของคุณที่นี่]';
   return {
     model: 'local-real-clip-template',
-    caption: captionOptions[0],
-    captionOptions,
-    hooks,
-    hashtags: [...realClipHashtags],
-    seoKeywords: [...defaultSeoKeywords],
-    searchTitle: `Best moments from ${clipName}`,
+    caption,
+    captionOptions: [caption],
+    hooks: [],
+    hashtags: [],
+    ...(request.platforms ? { platformCaptions: Object.fromEntries(request.platforms.map(platform =>
+      [platform, { caption, hashtags: [] }])) as RealClipPlatformCaptions } : {}),
+    seoKeywords: [],
+    searchTitle: '',
     affiliateLinkPlaceholder,
     context,
     source: {

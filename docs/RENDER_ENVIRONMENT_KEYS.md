@@ -165,6 +165,7 @@ printing secrets.
 | `SENTRY_SIGNALS_TOKEN` | off | Read-only token for the admin status tab's Sentry signals. Needs `SENTRY_DSN`. Optional `SENTRY_SIGNALS_PROJECT_IDS` (numeric ids) and `SENTRY_SIGNALS_WINDOW_MINUTES` (5–240, default 30). |
 | `REVENUECAT_SUBSCRIPTION_ENVIRONMENT` | `PRODUCTION` | `SANDBOX` or `PRODUCTION`. Declared in both Blueprints; Staging uses `SANDBOX`. |
 | `BILLING_ADDONS_ENABLED` | off | Monthly add-on purchases. `REVENUECAT_ADDON_PRODUCT_ID` (default `postdee_post100_caption50`) must differ from the subscription product ids; `REVENUECAT_ADDON_ENVIRONMENT` defaults to `PRODUCTION`. |
+| `BILLING_ADDON_TIERS_ENABLED` | off | Additional sale gate for replacement 40/25, 90/50 and 190/100 consumables; also requires existing add-on/provider readiness. Keep off until all API instances use grant snapshots, store products are configured and verified, and activation is authorized. It never blocks confirmation of an already charged receipt. |
 | `STORE_STARTER_MONTHLY_PRODUCT_ID` / `STORE_PRO_MONTHLY_PRODUCT_ID` | `postdee_starter_monthly` / `postdee_pro_monthly` | Store product ids mapped to Starter and Pro. |
 | `APPLE_APP_STORE_*`, `APPLE_APP_*`, `GOOGLE_PLAY_*` | unset | Legacy direct store-verification scaffold (`BILLING_PROVIDER=store`). Not the preferred production path. |
 | `AI_EDITING_ENABLED` | `false` | Rollback switch for retired AI editing. Leave unset. |

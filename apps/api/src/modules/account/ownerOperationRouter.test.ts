@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { createOwnerOperationRouter } from './ownerOperationRouter.js';
 import type { RunWithActiveOwner } from './ownerOperationQueue.js';
 import { createOwnerOperationRunner } from './prismaOwnerOperationCoordinator.js';
+import { registerCaptionRoutes } from '../captions/captionRoutes.js';
+import { generateLocalAffiliateCaption, generateLocalRealClipCaption } from '../captions/captionService.js';
+import { createInMemoryRealClipCaptionUsageStore } from '../captions/captionUsageStore.js';
+import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
 
 const deferred = () => {
   let resolve!: () => void;
@@ -154,5 +158,78 @@ describe('owner operation route lifetime', () => {
       gate.resolve();
     }
     await vi.waitFor(() => expect(completed).toHaveBeenCalledOnce());
+  });
+
+  it.each([
+    { path: '/captions/generate-from-clip', status: 504, quota: { charged: false, chargedCredits: 0 }, retained: false },
+    { path: '/CAPTIONS/GENERATE-FROM-CLIP/', status: 504, quota: { charged: false, chargedCredits: 0 }, retained: false },
+    { path: '/captions/generate-from-clip', status: 504, quota: { charged: true, chargedCredits: 1 }, retained: true },
+    { path: '/captions/generate-from-clip', status: 504, quota: { charged: false, chargedCredits: 1 }, retained: true },
+    { path: '/captions/generate-from-clip', status: 504, quota: undefined, retained: true },
+    { path: '/captions/generate-from-clip', status: 503, quota: { charged: false, chargedCredits: 0 }, retained: true },
+    { path: '/posts', status: 504, quota: { charged: false, chargedCredits: 0 }, retained: true }
+  ])('releases only the exact refunded caption timeout: $path / $status / $quota', async ({ path, status, quota, retained }) => {
+    const release = vi.fn(async () => undefined);
+    const run = createOwnerOperationRunner({ admit: async () => 'caption-ticket', release });
+    const app = express();
+    const router = createOwnerOperationRouter(express.Router(), run);
+    router.post(path, (_request, response, next) => {
+      response.locals.authUser = { id: 'owner', provider: 'mock' }; next();
+    }, async (_request, response) => { response.status(status).json({ code: 'CAPTION_GENERATION_TIMEOUT', quota }); });
+    app.use(router);
+    await request(app).post(path).expect(status);
+    if (retained) expect(release).not.toHaveBeenCalled();
+    else await vi.waitFor(() => expect(release).toHaveBeenCalledExactlyOnceWith('owner', 'caption-ticket'));
+  });
+
+  it.each([
+    { disconnect: false, refunded: true }, { disconnect: true, refunded: true },
+    { disconnect: false, refunded: false }, { disconnect: true, refunded: false }
+  ])('holds the actual caption ticket until refund settles (disconnect=$disconnect / refunded=$refunded)', async ({ disconnect, refunded }) => {
+    const release = vi.fn(async () => undefined);
+    const run = createOwnerOperationRunner({ admit: async () => 'caption-ticket', release });
+    const app = express();
+    app.use(express.json());
+    const router = createOwnerOperationRouter(express.Router(), run);
+    const usage = createInMemoryRealClipCaptionUsageStore();
+    const releaseUsage = usage.release!;
+    const refundStarted = deferred();
+    const refund = deferred();
+    const providerStarted = deferred();
+    const provider = deferred();
+    vi.spyOn(usage, 'release').mockImplementationOnce(async record => {
+      refundStarted.resolve();
+      await refund.promise;
+      return refunded ? releaseUsage(record) : false;
+    });
+    const auth: express.RequestHandler = (_request, response, next) => {
+      response.locals.authUser = { id: 'owner', provider: 'mock', subscriptionPlan: 'STARTER' }; next();
+    };
+    const subscriptions = createSubscriptionStore();
+    vi.spyOn(subscriptions, 'getPlan').mockResolvedValue('STARTER');
+    registerCaptionRoutes(router, { generate: async () => generateLocalAffiliateCaption(['เมนู']) }, auth, subscriptions,
+      undefined, usage, { generate: async input => {
+        providerStarted.resolve(); await provider.promise;
+        return { ...generateLocalRealClipCaption(input), model: 'test-ai' };
+      } }, async () => ({ data: new Uint8Array([1]), mimeType: 'audio/mp4' }), undefined, undefined,
+      { captionGenerationTimeoutMs: disconnect ? 1000 : 20 });
+    app.use(router);
+    const call = request(app).post('/captions/generate-from-clip').send({ videoS3Key: 'uploads/owner/clip/video.mp4' });
+    const outcome = call.then(response => response, () => undefined);
+    try {
+      await providerStarted.promise;
+      if (disconnect) call.abort();
+      await refundStarted.promise;
+      expect(release).not.toHaveBeenCalled();
+      refund.resolve();
+      const response = await outcome;
+      if (!disconnect) expect(response?.status).toBe(504);
+      if (refunded) await vi.waitFor(() => expect(release).toHaveBeenCalledExactlyOnceWith('owner', 'caption-ticket'));
+      else {
+        await new Promise<void>(resolve => setImmediate(resolve));
+        expect(release).not.toHaveBeenCalled();
+      }
+      expect(await usage.countForMonth({ userId: 'owner', monthKey: new Date().toISOString().slice(0, 7) })).toBe(refunded ? 0 : 1);
+    } finally { refund.resolve(); provider.resolve(); }
   });
 });

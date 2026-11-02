@@ -13,6 +13,7 @@ import '../../core/network/postdee_api_client.dart';
 import '../../core/monitoring/postdee_analytics.dart';
 import '../../core/theme/app_theme.dart';
 import '../ai_editing/ai_edit_audio_extractor.dart';
+import '../ai_editing/ai_edit_visual_proxy_extractor.dart';
 import '../ai_editing/review_video_timeline.dart';
 import '../billing/paywall_screen.dart';
 import '../captions/caption_writing_style_store.dart';
@@ -80,6 +81,8 @@ typedef UploaderPostRecovery = Future<QueuedPostResult?> Function(
 typedef UploaderPublishingReadinessChecker = Future<void> Function();
 typedef UploaderAudioExtractor = Future<AiEditAudioArtifact> Function(
     File source);
+typedef UploaderCaptionVisualProxyExtractor = Future<AiEditVisualProxyArtifact>
+    Function(File source);
 
 /// Matches the API's real-clip caption clip limit: Gemini takes media inline
 /// (base64) up to 20 MB, so a larger clip can never be captioned whole. Above
@@ -212,6 +215,7 @@ class UploaderScreen extends StatefulWidget {
     this.now = DateTime.now,
     this.extractFrames,
     this.extractCaptionAudio,
+    this.extractCaptionVisualProxy,
     this.growthToolSettingsStore =
         const SharedPreferencesGrowthToolSettingsStore(),
     this.initialVideoPath,
@@ -274,6 +278,7 @@ class UploaderScreen extends StatefulWidget {
   // Extracts the clip's audio so AI captions upload a small M4A instead of the
   // whole video. Injectable so tests don't touch the native FFmpeg plugin.
   final UploaderAudioExtractor? extractCaptionAudio;
+  final UploaderCaptionVisualProxyExtractor? extractCaptionVisualProxy;
   final PostDeeGrowthToolSettingsStore growthToolSettingsStore;
 
   // Pre-fills the screen with an already-on-device clip (e.g. the editor's
@@ -422,6 +427,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   Map<SocialPlatform, String>? _platformCaptionsBeforeAi;
   Set<SocialPlatform> _platformCaptionUndoPlatforms = const {};
   bool _platformCaptionReviewBeforeAi = false;
+  ({String text, bool needsReview, String? fallbackMessage, List<String> seoKeywords})?
+      _sharedCaptionBeforeAi;
   String? _acceptedAiCaption;
   String? _acceptedAiCaptionOwner;
   String? _acceptedAiCaptionSource;
@@ -782,11 +789,12 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (clearPlatformUndo) {
       _platformCaptionsBeforeAi = null;
       _platformCaptionUndoPlatforms = const {};
+      _sharedCaptionBeforeAi = null;
     }
     final previewContext = _platformCaptionPreviewContext;
     _platformCaptionPreviewContext = null;
     if (previewContext != null && previewContext.mounted) {
-      Navigator.of(previewContext).pop(false);
+      Navigator.of(previewContext).pop();
     }
     _isGeneratingCaption = false;
     _clearCaptionLearningBaseline();
@@ -2625,8 +2633,9 @@ class _UploaderScreenState extends State<UploaderScreen>
             widget.extractCaptionAudio ?? AiEditAudioExtractor().extract;
         audio = await extractAudio(localVideoFile);
       } on AiEditAudioExtractionException {
-        // No audio track or FFmpeg unavailable: upload the video as before;
-        // the API then returns its template caption.
+        // A silent clip can still contain useful visual evidence. Keep the
+        // upload inside the API media budget instead of sending a doomed file.
+        return _uploadCaptionVisualProxy(localVideoFile, stillCurrent);
       }
     }
 
@@ -2680,6 +2689,44 @@ class _UploaderScreenState extends State<UploaderScreen>
     );
 
     return (s3Key: upload.videoS3Key, isAudio: false);
+  }
+
+  Future<({String s3Key, bool isAudio})?> _uploadCaptionVisualProxy(
+      File source, bool Function() stillCurrent) async {
+    AiEditVisualProxyArtifact? proxy;
+    try {
+      proxy = await (widget.extractCaptionVisualProxy ??
+          AiEditVisualProxyExtractor().extract)(source);
+      if (!stillCurrent()) return null;
+      final size = proxy.file.lengthSync();
+      if (size < 1 || size > aiCaptionClipMaxBytes) {
+        throw const AiEditVisualProxyException(
+            AiEditVisualProxyFailure.emptyOutput);
+      }
+      final upload = await _uploadCaptionFile(
+        request: CreateUploadRequest(
+          fileName: _readFileNameFromPath(proxy.file.path),
+          contentType: 'video/mp4',
+          sizeBytes: size,
+          purpose: 'ai-caption-video',
+        ),
+        file: proxy.file,
+        stillCurrent: stillCurrent,
+      );
+      return (s3Key: upload.videoS3Key, isAudio: false);
+    } on AiEditVisualProxyException {
+      if (stillCurrent()) {
+        setState(() => _aiCaptionErrorMessage =
+            'เตรียมคลิปสำหรับ AI ไม่สำเร็จ ลองเลือกคลิปที่สั้นลงแล้วลองใหม่');
+      }
+      return null;
+    } finally {
+      try {
+        await proxy?.cleanup();
+      } catch (_) {
+        // Optional local cleanup must not replace the caption outcome.
+      }
+    }
   }
 
   /// Extracts still frames from the selected clip and uploads them, returning
@@ -2847,7 +2894,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _setAiCaptionPlatforms(Set<SocialPlatform> selected) {
-    if (_formBusy || _isGeneratingCaption || _isSavingCaptionStyle) return;
+    if (_formBusy || _isGeneratingCaption || _isSavingCaptionStyle ||
+        _platformCaptionPreviewContext != null) {
+      return;
+    }
     setState(() {
       _platformSettings = _platformSettings.copyWith(aiCaptionPlatforms: {
         for (final platform in captionPlatforms)
@@ -2893,6 +2943,32 @@ class _UploaderScreenState extends State<UploaderScreen>
     });
   }
 
+  void _undoSharedAiCaption() {
+    final previous = _sharedCaptionBeforeAi;
+    if (previous == null || _formBusy || _isGeneratingCaption) return;
+    setState(() {
+      _captionController.value = TextEditingValue(
+        text: previous.text,
+        selection: TextSelection.collapsed(offset: previous.text.length),
+      );
+      _captionNeedsReview = previous.needsReview;
+      _aiCaptionFallbackMessage = previous.fallbackMessage;
+      _aiCaptionSeoKeywords = previous.seoKeywords;
+      _sharedCaptionBeforeAi = null;
+      _clearCaptionLearningBaseline();
+      _clearCaptionValidation();
+      _clearDraftSavedFeedback();
+      _aiCaptionErrorMessage = null;
+    });
+  }
+
+  String _captionFallbackNotice(RealClipCaptionResult caption) {
+    final message = caption.fallbackReason == 'INSUFFICIENT_EVIDENCE'
+        ? 'AI ยังจับเนื้อหาคลิปได้ไม่พอ ลองใช้คลิปที่มีเสียงพูดหรือภาพชัดเจนขึ้น ข้อความเดิมยังอยู่'
+        : 'AI วิเคราะห์คลิปไม่สำเร็จ ข้อความเดิมยังอยู่ ลองใหม่ได้ภายหลัง';
+    return '$message${caption.quota.charged ? '' : ' · ไม่หักโควตา AI'}';
+  }
+
   String _formatRealClipCaption(RealClipCaptionResult result) {
     return _formatCaptionParts(result.caption, result.hashtags);
   }
@@ -2922,7 +2998,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _generateAiCaption() async {
-    if (_formBusy || _isGeneratingCaption || _isSavingCaptionStyle) return;
+    if (_formBusy || _isGeneratingCaption || _isSavingCaptionStyle ||
+        _platformCaptionPreviewContext != null) {
+      return;
+    }
     final quotaSession = _captionQuotaSession;
     final advanced = _platformSettings.usePlatformCaptions;
     final requestedPlatforms = [
@@ -3074,6 +3153,10 @@ class _UploaderScreenState extends State<UploaderScreen>
             'คุณแก้ข้อความระหว่างที่ AI ทำงาน จึงเก็บข้อความที่คุณเขียนไว้');
         return;
       }
+      if (caption.isFallback) {
+        setState(() => _aiCaptionFallbackMessage = _captionFallbackNotice(caption));
+        return;
+      }
       if (advanced) {
         final captions = <SocialPlatform, String>{};
         for (final platform in requestedPlatforms) {
@@ -3116,43 +3199,63 @@ class _UploaderScreenState extends State<UploaderScreen>
             _clearTikTokFreshness();
           }
           // A partial generation cannot review the other captions for a new clip.
-          _captionNeedsReview = caption.isFallback ||
-              (_captionNeedsReview &&
-                  requestedPlatforms.length < captionPlatforms.length);
-          _aiCaptionFallbackMessage = caption.isFallback
-              ? 'AI วิเคราะห์คลิปไม่สำเร็จ กรุณาตรวจข้อความสำรองก่อนใช้'
-                  '${caption.quota.charged ? '' : ' · ไม่หักโควตา AI'}'
-              : null;
-          if (!caption.isFallback) {
-            _acceptedAiCaption = jsonEncode(_platformSettings.platformCaptions
-                .map((key, value) => MapEntry(key.apiValue, value)));
-            _acceptedAiCaptionOwner = owner;
-            _acceptedAiCaptionSource = sourcePath;
-          }
+          _captionNeedsReview = _captionNeedsReview &&
+              requestedPlatforms.length < captionPlatforms.length;
+          _aiCaptionFallbackMessage = null;
+          _acceptedAiCaption = jsonEncode(_platformSettings.platformCaptions
+              .map((key, value) => MapEntry(key.apiValue, value)));
+          _acceptedAiCaptionOwner = owner;
+          _acceptedAiCaptionSource = sourcePath;
         });
         return;
       }
-      setState(() {
-        _captionController.value = TextEditingValue(
-          text: nextCaption,
-          selection: TextSelection.collapsed(offset: nextCaption.length),
+      final choices = <String>{
+        nextCaption,
+        for (final option in caption.captionOptions)
+          if (option.trim().isNotEmpty)
+            _formatCaptionParts(option, caption.hashtags),
+      }.where((value) => value.isNotEmpty).take(3).toList();
+      var selectedCaption = nextCaption;
+      if (choices.length > 1 || originalCaption.trim().isNotEmpty) {
+        // The modal protects input while the snapshots also guard changes
+        // caused by a new owner, clip or text behind the sheet.
+        if (!mounted) return;
+        setState(() => _isGeneratingCaption = false);
+        final selected = await showModalBottomSheet<String>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (sheetContext) {
+            _platformCaptionPreviewContext = sheetContext;
+            return CaptionOptionsPreviewSheet(captions: choices);
+          },
         );
-        _captionNeedsReview = caption.isFallback;
-        if (!caption.isFallback) {
-          _acceptedAiCaption = nextCaption;
-          _acceptedAiCaptionOwner = owner;
-          _acceptedAiCaptionSource = sourcePath;
-          _captionRevealRevision++;
-        }
+        _platformCaptionPreviewContext = null;
+        if (selected == null || !stillCurrent() || !textUnchanged()) return;
+        selectedCaption = selected;
+      }
+      setState(() {
+        _sharedCaptionBeforeAi = (
+          text: _captionController.text,
+          needsReview: _captionNeedsReview,
+          fallbackMessage: _aiCaptionFallbackMessage,
+          seoKeywords: List.of(_aiCaptionSeoKeywords),
+        );
+        _captionController.value = TextEditingValue(
+          text: selectedCaption,
+          selection: TextSelection.collapsed(offset: selectedCaption.length),
+        );
+        _captionNeedsReview = false;
+        _acceptedAiCaption = selectedCaption;
+        _acceptedAiCaptionOwner = owner;
+        _acceptedAiCaptionSource = sourcePath;
+        _captionRevealRevision++;
         _aiCaptionSeoKeywords = caption.seoKeywords
             .map((keyword) => keyword.trim())
             .where((keyword) => keyword.isNotEmpty)
             .toSet()
             .toList();
-        _aiCaptionFallbackMessage = caption.isFallback
-            ? 'AI วิเคราะห์คลิปไม่สำเร็จ แคปชันนี้เป็นข้อความสำรอง กรุณาตรวจและแก้ไขก่อนใช้'
-                '${caption.quota.charged ? '' : ' · ไม่หักโควตา AI'}'
-            : null;
+        _aiCaptionFallbackMessage = null;
       });
     } on ApiException catch (error) {
       if (!stillCurrent()) {
@@ -3170,6 +3273,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                 : 'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว สมาชิก Starter หรือ Pro ดูแพ็กเติมได้ในหน้าเลือกแพ็กเกจ หรือรอรอบเดือนถัดไป',
           'AI_CAPTION_COST_CONFIRMATION_REQUIRED' =>
             'กรุณาอัปเดตแอปหรือตรวจสอบช่องทางที่เลือก แล้วลองสร้างแคปชั่นใหม่',
+          'CAPTION_GENERATION_TIMEOUT' =>
+            'AI ใช้เวลานานเกินไป ข้อความเดิมยังอยู่ ลองใหม่อีกครั้ง',
           'UPLOAD_AI_CAPTION_VIDEO_INVALID' =>
             'อัปโหลดคลิปให้ AI ไม่สำเร็จ กรุณาเลือกไฟล์ MP4 ที่มีขนาดไม่เกินกำหนด',
           _ => apiErrorMessage(error,
@@ -6140,6 +6245,13 @@ class _UploaderScreenState extends State<UploaderScreen>
                   style: TextStyle(fontSize: 11.5,
                       color: AppTheme.textMuted)),
           ],
+          if (!_platformSettings.usePlatformCaptions && _sharedCaptionBeforeAi != null)
+            OutlinedButton.icon(
+              key: const ValueKey('uploader-shared-ai-undo'),
+              onPressed: _formBusy || _isGeneratingCaption ? null : _undoSharedAiCaption,
+              icon: const Icon(Icons.undo),
+              label: const CaptionText('คืนข้อความก่อนใช้ AI'),
+            ),
           if (_captionNeedsReview) ...[
             const SizedBox(height: 10),
             Row(

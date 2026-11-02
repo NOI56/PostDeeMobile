@@ -1,5 +1,45 @@
 # PostDee Staging
 
+## ระบบคิดแคปชั่น: หลักฐานและการคืนเครดิต — 1 พฤศจิกายน 2026
+
+- เจ้าของสั่ง merge/push/deploy หลังรับทราบผลตรวจและข้อจำกัด Gemini จึงรวมแบบ
+  fast-forward จาก `353cb011` เป็น `604ecad78916881421fe07f6b4eb4a4f30951b5c`
+  แล้ว push `main` โดยรักษางานที่ยังไม่ commit ใน checkout เดิมไว้ครบ
+  คง `[skip render]`; Production ยัง user-suspended และไม่ได้ deploy/resume
+- แพตช์แยกอ่านหลักฐาน เขียน และตรวจทานแคปชั่น พร้อมกำหนดเวลารอ/คืนเครดิตและ
+  ตรวจข้อความตามกฎโพสต์ มือถือเลือกแคปชั่นรวมได้สูงสุด 3 แบบพร้อมคืนข้อความเดิม
+  และเตรียมวิดีโอย่อสำหรับคลิปใหญ่ที่ไม่มีเสียง โดยคงเครดิตรายช่อง สิทธิ์แพ็กเกจ
+  draft/owner guards, Facebook Reels และขอบเขตฟีเจอร์ retired เดิม
+- [CI 41327579474](https://github.com/NOI56/PostDeeMobile/actions/runs/41327579474)
+  ของ SHA นี้ผ่านก่อน deploy เวลา **23:52:04 น. ไทย (16:52:04 UTC)**:
+  API 3,259 ผ่าน / 67 opt-in ข้าม, Mobile 4,571 ผ่าน / 7 optional ข้าม,
+  typecheck/build/Prisma/audit และ Mobile analyze/config guards ผ่าน
+  caption PostgreSQL 7 ข้อที่ข้ามใน CI ผ่านแล้วบนฐานจำลองแยกในเครื่อง
+  [iOS 41327579445](https://github.com/NOI56/PostDeeMobile/actions/runs/41327579445)
+  ผ่านแบบ no codesign เวลา 23:47:09 น. ไทย (16:47:09 UTC); ไม่ได้แจกหรือติดตั้ง
+- Deploy
+  [`dep-dbjmsh3bc2fs73d9vkog`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbjmsh3bc2fs73d9vkog)
+  เริ่ม **23:52:20 น. ไทย (16:52:20 UTC)** และ **Live 23:53:52 น. ไทย
+  (16:53:52 UTC)** ที่ SHA `604ecad7` ตรงกับที่ CI ผ่าน แทน `449b4657` /
+  `dep-dbjksp2jnfac738a57h0` ซึ่งเก็บเป็นจุดอ้างอิงย้อนกลับ
+- Startup ยืนยัน `postdee_staging`, 28 migrations และ `No pending migrations
+  to apply.`; publishing activation guard ผ่านและ backlog ว่าง ไม่เพิ่ม migration
+  หรือเปลี่ยน env, secret, feature flag, dependency หรือสิทธิ์แพ็กเกจ
+  `npm prune` ยังรายงาน moderate vulnerabilities 4 รายการ; CI เกณฑ์ high ผ่าน
+- ตรวจสดจบ **23:54:46 น. ไทย (16:54:46 UTC)**: `/health` 200, `/ready` 200
+  พร้อม database/queue `ok` และ `Cache-Control: no-store`; `/posts`,
+  `/captions/quota` และ `POST /captions/generate-from-clip` ไม่ส่ง token ได้ 401
+  ไม่เรียก Gemini หรือเขียนเนื้อหาลูกค้า ไม่พบ app logs ระดับ error/warn ตั้งแต่
+  เริ่ม deploy ถึง 16:55:12 UTC และ Production ยังคงสถานะ/เวลาอัปเดตเดิม
+- APK Staging 12090 ของแพตช์นี้ติดตั้งบน emulator-5554 แล้วในรอบก่อนหน้า
+  โดย UID 10197/พื้นที่เก็บข้อมูลเดิมคงอยู่ ไม่ติดตั้งซ้ำหรือแจก APK ในรอบ deploy นี้
+  เจ้าของเลือกใช้ Gemini key เดิมและรอโควตารายวันรีเซ็ต จึงยังไม่ยืนยันภาษาอังกฤษ
+  รอบสุดท้าย คลิปเงียบที่มีภาพ การเตรียม proxy บน Android จริง และ R2/hosted E2E
+  การผ่าน health/CI และ deploy ไม่ทำให้การตรวจเหล่านี้ถือว่าผ่าน
+- [บันทึกการแก้ไขและผลทดสอบ](superpowers/plans/2026-11-01-caption-quality-reliability.md)
+  และ `.tmp/caption-quality/staging-health-receipt.json` เก็บหลักฐานไว้
+  commit บันทึกผลภายหลังเปลี่ยนเฉพาะเอกสาร; runtime Staging คง SHA `604ecad7`
+
 ## รวมงานค้าง 4 กลุ่มขึ้น Staging — 1 พฤศจิกายน 2026
 
 - หลังรับทราบผล native QA ที่เกิด ANR ซ้ำ เจ้าของสั่ง `main/push/deploy`

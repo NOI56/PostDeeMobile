@@ -359,6 +359,8 @@ void main() {
         findsOneWidget);
     await goToUploaderStep(tester, 0);
     await _generate(tester);
+    await tester.tap(find.byKey(const ValueKey('uploader-shared-ai-apply')));
+    await tester.pumpAndSettle();
     await _show(tester, find.byKey(_captionKey));
     expect(_caption(tester), 'แคปชันจาก AI ของคลิปเดิม');
     expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
@@ -366,30 +368,32 @@ void main() {
   });
 
   testWidgets(
-      'fallback review persists in drafts and known warning survives repick',
+      'fallback preserves writing and replacement review persists in drafts',
       (tester) async {
     final gate = Completer<RealClipCaptionResult>();
     final fixture = _AiFixture(captionGate: gate);
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 1);
+    await _enterCaption(tester, 'ข้อความร้านที่ยืนยันแล้ว');
     await _generate(tester);
     gate.complete(_aiResult(isFallback: true, caption: 'ข้อความสำรอง'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
-        findsOneWidget);
+        findsNothing);
     final save = find.byKey(const ValueKey('uploader-save-draft-button'));
     await _show(tester, save, scrollable: uploaderHeaderScroll);
     await tester.tap(save);
     await tester.pumpAndSettle();
-    expect(fixture.draftStore.savedRequests.single.captionNeedsReview, isTrue);
+    expect(fixture.draftStore.savedRequests.single.captionNeedsReview, isFalse);
     fixture.replacementVideo = _video('fallback-review.mp4');
     await _pickAgain(tester);
-    expect(_caption(tester), 'ข้อความสำรอง');
+    expect(_caption(tester), 'ข้อความร้านที่ยืนยันแล้ว');
     await _show(
         tester, find.byKey(const ValueKey('uploader-ai-caption-fallback')));
-    expect(find.textContaining('แคปชันนี้เป็นข้อความสำรอง'), findsOneWidget);
+    expect(find.textContaining('ข้อความเดิมยังอยู่'), findsOneWidget);
     await _saveAndRestore(tester, fixture);
-    expect(_caption(tester), 'ข้อความสำรอง');
+    expect(_caption(tester), 'ข้อความร้านที่ยืนยันแล้ว');
     expect(find.byKey(const ValueKey('uploader-caption-review-notice')),
         findsOneWidget);
   });
@@ -406,9 +410,9 @@ void main() {
     await tester.pumpAndSettle();
     await _show(
         tester, find.byKey(const ValueKey('uploader-ai-caption-fallback')));
-    expect(find.textContaining('แคปชันนี้เป็นข้อความสำรอง'), findsOneWidget);
+    expect(find.textContaining('ข้อความเดิมยังอยู่'), findsOneWidget);
     expect(find.textContaining('ไม่หักโควตา AI'), findsOneWidget);
-    expect(_caption(tester), 'ข้อความสำรอง');
+    expect(_caption(tester), isEmpty);
     expect(fixture.postsCreated, 0);
   });
 

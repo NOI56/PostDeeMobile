@@ -264,8 +264,15 @@ void main() {
       expect(
           fixture.uploads.where((upload) => upload.contentType == 'video/mp4'),
           hasLength(1));
+      expect(find.byKey(const ValueKey('uploader-shared-ai-preview')),
+          findsOneWidget);
+      _expectOriginalText(tester);
+      await tester.tap(find.byKey(const ValueKey('uploader-shared-ai-apply')));
+      await tester.pumpAndSettle();
       expect(tester.widget<TextField>(find.byKey(_captionKey)).controller!.text,
           'แคปชั่นที่ยืนยันสิทธิ์แล้ว');
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
     });
   }
 

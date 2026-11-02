@@ -33,6 +33,16 @@ void main() {
     expect(localizeCaptionMessage(context, 'แคปชั่น'), 'Caption');
     expect(localizeCaptionMessage(context, 'สไตล์การเขียน'), 'Writing style');
     expect(localizeCaptionMessage(context, 'ดูคลิป'), 'Watch video');
+    expect(localizeCaptionMessage(context, 'เลือกแคปชั่นที่ชอบ'), 'Choose a caption');
+    expect(localizeCaptionMessage(context,
+        'เตรียมคลิปสำหรับ AI ไม่สำเร็จ ลองเลือกคลิปที่สั้นลงแล้วลองใหม่'),
+        'Could not prepare the video for AI. Choose a shorter video and try again.');
+    expect(localizeCaptionMessage(context,
+        'AI ยังจับเนื้อหาคลิปได้ไม่พอ ลองใช้คลิปที่มีเสียงพูดหรือภาพชัดเจนขึ้น ข้อความเดิมยังอยู่ · ไม่หักโควตา AI'),
+        'AI could not identify enough content. Try a video with clearer speech or visuals. Your original text is unchanged. · No AI quota charged');
+    expect(localizeCaptionMessage(context,
+        'AI ใช้เวลานานเกินไป ข้อความเดิมยังอยู่ ลองใหม่อีกครั้ง'),
+        'AI took too long. Your original text is unchanged. Please try again.');
   });
 
   testWidgets('English dynamic counters retain the supplied numeric values',

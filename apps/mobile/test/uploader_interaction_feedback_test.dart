@@ -395,6 +395,10 @@ void main() {
     expect(_waitingIndicator, findsOneWidget);
     expect(_caption(tester), 'ข้อความที่มีอยู่ก่อน');
     fixture.captionGate.complete(_result());
+    await tester.pumpAndSettle();
+    expect(_caption(tester), 'ข้อความที่มีอยู่ก่อน');
+    expect(_key('uploader-shared-ai-preview'), findsOneWidget);
+    await tester.tap(_key('uploader-shared-ai-apply'));
     await tester.pump();
     expect(_caption(tester), 'แคปชันทั้งหมดจากคลิปจริง');
     expect(_waitingIndicator, findsNothing);
@@ -429,9 +433,7 @@ void main() {
       expect(_revealOpacity(tester), 1);
       expect(
           _caption(tester),
-          failure == 'error'
-              ? 'ข้อความที่ร้านเขียนเอง'
-              : 'แคปชันทั้งหมดจากคลิปจริง');
+          'ข้อความที่ร้านเขียนเอง');
       fixture.expectNoPublishing();
       expect(fixture.drafts.attempts, 0);
       await tester.pumpWidget(const SizedBox.shrink());

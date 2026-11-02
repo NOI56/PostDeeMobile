@@ -8,7 +8,7 @@ export const aiCaptionFrameMaxBytes = 5 * 1024 * 1024;
 export const realClipCaptionClipMaxBytes = 15_000_000;
 
 // 'audio' is the app's extracted M4A, 'video' a legacy full clip upload.
-export type AiMediaFetchOptions = { kind: 'frame' | 'audio' | 'video'; maxBytes: number };
+export type AiMediaFetchOptions = { kind: 'frame' | 'audio' | 'video'; maxBytes: number; signal?: AbortSignal };
 
 export class MediaDownloadError extends Error {
   constructor(
@@ -43,43 +43,54 @@ const createTooLargeError = (declaredSizeBytes?: number) =>
 
 // Reads the body chunk by chunk so a missing or understated Content-Length
 // cannot make the shared process buffer more than maxBytes.
-const readBodyWithinLimit = async (body: ReadableStream<Uint8Array>, maxBytes: number) => {
+const readBodyWithinLimit = async (body: ReadableStream<Uint8Array>, maxBytes: number, signal?: AbortSignal) => {
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
 
-  for (;;) {
-    const { done, value } = await reader.read();
+  const onAbort = () => { void reader.cancel(signal?.reason).catch(() => undefined); };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    signal?.throwIfAborted();
+    for (;;) {
+      const { done, value } = await reader.read();
+      signal?.throwIfAborted();
 
-    if (done) {
-      break;
+      if (done) {
+        break;
+      }
+
+      total += value.byteLength;
+
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw createTooLargeError();
+      }
+
+      chunks.push(value);
     }
 
-    total += value.byteLength;
+    const bytes = new Uint8Array(total);
+    let offset = 0;
 
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => undefined);
-      throw createTooLargeError();
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
     }
 
-    chunks.push(value);
+    return bytes;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+    reader.releaseLock();
   }
-
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return bytes;
 };
 
 export const readAiMediaResponseBytes = async (
   response: Pick<Response, 'arrayBuffer' | 'headers'> & { body?: ReadableStream<Uint8Array> | null },
-  maxBytes = aiMediaDownloadMaxBytes
+  maxBytes = aiMediaDownloadMaxBytes,
+  signal?: AbortSignal
 ) => {
+  signal?.throwIfAborted();
   const contentLength = readContentLength(response.headers);
 
   if (contentLength !== undefined && contentLength > maxBytes) {
@@ -88,10 +99,11 @@ export const readAiMediaResponseBytes = async (
   }
 
   if (response.body) {
-    return readBodyWithinLimit(response.body, maxBytes);
+    return readBodyWithinLimit(response.body, maxBytes, signal);
   }
 
   const buffer = await response.arrayBuffer();
+  signal?.throwIfAborted();
 
   if (buffer.byteLength > maxBytes) {
     throw createTooLargeError();

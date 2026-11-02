@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createInMemoryMonthlyAddonStore } from '../billing/monthlyAddonStore.js';
 import { createSubscriptionStore, type SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
 import { registerCaptionRoutes } from './captionRoutes.js';
-import { generateLocalAffiliateCaption } from './captionService.js';
+import { generateLocalAffiliateCaption, generateLocalRealClipCaption } from './captionService.js';
 import { createInMemoryRealClipCaptionUsageStore } from './captionUsageStore.js';
 
 const fixture = (initialPlan: SubscriptionPlan = 'STARTER', authenticated = true) => {
@@ -26,7 +26,8 @@ const fixture = (initialPlan: SubscriptionPlan = 'STARTER', authenticated = true
   };
   app.use(express.json());
   registerCaptionRoutes(router, generator, auth, subscriptions, undefined, usageStore,
-    undefined, undefined, undefined, undefined, {
+    { generate: async input => ({ ...generateLocalRealClipCaption(input), model: 'test-ai' }) },
+    async () => ({ data: new Uint8Array([1]), mimeType: 'video/mp4' }), undefined, undefined, {
       monthlyAddonStore,
       billingAddonsEnabled: false,
       now: () => new Date(instant)

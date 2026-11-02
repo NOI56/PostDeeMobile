@@ -5,10 +5,15 @@ import {
   createRealClipCaptionProviderFromConfig
 } from './realClipCaptionProvider.js';
 
-const jsonResponse = (payload: unknown) => ({
+const jsonResponse = (payload: unknown, init?: RequestInit, visibleText: string[] = []) => ({
   ok: true as const,
   json: async () => ({
-    candidates: [{ content: { parts: [{ text: JSON.stringify(payload) }] } }]
+    candidates: [{ content: { parts: [{ text: JSON.stringify(
+      init && JSON.parse(init.body as string).contents[0].parts.some((part: { inlineData?: unknown }) => part.inlineData)
+        ? { transcript: 'สินค้านี้ดีจริง', detectedSpokenLanguage: (payload as { detectedSpokenLanguage?: string }).detectedSpokenLanguage ?? 'th',
+          visibleText, visualObservations: [], enoughEvidence: true }
+        : payload
+    ) }] } }]
   })
 });
 
@@ -28,7 +33,7 @@ const audio = { data: new Uint8Array([1, 2, 3]), mimeType: 'video/mp4' };
 
 describe('createGeminiRealClipCaptionProvider', () => {
   it('listens to the clip and maps a structured caption (Starter audio-only)', async () => {
-    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse(sampleCaption));
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => jsonResponse(sampleCaption, init));
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
@@ -56,7 +61,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
   });
 
   it('sends selected frames for Pro audio-with-frames mode', async () => {
-    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse(sampleCaption));
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => jsonResponse(sampleCaption, init));
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
@@ -92,7 +97,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
   it.each(['AUDIO_ONLY', 'AUDIO_WITH_FRAMES'] as const)(
     'requests grounded hook-first captions from the supplied clip in %s mode',
     async (mode) => {
-      const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => jsonResponse(sampleCaption));
+      const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => jsonResponse(sampleCaption, init));
       const provider = createGeminiRealClipCaptionProvider({
         apiKey: 'gemini-key',
         model: 'gemini-2.5-flash-lite',
@@ -105,7 +110,9 @@ describe('createGeminiRealClipCaptionProvider', () => {
         audio
       });
 
-      const body = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body as string);
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+      const extraction = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body as string);
+      const body = JSON.parse(fetchImpl.mock.calls[1]?.[1]?.body as string);
       const system = body.systemInstruction.parts[0].text as string;
       const instruction = body.contents[0].parts.at(-1).text as string;
       const prompt = `${system}\n${instruction}`;
@@ -113,7 +120,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
       expect(system).toContain('คำพูดจริงหรือข้อความหลักที่อ่านได้ตลอดคลิปเป็นภาษาอื่น');
       expect(system).toContain('ครีเอเตอร์และผู้ขาย');
       expect(system).not.toContain('Thai affiliate marketer');
-      expect(prompt).toContain('คลิปที่ส่งมา');
+      expect(prompt).toContain('ข้อมูลหลักฐานจากคลิป');
       expect(prompt).toContain('Hook เฉพาะเรื่องที่เห็นจริง');
       expect(prompt).toContain('ไม่ทักทาย');
       expect(prompt).toContain('ห้ามแต่งประโยชน์ สินค้า ราคา ส่วนลด');
@@ -123,10 +130,10 @@ describe('createGeminiRealClipCaptionProvider', () => {
       expect(prompt).toContain('ชื่อแบรนด์ ชื่อบัญชี วันที่ ตัวเลข หรือชื่อฟิลด์ JSON');
       expect(prompt).toContain('หากข้อความหลักเป็นภาษาอื่นให้ใช้ภาษานั้น');
       expect(prompt).toContain('ปุ่ม เมนู ชื่อแพ็กเกจ และลิงก์ไม่ใช่หลักฐานว่าทำสิ่งนั้นสำเร็จ');
-      expect(prompt).toContain('ถ้าคลิปไม่มีเสียงและมีเพียงการเปิดหรือสลับเมนู');
-      expect(prompt).toContain('เขียนเป็นการพาชมเมนูที่เห็นจริงเท่านั้น');
-      expect(prompt).toContain('ห้ามเปลี่ยนเป็นวิธีเริ่มธุรกิจ สร้างร้าน โปรโมต หรือประโยชน์ที่ยังไม่เห็น');
-      expect(prompt).toContain('[ชื่อเมนูที่เห็นจริง] มีอะไรให้ดูบ้าง?');
+      expect(prompt).toContain('ห้ามกลับคำปฏิเสธเป็นคำชม');
+      expect(prompt).toContain('คงข้อเสีย ข้อจำกัด');
+      expect(prompt).not.toContain('[ชื่อเมนูที่เห็นจริง]');
+      expect(prompt).toContain('สินค้านี้ดีจริง');
       expect(prompt).toContain('caption, captionOptions, hooks, seoKeywords และ hashtags ทั้งชุด');
       expect(prompt).toContain('การตั้งค่า แก้ไข ซื้อสินค้า โพสต์ ตั้งเวลา หรือเชื่อมบัญชี');
       expect(prompt).toContain('ข้อสังเกตหรือคำถามธรรมชาติ');
@@ -144,7 +151,8 @@ describe('createGeminiRealClipCaptionProvider', () => {
       expect(prompt).toContain('ให้ส่ง []');
       expect(prompt).toContain(guidance);
       expect(instruction).toContain('ภาษาพูดจริง → ข้อความหลักที่อ่านได้ทั้งคลิป → คำแนะนำผู้ขาย → ภาษาไทย');
-      expect(body.contents[0].parts[0].inlineData).toEqual({
+      expect(body.contents[0].parts[0]).not.toHaveProperty('inlineData');
+      expect(extraction.contents[0].parts[0].inlineData).toEqual({
         mimeType: 'video/mp4', data: 'AQID'
       });
       expect(body.generationConfig).toEqual({
@@ -160,9 +168,10 @@ describe('createGeminiRealClipCaptionProvider', () => {
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
-      fetchImpl: async () => jsonResponse({
-        ...sampleCaption, caption, captionLanguage: language, detectedSpokenLanguage: language
-      })
+      fetchImpl: async (_url, init) => jsonResponse({
+        ...sampleCaption, caption, captionOptions: [caption], hooks: [caption], hashtags: [], seoKeywords: [],
+        searchTitle: caption, captionLanguage: language, detectedSpokenLanguage: language
+      }, init)
     });
     const result = await provider.generate({
       request: { videoS3Key: 'uploads/u/clip.mp4', selectedFrameKeys: [], deleteAfterUse: false },
@@ -183,7 +192,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
-      fetchImpl: async () => jsonResponse({ ...withoutMetadata, ...metadata })
+      fetchImpl: async (_url, init) => jsonResponse({ ...withoutMetadata, ...metadata }, init)
     });
 
     const result = await provider.generate({
@@ -203,7 +212,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
       model: 'gemini-2.5-flash-lite',
-      fetchImpl: async () => jsonResponse({
+      fetchImpl: async (_url, init) => jsonResponse({
         ...sampleCaption,
         caption,
         hooks,
@@ -211,7 +220,7 @@ describe('createGeminiRealClipCaptionProvider', () => {
           'หน้าร้าน', '#หน้าร้าน', 'Café', 'Cafe\u0301', '#bad tag', '#x1', '#x2'],
         seoKeywords: [' อัปเดต\tลิงก์ร้าน ', 'อัปเดต  ลิงก์ร้าน', 'Online shop',
           'online SHOP', 'Café', 'Cafe\u0301', '  เมนู ร้าน  ', 'โปรไฟล์ร้าน', 'overflow']
-      })
+      }, init, ['ShopLink', 'Online shop', 'Café'])
     });
 
     const result = await provider.generate({
@@ -227,12 +236,12 @@ describe('createGeminiRealClipCaptionProvider', () => {
 
   it('retries a transient 503 then succeeds', async () => {
     let calls = 0;
-    const fetchImpl = vi.fn(async () => {
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
       calls += 1;
       if (calls === 1) {
         return { ok: false, status: 503, json: async () => ({}) };
       }
-      return jsonResponse(sampleCaption);
+      return jsonResponse(sampleCaption, init);
     });
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',
@@ -249,15 +258,15 @@ describe('createGeminiRealClipCaptionProvider', () => {
     });
 
     expect(result.caption).toBeTruthy();
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
   it('falls back to a secondary model when the primary stays overloaded', async () => {
-    const fetchImpl = vi.fn(async (url: string) => {
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
       if (url.includes('gemini-2.5-flash-lite')) {
         return { ok: false, status: 503, json: async () => ({}) };
       }
-      return jsonResponse(sampleCaption);
+      return jsonResponse(sampleCaption, init);
     });
     const provider = createGeminiRealClipCaptionProvider({
       apiKey: 'gemini-key',

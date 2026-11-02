@@ -5,12 +5,16 @@ import { renderLinkInBioPage } from './linkInBioRenderer.js';
 import type { LinkInBioProfile } from './linkInBioStore.js';
 import { getProfileTemplate, profileTemplates } from './profileTemplateCatalog.generated.js';
 
-// The cartoon release: ten original drawings on five cartoon page layouts.
+// The cartoon release: twenty original drawings on seven cartoon page layouts.
 const designs = {
   'cartoon-doodle-shop': 'banner', 'cartoon-comic-panels': 'panels', 'cartoon-tag-buddy': 'beside',
   'cartoon-sticker-sheet': 'banner', 'cartoon-chalkboard': 'banner', 'cartoon-street-front': 'signboard',
   'cartoon-chat-bubbles': 'chat', 'cartoon-signposts': 'beside', 'cartoon-crayon-sky': 'banner',
-  'cartoon-rocket-night': 'banner'
+  'cartoon-rocket-night': 'banner',
+  'cartoon-puppet-stage': 'stage', 'cartoon-corkboard': 'pinboard', 'cartoon-treasure-map': 'banner',
+  'cartoon-party-bunting': 'banner', 'cartoon-jigsaw': 'beside', 'cartoon-pixel-land': 'banner',
+  'cartoon-rainy-day': 'beside', 'cartoon-hot-air-balloons': 'beside', 'cartoon-under-the-sea': 'stage',
+  'cartoon-tiny-town': 'banner'
 } as const;
 const designIds = Object.keys(designs) as (keyof typeof designs)[];
 const longName = 'ร้านเสื้อผ้ามือสองคุณภาพดีราคาเป็นกันเองส่งทั่วประเทศไทย';
@@ -29,7 +33,7 @@ const scoped = (html: string, suffix: string) => [...html.matchAll(/([^{}]+)\{([
 const fill = (html: string, index: number) => html.match(new RegExp(`\\.link-${index}\\{color:[^;]+;background:([^;]+);`))?.[1];
 
 describe('cartoon storefront designs', () => {
-  it('ships exactly the ten approved cartoon designs', () => {
+  it('ships exactly the twenty approved cartoon designs', () => {
     expect(profileTemplates.filter((template) => template.category === 'cartoon').map((template) => template.id)).toEqual(designIds);
   });
 
@@ -47,7 +51,7 @@ describe('cartoon storefront designs', () => {
     expect(scoped(html, ' .link-copy')).toContain('min-width:0');
     expect(html).toMatch(/@media\(max-width:400px\)\{body\[data-template\]\[data-template-category="cartoon"\]\[data-composition\]/);
     // Every design gives its links a drawn edge.
-    expect(scoped(html, ' a')).toMatch(/border:|clip-path:/);
+    expect(scoped(html, ' a')).toMatch(/border:|clip-path:|background-image:/);
     // The 3D hero is never used for cartoon pages.
     expect(html).not.toContain('profile-3d-');
     expect(html).not.toMatch(/<script\b/);
@@ -79,7 +83,7 @@ describe('cartoon storefront designs', () => {
   });
 
   it('places beside drawings next to the avatar and keeps their transparent art whole', () => {
-    for (const templateId of ['cartoon-tag-buddy', 'cartoon-signposts']) {
+    for (const templateId of designIds.filter((id) => designs[id] === 'beside')) {
       const html = renderLinkInBioPage(page(templateId), 'nonce');
       expect(scoped(html, ' .profile-header'), templateId).toContain('grid-template-columns:minmax(0,1fr) minmax(0,1.45fr)');
       expect(scoped(html, ' .profile-cartoon-art'), templateId).toContain('object-fit:contain');
@@ -136,7 +140,7 @@ describe('cartoon storefront designs', () => {
   });
 
   it('cycles comic, sticker and chat fills only while the default colors are kept', () => {
-    for (const templateId of ['cartoon-comic-panels', 'cartoon-sticker-sheet', 'cartoon-chat-bubbles']) {
+    for (const templateId of ['cartoon-comic-panels', 'cartoon-sticker-sheet', 'cartoon-chat-bubbles', 'cartoon-corkboard', 'cartoon-party-bunting', 'cartoon-jigsaw', 'cartoon-hot-air-balloons']) {
       const html = renderLinkInBioPage(page(templateId), 'nonce');
       const fills = [0, 1, 2, 3].map((index) => fill(html, index));
       expect(new Set(fills).size, templateId).toBeGreaterThan(1);
@@ -160,5 +164,65 @@ describe('cartoon storefront designs', () => {
     const html = renderLinkInBioPage(page('cartoon-rocket-night'), 'nonce');
     expect([...html.matchAll(/src="([^"]+)"/g)].map((match) => match[1]).filter((src) => src!.includes('decorations')))
       .toEqual(['/profile-decorations/cartoon-rocket-night.png']);
+  });
+});
+
+describe('second cartoon set', () => {
+  it('centers the avatar inside the stage and sea drawings', () => {
+    for (const templateId of ['cartoon-puppet-stage', 'cartoon-under-the-sea']) {
+      const html = renderLinkInBioPage(page(templateId), 'nonce');
+      const avatar = scoped(html, ' .profile-cartoon-hero .logo');
+      expect(avatar, templateId).toContain('position:absolute');
+      expect(avatar, templateId).toMatch(/top:calc\(50% - \d+px\)/);
+      expect(avatar, templateId).toMatch(/left:calc\(50% - \d+px\)/);
+      expect(scoped(html, ' .profile-cartoon-art'), templateId).toContain('object-fit:cover');
+      expect(scoped(html, ' .profile-copy'), templateId).toContain('text-align:center');
+    }
+  });
+
+  it('pins the owner logo to the corkboard as a photo', () => {
+    const html = renderLinkInBioPage(page('cartoon-corkboard'), 'nonce');
+    expect(html).toMatch(/<span class="profile-cartoon-photo"><div class="logo avatar-initial"/);
+    const photo = scoped(html, ' .profile-cartoon-photo');
+    expect(photo).toContain('position:absolute');
+    expect(photo).toContain('background:#ffffff');
+    expect(photo).toContain('transform:rotate(-3deg)');
+    expect(scoped(html, ' .profile-cartoon-photo::before')).toContain('border-radius:50%');
+    // The initial stays centred inside the photo.
+    expect(scoped(html, ' .profile-cartoon-photo .logo')).not.toContain('display:block');
+    // Each sticky-note link has its own push pin.
+    expect(scoped(html, ' a::before')).toContain('border-radius:50%');
+  });
+
+  it('joins treasure-map links with a dotted trail', () => {
+    const html = renderLinkInBioPage(page('cartoon-treasure-map'), 'nonce');
+    expect(scoped(html, ' .link-item + .link-item::before')).toContain('dotted');
+    expect(scoped(html, ' .link-item')).toContain('position:relative');
+  });
+
+  it('cuts bunting links into swallowtail flags and pixel links into stepped corners', () => {
+    const bunting = renderLinkInBioPage(page('cartoon-party-bunting'), 'nonce');
+    expect(scoped(bunting, ' a')).toContain('clip-path:polygon(0 0,100% 0,calc(100% - 16px) 50%,100% 100%,0 100%)');
+    expect(scoped(bunting, ' .link-item:focus-within')).toContain('outline:3px solid');
+    const pixel = renderLinkInBioPage(page('cartoon-pixel-land'), 'nonce');
+    expect(scoped(pixel, ' a')).toMatch(/clip-path:polygon\(0 8px,4px 8px,4px 4px,8px 4px,8px 0/);
+    expect(scoped(pixel, ' .link-item')).toMatch(/filter:drop-shadow\(3px 0 0 #[0-9a-f]{6}\)/);
+    expect(scoped(pixel, ' .link-item:focus-within')).toContain('outline:3px solid');
+  });
+
+  it('gives jigsaw links a knob and a socket', () => {
+    const html = renderLinkInBioPage(page('cartoon-jigsaw'), 'nonce');
+    expect(scoped(html, ' a::after')).toContain('background:inherit');
+    expect(scoped(html, ' a::after')).toContain('right:-11px');
+    expect(scoped(html, ' a::before')).toContain('left:-11px');
+    expect(scoped(html, ' a::before')).toContain(`background:${getProfileTemplate('cartoon-jigsaw')!.palette.surface}`);
+  });
+
+  it('adds raindrops, bubbles and road lines as small drawn details', () => {
+    expect(scoped(renderLinkInBioPage(page('cartoon-rainy-day'), 'nonce'), ' a::after')).toContain('border-radius:0 50% 50% 50%');
+    const sea = renderLinkInBioPage(page('cartoon-under-the-sea'), 'nonce');
+    expect(scoped(sea, ' a::before')).toContain('border-radius:50%');
+    expect(scoped(sea, ' a::after')).toContain('border-radius:50%');
+    expect(scoped(renderLinkInBioPage(page('cartoon-tiny-town'), 'nonce'), ' a')).toContain('repeating-linear-gradient(90deg');
   });
 });

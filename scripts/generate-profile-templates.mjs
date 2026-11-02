@@ -12,9 +12,9 @@ const categoryIds = ['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensi
 const paletteFields = ['background', 'gradient', 'surface', 'button', 'name', 'description', 'category', 'buttonText', 'brand'];
 const compositionIds = ["editorial","bicolor","portrait","scallop","collage","window","botanical","glass","torn","seal","tag","gallery","poster","window-grid","ticket","rail","ribbon","notebook","arch","staircase"];
 const dimensionalCompositionIds = ['clay', 'paper-stack', 'frosted', 'showcase', 'split-art', 'tile-grid', 'neon', 'slab'];
-const cartoonCompositionIds = ['banner', 'beside', 'signboard', 'panels', 'chat'];
+const cartoonCompositionIds = ['banner', 'beside', 'signboard', 'panels', 'chat', 'stage', 'pinboard'];
 const categoryCompositions = { dimensional: dimensionalCompositionIds, cartoon: cartoonCompositionIds };
-const categorySizes = { cartoon: 10 };
+const categorySizes = { cartoon: 20 };
 // Templates without a marker belong to the release that introduced their
 // category (classic: 1, first 3D set: 2). Later additions name their release:
 // the second 3D set is 3 and every cartoon design is 4.
@@ -39,7 +39,7 @@ const contrast = (foreground, background) => (Math.max(luminance(foreground), lu
 export function validateProfileTemplateCatalog(manifest) {
   requireValue(manifest && manifest.version === 4 && Array.isArray(manifest.categories) && Array.isArray(manifest.templates), 'Expected version 4 profile template catalog');
   requireValue(manifest.categories.length === categoryIds.length && manifest.categories.every((category, index) => category.id === categoryIds[index] && text(category.name)), 'Expected five original categories, the 3D category and the cartoon category');
-  requireValue(manifest.templates.length === 130, 'Expected 100 original, twenty 3D and ten cartoon profile templates');
+  requireValue(manifest.templates.length === 140, 'Expected 100 original, twenty 3D and twenty cartoon profile templates');
   const ids = new Set();
   for (const template of manifest.templates) {
     requireValue(template && categoryIds.includes(template.category) && text(template.name) && template.name.length <= 80, 'Invalid template category or name');

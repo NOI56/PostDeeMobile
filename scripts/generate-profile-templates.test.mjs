@@ -5,9 +5,9 @@ import { test } from 'node:test';
 import { validateProfileTemplateCatalog, generateProfileTemplateTypeScript, generateProfileTemplateDart } from './generate-profile-templates.mjs';
 
 const source = JSON.parse(await readFile(new URL('../shared/profile-templates.json', import.meta.url), 'utf8'));
-test('authored catalog adds twenty 3D and ten cartoon templates to the existing one hundred', () => {
+test('authored catalog adds twenty 3D and twenty cartoon templates to the existing one hundred', () => {
   assert.equal(source.version, 4);
-  assert.equal(validateProfileTemplateCatalog(source).templates.length, 130);
+  assert.equal(validateProfileTemplateCatalog(source).templates.length, 140);
   assert.deepEqual(source.categories.map((category) => category.id), ['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional', 'cartoon']);
   assert.match(generateProfileTemplateTypeScript(source), /export const profileTemplateCatalogVersion = 4/);
   assert.match(generateProfileTemplateDart(source), /const profileTemplateCatalogVersion = 4/);
@@ -72,20 +72,23 @@ test('the second 3D release adds ten scenes on five new layouts after the first 
   assert.match(generateProfileTemplateTypeScript(source), /since\?: 3 \| 4/);
 });
 
-test('the cartoon release adds ten original designs on five cartoon layouts', () => {
+test('the cartoon release adds twenty original designs on seven cartoon layouts', () => {
   const cartoon = source.templates.filter((template) => template.category === 'cartoon');
   assert.equal(source.categories.at(-1).name, 'การ์ตูน');
   assert.deepEqual(cartoon.map((template) => template.id), [
     'cartoon-doodle-shop', 'cartoon-comic-panels', 'cartoon-tag-buddy', 'cartoon-sticker-sheet', 'cartoon-chalkboard',
-    'cartoon-street-front', 'cartoon-chat-bubbles', 'cartoon-signposts', 'cartoon-crayon-sky', 'cartoon-rocket-night'
+    'cartoon-street-front', 'cartoon-chat-bubbles', 'cartoon-signposts', 'cartoon-crayon-sky', 'cartoon-rocket-night',
+    'cartoon-puppet-stage', 'cartoon-corkboard', 'cartoon-treasure-map', 'cartoon-party-bunting', 'cartoon-jigsaw',
+    'cartoon-pixel-land', 'cartoon-rainy-day', 'cartoon-hot-air-balloons', 'cartoon-under-the-sea', 'cartoon-tiny-town'
   ]);
-  assert.deepEqual(source.templates.slice(120).map((template) => template.category), Array(10).fill('cartoon'));
-  assert.equal(new Set(cartoon.map((template) => template.name)).size, 10);
+  assert.deepEqual(source.templates.slice(120).map((template) => template.category), Array(20).fill('cartoon'));
+  assert.equal(new Set(cartoon.map((template) => template.name)).size, 20);
   assert.ok(cartoon.every((template) => template.since === 4 && template.themeId === 'minimal'));
-  assert.deepEqual(['banner', 'beside', 'signboard', 'panels', 'chat'].map((composition) => cartoon.filter((template) => template.layout.composition === composition).length), [5, 2, 1, 1, 1]);
+  assert.deepEqual(['banner', 'beside', 'signboard', 'panels', 'chat', 'stage', 'pinboard'].map((composition) => cartoon.filter((template) => template.layout.composition === composition).length), [9, 5, 1, 1, 1, 2, 1]);
   assert.ok(cartoon.every((template) => template.effects.stickers === 'none' && template.effects.background === false));
   assert.match(generateProfileTemplateTypeScript(source), /'cartoon'/);
   assert.match(generateProfileTemplateTypeScript(source), /'signboard'/);
+  assert.match(generateProfileTemplateTypeScript(source), /'pinboard'/);
 });
 
 test('cartoon layouts stay inside their category and every cartoon design names its release', () => {

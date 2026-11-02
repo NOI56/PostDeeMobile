@@ -6,7 +6,7 @@ import 'package:postdee_mobile/core/models/profile_template_catalog.generated.da
 
 void main() {
   test(
-      'five legacy categories, twenty 3D and ten cartoon choices retain their catalogs',
+      'five legacy categories, twenty 3D and twenty cartoon choices retain their catalogs',
       () {
     expect(profileTemplateCategories.keys, [
       'minimal',
@@ -18,9 +18,9 @@ void main() {
       'cartoon'
     ]);
     expect(profileTemplateCatalogVersion, 4);
-    expect(profileTemplates, hasLength(130));
+    expect(profileTemplates, hasLength(140));
     expect(profileTemplates.map((template) => template.id).toSet(),
-        hasLength(130));
+        hasLength(140));
     for (final category in profileTemplateCategories.keys
         .where((id) => id != 'dimensional' && id != 'cartoon')) {
       final templates = profileTemplates
@@ -47,10 +47,17 @@ void main() {
     });
     final cartoon = profileTemplates.where((item) => item.category == 'cartoon');
     expect(profileTemplateCategories['cartoon'], 'การ์ตูน');
-    expect(cartoon, hasLength(10));
-    expect(cartoon.map((item) => item.name).toSet(), hasLength(10));
-    expect(cartoon.map((item) => item.layout.composition).toSet(),
-        {'banner', 'beside', 'signboard', 'panels', 'chat'});
+    expect(cartoon, hasLength(20));
+    expect(cartoon.map((item) => item.name).toSet(), hasLength(20));
+    expect(cartoon.map((item) => item.layout.composition).toSet(), {
+      'banner',
+      'beside',
+      'signboard',
+      'panels',
+      'chat',
+      'stage',
+      'pinboard'
+    });
   });
 
   test('the three agreed reference compositions appear first in each category',

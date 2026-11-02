@@ -13,7 +13,7 @@ import 'package:postdee_mobile/features/link_in_bio/link_in_bio_preview_styles.d
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_template_preview.dart';
 import 'package:postdee_mobile/features/link_in_bio/link_in_bio_theme_picker.dart';
 
-// The cartoon release: ten original drawings on five cartoon page layouts.
+// The cartoon release: twenty original drawings on seven cartoon page layouts.
 const _designs = {
   'cartoon-doodle-shop': 'banner',
   'cartoon-comic-panels': 'panels',
@@ -25,6 +25,16 @@ const _designs = {
   'cartoon-signposts': 'beside',
   'cartoon-crayon-sky': 'banner',
   'cartoon-rocket-night': 'banner',
+  'cartoon-puppet-stage': 'stage',
+  'cartoon-corkboard': 'pinboard',
+  'cartoon-treasure-map': 'banner',
+  'cartoon-party-bunting': 'banner',
+  'cartoon-jigsaw': 'beside',
+  'cartoon-pixel-land': 'banner',
+  'cartoon-rainy-day': 'beside',
+  'cartoon-hot-air-balloons': 'beside',
+  'cartoon-under-the-sea': 'stage',
+  'cartoon-tiny-town': 'banner',
 };
 const _english = {
   'cartoon-doodle-shop': 'Doodle shop',
@@ -37,6 +47,16 @@ const _english = {
   'cartoon-signposts': 'Signposts',
   'cartoon-crayon-sky': 'Crayon sky',
   'cartoon-rocket-night': 'Cartoon rocket',
+  'cartoon-puppet-stage': 'Puppet stage',
+  'cartoon-corkboard': 'Corkboard',
+  'cartoon-treasure-map': 'Treasure map',
+  'cartoon-party-bunting': 'Party bunting',
+  'cartoon-jigsaw': 'Jigsaw',
+  'cartoon-pixel-land': 'Pixel landscape',
+  'cartoon-rainy-day': 'Rainy day',
+  'cartoon-hot-air-balloons': 'Hot-air balloons',
+  'cartoon-under-the-sea': 'Under the sea',
+  'cartoon-tiny-town': 'Tiny town',
 };
 const _longName = 'ร้านเสื้อผ้ามือสองคุณภาพดีราคาเป็นกันเองส่งทั่วประเทศไทย';
 
@@ -94,7 +114,7 @@ Widget _localized(Widget child, {String language = 'th'}) => MaterialApp(
     home: Scaffold(body: SingleChildScrollView(child: child)));
 
 void main() {
-  test('the catalog carries exactly the ten approved cartoon designs', () {
+  test('the catalog carries exactly the twenty approved cartoon designs', () {
     expect(
         profileTemplates
             .where((template) => template.category == 'cartoon')
@@ -142,7 +162,7 @@ void main() {
 
   testWidgets('beside layouts put the drawing next to the avatar',
       (tester) async {
-    for (final id in ['cartoon-tag-buddy', 'cartoon-signposts']) {
+    for (final id in _designs.keys.where((id) => _designs[id] == 'beside')) {
       await _pump(tester, id);
       final avatar = _rect(tester, 'link-in-bio-composition-avatar');
       final art = _rect(tester, 'link-in-bio-cartoon-art-$id');
@@ -248,7 +268,11 @@ void main() {
     for (final id in [
       'cartoon-comic-panels',
       'cartoon-sticker-sheet',
-      'cartoon-chat-bubbles'
+      'cartoon-chat-bubbles',
+      'cartoon-corkboard',
+      'cartoon-party-bunting',
+      'cartoon-jigsaw',
+      'cartoon-hot-air-balloons'
     ]) {
       await _pump(tester, id);
       final fills = [
@@ -297,7 +321,7 @@ void main() {
     }
   });
 
-  testWidgets('the picker offers cartoon as its own ten-design category',
+  testWidgets('the picker offers cartoon as its own twenty-design category',
       (tester) async {
     LinkInBioAppearance? selected;
     final original = LinkInBioAppearance.forTemplate('minimal-white-editorial')
@@ -314,8 +338,8 @@ void main() {
     await tester
         .tap(find.byKey(const ValueKey('link-in-bio-category-cartoon')));
     await tester.pumpAndSettle();
-    expect(find.text('การ์ตูน · 10 แบบ'), findsOneWidget);
-    expect(find.byType(BioTemplateSample), findsNWidgets(10));
+    expect(find.text('การ์ตูน · 20 แบบ'), findsOneWidget);
+    expect(find.byType(BioTemplateSample), findsNWidgets(20));
     // Thumbnails never invent a store name.
     expect(find.text('noikub'), findsNothing);
     expect(selected, isNull);
@@ -331,6 +355,61 @@ void main() {
     expect(selected?.templateId, 'cartoon-doodle-shop');
     expect(selected?.description, 'ข้อความเดิมของร้าน');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('stage designs center the avatar inside the drawing',
+      (tester) async {
+    for (final id in ['cartoon-puppet-stage', 'cartoon-under-the-sea']) {
+      await _pump(tester, id);
+      final art = _rect(tester, 'link-in-bio-cartoon-art-$id');
+      final avatar = _rect(tester, 'link-in-bio-composition-avatar');
+      expect((avatar.center - art.center).distance, lessThan(1), reason: id);
+    }
+  });
+
+  testWidgets('the corkboard pins the logo as a photo and pins every note',
+      (tester) async {
+    await _pump(tester, 'cartoon-corkboard');
+    final photo = _rect(tester, 'link-in-bio-cartoon-photo');
+    final art = _rect(tester, 'link-in-bio-cartoon-art-cartoon-corkboard');
+    expect(
+        photo.contains(_rect(tester, 'link-in-bio-composition-avatar').center),
+        isTrue);
+    expect(photo.top, greaterThan(art.top));
+    expect(photo.bottom, lessThan(art.bottom));
+    for (final id in ['l0', 'l1', 'l2', 'l3']) {
+      expect(
+          find.byKey(ValueKey('link-in-bio-cartoon-pin-$id')), findsOneWidget);
+    }
+  });
+
+  testWidgets('treasure-map links are joined by a dotted trail',
+      (tester) async {
+    await _pump(tester, 'cartoon-treasure-map');
+    expect(find.byKey(const ValueKey('link-in-bio-cartoon-trail-l0')),
+        findsNothing);
+    for (final id in ['l1', 'l2', 'l3']) {
+      expect(find.byKey(ValueKey('link-in-bio-cartoon-trail-$id')),
+          findsOneWidget);
+    }
+  });
+
+  testWidgets('second-set link shapes and details are drawn', (tester) async {
+    const shapes = {
+      'cartoon-party-bunting': 'notch',
+      'cartoon-pixel-land': 'pixel',
+      'cartoon-jigsaw': 'knob',
+      'cartoon-rainy-day': 'drop',
+      'cartoon-under-the-sea': 'bubbles',
+      'cartoon-tiny-town': 'road',
+    };
+    for (final entry in shapes.entries) {
+      await _pump(tester, entry.key);
+      expect(find.byKey(ValueKey('link-in-bio-cartoon-${entry.value}-l0')),
+          findsOneWidget,
+          reason: entry.key);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
@@ -358,7 +437,7 @@ void main() {
                           'cartoon-rocket-night'),
                       onChanged: (_) {})))));
       await tester.pumpAndSettle();
-      expect(find.text('Cartoon · 10 templates'), findsOneWidget);
+      expect(find.text('Cartoon · 20 templates'), findsOneWidget);
       expect(find.text('Cartoon'), findsOneWidget);
       for (final name in _english.values) {
         expect(find.text(name), findsOneWidget, reason: name);

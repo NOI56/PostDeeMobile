@@ -15,7 +15,9 @@ const files = ['botanical-frame', 'forest', 'meadow', 'paper', 'letter-frame', '
   'dimensional-parcel-stack', 'dimensional-ceramic-tiles', 'dimensional-pop-shapes', 'dimensional-neon-sign',
   'dimensional-concrete-slab', 'dimensional-terrazzo-steps',
   'cartoon-doodle-shop', 'cartoon-comic-panels', 'cartoon-tag-buddy', 'cartoon-sticker-sheet', 'cartoon-chalkboard',
-  'cartoon-street-front', 'cartoon-chat-bubbles', 'cartoon-signposts', 'cartoon-crayon-sky', 'cartoon-rocket-night'];
+  'cartoon-street-front', 'cartoon-chat-bubbles', 'cartoon-signposts', 'cartoon-crayon-sky', 'cartoon-rocket-night',
+  'cartoon-puppet-stage', 'cartoon-corkboard', 'cartoon-treasure-map', 'cartoon-party-bunting', 'cartoon-jigsaw',
+  'cartoon-pixel-land', 'cartoon-rainy-day', 'cartoon-hot-air-balloons', 'cartoon-under-the-sea', 'cartoon-tiny-town'];
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 describe('bundled profile decoration artwork', () => {

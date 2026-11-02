@@ -39,6 +39,33 @@ replaces the drawing. Artwork contains no text.
 The chalkboard has no menu or prices and the shopfront names no kind of shop,
 so neither overlaps the "by store type" category.
 
+## Second set (2026-11-03)
+
+The owner asked for ten more cartoon designs, approved this list in Thai and
+it was added to the same branch and PR (NOI56/PostDeeMobile#54). Nothing was
+released, so the designs stay in catalog 4 with `"since": 4`; Cartoon now has
+twenty templates on seven layouts. The new layouts are `stage` (the avatar in
+the middle of the drawing) and `pinboard` (the logo as a photo pinned to the
+board). Drawings are in `scripts/cartoon-storefront-art/scenes-second-set.mjs`.
+
+| Template ID | Thai / English name | Layout | Drawing and links |
+| --- | --- | --- | --- |
+| `cartoon-puppet-stage` | ม่านโรงละคร / Puppet stage | `stage` | empty curtained stage, spotlight; gold-edged stage links (dark) |
+| `cartoon-corkboard` | บอร์ดไม้ก๊อก / Corkboard | `pinboard` | pinned notes and tape; sticky-note links with push pins, fills take turns |
+| `cartoon-treasure-map` | แผนที่สมบัติ / Treasure map | `banner` | islands, dotted trail, compass; dashed parchment links joined by a dotted trail |
+| `cartoon-party-bunting` | ธงราวงานรื่นเริง / Party bunting | `banner` | flag garland, balloons, confetti; swallowtail flag links, fills take turns |
+| `cartoon-jigsaw` | จิ๊กซอว์ / Jigsaw | `beside` | pieces fitting together; puzzle-piece links with a knob and a socket |
+| `cartoon-pixel-land` | พิกเซลอาร์ต / Pixel landscape | `banner` | 8-bit sun, mountains and pines; links with stepped pixel corners |
+| `cartoon-rainy-day` | วันฝนพรำ / Rainy day | `beside` | umbrella, rain cloud, puddles, small rainbow; soft links with a raindrop |
+| `cartoon-hot-air-balloons` | บอลลูนลมร้อน / Hot-air balloons | `beside` | striped balloons with baskets; capsule links, fills take turns |
+| `cartoon-under-the-sea` | ใต้ทะเล / Under the sea | `stage` | seaweed, coral, bubbles, round fish; the avatar in a bubble; links with rising bubbles (dark) |
+| `cartoon-tiny-town` | เมืองจิ๋ว / Tiny town | `banner` | little houses along a winding road; links with a dashed road line |
+
+Avoided on purpose in this set: puppets or characters on the stage;
+orange-and-white striped or blue-and-yellow fish and faces on sea life; a
+house lifted by balloons; blocks, mushrooms, pipes, coins or ghosts from
+well-known games in the pixel scene; skulls and pirate hats on the map.
+
 ## Originality and licences
 
 The owner's rules: original work or commercially licensed sources only; no
@@ -95,7 +122,8 @@ must keep a catalog-4 reader; never clear stored designs.
 
 ## Verification
 
-- [x] Generator: 28 tests and `--check` pass; art guard: 31 tests pass.
+- [x] Generator: 28 tests and `--check` pass; art guard: 31 tests pass
+  (first set; see the second-set results below).
 - [x] API link-in-bio suites: 932 pass, including per-release GET/POST/DELETE
   compatibility (catalogs 1–5), exact replay and conflict, cover/colour
   overrides, layout CSS, fill turns and PNG parity for all 30 decoration files.
@@ -130,3 +158,10 @@ must keep a catalog-4 reader; never clear stored designs.
   (Cancel); adb was already authorized after restarting the adb server.
 - [ ] Saving or publishing a cartoon design against Staging needs PR #51 and this
   API deployed first (owner authorization). Production untouched.
+
+### Second set verification (2026-11-03)
+
+- [x] Native previews (exported widgets with bundled fonts and artwork) and
+  public pages at 360px match for all ten; public pages at 320px with a long
+  Thai name have no horizontal overflow. Review fixed a web-only centring bug
+  (the corkboard initial) and moved a sea bubble off the arrow icon.

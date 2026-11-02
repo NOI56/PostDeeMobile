@@ -34,9 +34,9 @@ const _wobblySquare = BorderRadius.only(
     bottomLeft: Radius.elliptical(4, 6));
 BorderRadius _round(double radius) => BorderRadius.all(Radius.circular(radius));
 
-// The cartoon release: ten original drawings on five page layouts (banner,
-// beside, signboard, panels and chat). Keep geometry and materials in step
-// with the public renderer's linkInBioCartoonStyles.ts.
+// The cartoon release: twenty original drawings on seven page layouts
+// (banner, beside, signboard, panels, chat, stage and pinboard). Keep geometry
+// and materials in step with the public renderer's linkInBioCartoonStyles.ts.
 final bioCartoonDesigns = <String, BioCartoonDesign>{
   'cartoon-doodle-shop': const BioCartoonDesign(176, 84, 16, _wobblyPanel),
   'cartoon-comic-panels': BioCartoonDesign(150, 88, 16, _round(8)),
@@ -48,6 +48,16 @@ final bioCartoonDesigns = <String, BioCartoonDesign>{
   'cartoon-signposts': BioCartoonDesign(168, 72, 14, _round(22)),
   'cartoon-crayon-sky': const BioCartoonDesign(176, 84, 16, _wobblyPanel),
   'cartoon-rocket-night': BioCartoonDesign(176, 84, 14, _round(28)),
+  'cartoon-puppet-stage': BioCartoonDesign(200, 88, 16, _round(24)),
+  'cartoon-corkboard': BioCartoonDesign(190, 72, 20, _round(12)),
+  'cartoon-treasure-map': BioCartoonDesign(176, 84, 18, _round(20)),
+  'cartoon-party-bunting': BioCartoonDesign(176, 84, 14, _round(26)),
+  'cartoon-jigsaw': BioCartoonDesign(168, 72, 16, _round(24)),
+  'cartoon-pixel-land': BioCartoonDesign(176, 80, 18, _round(4)),
+  'cartoon-rainy-day': BioCartoonDesign(168, 72, 14, _round(28)),
+  'cartoon-hot-air-balloons': BioCartoonDesign(176, 72, 14, _round(28)),
+  'cartoon-under-the-sea': BioCartoonDesign(200, 88, 14, _round(28)),
+  'cartoon-tiny-town': BioCartoonDesign(176, 84, 14, _round(22)),
 };
 
 // Rotating crayon outlines; the first follows the owner's heading color.
@@ -57,6 +67,7 @@ const bioCrayonColors = [
   Color(0xfff08a00)
 ];
 const _chalkFrame = Color(0xff8b5e3c);
+const _corkFrame = Color(0xffb98552);
 
 double bioCartoonSide(BuildContext context) =>
     MediaQuery.sizeOf(context).width <= 400 ? 16 : 20;
@@ -78,15 +89,20 @@ BorderRadius bioCartoonLinkRadius(
     'square' => 4.0,
     _ => 16.0,
   };
-  // Arrow signs keep a straight point; only the left corners are rounded.
-  return template.id == 'cartoon-signposts'
-      ? BorderRadius.horizontal(left: Radius.circular(radius))
-      : _round(radius);
+  // Arrow signs and flags keep a straight cut; only the left corners are
+  // rounded. Pixel steps come from their own clip.
+  return switch (template.id) {
+    'cartoon-signposts' ||
+    'cartoon-party-bunting' =>
+      BorderRadius.horizontal(left: Radius.circular(radius)),
+    'cartoon-pixel-land' => BorderRadius.zero,
+    _ => _round(radius),
+  };
 }
 
-// Comic, sticker and chat links take turns between a few fills, like printed
-// panels, stickers or two sides of a chat, only while the owner keeps the
-// design's own colors and the default text stays readable on each fill.
+// Some cartoon links take turns between a few fills, like printed panels,
+// stickers, two sides of a chat, sticky notes or balloons, only while the
+// owner keeps the design's own colors and the default text stays readable.
 Color? bioCartoonLinkFill(ProfileTemplate template,
     LinkInBioAppearance appearance, LinkInBioCustomLink link, int rhythm) {
   if (link.buttonColor != null ||
@@ -101,6 +117,10 @@ Color? bioCartoonLinkFill(ProfileTemplate template,
     'cartoon-comic-panels' => [button, wash, '#cdeaff', '#ffd6e3'],
     'cartoon-sticker-sheet' => [button, '#c9f2d9', '#ffd6e3', '#cfe6ff'],
     'cartoon-chat-bubbles' => [button, wash, button, wash],
+    'cartoon-corkboard' => [button, '#ffd6e3', '#d4f5d0', '#d6ecff'],
+    'cartoon-party-bunting' => [button, '#bfe8ff', '#ffc9d6', '#c9f0c3'],
+    'cartoon-jigsaw' => [button, '#c4ecd4', '#ffd0dc', '#cfe0ff'],
+    'cartoon-hot-air-balloons' => [button, '#fff1b8', '#d4f0ff', '#e6dcff'],
     _ => null,
   };
   if (colors == null) return null;
@@ -115,9 +135,17 @@ EdgeInsets bioCartoonLinkPadding(ProfileTemplate template, bool narrow) {
   final side = narrow ? 12.0 : 16.0;
   final vertical = narrow ? 14.0 : 15.0;
   return EdgeInsets.fromLTRB(
-      template.id == 'cartoon-tag-buddy' ? (narrow ? 18 : 22) : side,
+      switch (template.id) {
+        'cartoon-tag-buddy' => narrow ? 18 : 22,
+        'cartoon-jigsaw' => narrow ? 20 : 22,
+        _ => side,
+      },
       template.id == 'cartoon-street-front' ? (narrow ? 22 : 24) : vertical,
-      template.id == 'cartoon-signposts' ? (narrow ? 30 : 34) : side,
+      switch (template.id) {
+        'cartoon-signposts' || 'cartoon-party-bunting' => narrow ? 30 : 34,
+        'cartoon-jigsaw' => narrow ? 20 : 22,
+        _ => side,
+      },
       vertical);
 }
 
@@ -144,7 +172,35 @@ BoxDecoration bioCartoonPanelDecoration(
                   offset: Offset(0, 16))
             ],
           'cartoon-crayon-sky' => const <BoxShadow>[],
-          'cartoon-rocket-night' => const [
+          'cartoon-treasure-map' => [
+              BoxShadow(
+                  color:
+                      bioColor(appearance.categoryStyle.color).withAlpha(0x33),
+                  offset: const Offset(4, 5))
+            ],
+          'cartoon-pixel-land' => [
+              BoxShadow(
+                  color: bioColor(appearance.nameStyle.color).withAlpha(0x33),
+                  offset: const Offset(6, 6))
+            ],
+          'cartoon-tiny-town' => [
+              BoxShadow(
+                  color: bioColor(appearance.nameStyle.color).withAlpha(0x1f),
+                  offset: const Offset(0, 6))
+            ],
+          'cartoon-corkboard' => const [
+              BoxShadow(
+                  color: Color(0x1f000000),
+                  blurRadius: 30,
+                  offset: Offset(0, 14))
+            ],
+          'cartoon-puppet-stage' => const [
+              BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 40,
+                  offset: Offset(0, 18))
+            ],
+          'cartoon-rocket-night' || 'cartoon-under-the-sea' => const [
               BoxShadow(
                   color: Color(0x59000000),
                   blurRadius: 40,
@@ -169,7 +225,14 @@ Border bioCartoonPanelBorder(
     'cartoon-comic-panels' => Border.all(color: ink, width: 3),
     'cartoon-chalkboard' => Border.all(color: _chalkFrame, width: 10),
     'cartoon-crayon-sky' => Border.all(color: line, width: 3),
-    'cartoon-rocket-night' => Border.all(color: line.withAlpha(0x33)),
+    'cartoon-rocket-night' ||
+    'cartoon-under-the-sea' =>
+      Border.all(color: line.withAlpha(0x33)),
+    'cartoon-puppet-stage' => Border.all(color: line.withAlpha(0x55)),
+    'cartoon-corkboard' => Border.all(color: _corkFrame, width: 8),
+    'cartoon-treasure-map' => Border.all(color: line, width: 2),
+    'cartoon-pixel-land' => Border.all(color: ink, width: 3),
+    'cartoon-tiny-town' => Border.all(color: ink, width: 2),
     _ => Border.all(color: line.withAlpha(0x24)),
   };
 }
@@ -216,7 +279,50 @@ BoxDecoration bioCartoonLinkDecoration({
           BoxShadow(color: line.withAlpha(0x33), spreadRadius: 1),
         ]
       ),
-    'cartoon-chalkboard' || 'cartoon-signposts' => (null, const <BoxShadow>[]),
+    'cartoon-chalkboard' ||
+    'cartoon-signposts' ||
+    'cartoon-party-bunting' ||
+    'cartoon-pixel-land' =>
+      (null, const <BoxShadow>[]),
+    'cartoon-puppet-stage' => (
+        Border.all(color: line, width: 2),
+        [
+          const BoxShadow(
+              color: Color(0x59000000), blurRadius: 22, offset: Offset(0, 10)),
+          BoxShadow(color: line.withAlpha(0x40), offset: const Offset(0, 6)),
+        ]
+      ),
+    'cartoon-corkboard' => (
+        null,
+        const [
+          BoxShadow(
+              color: Color(0x2e000000), blurRadius: 12, offset: Offset(0, 8))
+        ]
+      ),
+    'cartoon-treasure-map' => (
+        null,
+        [BoxShadow(color: line.withAlpha(0x33), offset: const Offset(0, 3))]
+      ),
+    'cartoon-jigsaw' => (Border.all(color: ink, width: 2), const <BoxShadow>[]),
+    'cartoon-rainy-day' => (
+        Border.all(color: line.withAlpha(0x40), width: 2),
+        [BoxShadow(color: line.withAlpha(0x26), offset: const Offset(0, 4))]
+      ),
+    'cartoon-hot-air-balloons' => (
+        Border.all(color: ink, width: 2),
+        [BoxShadow(color: ink.withAlpha(0x26), offset: const Offset(0, 4))]
+      ),
+    'cartoon-under-the-sea' => (
+        Border.all(color: line.withAlpha(0x66), width: 2),
+        const [
+          BoxShadow(
+              color: Color(0x40000000), blurRadius: 18, offset: Offset(0, 8))
+        ]
+      ),
+    'cartoon-tiny-town' => (
+        Border.all(color: ink, width: 2),
+        [BoxShadow(color: ink.withAlpha(0x1f), offset: const Offset(0, 4))]
+      ),
     'cartoon-street-front' => (
         Border.all(color: line, width: 2),
         [BoxShadow(color: line.withAlpha(0x40), offset: const Offset(0, 4))]
@@ -250,8 +356,9 @@ BoxDecoration bioCartoonLinkDecoration({
       boxShadow: shadows);
 }
 
-// Adds what a plain box cannot draw: chat tails, arrow signs, dashed chalk,
-// sticker tilt, the tag's color stripe and the awning band.
+// Adds what a plain box cannot draw: chat tails, arrow signs, flags, pixel
+// steps, puzzle knobs, dashed chalk and map edges, sticker tilt, push pins,
+// map trails, the tag's color stripe, the awning band and small details.
 Widget bioCartoonLink({
   required ProfileTemplate template,
   required LinkInBioAppearance appearance,
@@ -263,7 +370,82 @@ Widget bioCartoonLink({
   final ink = bioColor(appearance.nameStyle.color);
   final line = bioColor(appearance.categoryStyle.color);
   final radius = bioCartoonLinkRadius(template, appearance);
+  final panel = bioColor(appearance.surfaceColor);
   switch (template.id) {
+    case 'cartoon-corkboard':
+      return Stack(clipBehavior: Clip.none, children: [
+        child,
+        Positioned(
+            top: -7,
+            left: 0,
+            right: 0,
+            child: Center(
+                child: Container(
+                    key: ValueKey('link-in-bio-cartoon-pin-${link.id}'),
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                        color: line,
+                        shape: BoxShape.circle,
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Color(0x40000000),
+                              blurRadius: 3,
+                              offset: Offset(0, 2))
+                        ])))),
+      ]);
+    case 'cartoon-treasure-map':
+      final gap = bioCartoonDesigns[template.id]!.gap;
+      final dashed = CustomPaint(
+          foregroundPainter: _BioDashedBorderPainter(radius, line),
+          child: child);
+      if (rhythm == 0) return dashed;
+      return Stack(clipBehavior: Clip.none, children: [
+        dashed,
+        Positioned(
+            left: 36,
+            top: -gap,
+            width: 3,
+            height: gap,
+            child: CustomPaint(
+                key: ValueKey('link-in-bio-cartoon-trail-${link.id}'),
+                painter: _BioDottedTrailPainter(line))),
+      ]);
+    case 'cartoon-party-bunting':
+      final notch = _BioArrowClipper(radius.topLeft.x, notch: true);
+      return CustomPaint(
+          painter: _BioArrowShadowPainter(notch, ink.withAlpha(0x26)),
+          child: ClipPath(
+              key: ValueKey('link-in-bio-cartoon-notch-${link.id}'),
+              clipper: notch,
+              child: child));
+    case 'cartoon-pixel-land':
+      return CustomPaint(
+          painter: _BioPixelOutlinePainter(ink),
+          child: ClipPath(
+              key: ValueKey('link-in-bio-cartoon-pixel-${link.id}'),
+              clipper: const _BioPixelClipper(),
+              child: child));
+    case 'cartoon-jigsaw':
+      return CustomPaint(
+          key: ValueKey('link-in-bio-cartoon-knob-${link.id}'),
+          foregroundPainter: _BioJigsawPainter(ink, panel, color),
+          child: child);
+    case 'cartoon-rainy-day':
+      return CustomPaint(
+          key: ValueKey('link-in-bio-cartoon-drop-${link.id}'),
+          foregroundPainter: _BioDropPainter(line.withValues(alpha: .75)),
+          child: child);
+    case 'cartoon-under-the-sea':
+      return CustomPaint(
+          key: ValueKey('link-in-bio-cartoon-bubbles-${link.id}'),
+          foregroundPainter: _BioBubblesPainter(line.withAlpha(0x99)),
+          child: child);
+    case 'cartoon-tiny-town':
+      return CustomPaint(
+          key: ValueKey('link-in-bio-cartoon-road-${link.id}'),
+          foregroundPainter: _BioRoadPainter(radius, line),
+          child: child);
     case 'cartoon-tag-buddy':
       return CustomPaint(
           foregroundPainter: _BioInsetBandPainter(radius, line, left: 6),
@@ -409,6 +591,35 @@ class BioCartoonHeader extends StatelessWidget {
             BoxShadow(color: line, spreadRadius: 6),
             BoxShadow(color: panel, spreadRadius: 4),
           ],
+        'cartoon-puppet-stage' => [
+            BoxShadow(color: line.withAlpha(0x66), blurRadius: 30),
+            BoxShadow(color: line, spreadRadius: 7),
+            BoxShadow(color: panel, spreadRadius: 4),
+          ],
+        'cartoon-under-the-sea' => const [
+            BoxShadow(
+                color: Color(0x4d000000),
+                blurRadius: 24,
+                offset: Offset(0, 10)),
+            BoxShadow(color: Color(0xccffffff), spreadRadius: 7),
+            BoxShadow(color: Color(0x59ffffff), spreadRadius: 4),
+          ],
+        'cartoon-pixel-land' => [
+            BoxShadow(color: ink, spreadRadius: 7),
+            BoxShadow(color: panel, spreadRadius: 4),
+          ],
+        'cartoon-treasure-map' => [
+            BoxShadow(color: line, spreadRadius: 6),
+            BoxShadow(color: panel, spreadRadius: 4),
+          ],
+        'cartoon-party-bunting' => [
+            BoxShadow(color: line, spreadRadius: 8),
+            const BoxShadow(color: Colors.white, spreadRadius: 5),
+          ],
+        'cartoon-tiny-town' => [
+            BoxShadow(color: ink, spreadRadius: 6),
+            BoxShadow(color: panel, spreadRadius: 4),
+          ],
         _ => const [
             BoxShadow(
                 color: Color(0x1f000000), blurRadius: 14, offset: Offset(0, 6))
@@ -460,6 +671,71 @@ class BioCartoonHeader extends StatelessWidget {
                 copy(centered),
               ]);
         }(),
+      // The avatar stands in the middle of the drawing: on stage, or in a bubble.
+      'stage' =>
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Stack(children: [
+            _bleed(side, design.height, _art(BoxFit.cover)),
+            Positioned.fill(child: Center(child: _ringed(size, ring))),
+          ]),
+          const SizedBox(height: 18),
+          copy(true),
+        ]),
+      // The owner's logo is a photo pinned to the drawn board.
+      'pinboard' =>
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Stack(children: [
+            _bleed(side, design.height, _art(BoxFit.cover)),
+            Positioned(
+                top: 30,
+                left: 0,
+                right: 0,
+                child: Center(
+                    child: Transform.rotate(
+                        angle: -3 * math.pi / 180,
+                        child: Stack(clipBehavior: Clip.none, children: [
+                          Container(
+                              key: const ValueKey('link-in-bio-cartoon-photo'),
+                              width: size + 16,
+                              padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+                              decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  boxShadow: [
+                                    BoxShadow(
+                                        color: Color(0x33000000),
+                                        blurRadius: 14,
+                                        offset: Offset(0, 6))
+                                  ]),
+                              child: avatar(size)),
+                          Positioned(
+                              top: -7,
+                              left: (size + 16) / 2 - 8,
+                              child: Container(
+                                  width: 16,
+                                  height: 16,
+                                  decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: RadialGradient(
+                                          center: Alignment(-.3, -.3),
+                                          stops: [
+                                            0,
+                                            .6
+                                          ],
+                                          colors: [
+                                            Color(0xffff8a80),
+                                            Color(0xffd32f2f)
+                                          ]),
+                                      boxShadow: [
+                                        BoxShadow(
+                                            color: Color(0x40000000),
+                                            blurRadius: 3,
+                                            offset: Offset(0, 2))
+                                      ]))),
+                        ])))),
+          ]),
+          const SizedBox(height: 18),
+          copy(true),
+        ]),
       // The owner's logo hangs on a painted board above the drawn awning.
       'signboard' =>
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -660,13 +936,27 @@ class _BioDashedBorderPainter extends CustomPainter {
       oldDelegate.radius != radius || oldDelegate.color != color;
 }
 
-// A wooden sign cut into a right-pointing arrow.
+// A wooden sign cut into a right-pointing arrow, or a flag with a swallowtail
+// notch cut into its right end.
 class _BioArrowClipper extends CustomClipper<Path> {
-  const _BioArrowClipper(this.radius);
+  const _BioArrowClipper(this.radius, {this.notch = false});
   final double radius;
+  final bool notch;
   @override
   Path getClip(Size size) {
     final r = math.min(radius, size.height / 2);
+    if (notch) {
+      return Path()
+        ..moveTo(r, 0)
+        ..lineTo(size.width, 0)
+        ..lineTo(size.width - 16, size.height / 2)
+        ..lineTo(size.width, size.height)
+        ..lineTo(r, size.height)
+        ..arcToPoint(Offset(0, size.height - r), radius: Radius.circular(r))
+        ..lineTo(0, r)
+        ..arcToPoint(Offset(r, 0), radius: Radius.circular(r))
+        ..close();
+    }
     return Path()
       ..moveTo(r, 0)
       ..lineTo(size.width - 20, 0)
@@ -681,7 +971,7 @@ class _BioArrowClipper extends CustomClipper<Path> {
 
   @override
   bool shouldReclip(covariant _BioArrowClipper oldClipper) =>
-      oldClipper.radius != radius;
+      oldClipper.radius != radius || oldClipper.notch != notch;
 }
 
 class _BioArrowShadowPainter extends CustomPainter {
@@ -694,7 +984,9 @@ class _BioArrowShadowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _BioArrowShadowPainter oldDelegate) =>
-      oldDelegate.arrow.radius != arrow.radius || oldDelegate.color != color;
+      oldDelegate.arrow.radius != arrow.radius ||
+      oldDelegate.arrow.notch != arrow.notch ||
+      oldDelegate.color != color;
 }
 
 // Faint wood grain: a 2px line every 10px, counted from the bottom.
@@ -710,4 +1002,175 @@ class _BioGrainPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _BioGrainPainter oldDelegate) => false;
+}
+
+// A dotted trail on the map between one label and the next.
+class _BioDottedTrailPainter extends CustomPainter {
+  _BioDottedTrailPainter(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    for (var y = 1.5; y < size.height; y += 6) {
+      canvas.drawCircle(Offset(1.5, y), 1.5, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BioDottedTrailPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+// Pixel steps: two 4px steps at every corner.
+class _BioPixelClipper extends CustomClipper<Path> {
+  const _BioPixelClipper();
+  @override
+  Path getClip(Size size) {
+    final w = size.width, h = size.height;
+    return Path()
+      ..addPolygon([
+        Offset(0, 8),
+        const Offset(4, 8),
+        const Offset(4, 4),
+        const Offset(8, 4),
+        const Offset(8, 0),
+        Offset(w - 8, 0),
+        Offset(w - 8, 4),
+        Offset(w - 4, 4),
+        Offset(w - 4, 8),
+        Offset(w, 8),
+        Offset(w, h - 8),
+        Offset(w - 4, h - 8),
+        Offset(w - 4, h - 4),
+        Offset(w - 8, h - 4),
+        Offset(w - 8, h),
+        Offset(8, h),
+        Offset(8, h - 4),
+        Offset(4, h - 4),
+        Offset(4, h - 8),
+        Offset(0, h - 8),
+      ], true);
+  }
+
+  @override
+  bool shouldReclip(covariant _BioPixelClipper oldClipper) => false;
+}
+
+// The page draws the 3px pixel outline as four hard drop shadows plus a soft
+// offset copy; here the same shape is painted once per layer.
+class _BioPixelOutlinePainter extends CustomPainter {
+  _BioPixelOutlinePainter(this.ink);
+  final Color ink;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shape = const _BioPixelClipper().getClip(size);
+    final outline = Path();
+    for (final dx in const [-3.0, 0.0, 3.0]) {
+      for (final dy in const [-3.0, 0.0, 3.0]) {
+        outline.addPath(shape, Offset(dx, dy));
+      }
+    }
+    canvas.drawPath(outline.shift(const Offset(4, 4)),
+        Paint()..color = ink.withAlpha(0x33));
+    canvas.drawPath(outline, Paint()..color = ink);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BioPixelOutlinePainter oldDelegate) =>
+      oldDelegate.ink != ink;
+}
+
+// A puzzle knob out on the right and a socket in on the left, centred on the
+// link's 2px edges. The socket is the panel colour, as on the page.
+class _BioJigsawPainter extends CustomPainter {
+  _BioJigsawPainter(this.ink, this.panel, this.fill);
+  final Color ink;
+  final Color panel;
+  final Color fill;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = Paint()
+      ..color = ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    void piece(Offset centre, Color color, double from) {
+      canvas.save();
+      canvas.clipRect(Rect.fromLTRB(from, 0, from + 16, size.height));
+      canvas.drawCircle(centre, 11, Paint()..color = color);
+      canvas.drawCircle(centre, 10, stroke);
+      canvas.restore();
+    }
+
+    piece(Offset(size.width - 2, size.height / 2), fill, size.width - 4);
+    piece(Offset(2, size.height / 2), panel, 0);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BioJigsawPainter oldDelegate) =>
+      oldDelegate.ink != ink ||
+      oldDelegate.panel != panel ||
+      oldDelegate.fill != fill;
+}
+
+// A small raindrop in the link's top-right padding.
+class _BioDropPainter extends CustomPainter {
+  _BioDropPainter(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.translate(size.width - 13, 14);
+    canvas.rotate(math.pi / 4);
+    canvas.drawRRect(
+        RRect.fromLTRBAndCorners(-5, -5, 5, 5,
+            topRight: const Radius.circular(5),
+            bottomRight: const Radius.circular(5),
+            bottomLeft: const Radius.circular(5)),
+        Paint()..color = color);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _BioDropPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+// Two rising bubbles in the link's top-right padding.
+class _BioBubblesPainter extends CustomPainter {
+  _BioBubblesPainter(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawCircle(Offset(size.width - 12, 14), 5, paint);
+    canvas.drawCircle(Offset(size.width - 7, 7), 3, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _BioBubblesPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+// A dashed road line along the bottom of a link, inside its 2px edge.
+class _BioRoadPainter extends CustomPainter {
+  _BioRoadPainter(this.radius, this.color);
+  final BorderRadius radius;
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRRect(radius.toRRect(Offset.zero & size).deflate(2));
+    final paint = Paint()..color = color;
+    for (var x = 2.0; x < size.width; x += 22) {
+      canvas.drawRect(Rect.fromLTWH(x, size.height - 12, 12, 3), paint);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _BioRoadPainter oldDelegate) =>
+      oldDelegate.radius != radius || oldDelegate.color != color;
 }

@@ -185,7 +185,7 @@ void main() {
                     onChanged: (_) => changes++)))));
     await tester.pumpAndSettle();
     expect(find.byType(BioUiMotionScope), findsOneWidget);
-    expect(profileTemplates, hasLength(130));
+    expect(profileTemplates, hasLength(140));
     expect(find.byKey(const ValueKey('link-in-bio-category-motion-minimal')),
         findsOneWidget);
     for (final template in profileTemplates) {

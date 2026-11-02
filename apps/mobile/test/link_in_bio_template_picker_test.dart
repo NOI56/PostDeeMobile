@@ -291,7 +291,7 @@ void main() {
       expect(
           find.text(switch (category) {
             'dimensional' => '3D · 20 แบบ',
-            'cartoon' => 'การ์ตูน · 10 แบบ',
+            'cartoon' => 'การ์ตูน · 20 แบบ',
             _ => 'เรียบง่าย · 20 แบบ',
           }),
           findsOneWidget);

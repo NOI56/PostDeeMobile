@@ -1,4 +1,5 @@
-// The ten cartoon storefront drawings, written as code in this repository.
+// The first ten cartoon storefront drawings, written as code in this
+// repository; scenes-second-set.mjs holds the next ten.
 // Originality rules (owner requirement, 2026-11-02): no existing or
 // recognizable character, franchise, studio, mascot or brand style; no text,
 // fonts, photos, traced or AI-generated images. Shapes are generic (stars,
@@ -6,29 +7,11 @@
 // designed here. Colors avoid well-known brand liveries, for example
 // convenience-store awnings, chat-app greens and the orange marketplace bag.
 import {
-  circle, curve, ellipse, ellipsePoints, filled, grainFilter, group, ink, jitter, linePoints, path, polygon, random,
-  rect, roundedRectPoints, sketch, starPoints, svg
+  arrowHead, circle, cloudPath, curve, ellipse, ellipsePoints, filled, grainFilter, group, heartPath, ink, jitter, linePoints,
+  path, plus, polygon, random, rect, roundedRectPoints, sketch, sparkle, starPoints, svg
 } from './draw.mjs';
+import { secondCartoonScenes } from './scenes-second-set.mjs';
 
-const arrowHead = (tip, angle, size, color, width) => {
-  const wing = (offset) => [tip[0] - Math.cos(angle + offset) * size, tip[1] - Math.sin(angle + offset) * size];
-  return path(`M${wing(.5).join(' ')}L${tip.join(' ')}L${wing(-.5).join(' ')}`, ink(color, width));
-};
-const sparkle = (cx, cy, size, style) => path(curve([[cx, cy - size], [cx + size * .18, cy - size * .18], [cx + size, cy], [cx + size * .18, cy + size * .18],
-  [cx, cy + size], [cx - size * .18, cy + size * .18], [cx - size, cy], [cx - size * .18, cy - size * .18]], true), style);
-const plus = (cx, cy, size, color, width) => path(`M${cx - size} ${cy}L${cx + size} ${cy}M${cx} ${cy - size}L${cx} ${cy + size}`, ink(color, width));
-const heartPath = (cx, cy, size) => `M${cx} ${cy + size * .9}C${cx - size * 1.6} ${cy - size * .1} ${cx - size * .9} ${cy - size * 1.3} ${cx} ${cy - size * .45}C${cx + size * .9} ${cy - size * 1.3} ${cx + size * 1.6} ${cy - size * .1} ${cx} ${cy + size * .9}Z`;
-// Scalloped cloud: outward arcs between points around an ellipse.
-const cloudPath = (cx, cy, rx, ry, bumps, next, wobble = 0) => {
-  const points = ellipsePoints(cx, cy, rx, ry, bumps, -Math.PI / 2)
-    .map(([x, y]) => next ? [x + (next() - .5) * wobble * rx, y + (next() - .5) * wobble * ry] : [x, y]);
-  const format = ([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`;
-  return `M${format(points[0])}${points.map((current, index) => {
-    const following = points[(index + 1) % points.length];
-    const radius = Math.hypot(following[0] - current[0], following[1] - current[1]) * .62;
-    return `A${radius.toFixed(1)} ${radius.toFixed(1)} 0 0 1 ${format(following)}`;
-  }).join('')}Z`;
-};
 // Straight edges split into short steps, so a wobbly spline stays box-shaped.
 const box = (corners, steps = 6) => corners.flatMap((corner, index) => linePoints(corner, corners[(index + 1) % corners.length], steps).slice(0, -1));
 
@@ -424,4 +407,5 @@ export const cartoonScenes = [
   { id: 'cartoon-signposts', draw: signposts },
   { id: 'cartoon-crayon-sky', draw: crayonSky },
   { id: 'cartoon-rocket-night', draw: rocketNight },
+  ...secondCartoonScenes,
 ];

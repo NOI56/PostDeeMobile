@@ -106,6 +106,8 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
   const customBackground = hasCustomProfileTemplateBackground(appearance);
   const dimensional = template?.category === 'dimensional';
   const cartoon = template?.category === 'cartoon';
+  // A shop sign or a pinned photo holds the cartoon avatar in two layouts.
+  const cartoonFrame = cartoon && template ? ({ signboard: 'profile-cartoon-sign', pinboard: 'profile-cartoon-photo' } as Record<string, string>)[template.layout.composition] : undefined;
   const templateAttributes = template ? ` data-template="${template.id}"${dimensional || cartoon ? ` data-template-category="${template.category}"` : ''} data-custom-background="${customBackground}"${(['header', 'links', 'button', 'decoration', 'avatar', 'composition'] as const).map((field) => ` data-${field}="${template.layout[field]}"`).join('')}` : '';
   const cover = appearance.coverKey ? `<img class="cover${dimensional ? ' profile-3d-cover' : cartoon ? ' profile-cartoon-cover' : ''}" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">`
     : template?.layout.composition === 'torn' ? '<div class="cover cover-fallback" aria-hidden="true"></div>' : '';
@@ -116,7 +118,7 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
   // native HTML, so changing a logo or theme never bakes content into an image.
   const profileAvatar = dimensional
     ? `<div class="profile-3d-hero">${cover || `<img class="profile-3d-art" src="/profile-decorations/${template.id}.png" alt="" aria-hidden="true">`}${avatar}</div>`
-    : cartoon ? `<div class="profile-cartoon-hero">${cover || `<img class="profile-cartoon-art" src="/profile-decorations/${template.id}.png" alt="" aria-hidden="true">`}${template.layout.composition === 'signboard' ? `<span class="profile-cartoon-sign">${avatar}</span>` : avatar}</div>`
+    : cartoon ? `<div class="profile-cartoon-hero">${cover || `<img class="profile-cartoon-art" src="/profile-decorations/${template.id}.png" alt="" aria-hidden="true">`}${cartoonFrame ? `<span class="${cartoonFrame}">${avatar}</span>` : avatar}</div>`
       : arch ? `<div class="arch-hero">${cover}${avatar}</div>` : avatar;
   return `<!doctype html>
 <html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

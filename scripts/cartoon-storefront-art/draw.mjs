@@ -86,3 +86,24 @@ export const grainFilter = (id, frequency, cut, seed = 4) => `<filter id="${id}"
 <feTurbulence type="fractalNoise" baseFrequency="${frequency / 6}" numOctaves="1" seed="${seed + 1}" result="wave"/>
 <feDisplacementMap in="grain" in2="wave" scale="5" xChannelSelector="R" yChannelSelector="G"/>
 </filter>`;
+
+// Shared cartoon shapes.
+export const arrowHead = (tip, angle, size, color, width) => {
+  const wing = (offset) => [tip[0] - Math.cos(angle + offset) * size, tip[1] - Math.sin(angle + offset) * size];
+  return path(`M${wing(.5).join(' ')}L${tip.join(' ')}L${wing(-.5).join(' ')}`, ink(color, width));
+};
+export const sparkle = (cx, cy, size, style) => path(curve([[cx, cy - size], [cx + size * .18, cy - size * .18], [cx + size, cy], [cx + size * .18, cy + size * .18],
+  [cx, cy + size], [cx - size * .18, cy + size * .18], [cx - size, cy], [cx - size * .18, cy - size * .18]], true), style);
+export const plus = (cx, cy, size, color, width) => path(`M${cx - size} ${cy}L${cx + size} ${cy}M${cx} ${cy - size}L${cx} ${cy + size}`, ink(color, width));
+export const heartPath = (cx, cy, size) => `M${cx} ${cy + size * .9}C${cx - size * 1.6} ${cy - size * .1} ${cx - size * .9} ${cy - size * 1.3} ${cx} ${cy - size * .45}C${cx + size * .9} ${cy - size * 1.3} ${cx + size * 1.6} ${cy - size * .1} ${cx} ${cy + size * .9}Z`;
+// Scalloped cloud: outward arcs between points around an ellipse.
+export const cloudPath = (cx, cy, rx, ry, bumps, next, wobble = 0) => {
+  const points = ellipsePoints(cx, cy, rx, ry, bumps, -Math.PI / 2)
+    .map(([x, y]) => next ? [x + (next() - .5) * wobble * rx, y + (next() - .5) * wobble * ry] : [x, y]);
+  const format = ([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`;
+  return `M${format(points[0])}${points.map((current, index) => {
+    const following = points[(index + 1) % points.length];
+    const radius = Math.hypot(following[0] - current[0], following[1] - current[1]) * .62;
+    return `A${radius.toFixed(1)} ${radius.toFixed(1)} 0 0 1 ${format(following)}`;
+  }).join('')}Z`;
+};

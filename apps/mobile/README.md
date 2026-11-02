@@ -2,9 +2,9 @@
 
 Flutter mobile app scaffold for PostDee.
 
-## Cartoon storefront category (2026-11-02, local candidate)
+## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 
-The template picker shows a third category chip, การ์ตูน / Cartoon, with ten
+The template picker shows a third category chip, การ์ตูน / Cartoon, with twenty
 designs. They render through `BioCartoonHeader`, `bioCartoonLinkDecoration`,
 `bioCartoonLink` and `bioCartoonPanelDecoration` in
 `lib/features/link_in_bio/link_in_bio_cartoon_scenes.dart`, matching the public

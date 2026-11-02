@@ -112,6 +112,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+      'Business keeps 220 monthly caption credits distinct from its purchased bank',
+      (tester) async {
+    await tester.pumpWidget(_host(
+        plan: 'BUSINESS',
+        quota: const RealClipCaptionQuota(
+            limit: 220,
+            usedThisMonth: 220,
+            remainingThisMonth: 0,
+            addonRemaining: 8,
+            availableGenerations: 8)));
+    expect(find.text('Business'), findsOneWidget);
+    expect(find.text('0 / 220 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('+ เครดิตเติม 8 เครดิต'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('does not divide by zero when a limit is unavailable',
       (tester) async {
     await tester.pumpWidget(_host(

@@ -4,6 +4,22 @@ import { createPrismaSubscriptionRepository } from './prismaSubscriptionReposito
 import { withSubscriptionRepositoryFixture } from '../../../test/repositoryFixtures.js';
 
 describe('createPrismaSubscriptionRepository', () => {
+  it('reads an active Business row and writes Business without mapping it to Pro', async () => {
+    const row = { userId: 'business-owner', plan: 'BUSINESS' as const, status: 'ACTIVE' as const,
+      billingSubscriptionId: 'revenuecat:business-owner', currentPeriodEnd: new Date('2099-12-02T00:00:00Z'),
+      updatedAt: new Date('2026-11-02T00:00:00Z') };
+    const prisma = { subscription: { findUnique: vi.fn(async () => row), upsert: vi.fn(async () => row) } };
+    const store = createPrismaSubscriptionRepository({ prisma: withSubscriptionRepositoryFixture(prisma) });
+    const user = { id: row.userId, provider: 'firebase' as const };
+    expect(await store.getPlan(user)).toBe('BUSINESS');
+    expect(await store.activatePlan(user, 'BUSINESS')).toMatchObject({ plan: 'BUSINESS', status: 'ACTIVE' });
+    expect(prisma.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: row.userId },
+      update: expect.objectContaining({ plan: 'BUSINESS' }),
+      create: expect.objectContaining({ userId: row.userId, plan: 'BUSINESS' })
+    }));
+  });
+
   it('returns PRO for active Pro subscriptions', async () => {
     const prisma = {
       subscription: {

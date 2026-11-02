@@ -2,6 +2,69 @@
 
 PostDee backend API reference.
 
+## Fourth monthly subscription (2026-11-02, local candidate)
+
+Add the provisional `BUSINESS` plan without renaming Basic, Starter or Pro:
+400 post units/month, 220 AI caption credits/month and 50 profile links.
+Post and AI allowances reset at UTC calendar month boundaries, independently
+of the subscription renewal date. Publishing to N channels uses N post units;
+caption consumption retains the existing shared/per-platform accounting.
+Links are persistent capacity for the account's single Link-in-Bio profile,
+with no monthly reset. Publish validates enabled links; Mobile's Add action
+counts all draft rows, including disabled ones. A downgrade preserves an
+already stored profile, while subsequent publishing enforces the lower cap.
+
+`GET /billing/subscription` adds `subscription.businessPlanAvailable`, default
+false when omitted by an older API, and requires the RevenueCat provider. It is
+an offer flag independent of the
+effective or purchased plan. `POST /billing/purchase-readiness` accepts optional
+`plan: "BUSINESS"`; a compatible enabled API must echo that exact plan before
+the new client opens a Business checkout. Disabled offers return
+`BUSINESS_PLAN_UNAVAILABLE`; legacy readiness callers retain their contract.
+RevenueCat restore and provider reconciliation remain valid when this sale gate
+is off. Real Business purchase requires the RevenueCat SDK path; direct Store
+verification bypass is explicitly unavailable for Business. Local mock fixtures
+are not a real checkout capability. Business inherits Pro's scheduling/visual-caption
+capabilities, can use existing separate non-expiring top-up banks, and never
+changes a historical top-up's frozen quantities.
+
+Configuration: `BILLING_BUSINESS_ENABLED=false`,
+`STORE_BUSINESS_MONTHLY_PRODUCT_ID=postdee_business_monthly`,
+`REVENUECAT_BUSINESS_PRODUCT_ID=postdee_business_monthly`, and
+`REVENUECAT_BUSINESS_ENTITLEMENT_ID=business`. These identifiers are proposed,
+unpublished setup requirements. RevenueCat subscriber snapshots select Business
+before Pro and Starter; expiration/refund reconciliation retains a still-active
+lower entitlement rather than blindly assigning Basic. Existing Starter/Pro
+direct-store handling keeps its single stored subscription and original behavior;
+it does not enumerate independent lower subscriptions. Business direct bypass
+requires separate authoritative current-status/grace/refund work before support.
+Store checkout prices remain metadata, not a hardcoded THB charge.
+
+Business checkout requires fresh RevenueCat SDK ownership evidence on the
+client. A fresh purchase must have no active Store subscription; an upgrade
+must identify one purchased Starter/Pro subscription in the current Store.
+Stale API state, cross-store/family-shared or ambiguous memberships require
+restore/reconciliation before payment. Android sends the old product with
+`chargeProratedPrice` replacement: immediate access, the existing billing date
+and a Store-computed difference. iOS requires the main plans to share an App
+Store subscription group. Store replacement failures never fall back to a new
+parallel purchase. Active purchased Business cannot start a lower-plan checkout
+in the app; manage/cancel it in the original Store and wait for verified expiry
+or reconciliation before buying a lower plan. These rules do not change
+the existing Starter/Pro checkout paths.
+
+Apply `20261102020000_business_subscription_plan` before the new API/Prisma
+client. It adds the enum value and extends the existing paid-trial constraint;
+existing subscription, trial and top-up rows are preserved. Upgrade all API/worker
+readers, then release compatible
+Mobile, configure/test store mappings and separately approve the sale flag.
+Old installed clients may map Business to Basic or reject >20-link profiles;
+this additive server change cannot retrofit those clients. Do not offer the
+plan or grant Business trials until compatible builds are available, and do not
+revert to readers that
+cannot understand Business after such subscriptions exist. No hosted migration,
+deployment, store setup or activation is included.
+
 ## Replacement top-up catalog and immutable grants (2026-11-02, consolidated draft)
 
 The consolidated paywall presents the product list in Add-ons and subscriptions

@@ -14,10 +14,10 @@ export const readPaidPlanRequest = (body: unknown): PaidPlanRequestResult => {
   const payload = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
   const plan = payload.plan;
 
-  if (plan !== 'STARTER' && plan !== 'PRO') {
+  if (plan !== 'STARTER' && plan !== 'PRO' && plan !== 'BUSINESS') {
     return {
       ok: false as const,
-      message: 'plan must be STARTER or PRO'
+      message: 'plan must be STARTER, PRO, or BUSINESS'
     };
   }
 

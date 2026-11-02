@@ -17,7 +17,7 @@ export type TrialAccessStore = {
 export class AdminError extends Error {
   constructor(readonly code: string, readonly status = 409) { super(code); }
 }
-const rank: Record<SubscriptionPlan, number> = { BASIC: 0, STARTER: 1, PRO: 2 };
+const rank: Record<SubscriptionPlan, number> = { BASIC: 0, STARTER: 1, PRO: 2, BUSINESS: 3 };
 export const activeTrial = (trial: TrialAccess | null, now = new Date()): TrialAccess | null =>
   trial && !trial.revokedAt && Date.parse(trial.startsAt) <= now.getTime() &&
     Date.parse(trial.expiresAt) > now.getTime() ? trial : null;
@@ -26,7 +26,7 @@ export const trialIntentHash = (c: TrialCommand) => createHash('sha256').update(
 ])).digest('hex');
 export const applyTrialCommand = (previous: TrialAccess | null, c: TrialCommand, now: Date): TrialAccess => {
   if (!['GRANT', 'EXTEND', 'REVOKE'].includes(c.action) ||
-      !['STARTER', 'PRO'].includes(c.plan) || ![7, 14, 30].includes(c.days) ||
+      !['STARTER', 'PRO', 'BUSINESS'].includes(c.plan) || ![7, 14, 30].includes(c.days) ||
       !Number.isSafeInteger(c.expectedVersion) || c.expectedVersion < 0 ||
       c.reason.trim().length < 3 || c.reason.length > 500 || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(c.reason)) {
     throw new AdminError('ADMIN_TRIAL_INVALID', 400);

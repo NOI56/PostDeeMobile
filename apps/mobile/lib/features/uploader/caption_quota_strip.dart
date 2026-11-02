@@ -17,6 +17,7 @@ class CaptionQuotaStrip extends StatelessWidget {
   String get _planLabel => switch (plan.toUpperCase()) {
         'STARTER' => 'Starter',
         'PRO' => 'Pro',
+        'BUSINESS' => 'Business',
         'BASIC' => 'Basic',
         _ => plan,
       };
@@ -89,14 +90,16 @@ class CaptionQuotaStrip extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      TextSpan(text: captionText(context, ' / ${quota.limit} เครดิต',
-                          ' / ${quota.limit} ${quota.limit == 1 ? 'credit' : 'credits'}')),
+                      TextSpan(
+                          text: captionText(context, ' / ${quota.limit} เครดิต',
+                              ' / ${quota.limit} ${quota.limit == 1 ? 'credit' : 'credits'}')),
                     ],
                   ),
                   style: secondaryStyle,
                 ),
-                Text(captionText(context, 'ใช้ไป ${quota.usedThisMonth} เครดิต',
-                    '${quota.usedThisMonth} ${quota.usedThisMonth == 1 ? 'credit' : 'credits'} used'),
+                Text(
+                    captionText(context, 'ใช้ไป ${quota.usedThisMonth} เครดิต',
+                        '${quota.usedThisMonth} ${quota.usedThisMonth == 1 ? 'credit' : 'credits'} used'),
                     style: secondaryStyle),
               ],
             ),
@@ -109,17 +112,22 @@ class CaptionQuotaStrip extends StatelessWidget {
                 minHeight: 3,
                 backgroundColor: AppTheme.border,
                 color: AppTheme.accentCyanInk,
-                semanticsLabel:
-                    captionText(context, 'แคปชั่น AI เหลือ ${quota.remainingThisMonth} จาก ${quota.limit} เครดิต',
-                        '${quota.remainingThisMonth} of ${quota.limit} AI caption credits remaining'),
+                semanticsLabel: captionText(
+                    context,
+                    'แคปชั่น AI เหลือ ${quota.remainingThisMonth} จาก ${quota.limit} เครดิต',
+                    '${quota.remainingThisMonth} of ${quota.limit} AI caption credits remaining'),
               ),
             ),
             if ((plan.toUpperCase() == 'STARTER' ||
-                    plan.toUpperCase() == 'PRO') &&
+                    plan.toUpperCase() == 'PRO' ||
+                    plan.toUpperCase() == 'BUSINESS') &&
                 quota.addonRemaining > 0) ...[
               const SizedBox(height: 4),
-              Text(captionText(context, '+ เครดิตเติม ${quota.addonRemaining} เครดิต',
-                  '+ ${quota.addonRemaining} add-on ${quota.addonRemaining == 1 ? 'credit' : 'credits'}'),
+              Text(
+                  captionText(
+                      context,
+                      '+ เครดิตเติม ${quota.addonRemaining} เครดิต',
+                      '+ ${quota.addonRemaining} add-on ${quota.addonRemaining == 1 ? 'credit' : 'credits'}'),
                   style: secondaryStyle),
             ],
             if (plan.toUpperCase() == 'BASIC') ...[

@@ -50,6 +50,13 @@ const command = { requestId: '54ce1fea-78bc-4c8e-a4e2-01bed4234420', userId: 'me
 const post = (app: express.Express, role: string, body = command) => request(app).post('/admin/api/trials')
   .set('Authorization', `Bearer ${role}`).set('Origin', config.origin).set('X-PostDee-Admin', '1').send(body);
 describe('private administrator console', () => {
+  it('accepts the additive Business trial plan through the owner-only schema', async () => {
+    const { app, trials } = setup();
+    await post(app, 'owner', { ...command, plan: 'BUSINESS' }).expect(200);
+    expect(await trials.find('member')).toMatchObject({ plan: 'BUSINESS', version: 1 });
+    await post(app, 'viewer', { ...command, plan: 'BUSINESS' }).expect(403);
+  });
+
   it('is absent by default', async () => {
     const { app } = setup(false); expect((await request(app).get('/admin')).status).toBe(404);
     expect((await post(app, 'owner')).status).toBe(404);

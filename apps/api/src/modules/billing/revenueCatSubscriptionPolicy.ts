@@ -6,8 +6,10 @@ export type RevenueCatSubscriptionPolicyConfig = Pick<ServerConfig,
   | 'revenueCatSubscriptionEnvironment'
   | 'revenueCatStarterEntitlementId'
   | 'revenueCatProEntitlementId'
+  | 'revenueCatBusinessEntitlementId'
   | 'revenueCatStarterProductId'
   | 'revenueCatProProductId'
+  | 'revenueCatBusinessProductId'
 >;
 
 export const isRevenueCatSubscriptionStoreAllowed = (store: unknown, environment: 'SANDBOX' | 'PRODUCTION') => {
@@ -32,6 +34,9 @@ export const selectRevenueCatPaidEntitlement = (
   config: RevenueCatSubscriptionPolicyConfig
 ): { plan: PaidSubscriptionPlan; entitlement: RevenueCatActiveEntitlement } | undefined => {
   const eligible = entitlements.filter(entitlement => isRevenueCatSubscriptionEntitlementAllowed(entitlement, config));
+  const business = eligible.find(entitlement => entitlement.id === (config.revenueCatBusinessEntitlementId ?? 'business') ||
+    entitlement.productId === (config.revenueCatBusinessProductId ?? 'postdee_business_monthly'));
+  if (business) return { plan: 'BUSINESS', entitlement: business };
   const pro = eligible.find(entitlement => entitlement.id === config.revenueCatProEntitlementId ||
     entitlement.productId === config.revenueCatProProductId);
   if (pro) return { plan: 'PRO', entitlement: pro };

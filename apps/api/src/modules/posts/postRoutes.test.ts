@@ -11,7 +11,7 @@ import { createPublishScheduler } from '../../workers/publishScheduler.js';
 import type { PlatformPublishInput } from '../../workers/publishWorker.js';
 import { createUserStore } from '../users/userStore.js';
 import { ManagedUploadServiceError } from '../uploads/managedUploadService.js';
-import { createPostStore, type QueuedPost } from './postStore.js';
+import { createPostStore, type Platform, type QueuedPost } from './postStore.js';
 import { registerPostRoutes } from './postRoutes.js';
 import { withOwnerLifecycleFixture } from '../../../test/ownerLifecycleFixture.js';
 import { withAppPrismaFixture } from '../../../test/repositoryFixtures.js';
@@ -1079,7 +1079,7 @@ describe('post routes', () => {
     expect(publishQueue.remove).toHaveBeenCalledWith(post.id);
   });
 
-  it.each([['STARTER', 14], ['PRO', 30]] as const)(
+  it.each([['STARTER', 14], ['PRO', 30], ['BUSINESS', 30]] as const)(
     'enforces the %s rolling %i-day window for create and reschedule', async (plan, days) => {
     const now = new Date('2026-06-01T14:37:12.345Z');
     const { app, userId, store, queue, reschedule, ensureUser } = createPlanScheduleApp(plan, () => now);
@@ -2499,6 +2499,34 @@ describe('post routes', () => {
       code: 'POST_LIMIT_REACHED',
       message: 'Starter included monthly post units and available purchased credits are exhausted'
     });
+  });
+
+  it('enforces the 400 Business post-unit boundary per channel and keeps the Pro scheduling window', async () => {
+    const { app, userId, store } = createPlanScheduleApp('BUSINESS');
+    for (let index = 0; index < 99; index++) {
+      await store.createWithinMonthlyLimit({ userId, caption: 'four-unit fixture',
+        videoS3Key: ownedUploadKey(userId, `seed-${index}.mp4`), platforms: allPlatforms as Platform[],
+        monthlyPostUnitLimit: 400, now: futureNow().toISOString() });
+    }
+    await store.createWithinMonthlyLimit({ userId, caption: 'three-unit fixture',
+      videoS3Key: ownedUploadKey(userId, 'seed-three.mp4'), platforms: allPlatforms.slice(0, 3) as Platform[],
+      monthlyPostUnitLimit: 400, now: futureNow().toISOString() });
+    const post = (platforms: string[], file: string) => request(app).post('/posts').send({
+      caption: 'Business boundary', videoS3Key: ownedUploadKey(userId, file), platforms
+    });
+    await post(allPlatforms.slice(0, 2), 'two-over.mp4').expect(402);
+    await post(['TIKTOK'], 'exactly-400.mp4').expect(201);
+    await post(['TIKTOK'], 'over-400.mp4').expect(402);
+    expect(await store.countMonthlyPostUnits({ userId, now: futureNow().toISOString() })).toBe(400);
+  });
+
+  it('accepts Business in the existing local-only post plan override', async () => {
+    const app = createApp();
+    const userId = 'business-local-override';
+    await request(app).post('/posts').set('x-postdee-user-id', userId).send({
+      caption: 'Business override', videoS3Key: ownedUploadKey(userId, 'clip.mp4'),
+      platforms: ['TIKTOK'], subscriptionPlan: 'BUSINESS'
+    }).expect(201);
   });
 
   it('blocks Pro posts when selected platforms would exceed 250 monthly units', async () => {

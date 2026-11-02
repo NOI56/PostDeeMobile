@@ -687,7 +687,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     if (_activeLinks.isEmpty) {
       return 'เพิ่มและเปิดใช้งานอย่างน้อย 1 ลิงก์ก่อนเผยแพร่';
     }
-    if (_activeLinks.length > 20) return 'เปิดใช้ได้สูงสุด 20 ลิงก์';
+    if (_activeLinks.length > 50) return 'เปิดใช้ได้สูงสุด 50 ลิงก์';
     if (_appearance.background.mode == 'image' &&
         _appearance.background.imageKey == null) {
       return 'เพิ่มภาพพื้นหลัง หรือเปลี่ยนพื้นหลังเป็นสีเดียวก่อนเผยแพร่';

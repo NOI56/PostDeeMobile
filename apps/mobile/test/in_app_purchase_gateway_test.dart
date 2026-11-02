@@ -107,6 +107,13 @@ void main() {
     final service = StoreSubscriptionService(
       gateway: InAppPurchaseStoreBillingGateway(store: store),
       useRevenueCat: false,
+      loadPurchaseSubscription: () async => const SubscriptionStatusResult(
+          userId: 'seller',
+          plan: 'PRO',
+          status: 'ACTIVE',
+          canSchedule: true,
+          canUseAiCaptions: true,
+          canUseAnalytics: true),
       verifyPurchase: (request) async {
         verifications += 1;
         if (verifications == 1) throw StateError('verification offline');
@@ -155,6 +162,13 @@ void main() {
     final service = StoreSubscriptionService(
       gateway: InAppPurchaseStoreBillingGateway(store: store),
       useRevenueCat: false,
+      loadPurchaseSubscription: () async => const SubscriptionStatusResult(
+          userId: 'seller',
+          plan: 'PRO',
+          status: 'ACTIVE',
+          canSchedule: true,
+          canUseAiCaptions: true,
+          canUseAnalytics: true),
       verifyPurchase: (request) async {
         verifications += 1;
         return StoreSubscriptionVerificationResult(
@@ -305,6 +319,13 @@ void main() {
       gateway: InAppPurchaseStoreBillingGateway(store: store),
       useRevenueCat: false,
       storeOperationTimeout: const Duration(milliseconds: 20),
+      loadPurchaseSubscription: () async => const SubscriptionStatusResult(
+          userId: 'seller',
+          plan: 'PRO',
+          status: 'ACTIVE',
+          canSchedule: true,
+          canUseAiCaptions: true,
+          canUseAnalytics: true),
       verifyPurchase: (request) async {
         verifications += 1;
         return StoreSubscriptionVerificationResult(

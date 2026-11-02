@@ -2,6 +2,41 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Additional Business subscription (2026-11-02, local candidate)
+
+An additive `SubscriptionPlan.BUSINESS` enum value feeds the shared subscription
+entitlements: 400 post units and 220 AI caption credits each UTC month, and
+50 persistent Link-in-Bio rows per account. Authoritative API publish admission,
+Mobile DTO parsing and draft capacity all support 50. Scheduling and visual
+caption access inherit Pro. Purchased and temporary trial plans use the same
+new value; lower trials cannot reduce purchased Business rights.
+
+RevenueCat subscriber snapshots prioritize Business over Pro and Starter and
+reconcile active rights after lifecycle events. Real Business checkout and
+recovery use RevenueCat; both API readiness and Mobile SDK dispatch fail closed
+for the legacy direct Store bypass. That bypass lacks the authoritative native
+current-status/grace/refund contract needed for this new product. Existing
+Starter/Pro direct paths retain their behavior. Exact store identifiers and native quotes
+identify checkout items. The server's default-off Business offer flag and a
+plan-specific readiness echo protect against opening checkout against old APIs;
+restore and receipt fulfillment remain independent of sale visibility. Existing
+post/caption accounting and immutable consumable grant snapshots are unchanged.
+
+A Business-specific gateway capability validates current SDK ownership for both
+fresh buys and upgrades, without changing the legacy generic purchase adapter.
+Android upgrades supply the unambiguous old product and Store price proration;
+iOS retains same-group replacement after checking current Store ownership.
+Cross-store, shared, multiple or stale memberships fail before purchase and
+require reconciliation, with no fallback that could create a second membership.
+
+The additive enum/paid-trial constraint migration precedes all new Prisma/API
+readers, then compatible
+Mobile and separately approved sandbox/store activation. Old Mobile readers do
+not understand Business or 50-link payloads, so activation requires compatible
+builds; rollback must retain Business-aware readers once these rows exist.
+Business is a provisional name, not an approved marketing decision. This local
+candidate is excluded from the earlier `5fa8965` Staging preparation.
+
 ## Package categories and immutable top-up grants (2026-11-02, consolidated draft)
 
 The paywall separates Main plans and Add-ons without changing plan products.

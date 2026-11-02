@@ -192,6 +192,22 @@ void main() {
     expect(fixture.deletions, 0);
   });
 
+  testWidgets('Business deletion warning preserves store cancellation guidance',
+      (tester) async {
+    fixture.api.subscription = () async => const SubscriptionStatusResult(
+        userId: 'account-actions-owner', plan: 'BUSINESS', status: 'ACTIVE',
+        canSchedule: true, canUseAiCaptions: true, canUseAnalytics: false);
+    await tester.pumpWidget(fixture.app());
+    await tester.pumpAndSettle();
+    await _tap(tester, _delete());
+    expect(find.text('Deleting your PostDee account does not cancel Business '
+        'subscriptions purchased through the App Store or Google Play. To stop '
+        'renewal, cancel your subscription in the store before deleting your account.'),
+        findsOneWidget);
+    expect(fixture.deletions, 0);
+    expect(fixture.signOuts, 0);
+  });
+
   for (final choice in [
     (id: 'app-store', url: 'https://apps.apple.com/account/subscriptions'),
     (

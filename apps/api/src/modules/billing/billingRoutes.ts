@@ -7,6 +7,7 @@ import { readUtcMonthBounds } from '../posts/postUsage.js';
 import {
   canSchedulePosts,
   maxProfileLinksByPlan,
+  monthlyAiCaptionGenerationLimits,
   monthlyPostUnitLimits
 } from '../subscriptions/subscriptionEntitlements.js';
 import type {
@@ -62,6 +63,7 @@ const buildSubscriptionStatus = ({
     maxProfileLinks: maxProfileLinksByPlan[plan],
     monthlyPostLimit,
     baseMonthlyPostLimit,
+    monthlyAiCaptionLimit: monthlyAiCaptionGenerationLimits[plan],
     addonPostUnits: addonCredits.postUnits,
     addonAiCaptions: addonCredits.aiCaptions,
     addonExpiresAt: null,
@@ -84,16 +86,22 @@ type BillingRoutesConfig = Pick<
   ServerConfig,
   | 'nodeEnv'
   | 'billingProvider'
+  | 'billingBusinessEnabled'
+  | 'revenueCatRestApiV1Key'
   | 'storeStarterMonthlyProductId'
   | 'storeProMonthlyProductId'
+  | 'storeBusinessMonthlyProductId'
   | 'googlePlayNotificationAuthToken'
 >;
 
 const defaultBillingRoutesConfig: BillingRoutesConfig = {
   nodeEnv: 'development',
   billingProvider: 'mock',
+  billingBusinessEnabled: false,
+  revenueCatRestApiV1Key: undefined,
   storeStarterMonthlyProductId: 'postdee_starter_monthly',
   storeProMonthlyProductId: 'postdee_pro_monthly',
+  storeBusinessMonthlyProductId: 'postdee_business_monthly',
   googlePlayNotificationAuthToken: undefined
 };
 
@@ -178,6 +186,9 @@ const readPlanForProductId = (
   config: BillingRoutesConfig,
   productId: string
 ): PaidSubscriptionPlan | undefined => {
+  if (productId === (config.storeBusinessMonthlyProductId ?? 'postdee_business_monthly')) {
+    return 'BUSINESS';
+  }
   if (productId === config.storeStarterMonthlyProductId) {
     return 'STARTER' as const;
   }
@@ -259,11 +270,18 @@ export const registerBillingRoutes = (
   } = {}
 ) => {
   const config = options.config ?? defaultBillingRoutesConfig;
+  const businessPlanAvailable = config.billingBusinessEnabled === true &&
+    config.billingProvider === 'revenuecat' && Boolean(config.revenueCatRestApiV1Key);
 
   router.post('/billing/purchase-readiness', authMiddleware, async (request, response) => {
     const authUser = readAuthUser(response.locals);
     if (!authUser) {
       response.status(401).json({ status: 'error', message: 'Authenticated user is required' });
+      return;
+    }
+    if (request.body?.plan === 'BUSINESS' && !businessPlanAvailable) {
+      response.status(409).json({ status: 'error', code: 'BUSINESS_PLAN_UNAVAILABLE',
+        message: 'The Business subscription is not available for new purchases yet.' });
       return;
     }
     await userStore.ensure(authUser);
@@ -276,7 +294,8 @@ export const registerBillingRoutes = (
         return;
       }
     }
-    response.json({ status: 'ok', purchaseReady: true, preparationProtocol: 1 });
+    response.json({ status: 'ok', purchaseReady: true, preparationProtocol: 1,
+      ...(request.body?.plan === 'BUSINESS' ? { plan: 'BUSINESS' } : {}) });
   });
 
   router.get('/billing/subscription', authMiddleware, async (_request, response) => {
@@ -317,7 +336,8 @@ export const registerBillingRoutes = (
           postUnits: Math.max(0, (addonGrants?.postUnits ?? 0) - usedAddonPostUnits),
           aiCaptions: Math.max(0, (addonGrants?.aiCaptions ?? 0) - usedAddonAiCaptions)
         }
-      }), monthlyQuotaResetsAt: readUtcMonthBounds(new Date(now)).end.toISOString(),
+      }), businessPlanAvailable,
+      monthlyQuotaResetsAt: readUtcMonthBounds(new Date(now)).end.toISOString(),
       ...(subscriptionStore.getPurchasedPlan ? { purchasedPlan } : {}) }
     });
   });
@@ -348,6 +368,12 @@ export const registerBillingRoutes = (
         status: 'error',
         message: paidPlanRequest.message
       });
+      return;
+    }
+
+    if (paidPlanRequest.plan === 'BUSINESS' && config.billingBusinessEnabled !== true) {
+      response.status(409).json({ status: 'error', code: 'BUSINESS_PLAN_UNAVAILABLE',
+        message: 'The Business subscription is not available for new purchases yet.' });
       return;
     }
 
@@ -389,8 +415,14 @@ export const registerBillingRoutes = (
     if (!plan) {
       response.status(400).json({
         status: 'error',
-        message: 'productId must match the configured Starter or Pro store product'
+        message: 'productId must match a configured paid subscription store product'
       });
+      return;
+    }
+
+    if (plan === 'BUSINESS' && (config.billingProvider !== 'mock' || config.nodeEnv === 'production')) {
+      response.status(409).json({ status: 'error', code: 'BUSINESS_DIRECT_STORE_UNSUPPORTED',
+        message: 'Business subscriptions require RevenueCat verification. Direct store verification is not supported.' });
       return;
     }
 

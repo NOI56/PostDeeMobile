@@ -31,6 +31,11 @@ class AppConfig {
     defaultValue: 'postdee_starter_monthly',
   );
 
+  static const storeBusinessMonthlyProductId = String.fromEnvironment(
+    'STORE_BUSINESS_MONTHLY_PRODUCT_ID',
+    defaultValue: 'postdee_business_monthly',
+  );
+
   static const legacyPostCaptionAddonProductId = 'postdee_post100_caption50';
   static const storeSmallPostCaptionAddonProductId = 'postdee_post40_caption25';
   static const storeMediumPostCaptionAddonProductId = 'postdee_post90_caption50';

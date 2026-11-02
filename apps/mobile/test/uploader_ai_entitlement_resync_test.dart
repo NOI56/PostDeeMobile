@@ -245,7 +245,7 @@ void main() {
         AppConfig.enableRevenueCatBilling);
   });
 
-  for (final plan in ['PRO', 'STARTER']) {
+  for (final plan in ['PRO', 'STARTER', 'BUSINESS']) {
     testWidgets('delayed webhook reconciles Basic to verified $plan once',
         (tester) async {
       final fixture = _ResyncFixture(plans: ['BASIC', plan]);
@@ -257,8 +257,8 @@ void main() {
       expect(fixture.captions, hasLength(1));
       expect(fixture.captions.single.guidance, 'คำแนะนำเดิม');
       expect(fixture.captions.single.selectedFrameKeys,
-          plan == 'PRO' ? hasLength(1) : isEmpty);
-      expect(fixture.extractions, plan == 'PRO' ? 1 : 0);
+          plan != 'STARTER' ? hasLength(1) : isEmpty);
+      expect(fixture.extractions, plan != 'STARTER' ? 1 : 0);
       expect(
           fixture.uploads.where((upload) => upload.contentType == 'video/mp4'),
           hasLength(1));
@@ -309,7 +309,7 @@ void main() {
     expect(find.text(_paidRequired), findsOneWidget);
   });
 
-  for (final plan in ['PRO', 'STARTER']) {
+  for (final plan in ['PRO', 'STARTER', 'BUSINESS']) {
     testWidgets('already verified $plan skips resync', (tester) async {
       final fixture = _ResyncFixture(plans: [plan]);
       await _prepare(tester, fixture);
@@ -317,7 +317,7 @@ void main() {
       expect(fixture.loads, 1);
       expect(fixture.resyncs, 0);
       expect(fixture.captions, hasLength(1));
-      expect(fixture.extractions, plan == 'PRO' ? 1 : 0);
+      expect(fixture.extractions, plan != 'STARTER' ? 1 : 0);
     });
   }
 

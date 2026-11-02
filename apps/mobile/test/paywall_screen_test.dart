@@ -234,6 +234,7 @@ void main() {
       createService: () => StoreSubscriptionService(
         gateway: gateway,
         useRevenueCat: false,
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
         verifyPurchase: (request) async {
           if (!backendAvailable) {
             throw const ApiException('Unavailable', statusCode: 503);
@@ -285,6 +286,7 @@ void main() {
       final service = StoreSubscriptionService(
         gateway: gateway,
         useRevenueCat: false,
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
         verifyPurchase: (request) async {
           verifyCalls += 1;
           if (!backendAvailable) {
@@ -405,6 +407,7 @@ void main() {
     final service = StoreSubscriptionService(
       gateway: _FakeStoreBillingGateway(),
       useRevenueCat: false,
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       verifyPurchase: (request) async =>
           _verifiedSubscription(request, plan: 'PRO'),
     );
@@ -486,6 +489,7 @@ void main() {
     final service = StoreSubscriptionService(
       gateway: _FakeStoreBillingGateway(),
       useRevenueCat: false,
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       verifyPurchase: (request) async =>
           _verifiedSubscription(request, plan: 'PRO'),
     );
@@ -704,6 +708,7 @@ void main() {
     final service = StoreSubscriptionService(
       gateway: _FakeStoreBillingGateway(),
       useRevenueCat: false,
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       verifyPurchase: (_) => purchase.future,
     );
 

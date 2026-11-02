@@ -24,7 +24,7 @@ const readBearerToken = (authorizationHeader: string | undefined) => {
 
 const readSubscriptionPlan = (value: string | string[] | undefined) => {
   const plan = readHeader(value);
-  return plan === 'BASIC' || plan === 'STARTER' || plan === 'PRO' ? plan : undefined;
+  return plan === 'BASIC' || plan === 'STARTER' || plan === 'PRO' || plan === 'BUSINESS' ? plan : undefined;
 };
 
 const readBooleanHeader = (value: string | string[] | undefined) => {

@@ -1,5 +1,23 @@
 # PostDee
 
+## Additional monthly main plan (2026-11-02, local candidate)
+
+Prepare a fourth main subscription with 400 post units and 220 AI caption
+credits per UTC calendar month, plus capacity for 50 links on the account's
+Link-in-Bio page. The requested reference price is THB 399/month; checkout uses
+the verified store quote. **Business** / `BUSINESS` is provisional branding.
+Other capabilities inherit Pro, including 30-day scheduling and visual captions.
+Basic, Starter, Pro and all approved top-up products retain their existing rules.
+
+This is isolated local code, with `BILLING_BUSINESS_ENABLED=false` by default.
+Real Business checkout uses RevenueCat, including its Play/App Store integration;
+the legacy direct Store bypass is unavailable for this new plan.
+The additive enum migration and API must precede compatible Mobile and any
+separately approved store setup/activation. Existing clients cannot fully use
+the new plan's limits; keep it unavailable until compatible builds are ready.
+The earlier Staging proposal remains pinned to `5fa8965` and excludes this plan.
+See the [implementation and rollout record](docs/superpowers/plans/2026-11-02-business-monthly-plan.md).
+
 ## Package categories and replacement top-ups (2026-11-02, consolidated draft)
 
 Separate Thai/English Main plans and Add-ons categories while retaining Basic,

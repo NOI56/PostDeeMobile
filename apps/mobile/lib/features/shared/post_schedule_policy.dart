@@ -25,6 +25,7 @@ String getSchedulePlanSummary({String languageCode = 'th'}) =>
 Duration? postScheduleLimitForPlan(String? plan) => switch (plan) {
       'STARTER' => const Duration(days: 14),
       'PRO' => const Duration(days: 30),
+      'BUSINESS' => const Duration(days: 30),
       _ => null,
     };
 

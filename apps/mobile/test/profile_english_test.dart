@@ -367,6 +367,7 @@ void main() {
     'FREE': 'Free',
     'STARTER': 'Starter',
     'PRO': 'Pro',
+    'BUSINESS': 'Business',
     'FUTURE_PLAN': 'Unknown plan',
   }.entries) {
     testWidgets(
@@ -381,6 +382,7 @@ void main() {
         'BASIC' || 'FREE' => 'free',
         'STARTER' => 'starter',
         'PRO' => 'pro',
+        'BUSINESS' => 'business',
         _ => 'unknown'
       };
       await _reveal(tester, _key('profile-plan-$key'));

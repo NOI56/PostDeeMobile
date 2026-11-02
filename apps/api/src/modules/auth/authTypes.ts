@@ -1,3 +1,5 @@
+import type { SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
+
 export type AuthProvider = 'mock' | 'firebase';
 
 export type AuthUser = {
@@ -9,7 +11,7 @@ export type AuthUser = {
   phoneVerified?: boolean;
   authenticatedAtSeconds?: number;
   identityAlreadyDeleted?: boolean;
-  subscriptionPlan?: 'BASIC' | 'STARTER' | 'PRO';
+  subscriptionPlan?: SubscriptionPlan;
 };
 
 export type FirebaseTokenVerifier = {

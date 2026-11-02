@@ -3,6 +3,34 @@ import { describe, expect, it } from 'vitest';
 import { readServerConfig } from './env.js';
 
 describe('readServerConfig', () => {
+  it('keeps Business sales opt-in and configures distinct monthly provider mappings', () => {
+    expect(readServerConfig({})).toMatchObject({ billingBusinessEnabled: false,
+      revenueCatBusinessEntitlementId: 'business', revenueCatBusinessProductId: 'postdee_business_monthly',
+      storeBusinessMonthlyProductId: 'postdee_business_monthly' });
+    expect(readServerConfig({ BILLING_BUSINESS_ENABLED: 'true', REVENUECAT_BUSINESS_ENTITLEMENT_ID: 'business-access',
+      REVENUECAT_BUSINESS_PRODUCT_ID: 'rc-business-monthly', STORE_BUSINESS_MONTHLY_PRODUCT_ID: 'store-business-monthly' }))
+      .toMatchObject({ billingBusinessEnabled: true, revenueCatBusinessEntitlementId: 'business-access',
+        revenueCatBusinessProductId: 'rc-business-monthly', storeBusinessMonthlyProductId: 'store-business-monthly' });
+    expect(() => readServerConfig({ BILLING_BUSINESS_ENABLED: 'yes' })).toThrow('BILLING_BUSINESS_ENABLED must be true or false');
+  });
+  it.each(['REVENUECAT_BUSINESS_PRODUCT_ID', 'STORE_BUSINESS_MONTHLY_PRODUCT_ID'])(
+    'rejects ambiguous Business subscription mapping in %s even before sales are enabled', key => {
+      expect(() => readServerConfig({ [key]: 'postdee_pro_monthly' })).toThrow('Subscription product identifiers must map to exactly one plan');
+      for (const sku of ['postdee_post100_caption50', 'postdee_post40_caption25', 'postdee_post90_caption50', 'postdee_post190_caption100']) {
+        expect(() => readServerConfig({ [key]: sku })).toThrow(/differ from subscription product identifiers/);
+      }
+      expect(() => readServerConfig({ [key]: 'historical-custom', REVENUECAT_ADDON_PRODUCT_ID: 'historical-custom' }))
+        .toThrow('REVENUECAT_ADDON_PRODUCT_ID must differ from subscription product identifiers');
+    });
+  it.each(['starter', 'pro'])( 'rejects Business entitlement collision with %s', id => {
+    expect(() => readServerConfig({ REVENUECAT_BUSINESS_ENTITLEMENT_ID: id }))
+      .toThrow('RevenueCat entitlement identifiers must map to exactly one plan');
+  });
+  it.each(['postdee_post100_caption50', 'postdee_post40_caption25', 'postdee_post90_caption50', 'postdee_post190_caption100'])(
+    'does not map an add-on identifier %s as a subscription entitlement', id => {
+      expect(() => readServerConfig({ REVENUECAT_BUSINESS_ENTITLEMENT_ID: id }))
+        .toThrow('RevenueCat subscription entitlement identifiers must differ from add-on identifiers');
+    });
   it('keeps the replacement add-on tiers disabled until explicitly enabled', () => {
     expect(readServerConfig({}).billingAddonTiersEnabled).toBe(false);
     expect(readServerConfig({ BILLING_ADDON_TIERS_ENABLED: 'true' }).billingAddonTiersEnabled).toBe(true);
@@ -74,6 +102,7 @@ describe('readServerConfig', () => {
       elevenLabsApiKey: undefined,
       geminiApiKey: undefined,
       billingProvider: 'mock',
+      billingBusinessEnabled: false,
       revenueCatWebhookAuthToken: undefined,
       revenueCatRestApiV1Key: undefined,
       revenueCatSubscriptionEnvironment: 'PRODUCTION',
@@ -83,10 +112,13 @@ describe('readServerConfig', () => {
       revenueCatAddonEnvironment: 'PRODUCTION',
       revenueCatStarterEntitlementId: 'starter',
       revenueCatProEntitlementId: 'pro',
+      revenueCatBusinessEntitlementId: 'business',
       revenueCatStarterProductId: 'postdee_starter_monthly',
       revenueCatProProductId: 'postdee_pro_monthly',
+      revenueCatBusinessProductId: 'postdee_business_monthly',
       storeStarterMonthlyProductId: 'postdee_starter_monthly',
       storeProMonthlyProductId: 'postdee_pro_monthly',
+      storeBusinessMonthlyProductId: 'postdee_business_monthly',
       googlePlayPackageName: undefined,
       googlePlayServiceAccountKeyJson: undefined,
       googlePlayAccessToken: undefined,

@@ -3,6 +3,27 @@ import { createMemoryTrialAccessStore, withTrialAccess } from './trialAccess.js'
 import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
 
 describe('administrator trial access', () => {
+  it('never replaces purchased Business with a lower Pro trial', async () => {
+    const trials = createMemoryTrialAccessStore();
+    const paid = createSubscriptionStore();
+    await paid.activatePlan(user, 'BUSINESS');
+    await trials.mutate(command);
+    const access = withTrialAccess(paid, trials);
+    expect(await access.getPlan(user)).toBe('BUSINESS');
+    expect(await access.getPurchasedPlan!(user)).toBe('BUSINESS');
+  });
+
+  it('supports a Business trial using the existing grant and expiry rules', async () => {
+    let now = new Date('2026-11-02T00:00:00Z');
+    const trials = createMemoryTrialAccessStore({ now: () => now });
+    const access = withTrialAccess(createSubscriptionStore(), trials, () => now);
+    await trials.mutate({ ...command, plan: 'BUSINESS' });
+    expect(await access.getPlan(user)).toBe('BUSINESS');
+    expect(await access.getPurchasedPlan!(user)).toBe('BASIC');
+    now = new Date('2026-11-09T00:00:00Z');
+    expect(await access.getPlan(user)).toBe('BASIC');
+  });
+
   const user = { id: 'member', provider: 'firebase' as const };
   const command = { requestId: '54ce1fea-78bc-4c8e-a4e2-01bed4234420', actorId: 'owner', userId: user.id,
     action: 'GRANT' as const, plan: 'PRO' as const, days: 7, expectedVersion: 0, reason: 'ทดสอบกับลูกค้า' };

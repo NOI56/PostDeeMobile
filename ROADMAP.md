@@ -2,6 +2,20 @@
 
 Build roadmap for PostDee.
 
+## Fourth main subscription (2026-11-02, local candidate)
+
+- Add provisional Business at THB 399/month reference: 400 post units/month,
+  220 AI caption credits/month and capacity for 50 profile links. Keep calendar
+  resets, per-channel accounting, existing plans and top-up receipts unchanged.
+- Add authoritative entitlements, enum migration, provider/lifecycle mappings,
+  capacity enforcement, admin schemas and Thai/English Mobile presentation.
+- Keep `BILLING_BUSINESS_ENABLED=false`. Deliver migration/API before a
+  compatible Mobile build; old clients cannot fully represent the new plan.
+- Store product/entitlement creation, native sandbox purchases, remote submission,
+  deployment and sale activation remain separate actions. The pending Staging
+  bundle for `5fa8965` does not include Business.
+  [Work record](docs/superpowers/plans/2026-11-02-business-monthly-plan.md).
+
 ## Package categories and credit packs (2026-11-02, consolidated draft)
 
 - Consolidate the package categories from PR #52 and billing from PR #53 with

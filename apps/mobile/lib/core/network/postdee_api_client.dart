@@ -1928,7 +1928,7 @@ class CaptionQuotaResult {
   final String plan;
   final RealClipCaptionQuota quota;
 
-  bool get isPaid => plan == 'STARTER' || plan == 'PRO';
+  bool get isPaid => plan == 'STARTER' || plan == 'PRO' || plan == 'BUSINESS';
 
   int get availableCount => !isPaid
       ? 0
@@ -1939,7 +1939,7 @@ class CaptionQuotaResult {
     final plan = json['plan'];
     final quota = json['quota'];
     if (plan is! String ||
-        !const ['BASIC', 'STARTER', 'PRO'].contains(plan) ||
+        !const ['BASIC', 'STARTER', 'PRO', 'BUSINESS'].contains(plan) ||
         quota is! Map<String, Object?>) {
       throw const ApiException('Caption quota response is missing quota data');
     }
@@ -2220,7 +2220,7 @@ class LinkInBioProfileResult {
         !RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$').hasMatch(slug) ||
         rawLinks is! List ||
         rawLinks.isEmpty ||
-        rawLinks.length > 20 ||
+        rawLinks.length > 50 ||
         published is! bool ||
         updatedAt == null ||
         (published && (publishedAt == null || path != '/p/$slug')) ||
@@ -2384,6 +2384,8 @@ class SubscriptionStatusResult {
     required this.status,
     int? maxProfileLinks,
     this.monthlyPostLimit,
+    this.monthlyAiCaptionLimit,
+    this.businessPlanAvailable = false,
     this.usedPostsThisMonth,
     this.remainingPostsThisMonth,
     this.monthlyQuotaResetsAt,
@@ -2410,6 +2412,9 @@ class SubscriptionStatusResult {
   final String status;
   final int? _maxProfileLinks;
   final int? monthlyPostLimit;
+  final int? monthlyAiCaptionLimit;
+  /// Explicit server readiness for new Business sales. Old APIs default off.
+  final bool businessPlanAvailable;
   final int? usedPostsThisMonth;
   final int? remainingPostsThisMonth;
   /// Server-owned UTC month boundary, independent of purchased credit lifetime.
@@ -2431,6 +2436,9 @@ class SubscriptionStatusResult {
 
   bool get isStarter => plan == 'STARTER';
   bool get isPro => plan == 'PRO';
+  bool get isBusiness => plan == 'BUSINESS';
+  bool get isPaid => isStarter || isPro || isBusiness;
+  bool get hasProFeatures => isPro || isBusiness;
 
   /// The effective plan includes active trial access. Missing or invalid values
   /// from older servers must never mean unlimited links or grant a higher tier.
@@ -2438,10 +2446,11 @@ class SubscriptionStatusResult {
     final planLimit = switch (plan.toUpperCase()) {
       'STARTER' => 7,
       'PRO' => 20,
+      'BUSINESS' => 50,
       _ => 2,
     };
     final serverLimit = _maxProfileLinks;
-    return serverLimit != null && serverLimit >= 1 && serverLimit <= 20 &&
+    return serverLimit != null && serverLimit >= 1 && serverLimit <= 50 &&
             serverLimit < planLimit
         ? serverLimit
         : planLimit;
@@ -2456,6 +2465,9 @@ class SubscriptionStatusResult {
         maxProfileLinks: json['maxProfileLinks'] is int
             ? json['maxProfileLinks'] as int : null,
         monthlyPostLimit: json['monthlyPostLimit'] as int?,
+        monthlyAiCaptionLimit: json['monthlyAiCaptionLimit'] is int
+            ? json['monthlyAiCaptionLimit'] as int : null,
+        businessPlanAvailable: json['businessPlanAvailable'] == true,
         usedPostsThisMonth: json['usedPostsThisMonth'] as int?,
         remainingPostsThisMonth: json['remainingPostsThisMonth'] as int?,
         monthlyQuotaResetsAt: DateTime.tryParse(
@@ -3655,6 +3667,19 @@ class PostDeeApiClient {
     if (response['status'] != 'ok' || response['purchaseReady'] != true ||
         response['preparationProtocol'] is! int || response['preparationProtocol'] != 1) {
       throw const ApiException('Purchase preparation is not supported by this API.', code: 'PURCHASE_READINESS_UNSUPPORTED');
+    }
+  }
+
+  Future<void> prepareBusinessSubscriptionPurchase() async {
+    final response = await _postJson('/billing/purchase-readiness', {
+      'purchaseConfirmationProtocol': 2,
+      'plan': 'BUSINESS',
+    });
+    if (response['status'] != 'ok' || response['purchaseReady'] != true ||
+        response['preparationProtocol'] is! int ||
+        response['preparationProtocol'] != 1 || response['plan'] != 'BUSINESS') {
+      throw const ApiException('Business purchase preparation is not supported by this API.',
+          code: 'PURCHASE_READINESS_UNSUPPORTED');
     }
   }
 

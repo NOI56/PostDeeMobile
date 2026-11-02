@@ -43,6 +43,7 @@ enum SubscriptionPlan {
   BASIC
   STARTER
   PRO
+  BUSINESS
 }
 
 enum SubscriptionStatus {

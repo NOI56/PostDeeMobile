@@ -112,3 +112,20 @@ describe('3D storefront readability', () => {
     expect(html).not.toMatch(/<script\b/);
   });
 });
+
+describe('cartoon storefront readability', () => {
+  it.each(profileTemplates.filter((template) => template.category === 'cartoon'))
+  ('keeps $id drawing and native readable content together', (template) => {
+    const appearance = { ...createDefaultLinkInBioTemplateAppearance(template.id), description: 'โทร 02 123 4567 ทุกวัน' };
+    const html = renderLinkInBioPage(profile('ร้านเจ๊ปู', [link('a', undefined, 'โทร 081-234-5678'), link('b')], appearance), 'nonce');
+    expect(initialOf(html)).toBe('จ');
+    expect(html).toContain('class="profile-cartoon-hero"');
+    expect(html).toContain(`class="profile-cartoon-art" src="/profile-decorations/${template.id}.png"`);
+    expect(html).toContain('โทร <span class="keep-together">081-234-5678</span>');
+    expect(html).toContain('โทร <span class="keep-together">02 123 4567</span> ทุกวัน');
+    // Cartoon layouts are lists, never paired tiles.
+    expect(fillRowIds(html)).toEqual([]);
+    expect(html).not.toMatch(/font-size:undefinedpx/);
+    expect(html).not.toMatch(/<script\b/);
+  });
+});

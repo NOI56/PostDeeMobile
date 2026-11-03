@@ -1,5 +1,17 @@
 # PostDee
 
+## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
+
+A third store-link category, **การ์ตูน / Cartoon**, adds twenty original drawn
+designs: doodle shop, comic panels, a little hang-tag mascot, sticker sheet,
+chalkboard, street shopfront, chat bubbles, signposts, crayon sky, a cartoon
+rocket, puppet stage, corkboard, treasure map, party bunting, jigsaw, pixel
+landscape, rainy day, hot-air balloons, under the sea and tiny town. Every drawing was made as code in this repository with no existing
+characters, brands or fonts; the seller's real name, logo, description and
+links stay native, and a custom cover replaces the drawing. Older installed apps
+keep working. Deliver PR #51, then the API, then Mobile. See the
+[cartoon plan](docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
+
 ## Package categories and replacement top-ups (2026-11-02, consolidated draft)
 
 Separate Thai/English Main plans and Add-ons categories while retaining Basic,

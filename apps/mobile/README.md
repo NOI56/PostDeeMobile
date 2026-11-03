@@ -20,6 +20,16 @@ products or device install are included. See the
 
 Flutter mobile app scaffold for PostDee.
 
+## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
+
+The template picker shows a third category chip, การ์ตูน / Cartoon, with twenty
+designs. They render through `BioCartoonHeader`, `bioCartoonLinkDecoration`,
+`bioCartoonLink` and `bioCartoonPanelDecoration` in
+`lib/features/link_in_bio/link_in_bio_cartoon_scenes.dart`, matching the public
+page's `linkInBioCartoonStyles.ts`. Thai and English names are localized.
+Mobile now sends `X-PostDee-Profile-Catalog: 4` (generated catalog version).
+See the [cartoon plan](../../docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
+
 ## Second 3D storefront set (2026-11-02, local candidate)
 
 The 3D choice lists 20 templates. The ten new scenes render through

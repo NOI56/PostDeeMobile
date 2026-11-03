@@ -57,11 +57,12 @@ class BioThemePicker extends StatefulWidget {
 class _BioThemePickerState extends State<BioThemePicker> {
   late String _category;
 
-  String _savedCategory() =>
-      getProfileTemplate(widget.appearance.templateId)?.category ==
-              'dimensional'
-          ? 'dimensional'
-          : 'minimal';
+  static const _categories = ['minimal', 'dimensional', 'cartoon'];
+
+  String _savedCategory() {
+    final saved = getProfileTemplate(widget.appearance.templateId)?.category;
+    return _categories.contains(saved) ? saved! : 'minimal';
+  }
 
   @override
   void initState() {
@@ -171,7 +172,7 @@ class _BioThemePickerState extends State<BioThemePicker> {
     final current = getProfileTemplate(widget.appearance.templateId);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Wrap(spacing: 8, runSpacing: 8, children: [
-        for (final category in const ['minimal', 'dimensional'])
+        for (final category in _categories)
           ChoiceChip(
               key: ValueKey('link-in-bio-category-$category'),
               label: Text(localizeLinkInBioMessage(
@@ -312,7 +313,10 @@ class BioTemplateSample extends StatelessWidget {
                 size: Size(320, 900), disableAnimations: true),
             child: BioTemplatePreview(
                 template: template,
-                storeName: template.category == 'dimensional' ? '' : 'noikub',
+                storeName: const {'dimensional', 'cartoon'}
+                        .contains(template.category)
+                    ? ''
+                    : 'noikub',
                 links: const [
                   LinkInBioCustomLink(
                       id: 'sample-youtube',

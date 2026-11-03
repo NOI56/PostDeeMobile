@@ -105,8 +105,11 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
   }).join('');
   const customBackground = hasCustomProfileTemplateBackground(appearance);
   const dimensional = template?.category === 'dimensional';
-  const templateAttributes = template ? ` data-template="${template.id}"${dimensional ? ' data-template-category="dimensional"' : ''} data-custom-background="${customBackground}"${(['header', 'links', 'button', 'decoration', 'avatar', 'composition'] as const).map((field) => ` data-${field}="${template.layout[field]}"`).join('')}` : '';
-  const cover = appearance.coverKey ? `<img class="cover${dimensional ? ' profile-3d-cover' : ''}" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">`
+  const cartoon = template?.category === 'cartoon';
+  // A shop sign or a pinned photo holds the cartoon avatar in two layouts.
+  const cartoonFrame = cartoon && template ? ({ signboard: 'profile-cartoon-sign', pinboard: 'profile-cartoon-photo' } as Record<string, string>)[template.layout.composition] : undefined;
+  const templateAttributes = template ? ` data-template="${template.id}"${dimensional || cartoon ? ` data-template-category="${template.category}"` : ''} data-custom-background="${customBackground}"${(['header', 'links', 'button', 'decoration', 'avatar', 'composition'] as const).map((field) => ` data-${field}="${template.layout[field]}"`).join('')}` : '';
+  const cover = appearance.coverKey ? `<img class="cover${dimensional ? ' profile-3d-cover' : cartoon ? ' profile-cartoon-cover' : ''}" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">`
     : template?.layout.composition === 'torn' ? '<div class="cover cover-fallback" aria-hidden="true"></div>' : '';
   const avatar = appearance.logoKey ? `<img class="logo" src="${imagePath('logo')}" alt="โลโก้ ${escapeHtml(profile.storeName)}">`
     : decorated ? `<div class="logo avatar-initial" aria-hidden="true">${escapeHtml(linkInBioAvatarInitial(profile.storeName))}</div>` : '';
@@ -115,7 +118,8 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
   // native HTML, so changing a logo or theme never bakes content into an image.
   const profileAvatar = dimensional
     ? `<div class="profile-3d-hero">${cover || `<img class="profile-3d-art" src="/profile-decorations/${template.id}.png" alt="" aria-hidden="true">`}${avatar}</div>`
-    : arch ? `<div class="arch-hero">${cover}${avatar}</div>` : avatar;
+    : cartoon ? `<div class="profile-cartoon-hero">${cover || `<img class="profile-cartoon-art" src="/profile-decorations/${template.id}.png" alt="" aria-hidden="true">`}${cartoonFrame ? `<span class="${cartoonFrame}">${avatar}</span>` : avatar}</div>`
+      : arch ? `<div class="arch-hero">${cover}${avatar}</div>` : avatar;
   return `<!doctype html>
 <html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer"><title>${escapeHtml(profile.storeName)} | PostDee</title>
@@ -136,7 +140,7 @@ ${linkStyles}
 ${linkInBioThemeStyles(appearance)}
 ${linkInBioTemplateStyles(appearance)}
 .background-motion{${background}}
-</style></head><body data-theme="${appearance.themeId}"${templateAttributes}>${effects.background ? '<div class="background-motion"></div>' : ''}${renderLinkInBioDecorations(effects.stickers)}<main>${arch || dimensional ? '' : cover}<header class="profile-header">${template ? '' : '<div class="brand">PostDee</div>'}${profileAvatar}${template ? '<div class="profile-copy">' : ''}<h1>${escapeHtml(profile.storeName)}</h1>
+</style></head><body data-theme="${appearance.themeId}"${templateAttributes}>${effects.background ? '<div class="background-motion"></div>' : ''}${renderLinkInBioDecorations(effects.stickers)}<main>${arch || dimensional || cartoon ? '' : cover}<header class="profile-header">${template ? '' : '<div class="brand">PostDee</div>'}${profileAvatar}${template ? '<div class="profile-copy">' : ''}<h1>${escapeHtml(profile.storeName)}</h1>
 <p class="description">${escapeText(appearance.description || 'เลือกช่องทางที่ต้องการได้เลย')}</p>${template ? '</div>' : ''}</header><ul>${links}</ul>
 <footer>สร้างหน้าเว็บร้านค้าด้วย PostDee</footer></main></body></html>`;
 };

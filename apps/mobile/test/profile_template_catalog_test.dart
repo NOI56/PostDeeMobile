@@ -5,16 +5,24 @@ import 'package:postdee_mobile/core/models/link_in_bio_appearance.dart';
 import 'package:postdee_mobile/core/models/profile_template_catalog.generated.dart';
 
 void main() {
-  test('five legacy categories and twenty 3D choices retain their catalogs',
+  test(
+      'five legacy categories, twenty 3D and twenty cartoon choices retain their catalogs',
       () {
-    expect(profileTemplateCategories.keys,
-        ['minimal', 'cute', 'nature', 'luxury', 'creative', 'dimensional']);
-    expect(profileTemplateCatalogVersion, 3);
-    expect(profileTemplates, hasLength(120));
+    expect(profileTemplateCategories.keys, [
+      'minimal',
+      'cute',
+      'nature',
+      'luxury',
+      'creative',
+      'dimensional',
+      'cartoon'
+    ]);
+    expect(profileTemplateCatalogVersion, 4);
+    expect(profileTemplates, hasLength(140));
     expect(profileTemplates.map((template) => template.id).toSet(),
-        hasLength(120));
-    for (final category
-        in profileTemplateCategories.keys.where((id) => id != 'dimensional')) {
+        hasLength(140));
+    for (final category in profileTemplateCategories.keys
+        .where((id) => id != 'dimensional' && id != 'cartoon')) {
       final templates = profileTemplates
           .where((template) => template.category == category)
           .toList();
@@ -36,6 +44,19 @@ void main() {
       'tile-grid',
       'neon',
       'slab'
+    });
+    final cartoon = profileTemplates.where((item) => item.category == 'cartoon');
+    expect(profileTemplateCategories['cartoon'], 'การ์ตูน');
+    expect(cartoon, hasLength(20));
+    expect(cartoon.map((item) => item.name).toSet(), hasLength(20));
+    expect(cartoon.map((item) => item.layout.composition).toSet(), {
+      'banner',
+      'beside',
+      'signboard',
+      'panels',
+      'chat',
+      'stage',
+      'pinboard'
     });
   });
 

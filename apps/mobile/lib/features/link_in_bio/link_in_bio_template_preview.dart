@@ -8,6 +8,7 @@ import '../../core/models/profile_template_catalog.generated.dart';
 import 'link_in_bio_composition_art.dart';
 import 'link_in_bio_3d_scenes.dart';
 import 'link_in_bio_3d_styles.dart';
+import 'link_in_bio_cartoon_scenes.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_link_defaults.dart';
 import 'link_in_bio_localizations.dart';
@@ -34,6 +35,7 @@ class BioTemplatePreview extends StatelessWidget {
   final double cornerRadius;
   String get _composition => template.layout.composition;
   bool get _is3d => template.category == 'dimensional';
+  bool get _cartoon => template.category == 'cartoon';
   Bio3dScene? get _scene => bio3dScenes[template.id];
   bool get _presetBackground =>
       appearance.background.imageKey == null &&
@@ -45,7 +47,7 @@ class BioTemplatePreview extends StatelessWidget {
   String _name(BuildContext context) => storeName.trim().isEmpty
       ? linkInBioText(context, 'ร้านของคุณ', 'Your store')
       : storeName.trim();
-  Color get _avatarColor => _is3d
+  Color get _avatarColor => _is3d || _cartoon
       ? bioColor(appearance.surfaceColor)
       : const {'seal', 'tag'}.contains(_composition)
           ? Colors.transparent
@@ -111,7 +113,8 @@ class BioTemplatePreview extends StatelessWidget {
   }
 
   Widget _avatar(double size, {double? height, bool arch = false}) {
-    final plain = const {'seal', 'tag'}.contains(_composition);
+    // Cartoon avatars take their edge from the design's own ring or frame.
+    final plain = _cartoon || const {'seal', 'tag'}.contains(_composition);
     final circle = const {'bicolor', 'seal'}.contains(_composition);
     final avatar = Container(
         key: const ValueKey('link-in-bio-composition-avatar'),
@@ -236,6 +239,21 @@ class BioTemplatePreview extends StatelessWidget {
 
   Widget _header(double headingSize, double editorialSize) {
     final cover = appearance.coverKey;
+    if (_cartoon) {
+      final design = bioCartoonDesigns[template.id]!;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        BioCartoonHeader(
+            template: template,
+            appearance: appearance,
+            avatar: _avatar,
+            copy: (centered) => _copy(
+                centered: centered, headingSize: headingSize, heavy: true),
+            cover: images[cover] == null
+                ? null
+                : _photo(cover!, design.height)),
+        const SizedBox(height: 26),
+      ]);
+    }
     final scene = bio3dScenes[template.id];
     if (scene != null) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -538,6 +556,9 @@ class BioTemplatePreview extends StatelessWidget {
       final candidate = colors[rhythm % 4];
       if (readable(textColor, candidate)) color = candidate;
     }
+    if (_cartoon) {
+      color = bioCartoonLinkFill(template, appearance, link, rhythm) ?? color;
+    }
     final openPage = const {'editorial', 'botanical', 'gallery', 'rail'}
         .contains(_composition);
     final transparent = (outline || hairline) &&
@@ -569,17 +590,28 @@ class BioTemplatePreview extends StatelessWidget {
         constraints: BoxConstraints(
             minHeight: grid
                 ? (_scene != null ? 116 : 112)
-                : _scene != null
+                : _scene != null || _cartoon
                     ? 72
                     : _is3d
                         ? 76
                         : 64),
         padding: grid
             ? const EdgeInsets.all(14)
+            : _cartoon
+            ? bioCartoonLinkPadding(template, narrow)
             : EdgeInsets.symmetric(
                 horizontal: narrow ? 12 : 16,
                 vertical: _is3d ? (narrow ? 14 : 16) : 12),
-        decoration: _scene != null
+        decoration: _cartoon
+            ? bioCartoonLinkDecoration(
+                template: template,
+                appearance: appearance,
+                color: color,
+                textColor: textColor,
+                open: transparent,
+                featured: featured,
+                rhythm: rhythm)
+            : _scene != null
             ? bio3dSceneLinkDecoration(
                 template: template,
                 appearance: appearance,
@@ -697,7 +729,15 @@ class BioTemplatePreview extends StatelessWidget {
                 const SizedBox(width: 8),
                 Icon(Icons.north_east, size: 18, color: textColor)
               ]));
-    Widget decorated = button;
+    Widget decorated = _cartoon
+        ? bioCartoonLink(
+            template: template,
+            appearance: appearance,
+            link: link,
+            color: color,
+            rhythm: rhythm,
+            child: button)
+        : button;
     if (template.id == 'dimensional-paper-stage' ||
         template.id == 'dimensional-wood-blocks') {
       final offset = template.id == 'dimensional-wood-blocks' ? 14.0 : 6.0;
@@ -765,8 +805,10 @@ class BioTemplatePreview extends StatelessWidget {
         LayoutBuilder(
             builder: (_, size) => Wrap(
                     spacing: _scene?.gap ?? 12,
-                    runSpacing: _scene?.gap ??
-                        (_is3d ? bio3dGeometries[template.id]!.gap : 12),
+                    runSpacing: _cartoon
+                        ? bioCartoonDesigns[template.id]!.gap
+                        : _scene?.gap ??
+                            (_is3d ? bio3dGeometries[template.id]!.gap : 12),
                     children: [
                       for (final (rhythm, record) in group.indexed)
                         SizedBox(
@@ -825,6 +867,25 @@ class BioTemplatePreview extends StatelessWidget {
       ]));
 
   Widget _panel(Widget child) {
+    if (_cartoon) {
+      final border = bioCartoonPanelBorder(template, appearance);
+      final width = border.top.width;
+      return Builder(
+          builder: (context) => Container(
+              key: ValueKey(
+                  'link-in-bio-template-layout-${template.layout.header}-${template.layout.links}'),
+              padding: EdgeInsets.symmetric(
+                      horizontal: bioCartoonSide(context)) +
+                  EdgeInsets.all(width),
+              decoration: bioCartoonPanelDecoration(template, appearance),
+              foregroundDecoration: BoxDecoration(
+                  border: border,
+                  borderRadius: bioCartoonDesigns[template.id]!.panelRadius),
+              clipBehavior: Clip.antiAlias,
+              child: KeyedSubtree(
+                  key: ValueKey('link-in-bio-composition-$_composition'),
+                  child: child)));
+    }
     if (_scene != null) {
       return Container(
           key: ValueKey(
@@ -1022,7 +1083,7 @@ class BioTemplatePreview extends StatelessWidget {
                             painter: BioCompositionPattern(
                                 'window', Colors.white)))),
               Padding(
-                  padding: _is3d
+                  padding: _is3d || _cartoon
                       ? const EdgeInsets.fromLTRB(12, 16, 12, 16)
                       : const EdgeInsets.fromLTRB(20, 36, 20, 20),
                   child: Align(
@@ -1041,7 +1102,7 @@ class BioTemplatePreview extends StatelessWidget {
                                 SizedBox(
                                     height: _composition == 'torn'
                                         ? 28
-                                        : _is3d
+                                        : _is3d || _cartoon
                                             ? 36
                                             : 48),
                                 Text('PostDee',

@@ -49,6 +49,21 @@ export const profileTemplateLinkFill = (appearance: LinkInBioAppearance, text: s
     return legible ? 'transparent' : appearance.buttonColor;
   }
   if (['glass', 'frosted'].includes(template.layout.composition) && !customText && appearance.buttonColor === template.palette.button && appearance.buttonStyle.color === template.palette.buttonText) return `${appearance.buttonColor}eb`;
+  // Some cartoon links take turns between a few fills, like printed panels,
+  // stickers, two sides of a chat, sticky notes or balloons. Keep in step with the app.
+  const cartoonFills = ({
+    'cartoon-comic-panels': [appearance.buttonColor, appearance.background.gradientColor, '#cdeaff', '#ffd6e3'],
+    'cartoon-sticker-sheet': [appearance.buttonColor, '#c9f2d9', '#ffd6e3', '#cfe6ff'],
+    'cartoon-chat-bubbles': [appearance.buttonColor, appearance.background.gradientColor, appearance.buttonColor, appearance.background.gradientColor],
+    'cartoon-corkboard': [appearance.buttonColor, '#ffd6e3', '#d4f5d0', '#d6ecff'],
+    'cartoon-party-bunting': [appearance.buttonColor, '#bfe8ff', '#ffc9d6', '#c9f0c3'],
+    'cartoon-jigsaw': [appearance.buttonColor, '#c4ecd4', '#ffd0dc', '#cfe0ff'],
+    'cartoon-hot-air-balloons': [appearance.buttonColor, '#fff1b8', '#d4f0ff', '#e6dcff']
+  } as Record<string, string[]>)[template.id];
+  if (cartoonFills && !customText && appearance.buttonColor === template.palette.button && appearance.buttonStyle.color === template.palette.buttonText) {
+    const color = cartoonFills[rhythm]!;
+    return linkInBioColorContrast(text, color) >= 4.5 ? color : appearance.buttonColor;
+  }
   if (!customText && ['poster', 'window', 'collage', 'window-grid'].includes(template.layout.composition) && appearance.buttonColor === template.palette.button && appearance.buttonStyle.color === template.palette.buttonText) {
     const colors = template.layout.composition === 'window' ? [appearance.buttonColor, '#fff9e6', '#d2bfff', '#bcf0bd'] : template.layout.composition === 'window-grid' ? [appearance.buttonColor, appearance.background.color, appearance.surfaceColor, '#f8d4e1'] : [appearance.buttonColor, '#bcf0bd', '#d2bfff', '#fff9e6'];
     const color = colors[rhythm]!;
@@ -292,7 +307,7 @@ export const linkInBioCompositionStyles = (appearance: LinkInBioAppearance) => {
     ...(appearance.surfaceColor === template.palette.surface ? [[' main', 'background-image:url("/profile-decorations/paper.png");background-size:360px auto;background-repeat:repeat;background-blend-mode:multiply']] as [string, string][] : []),
     [' .background-motion', 'display:none']
   ]) : '';
-  const initialFont = { editorial: 24, bicolor: 36, portrait: 36, scallop: 32, collage: 32, window: 24, botanical: 36, glass: 18, torn: 36, seal: 26, tag: 22, gallery: 26, poster: 16, 'window-grid': 22, ticket: 18, rail: 26, ribbon: 28, notebook: 24, arch: 32, staircase: 22, clay: 36, 'paper-stack': 34, frosted: 36, showcase: 32, 'split-art': 26, 'tile-grid': 24, neon: 30, slab: 26 }[composition];
+  const initialFont = { editorial: 24, bicolor: 36, portrait: 36, scallop: 32, collage: 32, window: 24, botanical: 36, glass: 18, torn: 36, seal: 26, tag: 22, gallery: 26, poster: 16, 'window-grid': 22, ticket: 18, rail: 26, ribbon: 28, notebook: 24, arch: 32, staircase: 22, clay: 36, 'paper-stack': 34, frosted: 36, showcase: 32, 'split-art': 26, 'tile-grid': 24, neon: 30, slab: 26, banner: 34, beside: 29, signboard: 26, panels: 35, chat: 26, stage: 35, pinboard: 29 }[composition];
   return `${rules([
     ['', 'display:flow-root'],
     [' main', 'padding:32px 20px 28px;min-height:calc(100svh - 32px)'],

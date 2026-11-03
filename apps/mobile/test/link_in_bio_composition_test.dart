@@ -459,8 +459,8 @@ void main() {
   }
   test('each legacy category retains twenty genuinely different compositions',
       () {
-    for (final category
-        in profileTemplateCategories.keys.where((id) => id != 'dimensional')) {
+    for (final category in profileTemplateCategories.keys
+        .where((id) => id != 'dimensional' && id != 'cartoon')) {
       expect(
           profileTemplates
               .where((t) => t.category == category)

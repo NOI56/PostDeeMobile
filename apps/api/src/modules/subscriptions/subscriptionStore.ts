@@ -1,7 +1,7 @@
 import type { AuthUser } from '../auth/authTypes.js';
 import type { RunWithActiveOwner } from '../account/ownerOperationQueue.js';
 
-export type SubscriptionPlan = 'BASIC' | 'STARTER' | 'PRO';
+export type SubscriptionPlan = 'BASIC' | 'STARTER' | 'PRO' | 'BUSINESS';
 export type PaidSubscriptionPlan = Exclude<SubscriptionPlan, 'BASIC'>;
 export type SubscriptionStatus = 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'INCOMPLETE';
 

@@ -2941,7 +2941,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
       // Pro lets Gemini also "see" the clip: extract a few frames and upload
       // them so the backend can pass them to the model. Starter is audio-only.
-      final selectedFrameKeys = subscription.isPro
+      final selectedFrameKeys = subscription.hasProFeatures
           ? await _uploadAiCaptionFrames(stillCurrent)
           : const <String>[];
       if (!stillCurrent()) return;
@@ -8233,7 +8233,8 @@ class _AiCaptionPanel extends StatelessWidget {
               LayoutBuilder(builder: (context, constraints) {
                 final stackBadge = constraints.maxWidth < 300 ||
                     MediaQuery.textScalerOf(context).scale(14) > 18;
-                final badge = Text('Starter/Pro',
+                final badge = Text(
+                    quota?.plan == 'BUSINESS' ? 'Business' : 'Starter/Pro',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppTheme.accentCyanInk,
                         fontWeight: FontWeight.w700));
@@ -8814,6 +8815,8 @@ class _SchedulePanel extends StatelessWidget {
                             'แพ็กเกจ Starter ตั้งเวลาล่วงหน้าได้สูงสุด 14 วัน'),
                       'PRO' => localizeReviewMessage(context,
                           'แพ็กเกจ Pro ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน'),
+                      'BUSINESS' => localizeReviewMessage(context,
+                          'แพ็กเกจ Business ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน'),
                       _ => getSchedulePlanSummary(
                           languageCode: reviewUsesThai(context) ? 'th' : 'en'),
                     },

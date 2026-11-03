@@ -1,5 +1,36 @@
 # PostDee Mobile
 
+## Provisional Business main plan (2026-11-02, local candidate)
+
+Prepare Business as a main monthly subscription: 400 post units, 220 AI caption
+credits per UTC month, and 50 links on the account's Link-in-Bio page. The
+requested THB 399/month is a reference; the purchase button uses the exact
+native store quote for `postdee_business_monthly`. Business inherits Pro's
+30-day scheduling and visual-caption capabilities. Existing main plans, package
+categories, add-on banks and pending purchase recovery remain available.
+
+The API's optional `businessPlanAvailable` is false by default. A compatible
+plan-specific readiness response and matching nonblank store quote are required
+before checkout; already owned Business rights and restore remain visible when
+sales are off. Real Business checkout requires the RevenueCat SDK, including
+Play/App Store purchases routed through it. A build with RevenueCat disabled
+cannot fall back to the legacy direct Store bypass for Business. Link DTOs and
+editor capacity support 50; disabled draft rows
+still count when adding, and stored profiles survive downgrades.
+
+Before any Business checkout the gateway checks current SDK membership. Paid
+Starter/Pro upgrades require one purchased subscription in the current Store;
+Android replaces its old product using Store-computed price proration. iOS
+requires the same subscription group in App Store Connect. Ambiguous/cross-store
+membership or stale Basic state requires restore, with no fresh-purchase
+fallback. Existing Starter/Pro purchases keep their previous adapter.
+
+Use the compatible API/migration first and keep the offer off until compatible
+Mobile and separately approved store/sandbox setup are ready. Older builds may
+show Business as Basic or reject its >20-link profile. No device install, native
+purchase or live store product change is included. Business branding is
+provisional. See the [work record](../../docs/superpowers/plans/2026-11-02-business-monthly-plan.md).
+
 ## Package categories and top-up products (2026-11-02, consolidated draft)
 
 Separate Main plans and Add-ons with Thai/English labels, retaining the

@@ -2,7 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createSubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import { createSubscriptionStore, type SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
 import { registerCaptionRoutes } from './captionRoutes.js';
 import { generateLocalAffiliateCaption, generateLocalRealClipCaption } from './captionService.js';
 import { createInMemoryRealClipCaptionUsageStore } from './captionUsageStore.js';
@@ -12,11 +12,11 @@ const platforms = ['TIKTOK', 'YOUTUBE_SHORTS', 'INSTAGRAM_REELS', 'FACEBOOK_REEL
 const userId = 'credit-owner';
 const monthKey = '2026-10';
 const videoS3Key = `uploads/${userId}/clip/source.mp4`;
-const fixture = ({ addonCredits = 0, fail = false } = {}) => {
+const fixture = ({ addonCredits = 0, fail = false, plan = 'STARTER' as SubscriptionPlan } = {}) => {
   const monthlyAddonStore = { readCredits: async () => ({ postUnits: 0, aiCaptions: addonCredits }) };
   const usage = createInMemoryRealClipCaptionUsageStore({ monthlyAddonStore });
   const subscriptions = createSubscriptionStore();
-  vi.spyOn(subscriptions, 'getPlan').mockResolvedValue('STARTER');
+  vi.spyOn(subscriptions, 'getPlan').mockResolvedValue(plan);
   const generate = vi.fn(async (input: RealClipCaptionGenerateInput) => {
     if (fail) throw new Error('provider unavailable');
     return { ...generateLocalRealClipCaption(input), model: 'test-ai' };
@@ -39,6 +39,19 @@ const fixture = ({ addonCredits = 0, fail = false } = {}) => {
 };
 
 describe('caption credits per selected channel', () => {
+  it('uses all 220 Business credits before retained top-ups and requires four credits for four channels', async () => {
+    const { seed, post, usage, generate } = fixture({ plan: 'BUSINESS', addonCredits: 3 });
+    await seed(219);
+    const response = await post({ platforms, expectedCredits: 4 }).expect(200);
+    expect(response.body.quota).toMatchObject({ limit: 220, usedThisMonth: 220,
+      remainingThisMonth: 0, addonRemaining: 0, requestedCredits: 4, chargedCredits: 4 });
+    expect(await usage.countAddonUsages({ userId })).toBe(3);
+    expect(generate.mock.calls[0]?.[0].mode).toBe('AUDIO_WITH_FRAMES');
+    await post({ platforms, expectedCredits: 4 }).expect(429);
+    expect(generate).toHaveBeenCalledOnce();
+    expect(await usage.countForMonth({ userId, monthKey })).toBe(220);
+  });
+
   it.each([1, 2, 3, 4])('charges %s credits in one provider call', async cost => {
     const { usage, generate, post } = fixture();
     const response = await post({ platforms: platforms.slice(0, cost), expectedCredits: cost }).expect(200);

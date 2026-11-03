@@ -184,7 +184,7 @@ export const registerAdminConsole = (app: Express, options: Options) => {
           typeof b.expectedEmail !== 'string' || b.expectedEmail.length > 254 ||
           typeof b.reason !== 'string' || typeof b.expectedVersion !== 'number' ||
           typeof b.days !== 'number' || !['GRANT', 'EXTEND', 'REVOKE'].includes(String(b.action)) ||
-          !['STARTER', 'PRO'].includes(String(b.plan))) throw new AdminError('ADMIN_TRIAL_INVALID', 400);
+          !['STARTER', 'PRO', 'BUSINESS'].includes(String(b.plan))) throw new AdminError('ADMIN_TRIAL_INVALID', 400);
       const member = await data.member(b.userId);
       if (!member) throw new AdminError('ADMIN_MEMBER_NOT_FOUND', 404);
       if (member.email.toLowerCase() !== b.expectedEmail.trim().toLowerCase()) throw new AdminError('ADMIN_MEMBER_CHANGED');

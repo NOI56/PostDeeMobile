@@ -27,7 +27,9 @@ class _BillingOperation {
     required this.binding,
     required this.userId,
     required this.prepare,
+    required this.prepareBusiness,
     required this.load,
+    required this.loadForPurchase,
     required this.resync,
     required this.verify,
   });
@@ -35,7 +37,9 @@ class _BillingOperation {
   final AuthSessionBinding binding;
   final String? userId;
   final SubscriptionPurchasePreparation prepare;
+  final SubscriptionPurchasePreparation prepareBusiness;
   final SubscriptionLoader load;
+  final SubscriptionLoader loadForPurchase;
   final RevenueCatSubscriptionResync resync;
   final StorePurchaseVerifier verify;
 }
@@ -54,6 +58,11 @@ class StoreSubscriptionException implements Exception {
 
   @override
   String toString() => 'StoreSubscriptionException: $message';
+}
+
+class StoreBusinessPurchaseReconciliationException extends StoreSubscriptionException {
+  const StoreBusinessPurchaseReconciliationException()
+      : super('Restore purchases or manage the active store subscription before buying Business.');
 }
 
 class StoreSubscriptionStorePendingException
@@ -149,6 +158,13 @@ abstract class RevenueCatBillingGateway {
   Future<List<StoreProductInfo>> queryProducts(Set<String> productIds);
   Future<void> buySubscription(String productId);
   Future<void> restorePurchases();
+}
+
+/// Business always validates current store ownership before a new payment.
+/// Kept optional so legacy Starter/Pro adapters retain their existing contract.
+abstract interface class RevenueCatBusinessPurchaseGateway {
+  Future<void> buyBusinessSubscription(String productId,
+      {String? expectedOldProductId});
 }
 
 class StoreAddonTransaction {
@@ -263,14 +279,17 @@ class StoreSubscriptionService {
     RevenueCatBillingGateway? revenueCatGateway,
     StorePurchaseVerifier? verifyPurchase,
     SubscriptionLoader? loadSubscription,
+    SubscriptionLoader? loadPurchaseSubscription,
     bool useRevenueCat = AppConfig.enableRevenueCatBilling,
     this.productId = AppConfig.storeProMonthlyProductId,
     this.starterProductId = AppConfig.storeStarterMonthlyProductId,
+    this.businessProductId = AppConfig.storeBusinessMonthlyProductId,
     int revenueCatEntitlementPollAttempts = 16,
     Duration revenueCatEntitlementPollInterval = const Duration(seconds: 1),
     SubscriptionWait? revenueCatEntitlementWait,
     RevenueCatSubscriptionResync? resyncRevenueCatSubscription,
     SubscriptionPurchasePreparation? prepareSubscriptionPurchase,
+    SubscriptionPurchasePreparation? prepareBusinessSubscriptionPurchase,
     PostDeeAuthSessionStore? sessionStore,
     BoundSubscriptionApiClientFactory? apiClientFactory,
     this.subscriptionConfirmationTimeout = const Duration(seconds: 30),
@@ -288,6 +307,7 @@ class StoreSubscriptionService {
             revenueCatEntitlementWait ?? _defaultSubscriptionWait,
         _resyncRevenueCatSubscription = resyncRevenueCatSubscription,
         _prepareSubscriptionPurchase = prepareSubscriptionPurchase,
+        _prepareBusinessSubscriptionPurchase = prepareBusinessSubscriptionPurchase,
         _gateway = gateway ??
             (useRevenueCat
                 ? const _UnavailableStoreBillingGateway()
@@ -299,12 +319,14 @@ class StoreSubscriptionService {
                 )
             : null,
         _loadSubscription = loadSubscription,
+        _loadPurchaseSubscription = loadPurchaseSubscription,
         _verifyPurchase = verifyPurchase;
 
   final StoreBillingGateway _gateway;
   final RevenueCatBillingGateway? _revenueCatGateway;
   final StorePurchaseVerifier? _verifyPurchase;
   final SubscriptionLoader? _loadSubscription;
+  final SubscriptionLoader? _loadPurchaseSubscription;
   PostDeeAuthSessionStore _sessionStore;
   final BoundSubscriptionApiClientFactory _apiClientFactory;
   final int _revenueCatEntitlementPollAttempts;
@@ -312,8 +334,10 @@ class StoreSubscriptionService {
   final SubscriptionWait _revenueCatEntitlementWait;
   final RevenueCatSubscriptionResync? _resyncRevenueCatSubscription;
   final SubscriptionPurchasePreparation? _prepareSubscriptionPurchase;
+  final SubscriptionPurchasePreparation? _prepareBusinessSubscriptionPurchase;
   final String productId;
   final String starterProductId;
+  final String businessProductId;
   final Duration subscriptionConfirmationTimeout;
   final Duration storeOperationTimeout;
   final Duration productQueryTimeout;
@@ -325,6 +349,8 @@ class StoreSubscriptionService {
   var _sessionInvalidated = false;
 
   bool get supportsUnifiedRestore => _revenueCatGateway != null;
+  bool get supportsBusinessSubscriptions =>
+      _revenueCatGateway is RevenueCatBusinessPurchaseGateway;
   bool get _isSessionValid =>
       !_sessionInvalidated && (_sessionValidator?.call() ?? true);
   bool get hasPendingConfirmation {
@@ -378,7 +404,11 @@ class StoreSubscriptionService {
       binding: binding,
       userId: userId,
       prepare: _prepareSubscriptionPurchase ?? api.prepareSubscriptionPurchase,
+      prepareBusiness: _prepareBusinessSubscriptionPurchase ??
+          api.prepareBusinessSubscriptionPurchase,
       load: _loadSubscription ?? api.loadCurrentSubscription,
+      loadForPurchase: _loadPurchaseSubscription ?? _loadSubscription ??
+          api.loadCurrentSubscription,
       resync: _resyncRevenueCatSubscription ??
           api.resyncRevenueCatPurchasedSubscription,
       verify: _verifyPurchase ?? api.verifyStoreSubscription,
@@ -585,9 +615,107 @@ class StoreSubscriptionService {
     return products.where((product) => product.id == productId).firstOrNull;
   }
 
+  Future<StoreProductInfo?> loadBusinessProduct() async {
+    _ensureBusinessBillingSupported();
+    _ensureBusinessProductConfigured();
+    final products = await _queryProducts({businessProductId});
+    final matching = products.where((product) => product.id == businessProductId);
+    return matching.length == 1 ? matching.single : null;
+  }
+
+  void _ensureBusinessBillingSupported({bool requirePurchaseSupport = true}) {
+    _ensureSessionActive();
+    if (_revenueCatGateway == null) {
+      throw const StoreSubscriptionException(
+        'Business subscriptions require the RevenueCat billing setup.',
+      );
+    }
+    if (requirePurchaseSupport && _revenueCatGateway is! RevenueCatBusinessPurchaseGateway) {
+      throw const StoreBusinessPurchaseReconciliationException();
+    }
+  }
+
+  void _ensureBusinessProductConfigured() {
+    if (businessProductId.trim().isEmpty || businessProductId != businessProductId.trim() ||
+        [productId, starterProductId, AppConfig.storePostCaptionAddonProductId,
+          AppConfig.legacyPostCaptionAddonProductId,
+          AppConfig.storeSmallPostCaptionAddonProductId,
+          AppConfig.storeMediumPostCaptionAddonProductId,
+          AppConfig.storeLargePostCaptionAddonProductId].contains(businessProductId)) {
+      throw const StoreSubscriptionException('Business store product is not configured correctly.');
+    }
+  }
+
+  Future<StoreSubscriptionVerificationResult> purchaseBusiness() =>
+      startBusinessSubscription();
+
+  Future<StoreSubscriptionVerificationResult> startBusinessSubscription() async {
+    _ensureBusinessBillingSupported();
+    _ensureNoPendingPurchase();
+    return _runStoreOperation(_startBusinessSubscription);
+  }
+
+  Future<SubscriptionStatusResult> _ensureBusinessPurchaseAvailable(_BillingOperation operation) async {
+    _ensureOperationCurrent(operation);
+    final subscription = await operation.load().timeout(subscriptionConfirmationTimeout);
+    _ensureOperationCurrent(operation);
+    _ensureSubscriptionOwner(subscription, operation);
+    if (!subscription.businessPlanAvailable) {
+      throw const StoreSubscriptionException('Business subscriptions are not available for purchase yet.');
+    }
+    return subscription;
+  }
+
+  Future<StoreSubscriptionVerificationResult> _startBusinessSubscription() async {
+    _ensureBusinessProductConfigured();
+    final operation = _captureOperation();
+    await _ensureBusinessPurchaseAvailable(operation);
+    final product = await loadBusinessProduct().timeout(productQueryTimeout);
+    _ensureOperationCurrent(operation);
+    if (product == null || product.price.trim().isEmpty) {
+      throw const StoreSubscriptionException('The Business store price is not available.');
+    }
+    await _prepareRevenueCatPurchase(operation, prepare: operation.prepareBusiness);
+    _ensureOperationCurrent(operation);
+    // Read the current sale gate again after asynchronous store/preparation work.
+    // This never gates recovery of a receipt that has already been charged.
+    final subscription = await _ensureBusinessPurchaseAvailable(operation);
+    final purchasedPlan = subscription.purchasedPlan ?? subscription.plan;
+    final oldProductId = switch (purchasedPlan) {
+      'STARTER' => starterProductId,
+      'PRO' => productId,
+      'BASIC' => null,
+      _ => throw const StoreBusinessPurchaseReconciliationException(),
+    };
+    await (_revenueCatGateway as RevenueCatBusinessPurchaseGateway)
+        .buyBusinessSubscription(businessProductId, expectedOldProductId: oldProductId);
+    _ensureOperationCurrent(operation);
+    return _confirmCompletedPurchase(
+      productId: businessProductId,
+      operation: operation,
+      confirm: () => _readRevenueCatSubscription(
+        expectedProductsByPlan: { 'BUSINESS': businessProductId },
+        operation: 'purchase', sessionOperation: operation),
+    );
+  }
+
   Future<StoreSubscriptionVerificationResult> startStarterSubscription() async {
     _ensureNoPendingPurchase();
     return _runStoreOperation(_startStarterSubscription);
+  }
+
+  Future<void> _ensureLowerPlanPurchaseAllowed(_BillingOperation operation) async {
+    _ensureOperationCurrent(operation);
+    final subscription = await operation.loadForPurchase()
+        .timeout(subscriptionConfirmationTimeout);
+    _ensureOperationCurrent(operation);
+    _ensureSubscriptionOwner(subscription, operation);
+    final purchasedPlan = subscription.purchasedPlan ?? subscription.plan;
+    if (purchasedPlan == 'BUSINESS' && subscription.status == 'ACTIVE') {
+      throw const StoreSubscriptionException(
+        'Business is still active. Restore or reconcile the current subscription before changing to a lower plan.',
+      );
+    }
   }
 
   Future<StoreSubscriptionVerificationResult>
@@ -606,6 +734,7 @@ class StoreSubscriptionService {
 
     await _ensureStoreAvailable();
     _ensureOperationCurrent(operation);
+    await _ensureLowerPlanPurchaseAllowed(operation);
     final payload = await _gateway.buySubscription(starterProductId);
     _ensureOperationCurrent(operation);
 
@@ -636,6 +765,7 @@ class StoreSubscriptionService {
 
     await _ensureStoreAvailable();
     _ensureOperationCurrent(operation);
+    await _ensureLowerPlanPurchaseAllowed(operation);
     final payload = await _gateway.buySubscription(productId);
     _ensureOperationCurrent(operation);
 
@@ -708,6 +838,19 @@ class StoreSubscriptionService {
     return _runStoreOperation(_restoreSubscription);
   }
 
+  Future<StoreSubscriptionVerificationResult> restoreBusinessSubscription() async {
+    _ensureBusinessBillingSupported(requirePurchaseSupport: false);
+    return _runStoreOperation(_restoreBusinessSubscription);
+  }
+
+  Future<StoreSubscriptionVerificationResult> _restoreBusinessSubscription() async {
+    _ensureBusinessProductConfigured();
+    final operation = _captureOperation();
+    return _restoreRevenueCatSubscription(
+      gateway: _revenueCatGateway!, productId: businessProductId,
+      expectedPlan: 'BUSINESS', operation: operation);
+  }
+
   Future<StoreSubscriptionVerificationResult> _restoreSubscription() async {
     _ensureSessionActive();
     final operation = _captureOperation();
@@ -725,6 +868,7 @@ class StoreSubscriptionService {
     _ensureOperationCurrent(operation);
     final resyncedPlan = await _resyncRevenueCatForRestore(operation);
     final expectedProductsByPlan = {
+      'BUSINESS': businessProductId,
       'STARTER': starterProductId,
       'PRO': productId,
     };
@@ -796,6 +940,7 @@ class StoreSubscriptionService {
     _ensureOperationCurrent(operation);
     await _prepareRevenueCatPurchase(operation);
     _ensureOperationCurrent(operation);
+    await _ensureLowerPlanPurchaseAllowed(operation);
     await gateway.buySubscription(productId);
     _ensureOperationCurrent(operation);
 
@@ -833,10 +978,11 @@ class StoreSubscriptionService {
     );
   }
 
-  Future<void> _prepareRevenueCatPurchase(_BillingOperation operation) async {
+  Future<void> _prepareRevenueCatPurchase(_BillingOperation operation,
+      {SubscriptionPurchasePreparation? prepare}) async {
     _ensureOperationCurrent(operation);
     try {
-      await operation.prepare();
+      await (prepare ?? operation.prepare)();
       _ensureOperationCurrent(operation);
     } on ApiException catch (error) {
       _ensureOperationCurrent(operation);
@@ -1073,6 +1219,12 @@ abstract class RevenueCatPurchasesSdk {
   Future<void> restorePurchases();
 }
 
+abstract interface class RevenueCatBusinessPurchasesSdk {
+  Future<purchases.CustomerInfo> loadCustomerInfoForBusinessPurchase();
+  Future<void> purchaseBusiness(purchases.StoreProduct product,
+      {purchases.StoreProductChangeInfo? productChangeInfo});
+}
+
 /// Optional consumable support keeps subscription-only SDK test adapters small.
 abstract interface class RevenueCatConsumablePurchasesSdk {
   Future<List<purchases.StoreProduct>> getNonSubscriptionProducts(List<String> productIds);
@@ -1080,7 +1232,7 @@ abstract interface class RevenueCatConsumablePurchasesSdk {
   Future<List<StoreAddonTransaction>> getAddonTransactions();
 }
 
-class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsumablePurchasesSdk {
+class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsumablePurchasesSdk, RevenueCatBusinessPurchasesSdk {
   const _RevenueCatPurchasesSdk();
 
   @override
@@ -1119,6 +1271,19 @@ class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsu
   }
 
   @override
+  Future<purchases.CustomerInfo> loadCustomerInfoForBusinessPurchase() async {
+    await purchases.Purchases.invalidateCustomerInfoCache();
+    return purchases.Purchases.getCustomerInfo();
+  }
+
+  @override
+  Future<void> purchaseBusiness(purchases.StoreProduct product,
+      {purchases.StoreProductChangeInfo? productChangeInfo}) async {
+    await purchases.Purchases.purchase(purchases.PurchaseParams.storeProduct(
+        product, productChangeInfo: productChangeInfo));
+  }
+
+  @override
   Future<void> restorePurchases() async {
     await purchases.Purchases.restorePurchases();
   }
@@ -1145,7 +1310,7 @@ class _RevenueCatPurchasesSdk implements RevenueCatPurchasesSdk, RevenueCatConsu
   }
 }
 
-class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway, StoreAddonGateway, PendingAddonPurchaseReconciler, DurableAddonPurchaseGateway {
+class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway, RevenueCatBusinessPurchaseGateway, StoreAddonGateway, PendingAddonPurchaseReconciler, DurableAddonPurchaseGateway {
   PurchasesRevenueCatBillingGateway({
     required this.apiKey,
     required this.androidApiKey,
@@ -1244,6 +1409,103 @@ class PurchasesRevenueCatBillingGateway implements RevenueCatBillingGateway, Sto
           );
         }
       });
+
+  @override
+  Future<void> buyBusinessSubscription(String productId,
+      {String? expectedOldProductId}) => _runWithSession((binding, userId) async {
+    final sdk = _sdk;
+    if (sdk is! RevenueCatBusinessPurchasesSdk || kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.android &&
+            defaultTargetPlatform != TargetPlatform.iOS)) {
+      throw const StoreBusinessPurchaseReconciliationException();
+    }
+    await _ensureConfigured(binding, userId);
+    binding.ensureCurrent();
+    final businessSdk = sdk as RevenueCatBusinessPurchasesSdk;
+    final customer = await businessSdk.loadCustomerInfoForBusinessPurchase();
+    binding.ensureCurrent();
+    final oldProductIdentifier = _businessOldProductIdentifier(customer,
+        expectedOldProductId, defaultTargetPlatform == TargetPlatform.android
+            ? purchases.Store.playStore : purchases.Store.appStore);
+    final products = await sdk.getProducts([productId]);
+    binding.ensureCurrent();
+    final matching = products.where((product) => product.identifier == productId);
+    if (matching.length != 1 || matching.single.priceString.trim().isEmpty) {
+      throw const StoreBusinessPurchaseReconciliationException();
+    }
+    // originalAppUserId can be a legitimate historical/anonymous alias. The
+    // current native identity, re-read after the fresh snapshot, owns this call.
+    final currentUserId = await sdk.appUserId;
+    binding.ensureCurrent();
+    if (currentUserId != userId) {
+      throw const StoreBusinessPurchaseReconciliationException();
+    }
+    final changeInfo = defaultTargetPlatform == TargetPlatform.android &&
+            oldProductIdentifier != null
+        ? purchases.StoreProductChangeInfo(oldProductIdentifier,
+            replacementMode: purchases.StoreReplacementMode.chargeProratedPrice)
+        : null;
+    try {
+      // iOS requires the paid products in one App Store subscription group.
+      // A failed change must never be retried as an independent purchase.
+      await businessSdk.purchaseBusiness(matching.single, productChangeInfo: changeInfo);
+      binding.ensureCurrent();
+    } on PlatformException catch (error) {
+      binding.ensureCurrent();
+      throw StoreSubscriptionException(error.message ?? 'Business store purchase failed.');
+    }
+  });
+
+  String? _businessOldProductIdentifier(purchases.CustomerInfo customer,
+      String? expectedOldProductId, purchases.Store currentStore) {
+    const reconciliation = StoreBusinessPurchaseReconciliationException();
+    final active = customer.entitlements.active;
+    final all = customer.entitlements.all;
+    final flaggedActiveIds = all.entries.where((entry) => entry.value.isActive)
+        .map((entry) => entry.key).toSet();
+    if (flaggedActiveIds.length != active.length ||
+        !flaggedActiveIds.containsAll(active.keys) ||
+        active.entries.any((entry) => !entry.value.isActive ||
+            entry.value != all[entry.key])) {
+      throw reconciliation;
+    }
+    final subscriptions = customer.activeSubscriptions;
+    if (expectedOldProductId == null) {
+      if (subscriptions.isNotEmpty || active.isNotEmpty) throw reconciliation;
+      return null;
+    }
+    if (expectedOldProductId.trim().isEmpty || subscriptions.length != 1 ||
+        active.isEmpty) {
+      throw reconciliation;
+    }
+    final identifiers = <String>{};
+    for (final entitlement in active.values) {
+      final oldId = entitlement.productIdentifier;
+      final basePlan = entitlement.productPlanIdentifier;
+      if (oldId.trim().isEmpty || oldId != oldId.trim() ||
+          (basePlan != null && (basePlan.trim().isEmpty || basePlan != basePlan.trim())) ||
+          entitlement.store != currentStore ||
+          entitlement.ownershipType != purchases.OwnershipType.purchased) {
+        throw reconciliation;
+      }
+      final separator = oldId.indexOf(':');
+      final baseId = separator == -1 ? oldId : oldId.substring(0, separator);
+      if (separator != -1 && (currentStore != purchases.Store.playStore ||
+          separator == 0 || separator == oldId.length - 1 ||
+          oldId.indexOf(':', separator + 1) != -1 ||
+          (basePlan != null && oldId.substring(separator + 1) != basePlan))) {
+        throw reconciliation;
+      }
+      final fullId = separator != -1 || basePlan == null ? oldId : '$oldId:$basePlan';
+      if ((expectedOldProductId != baseId && expectedOldProductId != fullId) ||
+          (subscriptions.single != baseId && subscriptions.single != fullId)) {
+        throw reconciliation;
+      }
+      identifiers.add(fullId);
+    }
+    if (identifiers.length != 1) throw reconciliation;
+    return identifiers.single;
+  }
 
   RevenueCatConsumablePurchasesSdk get _consumableSdk {
     final sdk = _sdk;

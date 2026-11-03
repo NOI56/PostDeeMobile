@@ -199,7 +199,7 @@ describe('link in bio routes', () => {
   it.each([
     { storeName: '' }, { storeName: 'a'.repeat(81) }, { slug: 'ab' }, { slug: '-my-shop' },
     { slug: 'my-shop-' }, { slug: 'my--shop' }, { slug: 'ร้านค้า' }, { slug: 'a'.repeat(41) }, { links: [] },
-    { links: Array.from({ length: 21 }, (_, i) => ({ ...page.links[0]!, id: `link-${i}` })) },
+    { links: Array.from({ length: 51 }, (_, i) => ({ ...page.links[0]!, id: `link-${i}` })) },
     { links: [page.links[0], page.links[0]] },
     { links: [{ ...page.links[0]!, id: '' }] }, { links: [{ ...page.links[0]!, id: 'a'.repeat(81) }] },
     { links: [{ ...page.links[0]!, title: '' }] }, { links: [{ ...page.links[0]!, title: 'a'.repeat(81) }] }

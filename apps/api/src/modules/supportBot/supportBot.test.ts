@@ -35,6 +35,10 @@ describe('Dot data protection', () => {
   it('states plan facts from the enforced limits and never the retired editor', () => {
     const faq = supportBotFaq.join('\n');
     expect(faq).toContain('Basic 3, Starter 120, Pro 250');
+    expect(faq).toContain('Business 400');
+    expect(faq).toContain('Business 220');
+    expect(faq).toContain('Business 50');
+    expect(faq).toContain('Business up to 30 days');
     expect(faq).toContain('Starter up to 14 days');
     expect(faq).not.toMatch(/edit(or|ing)?|ตัดต่อ|subtitle/i);
     const prompt = supportBotSystemPrompt(context);

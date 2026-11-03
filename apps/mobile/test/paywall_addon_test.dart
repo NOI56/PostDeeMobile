@@ -190,6 +190,7 @@ void main() {
     final service = StoreSubscriptionService(
         gateway: _Store(),
         useRevenueCat: false,
+        loadPurchaseSubscription: () async => subscription(),
         verifyPurchase: (request) async {
           addon.eligible = true;
           plan = 'STARTER';

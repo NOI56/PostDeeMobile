@@ -2,6 +2,7 @@ import {
   maxProfileLinksByPlan, maxScheduleAheadDaysByPlan, monthlyAiCaptionGenerationLimits, monthlyPostUnitLimits
 } from '../subscriptions/subscriptionEntitlements.js';
 import type { SupportSender } from '../supportChat/supportChat.js';
+import type { SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
 
 // What Dot may see about the member. Deliberately no email, name, phone,
 // account id, caption text or raw provider error.
@@ -12,7 +13,7 @@ export type SupportBotContext = {
   automaticSignals: { area: string; lastSeen: string }[];
   // The member or Dot already asked the team to look at this chat.
   teamAlreadyNotified?: boolean;
-  plan?: 'BASIC' | 'STARTER' | 'PRO';
+  plan?: SubscriptionPlan;
   recentPosts: { createdAt: string; scheduledAt?: string; status: string; platforms: string[]; failures: string[] }[];
 };
 export type SupportBotTurn = { sender: SupportSender; body: string };
@@ -24,8 +25,8 @@ export const scrubSupportText = (text: string) => text
   .replace(/(?:\+?66[\s-]?|\b0)(?:\d[\s-]?){8,9}\b/g, '[เบอร์โทร]')
   .replace(/\b(?:\d[\s-]?){11,}\d\b/g, '[ตัวเลข]');
 
-const limits = (values: Record<'BASIC' | 'STARTER' | 'PRO', number>) =>
-  `Basic ${values.BASIC}, Starter ${values.STARTER}, Pro ${values.PRO}`;
+const limits = (values: Record<SubscriptionPlan, number>) =>
+  `Basic ${values.BASIC}, Starter ${values.STARTER}, Pro ${values.PRO}, Business ${values.BUSINESS}`;
 
 // Product facts Dot may state. Built from the entitlement constants so the
 // numbers always match what the API enforces. Prices are store-specific, so
@@ -33,7 +34,7 @@ const limits = (values: Record<'BASIC' | 'STARTER' | 'PRO', number>) =>
 export const supportBotFaq = [
   'PostDee posts one vertical (9:16) video to TikTok, YouTube Shorts, Instagram Reels and Facebook Page Reels, now or on a schedule.',
   `Monthly post units: ${limits(monthlyPostUnitLimits)}. One clip sent to one channel uses one unit, so one clip to 3 channels uses 3 units. Basic units need a verified phone number.`,
-  `Scheduling ahead: Basic cannot schedule; Starter up to ${maxScheduleAheadDaysByPlan.STARTER} days; Pro up to ${maxScheduleAheadDaysByPlan.PRO} days.`,
+  `Scheduling ahead: Basic cannot schedule; Starter up to ${maxScheduleAheadDaysByPlan.STARTER} days; Pro up to ${maxScheduleAheadDaysByPlan.PRO} days; Business up to ${maxScheduleAheadDaysByPlan.BUSINESS} days.`,
   `AI captions per month: ${limits(monthlyAiCaptionGenerationLimits)}. Each selected channel uses one caption credit.`,
   `Shop link (link in bio) links: ${limits(maxProfileLinksByPlan)}.`,
   'Prices are shown on the package page in the app. Subscriptions are bought and canceled in Google Play or the App Store.',

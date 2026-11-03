@@ -20,6 +20,7 @@ void main() {
   test('a Pro trial cannot confirm an unpaid Pro purchase', () async {
     var loads = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
       loadSubscription: () async => trialSubscription(++loads == 1 ? 'BASIC' : 'PRO'),
@@ -32,6 +33,7 @@ void main() {
 
   test('Starter restore succeeds beneath a Pro trial while retaining Pro access', () async {
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
       resyncRevenueCatSubscription: () async => 'STARTER',
       loadSubscription: () async => trialSubscription('STARTER'),
@@ -46,6 +48,7 @@ void main() {
     final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId:'seller-revenuecat',idToken:'trial-owner'));
     late _TrialRestoreApi client;
     final service = StoreSubscriptionService(sessionStore:sessions,
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway:FakeRevenueCatBillingGateway(),useRevenueCat:true,
       apiClientFactory:(binding)=>client=_TrialRestoreApi(binding));
     final result=await service.restoreStarterSubscription();
@@ -60,6 +63,7 @@ void main() {
     final completion = Completer<StorePurchasePayload>();
     var verifications = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       sessionStore: sessions,
       gateway: _DelayedStoreGateway(completion), useRevenueCat: false,
       storeOperationTimeout: const Duration(milliseconds: 20),
@@ -81,6 +85,7 @@ void main() {
       const AuthSession(userId: 'seller-revenuecat', idToken: 'owner-a'));
     final gateway = _AcknowledgementStoreGateway();
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       sessionStore: sessions, gateway: gateway, useRevenueCat: false,
       verifyPurchase: (request) async => _verifiedSubscription(request),
     );
@@ -101,6 +106,7 @@ void main() {
       final preparationStarted = Completer<void>();
       final gateway = FakeRevenueCatBillingGateway();
       final service = StoreSubscriptionService(
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
         revenueCatGateway: gateway,
         useRevenueCat: true,
         prepareSubscriptionPurchase: () {
@@ -126,6 +132,7 @@ void main() {
         final gateway = FakeRevenueCatBillingGateway();
         var loads = 0;
         final service = StoreSubscriptionService(
+          loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
           revenueCatGateway: gateway,
           useRevenueCat: true,
           prepareSubscriptionPurchase: () async => throw failure,
@@ -147,6 +154,7 @@ void main() {
     final preparationStarted = Completer<void>();
     final gateway = FakeRevenueCatBillingGateway();
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       sessionStore: sessions, revenueCatGateway: gateway, useRevenueCat: true,
       prepareSubscriptionPurchase: () { preparationStarted.complete(); return prepared.future; },
       loadSubscription: () async => throw StateError('must not load'),
@@ -164,6 +172,7 @@ void main() {
     final gateway = FakeRevenueCatBillingGateway();
     var loads = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC', userId: 'owner-a'),
       sessionStore: sessions, revenueCatGateway: gateway, useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
       loadSubscription: () async { loads += 1; throw const ApiException('Unavailable', statusCode: 503); },
@@ -179,6 +188,7 @@ void main() {
 
   test('RevenueCat refuses an entitlement from a different UID', () async {
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
       loadSubscription: () async => _subscription(plan: 'PRO', userId: 'another-user'),
@@ -191,6 +201,7 @@ void main() {
       final failure = ApiException('Blocked', statusCode: status);
       final gateway = FakeRevenueCatBillingGateway();
       final service = StoreSubscriptionService(
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
         revenueCatGateway: gateway, useRevenueCat: true,
         prepareSubscriptionPurchase: () async => throw failure,
         loadSubscription: () async => throw StateError('must not poll'),
@@ -213,7 +224,7 @@ void main() {
     );
     expect((await service.startProSubscription()).subscription.isPro, isTrue);
     expect(clients, hasLength(1));
-    expect(clients.single.calls, ['prepare:original-token', 'load:original-token']);
+    expect(clients.single.calls, ['prepare:original-token', 'load:original-token', 'load:original-token']);
   });
 
   test('default receipt verification keeps the purchase binding while a token refresh is pending', () async {
@@ -250,6 +261,7 @@ void main() {
         onRestore: phase == 'restore' ? pause : null,
       );
       final service = StoreSubscriptionService(
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
         sessionStore: sessions, revenueCatGateway: gateway, useRevenueCat: true,
         prepareSubscriptionPurchase: () async { preparationCalls += 1; },
         resyncRevenueCatSubscription: () async {
@@ -278,6 +290,7 @@ void main() {
     final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(userId: 'seller-revenuecat', idToken: 'a'));
     var loads = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       sessionStore: sessions, revenueCatGateway: FakeRevenueCatBillingGateway(), useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
       loadSubscription: () async { loads += 1; return _subscription(plan: 'BASIC'); },
@@ -294,12 +307,14 @@ void main() {
     final completion = Completer<StorePurchasePayload>();
     final gateway = _DelayedStoreGateway(completion);
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: gateway,
       useRevenueCat: false,
       verifyPurchase: (request) async => _verifiedSubscription(request),
     );
     final purchase = service.startProSubscription();
     final expectation = expectLater(purchase, throwsA(isA<TimeoutException>()));
+    await gateway.purchaseStarted.future;
     completion.completeError(TimeoutException('SDK operation ended'));
     await expectation;
     expect(service.hasPendingConfirmation, isFalse);
@@ -309,6 +324,7 @@ void main() {
     final completion = Completer<StorePurchasePayload>();
     final verification = Completer<StoreSubscriptionVerificationResult>();
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: _DelayedStoreGateway(completion),
       useRevenueCat: false,
       storeOperationTimeout: const Duration(milliseconds: 20),
@@ -331,6 +347,7 @@ void main() {
     final completion = Completer<StorePurchasePayload>();
     final gateway = _DelayedStoreGateway(completion);
     final service = StoreSubscriptionService(gateway: gateway,
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       useRevenueCat: false, storeOperationTimeout: const Duration(milliseconds: 30),
       verifyPurchase: (request) async => _verifiedSubscription(request));
     await expectLater(service.startProSubscription(),
@@ -355,6 +372,7 @@ void main() {
     final cache = StoreSubscriptionSessionCache(
       sessionStore: sessionStore,
       createService: () => StoreSubscriptionService(
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC', userId: sessionStore.session.userId ?? ''),
         gateway: gateway,
         useRevenueCat: false,
         verifyPurchase: (_) async {
@@ -398,6 +416,7 @@ void main() {
     final cache = StoreSubscriptionSessionCache(
       sessionStore: sessions,
       createService: () => StoreSubscriptionService(
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC', userId: sessions.session.userId ?? ''),
         gateway: gateway, useRevenueCat: false,
         verifyPurchase: (_) async => throw const ApiException('Unavailable', statusCode: 503),
       ),
@@ -416,6 +435,7 @@ void main() {
     final gateway = FakeStoreBillingGateway();
     final verifiedRequests = <VerifyStorePurchaseRequest>[];
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: gateway,
       useRevenueCat: false,
       verifyPurchase: (request) async {
@@ -450,6 +470,7 @@ void main() {
     final cache = StoreSubscriptionSessionCache(
       sessionStore: sessionStore,
       createService: () => StoreSubscriptionService(
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC', userId: sessionStore.session.userId ?? ''),
         gateway: FakeStoreBillingGateway(),
         useRevenueCat: false,
         verifyPurchase: (_) {
@@ -486,6 +507,7 @@ void main() {
     final gateway = FakeStoreBillingGateway();
     var verifyCalls = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: gateway,
       useRevenueCat: false,
       subscriptionConfirmationTimeout: const Duration(milliseconds: 50),
@@ -519,6 +541,7 @@ void main() {
     var loadCalls = 0;
     final gateway = FakeRevenueCatBillingGateway();
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: gateway,
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -556,6 +579,7 @@ void main() {
       purchaseError: const StoreSubscriptionException('Purchase canceled'),
     );
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: gateway,
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -575,6 +599,7 @@ void main() {
     var backendAvailable = false;
     final gateway = FakeRevenueCatBillingGateway();
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: gateway,
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -604,6 +629,7 @@ void main() {
       () async {
     final gateway = FakeRevenueCatBillingGateway();
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: gateway,
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -629,6 +655,7 @@ void main() {
       () async {
     VerifyStorePurchaseRequest? verifiedRequest;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: FakeStoreBillingGateway(
         purchasePayload: const StorePurchasePayload.android(
           productId: 'postdee_pro_monthly',
@@ -656,6 +683,7 @@ void main() {
     var verifyCalls = 0;
     final revenueCatGateway = FakeRevenueCatBillingGateway();
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: FakeStoreBillingGateway(
         purchasePayload: const StorePurchasePayload.android(
           productId: 'postdee_pro_monthly',
@@ -685,6 +713,7 @@ void main() {
     var loadCalls = 0;
     var waitCalls = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -708,6 +737,7 @@ void main() {
     var loadCalls = 0;
     var waitCalls = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -732,6 +762,7 @@ void main() {
     var loadCalls = 0;
     var waitCalls = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -758,6 +789,7 @@ void main() {
     var loadCalls = 0;
     var waitCalls = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: FakeRevenueCatBillingGateway(),
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -792,6 +824,7 @@ void main() {
     final revenueCatGateway = FakeRevenueCatBillingGateway();
     var resyncCalls = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: revenueCatGateway,
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -815,6 +848,7 @@ void main() {
     final revenueCatGateway = FakeRevenueCatBillingGateway();
     var loadCalls = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       revenueCatGateway: revenueCatGateway,
       useRevenueCat: true,
       prepareSubscriptionPurchase: () async {},
@@ -874,6 +908,7 @@ void main() {
       final revenueCatGateway = FakeRevenueCatBillingGateway();
       var loadCalls = 0;
       final service = StoreSubscriptionService(
+        loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
         revenueCatGateway: revenueCatGateway,
         useRevenueCat: true,
         prepareSubscriptionPurchase: () async {},
@@ -907,6 +942,7 @@ void main() {
       () async {
     VerifyStorePurchaseRequest? verifiedRequest;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: FakeStoreBillingGateway(
         restorePayload: const StorePurchasePayload.ios(
           productId: 'postdee_pro_monthly',
@@ -933,6 +969,7 @@ void main() {
       () async {
     VerifyStorePurchaseRequest? verifiedRequest;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: FakeStoreBillingGateway(
         purchasePayload: const StorePurchasePayload.android(
           productId: 'postdee_starter_monthly',
@@ -960,6 +997,7 @@ void main() {
       () async {
     VerifyStorePurchaseRequest? verifiedRequest;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: FakeStoreBillingGateway(
         restorePayload: const StorePurchasePayload.ios(
           productId: 'postdee_starter_monthly',
@@ -986,6 +1024,7 @@ void main() {
       () async {
     var verifyCalls = 0;
     final service = StoreSubscriptionService(
+      loadPurchaseSubscription: () async => _subscription(plan: 'BASIC'),
       gateway: FakeStoreBillingGateway(available: false),
       verifyPurchase: (_) async {
         verifyCalls += 1;
@@ -1044,9 +1083,11 @@ SubscriptionStatusResult _subscription({
 class _DelayedStoreGateway extends FakeStoreBillingGateway {
   _DelayedStoreGateway(this.completion);
   final Completer<StorePurchasePayload> completion;
+  final purchaseStarted = Completer<void>();
   @override
   Future<StorePurchasePayload> buySubscription(String productId) {
     purchaseCalls++;
+    if (!purchaseStarted.isCompleted) purchaseStarted.complete();
     return completion.future;
   }
 }

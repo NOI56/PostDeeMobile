@@ -113,7 +113,7 @@ describe('worldwide profile platform catalog', () => {
     }
   }, 15_000);
 
-  it('allows each brand in publication without changing the owner scope or the 20-link page limit', async () => {
+  it('allows each brand in publication without changing the owner scope or the Pro 20-link entitlement', async () => {
     const { profilePlatformCatalog } = await import('./profilePlatformCatalog.generated.js');
     const app = createApp();
     for (let offset = 0; offset < profilePlatformCatalog.length; offset += 20) {
@@ -132,7 +132,9 @@ describe('worldwide profile platform catalog', () => {
     const links = Array.from({ length: 21 }, (_, index) => ({ id: `link-${index}`, title: 'เว็บร้าน', url: 'https://example.invalid/' }));
     await request(app).post('/link-in-bio/publish').set('x-postdee-user-id', 'global-owner')
       .set('x-postdee-subscription-plan', 'PRO')
-      .send({ storeName: 'ร้านทั่วโลก', slug: 'global-shop', links }).expect(400);
+      .send({ storeName: 'ร้านทั่วโลก', slug: 'global-shop', links }).expect(403)
+      .expect(({ body }) => expect(body).toMatchObject({ code: 'LINK_IN_BIO_LINK_LIMIT_EXCEEDED',
+        plan: 'PRO', maxProfileLinks: 20, requestedLinks: 21 }));
     const publicPage = await request(app).get('/p/global-shop').expect(200);
     expect(publicPage.headers['content-security-policy']).toContain("img-src 'self';");
     expect(publicPage.headers['content-security-policy']).toContain("script-src 'none';");

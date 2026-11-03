@@ -32,7 +32,7 @@ const readPublishInput = (body: unknown) => {
   const input = body as Record<string, unknown>;
   const storeName = readText(input.storeName, 80);
   const slug = readText(input.slug, 40)?.toLowerCase();
-  if (!storeName || !slug || !slugPattern.test(slug) || !Array.isArray(input.links) || input.links.length < 1 || input.links.length > 20) return undefined;
+  if (!storeName || !slug || !slugPattern.test(slug) || !Array.isArray(input.links) || input.links.length < 1 || input.links.length > maxProfileLinksByPlan.BUSINESS) return undefined;
   const links: LinkInBioLink[] = [];
   const ids = new Set<string>();
   for (const item of input.links) {

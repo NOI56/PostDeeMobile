@@ -302,7 +302,7 @@ const readSubscriptionPlanOverride = (value: unknown): SubscriptionPlanOverrideR
     };
   }
 
-  if (value === 'BASIC' || value === 'STARTER' || value === 'PRO') {
+  if (value === 'BASIC' || value === 'STARTER' || value === 'PRO' || value === 'BUSINESS') {
     return {
       ok: true as const,
       plan: value
@@ -311,7 +311,7 @@ const readSubscriptionPlanOverride = (value: unknown): SubscriptionPlanOverrideR
 
   return {
     ok: false as const,
-    message: 'subscriptionPlan must be BASIC, STARTER, or PRO'
+    message: 'subscriptionPlan must be BASIC, STARTER, PRO, or BUSINESS'
   };
 };
 

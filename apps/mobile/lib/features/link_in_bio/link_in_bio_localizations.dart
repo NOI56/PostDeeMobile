@@ -95,6 +95,7 @@ const _englishMessages = <String, String>{
   'เพิ่มและเปิดใช้งานอย่างน้อย 1 ลิงก์ก่อนเผยแพร่':
       'Add and enable at least one link before publishing.',
   'เปิดใช้ได้สูงสุด 20 ลิงก์': 'You can enable up to 20 links.',
+  'เปิดใช้ได้สูงสุด 50 ลิงก์': 'You can enable up to 50 links.',
   'เพิ่มภาพพื้นหลัง หรือเปลี่ยนพื้นหลังเป็นสีเดียวก่อนเผยแพร่':
       'Add a background image or choose a solid background before publishing.',
   'ข้อมูลลิงก์ไม่ถูกต้อง กรุณาลบแล้วเพิ่มใหม่':

@@ -2,6 +2,17 @@
 
 Build roadmap for PostDee.
 
+## Combined main and Staging delivery (2026-11-03, authorized / pending)
+
+- The owner authorized merge into `main`, push and the combined Staging API
+  deployment. Preserve the `6c7ff068` package/top-up and 3D/Cartoon capabilities
+  while adding Business; retain the historical records below.
+- Finish exact-candidate validation, pending additive migrations, compatible
+  API/worker rollout and deployment readback before reporting delivery success.
+- Keep Business and replacement-tier sales default-off. Compatible Mobile,
+  native sandbox billing acceptance and store activation remain pending;
+  Production is outside this delivery.
+
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 
 - Add an owner-approved Cartoon category of twenty original drawn designs (two
@@ -11,6 +22,21 @@ Build roadmap for PostDee.
   text or fonts; guarded by tests. Catalog 4 negotiation keeps older apps on
   templates they know. Deliver after PR #51, API before Mobile; no migration.
   Device and published-page checks are recorded in the [cartoon plan](docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
+
+## Fourth main subscription (2026-11-02, local candidate)
+
+- Add provisional Business at THB 399/month reference: 400 post units/month,
+  220 AI caption credits/month and capacity for 50 profile links. Keep calendar
+  resets, per-channel accounting, existing plans and top-up receipts unchanged.
+- Add authoritative entitlements, enum migration, provider/lifecycle mappings,
+  capacity enforcement, admin schemas and Thai/English Mobile presentation.
+- Keep `BILLING_BUSINESS_ENABLED=false`. Deliver migration/API before a
+  compatible Mobile build; old clients cannot fully represent the new plan.
+- The owner now authorizes including Business in the combined main/push/Staging
+  delivery, superseding the earlier `5fa8965` bundle that excluded it. Execution
+  and deployment readback remain pending. Store product/entitlement creation,
+  native sandbox purchases and sale activation retain separate gates.
+  [Work record](docs/superpowers/plans/2026-11-02-business-monthly-plan.md).
 
 ## Package categories and credit packs (2026-11-02, consolidated draft)
 

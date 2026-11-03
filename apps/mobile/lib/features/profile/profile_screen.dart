@@ -324,7 +324,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => PaywallScreen(
-          onAddonPurchased: () { if (mounted) _loadSubscription(); },
+          onAddonPurchased: () {
+            if (mounted) _loadSubscription();
+          },
           loadSubscription:
               widget.loadSubscription ?? _apiClient.loadCurrentSubscription,
         ),
@@ -422,13 +424,16 @@ class _ProfileScreenState extends State<ProfileScreen>
         : await Navigator.of(context).push<AuthSession>(
             MaterialPageRoute<AuthSession>(
                 builder: (_) => PhoneVerificationScreen(
-                      runNativeAuthOperation: widget.runNativePhoneAuthOperation,
+                      runNativeAuthOperation:
+                          widget.runNativePhoneAuthOperation,
                       onVerified: (verified) {
-                        if (binding.isCurrent && _currentAccountScope == owner &&
+                        if (binding.isCurrent &&
+                            _currentAccountScope == owner &&
                             verified.stableUserId ==
                                 PostDeeAuthSessionStore
                                     .instance.session.stableUserId) {
-                          PostDeeAuthSessionStore.instance.updateCredentials(verified);
+                          PostDeeAuthSessionStore.instance
+                              .updateCredentials(verified);
                         }
                       },
                     )),
@@ -473,6 +478,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   String? get _currentTierId {
     final plan = _subscription?.plan.toUpperCase();
     return switch (plan) {
+      'BUSINESS' => 'business',
       'PRO' => 'pro',
       'STARTER' => 'starter',
       'BASIC' || 'FREE' => 'free',
@@ -1222,9 +1228,10 @@ class _CurrentPlanCard extends StatelessWidget {
       'BASIC' || 'FREE' => _profileText(context, 'ฟรี', 'Free'),
       'STARTER' => 'Starter',
       'PRO' => 'Pro',
+      'BUSINESS' => 'Business',
       _ => _profileText(context, 'ไม่รู้จักแพ็กเกจนี้', 'Unknown plan'),
     };
-    final isPaid = plan == 'STARTER' || plan == 'PRO';
+    final isPaid = subscription.isPaid;
     final status = switch (subscription.status.toUpperCase()) {
       'ACTIVE' => _profileText(context, 'ใช้งานอยู่', 'Active'),
       'INACTIVE' => _profileText(context, 'ยังไม่เปิดใช้งาน', 'Inactive'),
@@ -1541,12 +1548,19 @@ class _DeleteAccountButton extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            _profileText(
-                                sheetContext,
-                                'การลบบัญชี PostDee ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro '
-                                    'ที่ซื้อผ่าน App Store หรือ Google Play หากไม่ต้องการให้ต่ออายุ '
-                                    'กรุณายกเลิกสมาชิกในร้านค้าก่อนลบบัญชี',
-                                'Deleting your PostDee account does not cancel Starter/Pro subscriptions purchased through the App Store or Google Play. To stop renewal, cancel your subscription in the store before deleting your account.'),
+                            subscription?.isBusiness == true
+                                ? _profileText(
+                                    sheetContext,
+                                    'การลบบัญชี PostDee ไม่ได้ยกเลิกแพ็กเกจ Business '
+                                        'ที่ซื้อผ่าน App Store หรือ Google Play หากไม่ต้องการต่ออายุ '
+                                        'กรุณายกเลิกสมาชิกในร้านค้าก่อนลบบัญชี',
+                                    'Deleting your PostDee account does not cancel Business subscriptions purchased through the App Store or Google Play. To stop renewal, cancel your subscription in the store before deleting your account.')
+                                : _profileText(
+                                    sheetContext,
+                                    'การลบบัญชี PostDee ไม่ได้ยกเลิกแพ็กเกจ Starter/Pro '
+                                        'ที่ซื้อผ่าน App Store หรือ Google Play หากไม่ต้องการให้ต่ออายุ '
+                                        'กรุณายกเลิกสมาชิกในร้านค้าก่อนลบบัญชี',
+                                    'Deleting your PostDee account does not cancel Starter/Pro subscriptions purchased through the App Store or Google Play. To stop renewal, cancel your subscription in the store before deleting your account.'),
                             style: const TextStyle(
                               fontSize: 12.5,
                               height: 1.45,

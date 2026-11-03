@@ -54,6 +54,7 @@ export type ServerConfig = {
   elevenLabsApiKey?: string;
   geminiApiKey?: string;
   billingProvider: BillingProviderKind;
+  billingBusinessEnabled?: boolean;
   revenueCatWebhookAuthToken?: string;
   revenueCatRestApiV1Key?: string;
   revenueCatSubscriptionEnvironment: 'SANDBOX' | 'PRODUCTION';
@@ -63,10 +64,13 @@ export type ServerConfig = {
   revenueCatAddonEnvironment: 'SANDBOX' | 'PRODUCTION';
   revenueCatStarterEntitlementId: string;
   revenueCatProEntitlementId: string;
+  revenueCatBusinessEntitlementId?: string;
   revenueCatStarterProductId: string;
   revenueCatProProductId: string;
+  revenueCatBusinessProductId?: string;
   storeStarterMonthlyProductId: string;
   storeProMonthlyProductId: string;
+  storeBusinessMonthlyProductId?: string;
   googlePlayPackageName?: string;
   googlePlayServiceAccountKeyJson?: string;
   googlePlayAccessToken?: string;
@@ -571,6 +575,7 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     elevenLabsApiKey: readOptional(env, 'ELEVENLABS_API_KEY'),
     geminiApiKey: readOptional(env, 'GEMINI_API_KEY'),
     billingProvider: readBillingProvider(env),
+    billingBusinessEnabled: readBoolean(env, 'BILLING_BUSINESS_ENABLED', false),
     revenueCatWebhookAuthToken: readOptional(env, 'REVENUECAT_WEBHOOK_AUTH_TOKEN'),
     revenueCatRestApiV1Key: readOptional(env, 'REVENUECAT_REST_API_V1_KEY'),
     revenueCatSubscriptionEnvironment: (() => {
@@ -589,14 +594,19 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     revenueCatStarterEntitlementId:
       readOptional(env, 'REVENUECAT_STARTER_ENTITLEMENT_ID') ?? 'starter',
     revenueCatProEntitlementId: readOptional(env, 'REVENUECAT_PRO_ENTITLEMENT_ID') ?? 'pro',
+    revenueCatBusinessEntitlementId: readOptional(env, 'REVENUECAT_BUSINESS_ENTITLEMENT_ID') ?? 'business',
     revenueCatStarterProductId:
       readOptional(env, 'REVENUECAT_STARTER_PRODUCT_ID') ?? 'postdee_starter_monthly',
     revenueCatProProductId:
       readOptional(env, 'REVENUECAT_PRO_PRODUCT_ID') ?? 'postdee_pro_monthly',
+    revenueCatBusinessProductId:
+      readOptional(env, 'REVENUECAT_BUSINESS_PRODUCT_ID') ?? 'postdee_business_monthly',
     storeStarterMonthlyProductId:
       readOptional(env, 'STORE_STARTER_MONTHLY_PRODUCT_ID') ?? 'postdee_starter_monthly',
     storeProMonthlyProductId:
       readOptional(env, 'STORE_PRO_MONTHLY_PRODUCT_ID') ?? 'postdee_pro_monthly',
+    storeBusinessMonthlyProductId:
+      readOptional(env, 'STORE_BUSINESS_MONTHLY_PRODUCT_ID') ?? 'postdee_business_monthly',
     googlePlayPackageName: readOptional(env, 'GOOGLE_PLAY_PACKAGE_NAME'),
     googlePlayServiceAccountKeyJson: readOptional(env, 'GOOGLE_PLAY_SERVICE_ACCOUNT_KEY_JSON'),
     googlePlayAccessToken: readOptional(env, 'GOOGLE_PLAY_ACCESS_TOKEN'),
@@ -665,18 +675,42 @@ export const readServerConfig = (env: EnvSource = process.env): ServerConfig => 
     mockUserId: readOptional(env, 'MOCK_USER_ID') ?? 'local-dev-user'
   };
 
-  if ([config.revenueCatStarterProductId, config.revenueCatProProductId,
-    config.storeStarterMonthlyProductId, config.storeProMonthlyProductId].includes(config.revenueCatAddonProductId)) {
+  const subscriptionProductIds = [config.revenueCatStarterProductId, config.revenueCatProProductId,
+    config.revenueCatBusinessProductId!, config.storeStarterMonthlyProductId, config.storeProMonthlyProductId,
+    config.storeBusinessMonthlyProductId!];
+  if (subscriptionProductIds.includes(config.revenueCatAddonProductId)) {
     throw new Error('REVENUECAT_ADDON_PRODUCT_ID must differ from subscription product identifiers');
   }
   if (addonTierProducts.some(product => product.productId === config.revenueCatAddonProductId)) {
     throw new Error('REVENUECAT_ADDON_PRODUCT_ID must not reuse a replacement tier identifier');
   }
-  const subscriptionProductIds = [config.revenueCatStarterProductId, config.revenueCatProProductId,
-    config.storeStarterMonthlyProductId, config.storeProMonthlyProductId];
   if (subscriptionProductIds.includes(legacyAddonProductId) ||
       addonTierProducts.some(product => subscriptionProductIds.includes(product.productId))) {
     throw new Error('Add-on tier identifiers must differ from subscription product identifiers');
+  }
+  const subscriptionProductPlans = new Map<string, string>();
+  for (const [plan, productIds] of [
+    ['STARTER', [config.revenueCatStarterProductId, config.storeStarterMonthlyProductId]],
+    ['PRO', [config.revenueCatProProductId, config.storeProMonthlyProductId]],
+    ['BUSINESS', [config.revenueCatBusinessProductId!, config.storeBusinessMonthlyProductId!]]
+  ] as const) {
+    for (const productId of productIds) {
+      const mappedPlan = subscriptionProductPlans.get(productId);
+      if (mappedPlan && mappedPlan !== plan) {
+        throw new Error('Subscription product identifiers must map to exactly one plan');
+      }
+      subscriptionProductPlans.set(productId, plan);
+    }
+  }
+  if (new Set([config.revenueCatStarterEntitlementId, config.revenueCatProEntitlementId,
+    config.revenueCatBusinessEntitlementId]).size !== 3) {
+    throw new Error('RevenueCat entitlement identifiers must map to exactly one plan');
+  }
+  const addonProductIds = [legacyAddonProductId, config.revenueCatAddonProductId,
+    ...addonTierProducts.map(product => product.productId)];
+  if ([config.revenueCatStarterEntitlementId, config.revenueCatProEntitlementId,
+    config.revenueCatBusinessEntitlementId!].some(id => addonProductIds.includes(id))) {
+    throw new Error('RevenueCat subscription entitlement identifiers must differ from add-on identifiers');
   }
   assertRuntimeStoreConfig(config);
   assertPostPeerLegacyRecoveryConfig(config);

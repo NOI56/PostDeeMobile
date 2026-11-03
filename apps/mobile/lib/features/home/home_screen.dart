@@ -1082,6 +1082,7 @@ class _PlanSummaryCard extends StatelessWidget {
     }
 
     return switch (current.plan.toUpperCase()) {
+      'BUSINESS' => isThai ? 'แพ็กเกจ Business' : 'Business package',
       'PRO' => isThai ? 'แพ็กเกจ Pro' : 'Pro package',
       'STARTER' => isThai ? 'แพ็กเกจ Starter' : 'Starter package',
       'BASIC' || 'FREE' => isThai ? 'แพ็กเกจฟรี' : 'Free package',
@@ -1095,6 +1096,7 @@ class _PlanSummaryCard extends StatelessWidget {
     final effectiveLimit = subscription?.monthlyPostLimit;
     if (effectiveLimit != null) return effectiveLimit;
     return switch (subscription?.plan.toUpperCase()) {
+      'BUSINESS' => 400,
       'PRO' => 250,
       'STARTER' => 120,
       _ => 3,
@@ -1128,15 +1130,18 @@ class _PlanSummaryCard extends StatelessWidget {
     final title = _planTitle(l10n);
     final subtitle = _planSubtitle(l10n);
     final isPro = subscription?.plan.toUpperCase() == 'PRO';
-    final canSpendCredits =
-        isPro || subscription?.plan.toUpperCase() == 'STARTER';
+    final isBusiness = subscription?.isBusiness == true;
+    final canSpendCredits = subscription?.isPaid == true;
     final bankPosts = subscription?.addonPostUnits ?? 0;
     final bankCaptions = subscription?.addonAiCaptions ?? 0;
     final hasBank = bankPosts > 0 || bankCaptions > 0;
     final availablePosts = subscription?.availablePostUnits;
     final isThai = l10n.locale.languageCode == 'th';
-    final showUpgrade =
-        !isLoading && errorMessage == null && subscription != null && !isPro;
+    final showUpgrade = !isLoading &&
+        errorMessage == null &&
+        subscription != null &&
+        !isBusiness &&
+        (!isPro || subscription!.businessPlanAvailable);
 
     return PostDeePressFeedback(
       child: Material(

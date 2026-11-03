@@ -273,6 +273,8 @@ const _messages = <String, String>{
       'Starter: schedule up to 14 days ahead',
   'แพ็กเกจ Pro ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน':
       'Pro: schedule up to 30 days ahead',
+  'แพ็กเกจ Business ตั้งเวลาล่วงหน้าได้สูงสุด 30 วัน':
+      'Business: schedule up to 30 days ahead',
 };
 
 class ReviewText extends StatelessWidget {

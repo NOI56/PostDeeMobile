@@ -92,6 +92,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
   var _priceLoadFailed = false;
   var _priceLoadGeneration = 0;
   Timer? _priceTimer;
+  var _isBusinessPriceLoading = false;
+  var _businessPriceLoadFailed = false;
+  var _businessPriceLoadGeneration = 0;
   AddonCatalogResult? _addonCatalog;
   StoreProductInfo? _addonProduct;
   final _addonProducts = <String, StoreProductInfo>{};
@@ -211,6 +214,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       if (_canUpdateScreen) setState(() {});
     } on StoreAddonException catch (error) {
       _showBillingError(error.message);
+    } on StoreBusinessPurchaseReconciliationException {
+      _showBillingError('กรุณากู้คืนการซื้อ หรือตรวจสอบสมาชิกเดิมในร้านค้าที่สมัครไว้ก่อนสมัคร Business');
     } on StoreSubscriptionException catch (error) {
       _showBillingError(error.message);
     } catch (_) {
@@ -236,7 +241,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
       if (!_canUpdateScreen || generation != _priceLoadGeneration) return;
       _priceTimer?.cancel();
       setState(() {
+        final business = _products[_service.businessProductId];
         _products..clear()..addEntries(products.map((product) => MapEntry(product.id, product)));
+        if (business != null && _showsBusinessPlan) {
+          _products.putIfAbsent(_service.businessProductId, () => business);
+        }
         _isPriceLoading = false;
         _priceLoadFailed = products.isEmpty;
       });
@@ -247,11 +256,93 @@ class _PaywallScreenState extends State<PaywallScreen> {
     }
   }
 
+  bool get _showsBusinessPlan =>
+      (_service.supportsBusinessSubscriptions &&
+          _subscription?.businessPlanAvailable == true) ||
+      _currentPlanId == 'business';
+
+  bool get _canPurchaseBusiness {
+    final quote = _products[_service.businessProductId];
+    return _service.supportsBusinessSubscriptions &&
+        _subscription?.businessPlanAvailable == true &&
+        !_isBusinessPriceLoading &&
+        !_businessPriceLoadFailed &&
+        quote != null &&
+        quote.id == _service.businessProductId &&
+        quote.price.trim().isNotEmpty;
+  }
+
+  bool get _hasActivePurchasedBusiness {
+    final subscription = _subscription;
+    return subscription != null &&
+        subscription.status.toUpperCase() == 'ACTIVE' &&
+        (subscription.purchasedPlan ?? subscription.plan).toUpperCase() ==
+            'BUSINESS';
+  }
+
+  bool _canChangeToPlan(String id) =>
+      !_hasActivePurchasedBusiness || (id != 'starter' && id != 'pro');
+
+  void _syncBusinessOffer() {
+    if (!_canUpdateScreen) return;
+    if (!_showsBusinessPlan || !_service.supportsBusinessSubscriptions) {
+      _businessPriceLoadGeneration++;
+      setState(() {
+        _products.remove(_service.businessProductId);
+        _isBusinessPriceLoading = false;
+        _businessPriceLoadFailed = false;
+      });
+    } else if (!_products.containsKey(_service.businessProductId) &&
+        !_isBusinessPriceLoading &&
+        !_businessPriceLoadFailed) {
+      unawaited(_loadBusinessPrice());
+    }
+  }
+
+  Future<void> _loadBusinessPrice() async {
+    if (!_canUpdateScreen ||
+        !_showsBusinessPlan ||
+        !_service.supportsBusinessSubscriptions) {
+      return;
+    }
+    final generation = ++_businessPriceLoadGeneration;
+    setState(() {
+      _isBusinessPriceLoading = true;
+      _businessPriceLoadFailed = false;
+      _products.remove(_service.businessProductId);
+    });
+    try {
+      final quote = await _service
+          .loadBusinessProduct()
+          .timeout(_service.productQueryTimeout);
+      if (!_canUpdateScreen || generation != _businessPriceLoadGeneration) {
+        return;
+      }
+      final valid = quote != null &&
+          quote.id == _service.businessProductId &&
+          quote.price.trim().isNotEmpty;
+      setState(() {
+        if (valid) _products[_service.businessProductId] = quote;
+        _isBusinessPriceLoading = false;
+        _businessPriceLoadFailed = !valid;
+      });
+    } catch (_) {
+      if (!_canUpdateScreen || generation != _businessPriceLoadGeneration) {
+        return;
+      }
+      setState(() {
+        _isBusinessPriceLoading = false;
+        _businessPriceLoadFailed = true;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _sessionStore.removeListener(_handleSessionChanged);
     _subscriptionLoadGeneration++;
     _priceLoadGeneration++;
+    _businessPriceLoadGeneration++;
     _addonLoadGeneration++;
     _priceTimer?.cancel();
     final ownedDialogs = _ownedDialogs.toList();
@@ -268,6 +359,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final price = _products[productId]?.price.trim();
     if (price != null && price.isNotEmpty) {
       return _paywallText(context, '$price/เดือน', '$price/month');
+    }
+    if (productId == _service.businessProductId) {
+      return _isBusinessPriceLoading ? 'กำลังโหลดราคา...' : 'ตรวจราคาในร้านค้า';
     }
     return _isPriceLoading ? 'กำลังโหลดราคา...' : 'ตรวจราคาในร้านค้า';
   }
@@ -295,6 +389,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         _isSubscriptionLoading = false;
         _subscriptionLoadError = null;
       });
+      _syncBusinessOffer();
     } catch (error) {
       if (!_canUpdateScreen || loadGeneration != _subscriptionLoadGeneration) {
         return;
@@ -315,6 +410,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _isSubscriptionLoading = false;
       _subscriptionLoadError = null;
     });
+    _syncBusinessOffer();
     unawaited(_loadAddon());
   }
 
@@ -324,6 +420,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     if (_screenBinding.isCurrent || !mounted) return;
     _subscriptionLoadGeneration++;
     _priceLoadGeneration++;
+    _businessPriceLoadGeneration++;
     _addonLoadGeneration++;
     _priceTimer?.cancel();
     for (final route in _ownedDialogs.toList()) {
@@ -336,6 +433,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _products.clear();
       _isPriceLoading = false;
       _priceLoadFailed = false;
+      _isBusinessPriceLoading = false;
+      _businessPriceLoadFailed = false;
       _isBillingInProgress = false;
       _addonCatalog = null;
       _addonProduct = null;
@@ -404,6 +503,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
     final plan = _subscription?.plan.toUpperCase();
 
     return switch (plan) {
+      'BUSINESS' => 'business',
       'PRO' => 'pro',
       'STARTER' => 'starter',
       'BASIC' || 'FREE' => 'basic',
@@ -454,6 +554,20 @@ class _PaywallScreenState extends State<PaywallScreen> {
           _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 120 เครดิต/เดือน'),
         ],
       ),
+      if (_showsBusinessPlan)
+        _PlanOption(
+          id: 'business',
+          name: 'Business',
+          price: _price(_service.businessProductId),
+          isCurrent: currentPlanId == 'business',
+          features: const [
+            _PlanFeature('โพสต์หลายช่องทาง 400 หน่วย/เดือน'),
+            _PlanFeature('ลิงก์ร้านสูงสุด 50 ลิงก์'),
+            _PlanFeature('รวมฟีเจอร์ใน Pro'),
+            _PlanFeature('ตั้งเวลาล่วงหน้า 30 วัน'),
+            _PlanFeature('AI แคปชั่นจากเสียง + ภาพ 220 เครดิต/เดือน'),
+          ],
+        ),
     ];
   }
 
@@ -464,7 +578,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
         _isSubscriptionLoading ||
         _subscriptionLoadError != null ||
         _subscription == null ||
-        _service.hasPendingConfirmation) {
+        _service.hasPendingConfirmation ||
+        _addonService.hasPendingPurchase ||
+        !_canChangeToPlan(plan.id) ||
+        (plan.id == 'business' && !_canPurchaseBusiness)) {
       return;
     }
 
@@ -473,9 +590,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
     try {
       // Real store purchase → backend receipt verification → entitlement.
-      final result = plan.id == 'pro'
-          ? await _service.startProSubscription()
-          : await _service.startStarterSubscription();
+      final result = switch (plan.id) {
+        'business' => await _service.purchaseBusiness(),
+        'pro' => await _service.startProSubscription(),
+        _ => await _service.startStarterSubscription(),
+      };
       if (!_canUpdateScreen) return;
       _applyVerifiedSubscription(result.subscription);
       widget.onSubscribed?.call(plan.id);
@@ -484,6 +603,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       _showBillingError('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่');
     } on StoreSubscriptionConfirmationPendingException {
       if (_canUpdateScreen) setState(() {});
+    } on StoreBusinessPurchaseReconciliationException {
+      _showBillingError('กรุณากู้คืนการซื้อ หรือตรวจสอบสมาชิกเดิมในร้านค้าที่สมัครไว้ก่อนสมัคร Business');
     } on StoreSubscriptionException catch (error) {
       _showBillingError(error.message);
     } catch (_) {
@@ -516,6 +637,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       }
     } on AuthSessionChangedException {
       _showBillingError('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่');
+    } on StoreBusinessPurchaseReconciliationException {
+      _showBillingError('กรุณากู้คืนการซื้อ หรือตรวจสอบสมาชิกเดิมในร้านค้าที่สมัครไว้ก่อนสมัคร Business');
     } on StoreSubscriptionException catch (error) {
       _showBillingError(error.message);
     } catch (_) {
@@ -539,6 +662,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
       if (_canUpdateScreen) _showRestoreSuccess(result.subscription.plan);
     } on AuthSessionChangedException {
       _showBillingError('บัญชีเปลี่ยนแล้ว กรุณาเปิดหน้าแพ็กเกจใหม่');
+    } on StoreBusinessPurchaseReconciliationException {
+      _showBillingError('กรุณากู้คืนการซื้อ หรือตรวจสอบสมาชิกเดิมในร้านค้าที่สมัครไว้ก่อนสมัคร Business');
     } on StoreSubscriptionException catch (error) {
       _showBillingError(error.message);
     } catch (_) {
@@ -700,6 +825,19 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                       const SizedBox(height: AppTheme.spaceMd),
                     ],
+                    if (!_showAddons && _hasActivePurchasedBusiness)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(bottom: AppTheme.spaceMd),
+                        child: PostDeeNotice(
+                          key: const ValueKey(
+                              'paywall-business-manage-subscription'),
+                          message: _paywallMessage(context,
+                              'จัดการสมาชิกเดิมในร้านค้าก่อนเปลี่ยนเป็นแพ็กเกจที่เล็กลง'),
+                          icon: Icons.info_outline,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
                     if (!_showAddons)
                       for (
                         var index = 0;
@@ -715,7 +853,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
                                   !_service.hasPendingConfirmation &&
                                   !_addonService.hasPendingPurchase &&
                                   _subscriptionLoadError == null &&
-                                  _subscription != null
+                                  _subscription != null &&
+                                  _canChangeToPlan(_plans[index].id) &&
+                                  (_plans[index].id != 'business' ||
+                                      _canPurchaseBusiness)
                               ? () => _subscribe(_plans[index])
                               : null,
                         ),
@@ -742,6 +883,15 @@ class _PaywallScreenState extends State<PaywallScreen> {
                             : _loadPrices,
                         child: const _PaywallText('โหลดราคาจากร้านค้าอีกครั้ง'),
                       ),
+                    if (_showsBusinessPlan && _businessPriceLoadFailed)
+                      TextButton(
+                        key: const ValueKey('paywall-business-price-error'),
+                        onPressed:
+                            !_screenBinding.isCurrent || _isBillingInProgress
+                                ? null
+                                : _loadBusinessPrice,
+                        child: const _PaywallText('โหลดราคา Business อีกครั้ง'),
+                      ),
                     if (_service.supportsUnifiedRestore) ...[
                       ConstrainedBox(
                         constraints: const BoxConstraints(minHeight: 48),
@@ -760,7 +910,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(13),
                             ),
-                            textStyle: const TextStyle(
+                            textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                             ),
@@ -817,6 +967,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
         catalog.addonAiCaptions > 0;
   }
 
+  String get _addonMembershipRequired => _showsBusinessPlan
+      ? 'สำหรับสมาชิก Starter, Pro หรือ Business · เลือกสมัครในหมวดแพ็กเกจหลักก่อน'
+      : 'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครในหมวดแพ็กเกจหลักก่อน';
+
+  String get _addonMembershipPolicy => _showsBusinessPlan
+      ? '1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter, Pro หรือ Business หากสมาชิกหมดอายุ เครดิตยังคงอยู่'
+      : '1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่';
+
   Widget _buildAddonTiers() {
     final catalog = _addonCatalog!;
     final tiers = catalog.products!;
@@ -863,7 +1021,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         _PaywallText('เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน · ไม่ต่ออายุอัตโนมัติ',
             style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
         const SizedBox(height: AppTheme.spaceXs),
-        _PaywallText('1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่',
+        _PaywallText(_addonMembershipPolicy,
             style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
         if (_addonService.supportsPlatform && !_addonLoading &&
             (_addonLoadFailed || _addonProductFailures.isNotEmpty))
@@ -890,7 +1048,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         ? 'กำลังตรวจสอบแพ็กเติม...'
         : _addonLoadFailed ? 'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่'
         : !tier.enabled ? 'แพ็กเติมยังไม่เปิดขาย'
-        : !tier.eligible ? 'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครในหมวดแพ็กเกจหลักก่อน'
+        : !tier.eligible ? _addonMembershipRequired
         : product == null ? 'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้'
         : 'ซื้อเพิ่มได้หลายครั้ง';
     return Padding(
@@ -949,7 +1107,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         : _addonLoading ? 'กำลังตรวจสอบแพ็กเติม...'
         : _addonLoadFailed ? 'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่'
         : catalog?.enabled != true ? 'แพ็กเติมยังไม่เปิดขาย'
-        : catalog?.eligible == false ? 'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครในหมวดแพ็กเกจหลักก่อน'
+        : catalog?.eligible == false ? _addonMembershipRequired
         : _addonProduct == null ? 'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้'
         : 'ซื้อเพิ่มได้หลายครั้ง';
     return Container(
@@ -973,7 +1131,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         _PaywallText('เครดิตซื้อเพิ่มไม่หมดอายุ · ใช้โควตารายเดือนก่อน · ไม่ต่ออายุอัตโนมัติ',
           style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
         const SizedBox(height: 6),
-        _PaywallText('1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่',
+        _PaywallText(_addonMembershipPolicy,
           style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
         if (pending) _buildAddonRecovery(),
         const SizedBox(height: 12),
@@ -1156,6 +1314,7 @@ class _PlanCard extends StatelessWidget {
             ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 48),
               child: FilledButton.icon(
+                key: ValueKey('paywall-subscribe-${plan.id}'),
                 onPressed: onSubscribe,
                 icon: const Icon(Icons.workspace_premium_outlined, size: 19),
                 label: Text(_paywallText(context, 'สมัคร ${plan.name}', 'Subscribe ${plan.name}')),
@@ -1166,7 +1325,7 @@ class _PlanCard extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(13),
                   ),
-                  textStyle: const TextStyle(
+                  textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1248,6 +1407,16 @@ String _paywallMessage(BuildContext context, String message) =>
 // Translate app-owned messages at presentation time. Store prices and unknown
 // provider errors retain their original values; billing services stay unchanged.
 const _englishPaywallMessages = <String, String>{
+  'กรุณากู้คืนการซื้อ หรือตรวจสอบสมาชิกเดิมในร้านค้าที่สมัครไว้ก่อนสมัคร Business':
+      'Restore purchases or check your existing subscription in the original store before subscribing to Business.',
+  'จัดการสมาชิกเดิมในร้านค้าก่อนเปลี่ยนเป็นแพ็กเกจที่เล็กลง':
+      'Manage your current subscription in the store before moving to a lower plan.',
+  'โหลดราคา Business อีกครั้ง': 'Reload Business price',
+  'โพสต์หลายช่องทาง 400 หน่วย/เดือน': '400 multi-channel post units/month',
+  'ลิงก์ร้านสูงสุด 50 ลิงก์': 'Up to 50 store links',
+  'รวมฟีเจอร์ใน Pro': 'Includes Pro features',
+  'AI แคปชั่นจากเสียง + ภาพ 220 เครดิต/เดือน':
+      'AI captions from audio + images: 220 credits/month',
   'เลือกแพ็กเกจ': 'Choose a plan',
   'แพ็กเกจหลัก': 'Main plans',
   'แพ็กเกจเสริม': 'Add-ons',
@@ -1322,6 +1491,8 @@ const _englishPaywallMessages = <String, String>{
       '1 unit = 1 post to 1 channel. Posting one video to 3 channels uses 3 units.',
   'สำหรับสมาชิก Starter หรือ Pro · เลือกสมัครในหมวดแพ็กเกจหลักก่อน':
       'For Starter or Pro members · Subscribe in Main plans first',
+  'สำหรับสมาชิก Starter, Pro หรือ Business · เลือกสมัครในหมวดแพ็กเกจหลักก่อน':
+      'For Starter, Pro or Business members · Subscribe in Main plans first',
   'ยังโหลดแพ็กเติมจากร้านค้าไม่ได้':
       'Could not load the credit pack from your store.',
   'ซื้อเพิ่มได้หลายครั้ง': 'Available for repeat purchases',
@@ -1329,6 +1500,8 @@ const _englishPaywallMessages = <String, String>{
       'Purchased credits do not expire · Monthly quota is used first · No automatic renewal',
   '1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter หรือ Pro หากสมาชิกหมดอายุ เครดิตยังคงอยู่':
       '1 channel uses 1 post unit · Credits are usable with Starter or Pro. Your credits are retained if your subscription expires.',
+  '1 ช่องทางใช้ 1 หน่วย · ใช้เครดิตได้เมื่อเป็นสมาชิก Starter, Pro หรือ Business หากสมาชิกหมดอายุ เครดิตยังคงอยู่':
+      '1 channel uses 1 post unit · Credits are usable with Starter, Pro or Business. Your credits are retained if your subscription expires.',
   'ตรวจสอบการซื้อแพ็กเติมอีกครั้ง': 'Check credit pack purchase again',
   'ขอความช่วยเหลือเรื่องการซื้อ': 'Get purchase help',
   'ซื้อแพ็กเติม': 'Buy credit pack',

@@ -13,7 +13,8 @@ import { UploadSessionConflictError } from '../uploads/uploadSessionStore.js';
 import { MonthlyAddonPurchaseConflictError, allowMonthlyAddonStore, type MonthlyAddonStore } from './monthlyAddonStore.js';
 import { addonGrantSnapshot, readAddonProductDefinition } from './addonProductCatalog.js';
 import { normalizeRevenueCatAddonStore } from './revenueCatAddonPurchaseClient.js';
-import { isRevenueCatSubscriptionStoreAllowed } from './revenueCatSubscriptionPolicy.js';
+import { isRevenueCatSubscriptionEntitlementAllowed, isRevenueCatSubscriptionStoreAllowed,
+  selectRevenueCatPaidEntitlement } from './revenueCatSubscriptionPolicy.js';
 import type { RevenueCatSubscriberClient } from './revenueCatSubscriberClient.js';
 import { handleRevenueCatTransfer } from './revenueCatTransfer.js';
 
@@ -24,8 +25,10 @@ type RevenueCatWebhookConfig = Pick<
   | 'revenueCatSubscriptionEnvironment'
   | 'revenueCatStarterEntitlementId'
   | 'revenueCatProEntitlementId'
+  | 'revenueCatBusinessEntitlementId'
   | 'revenueCatStarterProductId'
   | 'revenueCatProProductId'
+  | 'revenueCatBusinessProductId'
   | 'billingAddonsEnabled'
   | 'revenueCatAddonProductId'
   | 'revenueCatAddonEnvironment'
@@ -135,6 +138,12 @@ const planForRevenueCatEvent = (
   event: RevenueCatEvent,
   config: RevenueCatWebhookConfig
 ): PaidSubscriptionPlan | undefined => {
+  // A renewal/expiration belongs to its product. A shared entitlement list can
+  // include another still-active plan and must not relabel an old receipt.
+  if (event.productId === (config.revenueCatBusinessProductId ?? 'postdee_business_monthly')) return 'BUSINESS';
+  if (event.productId === config.revenueCatProProductId) return 'PRO';
+  if (event.productId === config.revenueCatStarterProductId) return 'STARTER';
+  if (event.entitlementIds.includes(config.revenueCatBusinessEntitlementId ?? 'business')) return 'BUSINESS';
   if (
     event.entitlementIds.includes(config.revenueCatProEntitlementId) ||
     event.productId === config.revenueCatProProductId
@@ -290,7 +299,8 @@ export const registerRevenueCatWebhookRoutes = ({
     }
 
     const inactiveStatus = inactiveStatusByEventType[event.type];
-    const isActionable = activeEventTypes.has(event.type) || Boolean(inactiveStatus);
+    const isBusinessRevocation = plan === 'BUSINESS' && ['CANCELLATION', 'REFUND'].includes(event.type);
+    const isActionable = activeEventTypes.has(event.type) || Boolean(inactiveStatus) || isBusinessRevocation;
 
     if (isActionable && (!event.eventId || event.eventTimestampMs === undefined)) {
       sendInvalidPayload(response);
@@ -336,6 +346,44 @@ export const registerRevenueCatWebhookRoutes = ({
           code: 'REVENUECAT_USER_NOT_FOUND',
           message: 'RevenueCat event belongs to a PostDee user that no longer exists'
         });
+        return;
+      }
+
+      const currentPlan = await (subscriptionStore.getPurchasedPlan?.(authUser) ?? subscriptionStore.getPlan(authUser));
+      const requiresBusinessReconciliation =
+        (currentPlan === 'BUSINESS' && plan !== 'BUSINESS') ||
+        (plan === 'BUSINESS' && (Boolean(inactiveStatus) || isBusinessRevocation));
+      if (requiresBusinessReconciliation && event.eventId && event.eventTimestampMs !== undefined) {
+        if (!(await userStore.exists(event.appUserId))) {
+          response.status(202).json({ status: 'ok', ignored: true, code: 'REVENUECAT_USER_NOT_FOUND' });
+          return;
+        }
+        // All RevenueCat plans share one owner subscription row. Before an old
+        // lower-tier event or Business expiry changes it, resolve the strongest
+        // remaining provider entitlement. A failed/stale lookup is retryable.
+        try {
+          if (!subscriberClient) throw new Error('Subscriber lookup is not configured');
+          const snapshot = await subscriberClient.loadSubscriber(event.appUserId);
+          if (!Number.isSafeInteger(snapshot.observedAtMs) || snapshot.observedAtMs < event.eventTimestampMs) {
+            throw new Error('Subscriber lookup predates this event');
+          }
+          const paid = selectRevenueCatPaidEntitlement(snapshot.activeEntitlements, config);
+          if (!paid && snapshot.activeEntitlements.some(entitlement =>
+            isRevenueCatSubscriptionEntitlementAllowed(entitlement, config))) {
+            throw new Error('Remaining entitlement is not mapped');
+          }
+          const common = { authUser, billingSubscriptionId, eventId: `revenuecat-reconcile:${event.eventId}`,
+            eventTimestampMs: snapshot.observedAtMs };
+          const result = await subscriptionStore.applyRevenueCatEvent(paid ? {
+            ...common, plan: paid.plan, status: 'ACTIVE', currentPeriodEnd: paid.entitlement.expiresAt ?? null
+          } : { ...common, status: 'CANCELED' });
+          response.json({ status: 'ok', ignored: !result.applied || result.subscription === null,
+            eventType: event.type, subscription: result.subscription });
+        } catch (error) {
+          if (error instanceof UploadSessionConflictError) throw error;
+          response.status(502).json({ status: 'error', code: 'REVENUECAT_SUBSCRIPTION_RECONCILIATION_FAILED',
+            message: 'RevenueCat subscription reconciliation failed. Retry this webhook.' });
+        }
         return;
       }
 

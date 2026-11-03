@@ -15,6 +15,7 @@ class PostQuotaStrip extends StatelessWidget {
   String get _planLabel => switch (subscription.plan.toUpperCase()) {
         'STARTER' => 'Starter',
         'PRO' => 'Pro',
+        'BUSINESS' => 'Business',
         'BASIC' => 'Basic',
         _ => subscription.plan,
       };
@@ -40,7 +41,7 @@ class PostQuotaStrip extends StatelessWidget {
         );
     final remainingFraction =
         limit > 0 ? (remaining / limit).clamp(0.0, 1.0) : 0.0;
-    final canSpendAddon = subscription.isStarter || subscription.isPro;
+    final canSpendAddon = subscription.isPaid;
 
     return DecoratedBox(
       decoration: BoxDecoration(

@@ -21,6 +21,7 @@ void main() {
     (plan: 'BASIC', label: 'Basic', limit: 3, used: 1, remaining: 2),
     (plan: 'STARTER', label: 'Starter', limit: 120, used: 13, remaining: 107),
     (plan: 'PRO', label: 'Pro', limit: 250, used: 8, remaining: 242),
+    (plan: 'BUSINESS', label: 'Business', limit: 400, used: 8, remaining: 392),
   ]) {
     testWidgets('${sample.label} shows supplied monthly posting units',
         (tester) async {
@@ -61,6 +62,22 @@ void main() {
     expect(find.text('0 / 120 หน่วย', findRichText: true), findsOneWidget);
     expect(find.text('ใช้ไป 120 หน่วย'), findsOneWidget);
     expect(find.text('+ เครดิตเติม 18 หน่วย'), findsOneWidget);
+    expect(
+        tester
+            .widget<LinearProgressIndicator>(
+                find.byKey(const ValueKey('uploader-post-quota-progress')))
+            .value,
+        0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'Business retains spendable post credits after monthly quota exhaustion',
+      (tester) async {
+    await tester.pumpWidget(_host(_subscription(
+        plan: 'BUSINESS', limit: 400, used: 400, remaining: 0, addon: 18)));
+    expect(find.text('Business'), findsOneWidget);
+    expect(find.textContaining('18'), findsOneWidget);
     expect(
         tester
             .widget<LinearProgressIndicator>(
@@ -141,6 +158,8 @@ void main() {
       for (final subscription in [
         _subscription(
             plan: 'PRO', limit: 250, used: 25, remaining: 225, addon: 100),
+        _subscription(
+            plan: 'BUSINESS', limit: 400, used: 40, remaining: 360, addon: 100),
         _subscription(
             plan: 'BASIC',
             limit: 3,

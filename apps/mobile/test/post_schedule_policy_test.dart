@@ -67,7 +67,7 @@ void main() {
         isNull);
   });
 
-  for (final entry in {'STARTER': 14, 'PRO': 30}.entries) {
+  for (final entry in {'STARTER': 14, 'PRO': 30, 'BUSINESS': 30}.entries) {
     test('${entry.key} includes its exact scheduling boundary', () {
       final now = DateTime.utc(2026, 10, 8, 9);
       final boundary = now.add(Duration(days: entry.value));

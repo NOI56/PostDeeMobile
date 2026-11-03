@@ -39,10 +39,31 @@ const fixture = (initialPlan: SubscriptionPlan = 'STARTER', authenticated = true
 };
 
 describe('caption quota read route', () => {
+  it('recomputes Business upgrade and downgrade limits without resetting usage or purchased credits', async () => {
+    const { app, userId, usageStore, monthlyAddonStore, setPlan } = fixture('PRO');
+    await monthlyAddonStore.applyPurchase({ userId, productId: 'postdee_post90_caption50', transactionId: 'business-upgrade-addon',
+      store: 'PLAY_STORE', environment: 'SANDBOX', purchasedAt: '2026-10-21T00:00:00.000Z',
+      postUnitsGranted: 90, aiCaptionsGranted: 50 });
+    for (let index = 0; index < 125; index++) {
+      await usageStore.reserve({ userId, monthKey: '2026-10', limit: 120,
+        includeMonthlyAddons: true, now: '2026-10-31T23:59:59.000Z' });
+    }
+    setPlan('BUSINESS');
+    expect((await request(app).get('/captions/quota').expect(200)).body.quota).toEqual({
+      limit: 220, usedThisMonth: 120, remainingThisMonth: 100, addonRemaining: 45, availableGenerations: 145
+    });
+    setPlan('STARTER');
+    expect((await request(app).get('/captions/quota').expect(200)).body.quota).toEqual({
+      limit: 50, usedThisMonth: 120, remainingThisMonth: 0, addonRemaining: 45, availableGenerations: 45
+    });
+    expect(await usageStore.countAddonUsages({ userId })).toBe(5);
+  });
+
   it.each([
     { plan: 'BASIC' as const, limit: 0, used: 0, remaining: 0 },
     { plan: 'STARTER' as const, limit: 50, used: 12, remaining: 38 },
     { plan: 'PRO' as const, limit: 120, used: 37, remaining: 83 },
+    { plan: 'BUSINESS' as const, limit: 220, used: 219, remaining: 1 },
     { plan: 'BASIC' as const, limit: 0, used: 12, remaining: 0 },
     { plan: 'STARTER' as const, limit: 50, used: 80, remaining: 0 }
   ])('returns $plan quota without discarding $used recorded monthly uses', async ({ plan, limit, used, remaining }) => {

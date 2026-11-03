@@ -43,6 +43,22 @@ const routeFixture = (subscriptionStore?: Pick<SubscriptionStore, 'getPlan'>) =>
 };
 
 describe('profile-link plan entitlements', () => {
+  it('publishes 50 Business links, rejects 51, and preserves the page after downgrade', async () => {
+    const subscriptions = createSubscriptionStore();
+    await subscriptions.activatePlan(owner, 'BUSINESS');
+    const { app } = routeFixture(subscriptions);
+    const accepted = await request(app).post('/link-in-bio/publish').send(page(50)).expect(200);
+    expect(accepted.body.profile.links).toHaveLength(50);
+    await request(app).post('/link-in-bio/publish').send(page(51)).expect(400)
+      .expect(({ body }) => expect(body.code).toBe('LINK_IN_BIO_INVALID_INPUT'));
+    await subscriptions.activatePlan(owner, 'PRO');
+    await request(app).post('/link-in-bio/publish').send(page(50)).expect(403)
+      .expect(({ body }) => expect(body).toMatchObject({ plan: 'PRO', maxProfileLinks: 20, requestedLinks: 50 }));
+    expect((await request(app).get('/link-in-bio').expect(200)).body).toEqual(accepted.body);
+    await request(app).get('/p/profile-shop').expect(200);
+    await request(app).post('/link-in-bio/publish').send(page(20)).expect(200);
+  });
+
   it.each([
     ['BASIC', 2], ['STARTER', 7], ['PRO', 20]
   ] as const)('%s allows %i links and rejects the next link', async (plan, maximum) => {
@@ -55,10 +71,8 @@ describe('profile-link plan entitlements', () => {
     expect(status.body.subscription).toMatchObject({ plan, maxProfileLinks: maximum });
     const accepted = await publish(app, maximum).expect(200);
     expect(accepted.body.profile.links).toEqual(page(maximum).links);
-    const rejected = await publish(app, maximum + 1).expect(plan === 'PRO' ? 400 : 403);
-    if (plan === 'PRO') {
-      expect(rejected.body.code).toBe('LINK_IN_BIO_INVALID_INPUT');
-    } else {
+    const rejected = await publish(app, maximum + 1).expect(403);
+    {
       expect(rejected.body).toMatchObject({ status: 'error', code: 'LINK_IN_BIO_LINK_LIMIT_EXCEEDED',
         plan, maxProfileLinks: maximum, requestedLinks: maximum + 1 });
       expect(rejected.body.message).toContain(`${maximum}`);

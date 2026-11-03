@@ -1,5 +1,16 @@
 # PostDee
 
+## Combined Staging delivery (2026-11-03, authorized / verification pending)
+
+The owner has authorized merging the pending work into `main`, pushing it and
+deploying the combined Staging API. The candidate keeps the package/top-up,
+3D and Cartoon work from `6c7ff068` and adds Business. Exact-candidate checks,
+pending migrations and deployment readback remain to be completed; this is not
+a successful-deployment record. Business and replacement credit-pack sales stay
+disabled by default. Store setup, native sandbox billing checks and activation
+remain pending; Production is outside this delivery. Older dated sections below
+record their original preparation scope.
+
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 
 A third store-link category, **การ์ตูน / Cartoon**, adds twenty original drawn
@@ -11,6 +22,26 @@ characters, brands or fonts; the seller's real name, logo, description and
 links stay native, and a custom cover replaces the drawing. Older installed apps
 keep working. Deliver PR #51, then the API, then Mobile. See the
 [cartoon plan](docs/superpowers/plans/2026-11-02-cartoon-storefront-templates.md).
+
+## Additional monthly main plan (2026-11-02, local candidate)
+
+Prepare a fourth main subscription with 400 post units and 220 AI caption
+credits per UTC calendar month, plus capacity for 50 links on the account's
+Link-in-Bio page. The requested reference price is THB 399/month; checkout uses
+the verified store quote. **Business** / `BUSINESS` is provisional branding.
+Other capabilities inherit Pro, including 30-day scheduling and visual captions.
+Basic, Starter, Pro and all approved top-up products retain their existing rules.
+
+This integration candidate keeps `BILLING_BUSINESS_ENABLED=false` by default.
+Real Business checkout uses RevenueCat, including its Play/App Store integration;
+the legacy direct Store bypass is unavailable for this new plan.
+The additive enum migration and API must precede compatible Mobile and any
+separately approved store setup/activation. Existing clients cannot fully use
+the new plan's limits; keep it unavailable until compatible builds are ready.
+The earlier `5fa8965` Staging proposal excluded this plan. The owner has now
+authorized its inclusion in the combined merge, push and Staging delivery;
+deployment and native billing acceptance remain unverified.
+See the [implementation and rollout record](docs/superpowers/plans/2026-11-02-business-monthly-plan.md).
 
 ## Package categories and replacement top-ups (2026-11-02, consolidated draft)
 

@@ -66,8 +66,14 @@ Future<void> _toggle(WidgetTester tester, String id) async {
   await tester.pumpAndSettle();
   await tester.tap(toggle);
   await tester.pumpAndSettle();
-  await tester.drag(
-      find.byKey(const ValueKey('link-in-bio-content')), const Offset(0, 1000));
+  tester
+      .state<ScrollableState>(find
+          .descendant(
+              of: find.byKey(const ValueKey('link-in-bio-content')),
+              matching: find.byType(Scrollable))
+          .first)
+      .position
+      .jumpTo(0);
   await tester.pumpAndSettle();
 }
 
@@ -79,7 +85,12 @@ void main() {
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
-  for (final (plan, limit) in [('BASIC', 2), ('STARTER', 7), ('PRO', 20)]) {
+  for (final (plan, limit) in [
+    ('BASIC', 2),
+    ('STARTER', 7),
+    ('PRO', 20),
+    ('BUSINESS', 50)
+  ]) {
     testWidgets('$plan allows its final slot and blocks the next addition',
         (tester) async {
       await _store.saveDraft(_draft(limit - 1));
@@ -113,6 +124,96 @@ void main() {
     expect(find.byKey(const ValueKey('link-in-bio-link-sheet')), findsNothing);
     expect((await _store.loadDraft())!.customLinks.length, 2);
   });
+
+  testWidgets('Business publishes all 50 enabled rows and keeps the full draft',
+      (tester) async {
+    await _store.saveDraft(_draft(50));
+    var publications = 0;
+    await _mount(
+        tester,
+        LinkInBioScreen(
+            loadProfile: () async => null,
+            loadSubscription: () async => _subscription('BUSINESS'),
+            publishProfile: (
+                {required storeName,
+                required slug,
+                required links,
+                appearance}) async {
+              publications++;
+              expect(links.length, 50);
+              expect(links.map((link) => link.id).toSet().length, 50);
+              return _profile(links);
+            }));
+    await showBioStep(tester, 'review');
+    await tapBioControl(tester, 'link-in-bio-publish');
+    expect(publications, 1);
+    final saved = (await _store.loadDraft())!;
+    expect(saved.customLinks.length, 50);
+    expect(saved.enabledLinkIds.length, 50);
+  });
+
+  testWidgets(
+      'Pro upgrade to Business refreshes capacity without replacing saved links',
+      (tester) async {
+    var plan = 'PRO';
+    await _store.saveDraft(_draft(20));
+    await _mount(
+        tester,
+        LinkInBioScreen(
+            loadProfile: () async => null,
+            loadSubscription: () async => _subscription(plan)));
+    await tapBioControl(tester, 'link-in-bio-add');
+    expect(find.byKey(const ValueKey('link-in-bio-link-sheet')), findsNothing);
+    plan = 'BUSINESS';
+    await tapBioControl(tester, 'link-in-bio-add');
+    await _enterLink(tester);
+    await tapBioControl(tester, 'link-in-bio-link-save');
+    final saved = (await _store.loadDraft())!;
+    expect(saved.customLinks.length, 21);
+    expect(saved.customLinks.take(20).map((link) => link.id),
+        [for (var index = 0; index < 20; index++) 'link-$index']);
+    expect(find.text('21/50'), findsOneWidget);
+  });
+
+  for (final (plan, limit) in [('PRO', 20), ('STARTER', 7), ('BASIC', 2)]) {
+    testWidgets(
+        'Business downgrade to $plan preserves 50 rows and publishes only enabled subset',
+        (tester) async {
+      var currentPlan = 'BUSINESS';
+      var publications = 0;
+      await _store.saveDraft(_draft(50, enabled: limit + 1));
+      await _mount(
+          tester,
+          LinkInBioScreen(
+              loadProfile: () async => null,
+              loadSubscription: () async => _subscription(currentPlan),
+              publishProfile: (
+                  {required storeName,
+                  required slug,
+                  required links,
+                  appearance}) async {
+                publications++;
+                expect(links.length, limit);
+                return _profile(links);
+              }));
+      currentPlan = plan;
+      await tapBioControl(tester, 'link-in-bio-add');
+      expect(
+          find.byKey(const ValueKey('link-in-bio-link-sheet')), findsNothing);
+      expect((await _store.loadDraft())!.customLinks.length, 50);
+      await showBioStep(tester, 'review');
+      await tapBioControl(tester, 'link-in-bio-publish');
+      expect(publications, 0);
+      expect((await _store.loadDraft())!.customLinks.length, 50);
+      await _toggle(tester, 'link-$limit');
+      await showBioStep(tester, 'review');
+      await tapBioControl(tester, 'link-in-bio-publish');
+      expect(publications, 1);
+      final saved = (await _store.loadDraft())!;
+      expect(saved.customLinks.length, 50);
+      expect(saved.enabledLinkIds.length, limit);
+    });
+  }
 
   testWidgets(
       'downgrade during add keeps typed data in the sheet and can retry after upgrade',

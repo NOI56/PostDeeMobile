@@ -16,6 +16,15 @@ const createTestApp = (authMiddleware: express.RequestHandler) => {
 };
 
 describe('auth middleware', () => {
+  it('recognizes Business in local development plan headers', async () => {
+    const app = createTestApp(createAuthMiddlewareFromConfig({
+      config: { authProvider: 'mock', mockUserId: 'business-dev' }
+    }));
+    const response = await request(app).get('/auth/me')
+      .set('x-postdee-subscription-plan', 'BUSINESS').expect(200);
+    expect(response.body.user.subscriptionPlan).toBe('BUSINESS');
+  });
+
   it('uses a safe mock user by default', async () => {
     const authMiddleware = createAuthMiddlewareFromConfig({
       config: {

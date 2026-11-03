@@ -81,28 +81,80 @@ void main() {
       .signIn(const AuthSession(userId: 'home-owner', idToken: 'test-token')));
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
-  testWidgets('monthly quota and nonexpiring credit balance stay separate', (tester) async {
-    await tester.pumpWidget(_app(_home(plan: () async => const SubscriptionStatusResult(
-      userId: 'home-owner', plan: 'PRO', status: 'ACTIVE', monthlyPostLimit: 250,
-      baseMonthlyPostLimit: 250, remainingPostsThisMonth: 248, addonPostUnits: 100,
-      availablePostUnits: 348,
-      addonAiCaptions: 50, canSchedule: true, canUseAiCaptions: true, canUseAnalytics: true))));
+  testWidgets('monthly quota and nonexpiring credit balance stay separate',
+      (tester) async {
+    await tester.pumpWidget(_app(_home(
+        plan: () async => const SubscriptionStatusResult(
+            userId: 'home-owner',
+            plan: 'PRO',
+            status: 'ACTIVE',
+            monthlyPostLimit: 250,
+            baseMonthlyPostLimit: 250,
+            remainingPostsThisMonth: 248,
+            addonPostUnits: 100,
+            availablePostUnits: 348,
+            addonAiCaptions: 50,
+            canSchedule: true,
+            canUseAiCaptions: true,
+            canUseAnalytics: true))));
     await tester.pumpAndSettle();
     expect(find.text('เหลือ 248/250 หน่วย'), findsOneWidget);
-    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'), findsOneWidget);
+    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'),
+        findsOneWidget);
     expect(find.text('โพสต์ได้รวม 348 หน่วย'), findsOneWidget);
     expect(find.textContaining('348/250'), findsNothing);
   });
 
-  testWidgets('Basic keeps the purchased balance visible while credit spending is locked', (tester) async {
-    await tester.pumpWidget(_app(_home(plan: () async => const SubscriptionStatusResult(
-      userId: 'home-owner', plan: 'BASIC', status: 'INACTIVE', monthlyPostLimit: 3,
-      remainingPostsThisMonth: 3, addonPostUnits: 100, addonAiCaptions: 50,
-      availablePostUnits: 3, canSchedule: false, canUseAiCaptions: false, canUseAnalytics: false))));
+  for (final suppliedLimit in [true, false]) {
+    testWidgets(
+        'Business home keeps 400 monthly units and spendable bank (server limit=$suppliedLimit)',
+        (tester) async {
+      await tester.pumpWidget(_app(_home(
+          plan: () async => SubscriptionStatusResult(
+              userId: 'home-owner',
+              plan: 'BUSINESS',
+              status: 'ACTIVE',
+              monthlyPostLimit: suppliedLimit ? 400 : null,
+              remainingPostsThisMonth: 390,
+              addonPostUnits: 10,
+              addonAiCaptions: 8,
+              availablePostUnits: 400,
+              canSchedule: true,
+              canUseAiCaptions: true,
+              canUseAnalytics: false))));
+      await tester.pumpAndSettle();
+      expect(find.text('แพ็กเกจ Business'), findsOneWidget);
+      expect(find.text('เหลือ 390/400 หน่วย'), findsOneWidget);
+      expect(find.text('โพสต์ได้รวม 400 หน่วย'), findsOneWidget);
+      expect(find.text('อัปเกรด'), findsNothing);
+      expect(
+          find.textContaining('เครดิตยังอยู่ ใช้ได้เมื่อสมัคร'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+      'Basic keeps the purchased balance visible while credit spending is locked',
+      (tester) async {
+    await tester.pumpWidget(_app(_home(
+        plan: () async => const SubscriptionStatusResult(
+            userId: 'home-owner',
+            plan: 'BASIC',
+            status: 'INACTIVE',
+            monthlyPostLimit: 3,
+            remainingPostsThisMonth: 3,
+            addonPostUnits: 100,
+            addonAiCaptions: 50,
+            availablePostUnits: 3,
+            canSchedule: false,
+            canUseAiCaptions: false,
+            canUseAnalytics: false))));
     await tester.pumpAndSettle();
     expect(find.text('เหลือ 3/3 หน่วย'), findsOneWidget);
-    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'), findsOneWidget);
-    expect(find.text('เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'), findsOneWidget);
+    expect(find.text('เครดิตเติมคงเหลือ: โพสต์ 100 หน่วย · AI 50 เครดิต'),
+        findsOneWidget);
+    expect(find.text('เครดิตยังอยู่ ใช้ได้เมื่อสมัคร Starter หรือ Pro'),
+        findsOneWidget);
     expect(find.textContaining('โพสต์ได้รวม'), findsNothing);
   });
 
@@ -246,8 +298,8 @@ void main() {
           published: published,
           url: published ? Uri.parse('https://example.com/p/my-shop') : null));
       await tester.pumpAndSettle();
-      _expectPublicationDot(tester,
-          published ? AppTheme.successInk : const Color(0xFFEF4444));
+      _expectPublicationDot(
+          tester, published ? AppTheme.successInk : const Color(0xFFEF4444));
       expect(find.text(published ? 'เผยแพร่แล้ว' : 'ยังไม่เผยแพร่'),
           findsOneWidget);
       expect(loads, 1);

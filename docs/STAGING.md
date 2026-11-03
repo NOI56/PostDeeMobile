@@ -1,5 +1,41 @@
 # PostDee Staging
 
+## ธีม 3D ชุดที่สอง หมวดการ์ตูน 20 แบบ และแพ็กเกจเติมเครดิต — 3 พฤศจิกายน 2026
+
+- เจ้าของสั่งรวม PR #51 (3D ชุดที่สอง, แคตตาล็อก 3) เป็น `e43833cf` แล้ว PR #54
+  (หมวดการ์ตูน 20 แบบ, แคตตาล็อก 4) เป็น
+  `6c7ff068eeabc8e21a7e159a89c71a30a20c9fca` แบบ merge commit ทั้งคู่ และสั่ง
+  ขึ้น Staging; ทุก commit ใช้ `[skip render]` และ Production ยัง user-suspended
+  ไม่ได้ deploy/resume
+- SHA นี้รวมงานแพ็กเกจและเติมเครดิตจาก `5fa89650` ที่อยู่บน main แล้วด้วย
+  (`BILLING_ADDON_TIERS_ENABLED` ค่าเริ่มต้นปิด ไม่ได้ตั้งค่า env ใหม่ จึงยังไม่เปิดขาย
+  สินค้าใหม่)
+- [CI 41577296678](https://github.com/NOI56/PostDeeMobile/actions/runs/41577296678)
+  ของ SHA นี้ผ่านก่อน deploy เวลา **11:31:09 น. ไทย (04:31:09 UTC)**:
+  API 3,523 ผ่าน / 72 ข้าม, Mobile 4,842 ผ่าน / 8 ข้าม, analyze ไม่มีปัญหา;
+  [Build iOS IPA 41577296646](https://github.com/NOI56/PostDeeMobile/actions/runs/41577296646)
+  ผ่านแบบ no codesign เวลา 11:30:29 น. ไทย (04:30:29 UTC) ไม่ได้แจกหรือติดตั้ง
+- Deploy
+  [`dep-dbkm7d3ncjis73enomc0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbkm7d3ncjis73enomc0)
+  เริ่ม **11:31:48 น. ไทย (04:31:48 UTC)** และ **Live 11:33:20 น. ไทย
+  (04:33:20 UTC)** ที่ SHA `6c7ff068` ตรงกับที่ CI ผ่าน แทน `604ecad7` /
+  `dep-dbjmsh3bc2fs73d9vkog` ซึ่งเก็บเป็นจุดอ้างอิงย้อนกลับ
+- Startup พบ 29 migrations และ apply `20261102010000_addon_grant_snapshots`
+  (เพิ่มคอลัมน์จำนวนเครดิตที่ซื้อพร้อมค่าเริ่มต้น 100/50 และ trigger ห้ามแก้ย้อนหลัง)
+  สำเร็จ ไม่พบ app logs ระดับ error/warn หลังเริ่มทำงาน ไม่เปลี่ยน env หรือ secret
+- ตรวจสด: `/health` 200, `/ready` 200 พร้อม database/queue `ok` และ
+  `Cache-Control: no-store`, `/posts` ไม่ส่ง token ได้ 401, `GET /link-in-bio`
+  พร้อม `X-PostDee-Profile-Catalog: 4` ไม่ส่ง token ได้ 401 พร้อม `no-store` และ
+  `Vary`; ภาพตกแต่งใหม่ 30 ไฟล์ (3D ชุดที่สอง 10 + การ์ตูน 20) ตรงกับไฟล์ต้นฉบับ
+  ทุก byte พร้อม `image/png`, cache 1 วัน และ `nosniff`; ชื่อไฟล์ที่ไม่มีในแคตตาล็อกได้ 404
+- APK Staging 12095 (SHA-256 `44087b63…`, มีหมวดการ์ตูน) ติดตั้งบน emulator-5554
+  ไว้แล้วก่อน deploy โดย UID 10197 และข้อมูลเดิมคงอยู่; รอบล่าสุดแอปเปิดที่หน้าล็อกอิน
+  จึงยังไม่ได้ทดลองบันทึกหรือเผยแพร่หน้าร้าน 3D/การ์ตูนจริงบน Staging และยังไม่ได้
+  ตั้งค่าสินค้าเติมเครดิตใหม่ใน store/RevenueCat หรือทดลองซื้อ
+- รายละเอียดอยู่ใน [แผนหมวดการ์ตูน](superpowers/plans/2026-11-02-cartoon-storefront-templates.md),
+  [แผน 3D ชุดที่สอง](superpowers/plans/2026-11-02-3d-storefront-second-set.md) และ
+  [แผนเติมเครดิตหลาย SKU](superpowers/plans/2026-11-02-multi-sku-topups.md)
+
 ## ระบบคิดแคปชั่น: หลักฐานและการคืนเครดิต — 1 พฤศจิกายน 2026
 
 - เจ้าของสั่ง merge/push/deploy หลังรับทราบผลตรวจและข้อจำกัด Gemini จึงรวมแบบ

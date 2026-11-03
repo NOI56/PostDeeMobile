@@ -53,6 +53,23 @@ and sales activation. Once a different-sized SKU has a ledger row, do not roll
 back to the former purchase-count × 100 / 50 reader. See the
 [verification and rollout record](docs/superpowers/plans/2026-11-02-multi-sku-topups.md).
 
+## Second 3D storefront set (2026-11-02, local candidate)
+
+The shared profile-template catalog is version 3 and adds ten `dimensional-*`
+templates marked `"since": 3`; the first 110 entries are byte-identical.
+`X-PostDee-Profile-Catalog` is now read as an exact release number: `3` sees
+every template, `2` sees the classic and first ten 3D templates, and missing,
+malformed or other values (including `4`) see classic templates only. A
+template a client cannot see is serialized as `templateId: null` with its
+editable appearance on authenticated GET/POST/DELETE; storage and `/p/:slug`
+keep the real design. A null-template `minimal` snapshot from such a client is
+an exact replay (styling preserved) or `409 LINK_IN_BIO_APPEARANCE_CONFLICT`,
+as for catalog 1. `/profile-decorations/` serves the ten new PNGs from the same
+catalog-derived allowlist. No route, schema, entitlement or environment change.
+**Delivery order: API before Mobile** (an older API rejects the new IDs and
+treats header `3` as a legacy client). See the
+[second-set plan](docs/superpowers/plans/2026-11-02-3d-storefront-second-set.md).
+
 ## Caption evidence and bounded generation (2026-11-01, Staging API delivered)
 
 `POST /captions/generate-from-clip` retains the existing request, response fields,

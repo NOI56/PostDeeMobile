@@ -107,7 +107,8 @@ describe('3D storefront readability', () => {
     expect(html).toMatch(/data-template-category="dimensional"\][^{]* a\{[^}]*box-shadow:/);
     expect(html).toContain('โทร <span class="keep-together">081-234-5678</span>');
     expect(html).toContain('โทร <span class="keep-together">02 123 4567</span> ทุกวัน');
-    expect(fillRowIds(html)).toEqual([]);
+    // A lone tile in a paired 3D tile grid takes the whole row; lists never do.
+    expect(fillRowIds(html)).toEqual(template.layout.composition === 'tile-grid' ? [0] : []);
     expect(html).not.toMatch(/<script\b/);
   });
 });

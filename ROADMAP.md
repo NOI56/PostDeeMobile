@@ -21,6 +21,14 @@ Build roadmap for PostDee.
   migration, activation, PR approval/merge and deployment remain separate actions.
   [Work record](docs/superpowers/plans/2026-11-02-packages-consolidated.md).
 
+## Second 3D storefront set (2026-11-02, local candidate)
+
+- Add ten more 3D designs that differ from the first set in material, lighting,
+  colour and layout; 3D becomes 20 designs. No package gate.
+- Catalog 3 negotiation keeps catalog 2 and older apps on templates they know.
+  Deliver API before Mobile; no migration. Real published-page and device
+  checks are recorded in the [second-set plan](docs/superpowers/plans/2026-11-02-3d-storefront-second-set.md).
+
 ## Caption quality and recovery (2026-11-01, main / Staging API delivered)
 
 - Read actual clip evidence before writing; preserve negative meaning and stop

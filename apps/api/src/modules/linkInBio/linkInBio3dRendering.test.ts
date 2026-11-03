@@ -11,7 +11,10 @@ const templateIds = [
   'dimensional-clay-mint', 'dimensional-clay-peach',
   'dimensional-clay-cloud', 'dimensional-clay-sand',
   'dimensional-paper-fold', 'dimensional-paper-stage', 'dimensional-paper-ribbon',
-  'dimensional-glass-lavender', 'dimensional-glass-mist', 'dimensional-glass-sage'
+  'dimensional-glass-lavender', 'dimensional-glass-mist', 'dimensional-glass-sage',
+  'dimensional-chrome-night', 'dimensional-lowpoly-dawn', 'dimensional-zen-garden',
+  'dimensional-wood-blocks', 'dimensional-parcel-stack', 'dimensional-ceramic-tiles', 'dimensional-pop-shapes',
+  'dimensional-neon-sign', 'dimensional-concrete-slab', 'dimensional-terrazzo-steps'
 ] as const;
 const links = [
   { id: 'shop', title: 'ซื้อ <สินค้า>', url: 'https://shopee.co.th/shop', icon: 'shopee' as const },
@@ -131,7 +134,7 @@ describe('3D storefront access', () => {
       appearance: { templateId } };
     await request(app).post('/link-in-bio/publish').send(input).expect(401);
     await request(app).post('/link-in-bio/publish').set('Authorization', 'Bearer owner-token')
-      .set('X-PostDee-Profile-Catalog', '2').send(input).expect(200);
+      .set('X-PostDee-Profile-Catalog', '3').send(input).expect(200);
     const publicPage = await request(app).get('/p/three-d-shop').expect(200);
     expect(publicPage.text).toContain(`data-template="${templateId}"`);
     expect(publicPage.text).toContain('class="profile-3d-hero"');
@@ -139,7 +142,7 @@ describe('3D storefront access', () => {
     expect(publicPage.headers['content-security-policy']).toContain("script-src 'none'");
     expect(publicPage.headers['content-security-policy']).toContain("img-src 'self'");
     const rejected = await request(app).post('/link-in-bio/publish').set('Authorization', 'Bearer owner-token')
-      .set('X-PostDee-Profile-Catalog', '2')
+      .set('X-PostDee-Profile-Catalog', '3')
       .send({ ...input, links: [...links, { id: 'third', title: 'สาม', url: 'https://example.com' }] }).expect(403);
     expect(rejected.body.code).toBe('LINK_IN_BIO_LINK_LIMIT_EXCEEDED');
     expect((await request(app).get('/p/three-d-shop').expect(200)).text).toContain(`data-template="${templateId}"`);

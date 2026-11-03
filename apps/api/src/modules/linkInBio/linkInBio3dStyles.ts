@@ -1,5 +1,6 @@
 import type { LinkInBioAppearance } from './linkInBioAppearance.js';
 import { getProfileTemplate } from './profileTemplateCatalog.generated.js';
+import { linkInBio3dSceneStyles, linkInBio3dScenes } from './linkInBio3dSceneStyles.js';
 
 type DimensionalGeometry = {
   heroHeight: number;
@@ -27,6 +28,7 @@ const geometry: Record<string, DimensionalGeometry> = {
 export const linkInBio3dStyles = (appearance: LinkInBioAppearance): string => {
   const template = getProfileTemplate(appearance.templateId);
   if (template?.category !== 'dimensional') return '';
+  if (linkInBio3dScenes[template.id]) return linkInBio3dSceneStyles(appearance, template);
   const style = geometry[template.id];
   if (!style) return '';
   const s = 'body[data-template][data-template-category="dimensional"][data-composition]';

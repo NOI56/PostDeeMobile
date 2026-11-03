@@ -291,7 +291,7 @@ void main() {
               : 'minimal';
       expect(
           find.text(
-              category == 'dimensional' ? '3D · 10 แบบ' : 'เรียบง่าย · 20 แบบ'),
+              category == 'dimensional' ? '3D · 20 แบบ' : 'เรียบง่าย · 20 แบบ'),
           findsOneWidget);
       expect(find.byType(ChoiceChip), findsNWidgets(2));
       expect(find.byKey(const ValueKey('link-in-bio-legacy-themes')),

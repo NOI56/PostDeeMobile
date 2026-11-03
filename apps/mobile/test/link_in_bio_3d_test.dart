@@ -26,6 +26,16 @@ const _ids = [
   'dimensional-glass-lavender',
   'dimensional-glass-mist',
   'dimensional-glass-sage',
+  'dimensional-chrome-night',
+  'dimensional-lowpoly-dawn',
+  'dimensional-zen-garden',
+  'dimensional-wood-blocks',
+  'dimensional-parcel-stack',
+  'dimensional-ceramic-tiles',
+  'dimensional-pop-shapes',
+  'dimensional-neon-sign',
+  'dimensional-concrete-slab',
+  'dimensional-terrazzo-steps',
 ];
 
 Widget _page(Widget child,
@@ -55,15 +65,30 @@ void main() {
             onChanged: (_) {}),
         language: 'en'));
     await tester.pumpAndSettle();
-    expect(find.text('3D · 10 templates'), findsOneWidget);
+    expect(find.text('3D · 20 templates'), findsOneWidget);
     expect(find.text('Mint clay'), findsOneWidget);
+    for (final name in const [
+      'Night chrome',
+      'Low-poly dawn',
+      'Zen garden',
+      'Wooden toy blocks',
+      'Parcel stack',
+      'Glazed tiles',
+      'Pop shapes',
+      'Neon night',
+      'Raw concrete',
+      'Terrazzo steps',
+    ]) {
+      expect(find.text(name), findsOneWidget, reason: name);
+    }
+    expect(find.text('โครมยามค่ำ'), findsNothing);
     expect(find.text('Minimal'), findsOneWidget);
     expect(find.text('ดินปั้นมิ้นต์'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-      '3D is a separate ten-template category and browsing keeps the draft',
+      '3D is a separate twenty-template category and browsing keeps the draft',
       (tester) async {
     LinkInBioAppearance? selected;
     final original = LinkInBioAppearance.forTemplate('minimal-white-editorial')
@@ -78,8 +103,8 @@ void main() {
     await tester
         .tap(find.byKey(const ValueKey('link-in-bio-category-dimensional')));
     await tester.pumpAndSettle();
-    expect(find.text('3D · 10 แบบ'), findsOneWidget);
-    expect(find.byType(BioTemplateSample), findsNWidgets(10));
+    expect(find.text('3D · 20 แบบ'), findsOneWidget);
+    expect(find.byType(BioTemplateSample), findsNWidgets(20));
     expect(selected, isNull);
     expect(
         find.byKey(
@@ -106,8 +131,8 @@ void main() {
         appearance: LinkInBioAppearance.forTemplate(_ids.last),
         onChanged: (_) => changes++)));
     await tester.pumpAndSettle();
-    expect(find.text('3D · 10 แบบ'), findsOneWidget);
-    expect(find.byType(BioTemplateSample), findsNWidgets(10));
+    expect(find.text('3D · 20 แบบ'), findsOneWidget);
+    expect(find.byType(BioTemplateSample), findsNWidgets(20));
     expect(changes, 0);
     await tester
         .tap(find.byKey(const ValueKey('link-in-bio-category-minimal')));

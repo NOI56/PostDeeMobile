@@ -10,6 +10,8 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/posts/post_caption_edit_screen.dart';
 import 'package:postdee_mobile/features/posts/post_detail_screen.dart';
 import 'package:postdee_mobile/features/calendar/calendar_screen.dart';
+import 'package:postdee_mobile/features/platforms/social_platform.dart';
+import 'package:postdee_mobile/features/uploader/platform_publish_settings.dart';
 
 final captionTestNow = DateTime.utc(2030, 11, 3, 10);
 
@@ -111,6 +113,205 @@ void runCaptionEditorTests({String language = 'th'}) {
         textScale: textScale));
     await tester.pumpAndSettle();
   }
+
+  String composerTitle(String caption,
+          {Map<SocialPlatform, String> platformCaptions = const {}}) =>
+      PlatformPublishSettings(
+              usePlatformCaptions: platformCaptions.isNotEmpty,
+              platformCaptions: platformCaptions)
+          .resolvedForCaption(caption)
+          .youtubeTitle;
+
+  final automaticCaptionCases = {
+    'shared price': 'สินค้า 199 บาท! รายละเอียดสินค้าเดิม',
+    'whitespace and server trim':
+        ' \n\t สินค้า   ราคา 199   บาท! รายละเอียดเดิม \r\n ',
+    'unicode limit and removed brackets': '<${'😀' * 105}> รายละเอียดเดิม',
+    'final trim at unicode limit': '${'😀' * 99} ${'ก' * 20}',
+  };
+  for (final entry in automaticCaptionCases.entries) {
+    testWidgets(
+        'persisted composer automatic title follows shared edits: ${entry.key}',
+        (tester) async {
+      final savedTitle = composerTitle(entry.value).trim();
+      final editedCaption = entry.key.contains('unicode')
+          ? '${'ก😀' * 60} ราคา 159 บาท'
+          : '  สินค้า 159 บาท! รายละเอียดสินค้าใหม่  ';
+      final expectedTitle = composerTitle(editedCaption);
+      final client = CaptionTestClient(
+          captionTestPost(caption: entry.value.trim(), platforms: [
+        'TIKTOK',
+        'YOUTUBE_SHORTS'
+      ], settings: {
+        'YOUTUBE_SHORTS': {'title': savedTitle}
+      }));
+      await open(tester, client);
+      expect(find.text(text('ชื่อจากแคปชัน', 'Title from caption')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('post-caption-youtube-title')),
+          findsNothing);
+      expect(find.text(savedTitle), findsOneWidget);
+      if (entry.key == 'unicode limit and removed brackets') {
+        expect(savedTitle.runes.length, 100);
+        expect(savedTitle.contains('<') || savedTitle.contains('>'), isFalse);
+      }
+      if (entry.key == 'final trim at unicode limit') {
+        expect(savedTitle.runes.length, 99);
+      }
+      await tester.enterText(
+          find.byKey(const ValueKey('post-caption-shared')), editedCaption);
+      await tester.pump();
+      expect(find.text(expectedTitle), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('post-caption-save')));
+      await tester.pumpAndSettle();
+      expect(client.sentCaption, editedCaption.trim());
+      expect(client.sentTitle, expectedTitle);
+    });
+  }
+
+  testWidgets('persisted automatic title follows only the YouTube override',
+      (tester) async {
+    const shared = 'Shared summary without the YouTube title';
+    const tikTokCaption = 'TikTok caption for the original product';
+    const youtubeCaption = ' \n YouTube ราคา 199 บาท! รายละเอียด YouTube \n ';
+    final savedTitle = composerTitle(shared, platformCaptions: {
+      SocialPlatform.tiktok: tikTokCaption,
+      SocialPlatform.youtubeShorts: youtubeCaption,
+    }).trim();
+    final client =
+        CaptionTestClient(captionTestPost(caption: shared, platforms: [
+      'TIKTOK',
+      'YOUTUBE_SHORTS'
+    ], settings: {
+      'TIKTOK': {'caption': tikTokCaption},
+      'YOUTUBE_SHORTS': {'caption': youtubeCaption.trim(), 'title': savedTitle},
+    }));
+    await open(tester, client);
+    await tester.enterText(
+        find.byKey(const ValueKey('uploader-caption-TIKTOK')),
+        'TikTok changes must not become a YouTube title');
+    await tester.pump();
+    await tester.scrollUntilVisible(
+        find.text(text('ชื่อจากแคปชัน', 'Title from caption')), 220,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text(savedTitle), findsOneWidget);
+    const editedYoutube = '  YouTube ราคา 159 บาท! รายละเอียดใหม่  ';
+    await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('uploader-caption-YOUTUBE_SHORTS')), -200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.enterText(
+        find.byKey(const ValueKey('uploader-caption-YOUTUBE_SHORTS')),
+        editedYoutube);
+    await tester.pump();
+    await tester.scrollUntilVisible(
+        find.text(text('ชื่อจากแคปชัน', 'Title from caption')), 220,
+        scrollable: find.byType(Scrollable).first);
+    final expectedTitle = composerTitle(shared,
+        platformCaptions: {SocialPlatform.youtubeShorts: editedYoutube});
+    expect(find.text(expectedTitle), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('post-caption-save')));
+    await tester.pumpAndSettle();
+    expect(client.sentCaption, shared);
+    expect(client.sentPlatforms!['YOUTUBE_SHORTS'], editedYoutube.trim());
+    expect(client.sentTitle, expectedTitle);
+  });
+
+  testWidgets(
+      'a distinct custom title keeps its internal spaces across caption edits',
+      (tester) async {
+    const caption = 'Original caption! Description';
+    final customTitle = '${composerTitle(caption)}  custom';
+    final client =
+        CaptionTestClient(captionTestPost(caption: caption, platforms: [
+      'TIKTOK',
+      'YOUTUBE_SHORTS'
+    ], settings: {
+      'YOUTUBE_SHORTS': {'title': customTitle}
+    }));
+    await open(tester, client);
+    expect(find.widgetWithText(TextField, customTitle), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('post-caption-shared')),
+        'New caption with a different automatic title! Description');
+    await tester.tap(find.byKey(const ValueKey('post-caption-save')));
+    await tester.pumpAndSettle();
+    expect(client.sentTitle, customTitle);
+  });
+
+  for (final separate in [false, true]) {
+    testWidgets(
+        'untouched persisted automatic title leaves without discard dialog: separate=$separate',
+        (tester) async {
+      const shared = 'Shared caption! Details';
+      const youtube = 'YouTube override! Details';
+      final savedTitle = composerTitle(shared,
+          platformCaptions:
+              separate ? {SocialPlatform.youtubeShorts: youtube} : const {});
+      final client =
+          CaptionTestClient(captionTestPost(caption: shared, platforms: [
+        'TIKTOK',
+        'YOUTUBE_SHORTS'
+      ], settings: {
+        'YOUTUBE_SHORTS': {
+          'title': savedTitle,
+          if (separate) 'caption': youtube
+        },
+      }));
+      await tester.pumpWidget(captionTestApp(
+          Builder(
+              builder: (context) => Scaffold(
+                  body: TextButton(
+                      child: const Text('open automatic editor'),
+                      onPressed: () => Navigator.of(context)
+                          .push<PostSummaryResult>(MaterialPageRoute(
+                              builder: (_) => PostCaptionEditScreen(
+                                  post: client.latest!,
+                                  apiClient: client,
+                                  now: () => captionTestNow)))))),
+          language: language));
+      await tester.tap(find.text('open automatic editor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(
+          find.text(text('ทิ้งการแก้ไข?', 'Discard changes?')), findsNothing);
+      expect(find.byType(PostCaptionEditScreen), findsNothing);
+      expect(find.text('open automatic editor'), findsOneWidget);
+      expect(client.writes, 0);
+    });
+  }
+
+  testWidgets(
+      'persisted automatic title still supports customizing and resetting',
+      (tester) async {
+    const caption = 'Automatic title! Description';
+    final savedTitle = composerTitle(caption);
+    final client =
+        CaptionTestClient(captionTestPost(caption: caption, platforms: [
+      'YOUTUBE_SHORTS'
+    ], settings: {
+      'YOUTUBE_SHORTS': {'title': savedTitle}
+    }));
+    await open(tester, client);
+    await tester.tap(
+        find.text(text('ปรับชื่อเฉพาะ YouTube', 'Customize YouTube title')));
+    await tester.pump();
+    expect(find.widgetWithText(TextField, savedTitle), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const ValueKey('post-caption-youtube-title')),
+        '$savedTitle custom');
+    await tester
+        .tap(find.text(text('ใช้ชื่อจากแคปชัน', 'Use title from caption')));
+    await tester.pump();
+    const editedCaption = 'Changed automatic title! More details';
+    await tester.enterText(
+        find.byKey(const ValueKey('post-caption-shared')), editedCaption);
+    await tester.pump();
+    final expectedTitle = composerTitle(editedCaption);
+    expect(find.text(expectedTitle), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('post-caption-save')));
+    await tester.pumpAndSettle();
+    expect(client.sentTitle, expectedTitle);
+  });
 
   testWidgets('legacy TikTok settings still enforce direct caption limit',
       (tester) async {
@@ -302,18 +503,20 @@ void runCaptionEditorTests({String language = 'th'}) {
   });
 
   testWidgets(
-      'saved YouTube title stays explicit until user selects automatic title',
+      'distinct saved YouTube title stays explicit until user selects automatic title',
       (tester) async {
-    final client = CaptionTestClient(
-        captionTestPost(caption: 'Original title', platforms: [
+    const caption = 'Original caption! Description';
+    final customTitle = '${composerTitle(caption)} custom';
+    final client =
+        CaptionTestClient(captionTestPost(caption: caption, platforms: [
       'YOUTUBE_SHORTS'
     ], settings: {
-      'YOUTUBE_SHORTS': {'title': 'Original title'}
+      'YOUTUBE_SHORTS': {'title': customTitle}
     }));
     await open(tester, client);
     await tester.enterText(find.byKey(const ValueKey('post-caption-shared')),
         'Changed caption. Details');
-    expect(find.widgetWithText(TextField, 'Original title'), findsOneWidget);
+    expect(find.widgetWithText(TextField, customTitle), findsOneWidget);
     await tester.ensureVisible(
         find.text(text('ใช้ชื่อจากแคปชัน', 'Use title from caption')));
     await tester

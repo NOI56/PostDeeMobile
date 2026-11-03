@@ -22,6 +22,70 @@ Facebook Page Reels (`facebook` + `contentType: reel` with existing modes),
 delivery results, retries and interrupted-publish recovery must remain intact.
 Retired features stay retired. No billing/feature-switch or schema change.
 
+## YouTube title follow-up (2026-11-04)
+
+The owner requested this correction on the same branch/worktree through
+`artifacts/codex-briefs/2026-11-03-pr58-youtube-title-fix.md`. The clean PR head
+and remote branch were both `e378ec5df90a35f569ac9a8165c5977bdc1af7f4`;
+freshly fetched `origin/main` remained `9c05fa8e`, merge base unchanged,
+ahead/behind `2/0` against main and `0/0` against the remote feature branch.
+
+The composer resolves automatic titles before submission, so a nonempty saved
+title does not establish that the seller chose a custom title. Treating every
+stored title as custom kept old prices/text in the title after a caption edit.
+The editor now compares the trimmed saved title with the same
+`safeYouTubeTitleSuggestion` used by `PlatformPublishSettings.resolvedForCaption`,
+using the loaded post's effective YouTube caption (override if present,
+otherwise shared). An absent or matching title starts automatic mode; a
+different title starts custom mode. The initial dirty-state flag uses this
+same classification, so opening and immediately leaving does not ask to discard.
+
+Automatic title preview and the submitted `youtubeTitle` follow edits to the
+shared caption or the YouTube override. Editing only another platform's text
+does not change that title. Custom-title and reset controls retain their behavior.
+The shared helper preserves composer normalization: first usable line/sentence,
+angle-bracket removal, whitespace normalization, 100 Unicode code points and
+final trim, matching the server's stored caption/title trimming.
+
+Accepted limitation: an intentionally custom title identical to the generated
+title cannot be distinguished without a stored mode flag. It is treated as
+automatic; its initial text is identical, but it follows later caption edits.
+No API contract, route, store, worker, schema, migration or new flag is changed.
+`ARCHITECTURE.md` was checked and needs no structural change.
+
+Follow-up checks and evidence:
+
+- Tests-first: 86 Thai/English editor cases ran before the production patch;
+  74 passed and 12 failed on automatic-mode/preview/override behavior. Evidence:
+  `D:\PostDeeCaptionTestTemp\pr58-title-red.log`.
+- Added 18 Thai/English cases generated with the actual composer's
+  `PlatformPublishSettings.resolvedForCaption`, covering shared price edits,
+  server trimming/whitespace, the 100-code-point boundary and final trim,
+  removed angle brackets, YouTube overrides independently of TikTok edits,
+  distinct custom titles, untouched back navigation and customize/reset.
+- An older custom/reset fixture had a title identical to its caption. It now
+  uses a distinct custom title so that it continues testing the custom case;
+  matching titles have dedicated automatic-mode coverage.
+- Targeted 5 files / 139 tests passed, including the existing API-client,
+  composer settings and platform-contract tests. Analyze passed with no issues.
+  Logs: `pr58-title-targeted.log` and `pr58-title-analyze.log` in the directory above.
+- The full Mobile suite uses the workspace Flutter 3.44.1 / Dart 3.12.1 SDK,
+  `test --no-pub --concurrency=4 --reporter expanded`, after freezing source.
+  Its execution log is `D:\PostDeeCaptionTestTemp\pr58-title-full.log`.
+  Final local counts and the exact-head Backend API/Flutter Mobile CI results
+  are published in [Draft PR #58](https://github.com/NOI56/PostDeeMobile/pull/58)
+  and [its checks](https://github.com/NOI56/PostDeeMobile/pull/58/checks).
+- API and DB suites are not rerun locally for this Mobile-only correction, as
+  requested. Their source is unchanged; Backend API CI still checks the new head.
+- Diff review against `e378ec5d` is limited to the editor, tests and directly
+  related behavior documentation. No Windows generated files or configuration
+  changes are included. The original architecture and rollout order are unchanged.
+
+No merge, deploy, app installation or real posting is authorized. The earlier
+APK build below predates this title correction and is not current device
+acceptance. After authorized merge/deployment, use a new guarded update and
+prove an edited scheduled YouTube post's actual title as well as its caption.
+
 ## Implementation
 
 The additive route is `PATCH /posts/:id/caption`, accepting shared `caption`,
@@ -54,10 +118,11 @@ shared/per-channel initialization, YouTube automatic/custom title behavior,
 loading/errors/retry, discard confirmation and owner/session result guards.
 Details and calendar reads show effective updated captions. All new copy has
 Thai and English, with small-screen and theme coverage.
-An already stored YouTube title is preserved as explicit; an absent title starts
-in automatic mode. Resetting or clearing a custom title uses the composer's
-existing caption-derived suggestion. The post contract stores the resolved
-title, without inventing a persisted automatic/custom flag.
+A missing YouTube title, or a stored title matching the composer's suggestion
+from the saved effective YouTube caption, starts automatic mode and follows
+caption edits. A distinct custom title is preserved. Resetting or clearing it
+uses the same suggestion. The post contract stores only the resolved title;
+the matching-custom-title limitation is documented in the follow-up above.
 
 ## Verification record
 

@@ -132,7 +132,11 @@ class _PostCaptionEditScreenState extends State<PostCaptionEditScreen> {
           for (final p in _platforms) p: latest.effectiveCaption(p.apiValue)
         };
         _title.text = _savedTitle;
-        _customTitle = _savedTitle.trim().isNotEmpty;
+        final savedTitle = _savedTitle.trim();
+        // Persisted titles have no mode flag. Match the composer's suggestion.
+        final automaticTitle = safeYouTubeTitleSuggestion(
+            latest.effectiveCaption(SocialPlatform.youtubeShorts.apiValue));
+        _customTitle = savedTitle.isNotEmpty && savedTitle != automaticTitle;
         _initialCustomTitle = _customTitle;
         _loading = false;
         _validated = false;

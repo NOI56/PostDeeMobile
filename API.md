@@ -13,6 +13,10 @@ and title-from-caption behavior retain their existing validation rules.
 The response is `{ status: 'ok', post }`. Post responses add optional `updatedAt`
 for optimistic concurrency; new clients return that value when saving.
 
+Mobile recognizes a stored YouTube title matching the composer's suggestion
+from the saved effective YouTube caption as automatic. It follows caption edits;
+a different custom title is retained. This inference adds no API field or rule.
+
 Only `Post.caption`, nested platform `caption` values and the YouTube `title`
 can change. Other settings, consent, destination/account snapshots, video, cover
 and schedule remain intact. Existing length and character validation is reused.

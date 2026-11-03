@@ -7,6 +7,9 @@ Build roadmap for PostDee.
 - Add a Thai/English caption editor from queued scheduled-post details, with
   shared/per-channel text, YouTube title, existing validation and unsaved-change
   confirmation. Close editing at 60 seconds before publication.
+- Recognize a saved YouTube title matching the composer's caption-derived
+  suggestion as automatic, so it follows the edited effective YouTube caption.
+  Preserve distinct custom titles; document the identical-custom-title ambiguity.
 - Use owner-scoped atomic version checks in memory and Prisma; report conflicts
   instead of overwriting another edit or a publish claim. Do not charge quota or
   AI credits, alter destinations/settings or change the existing calendar time edit.

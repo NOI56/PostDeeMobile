@@ -1,5 +1,19 @@
 # PostDee
 
+## Store-link theme membership (2026-11-03, local candidate)
+
+The Simple (`minimal` / เรียบง่าย) category stays free. Every other theme
+category requires an active purchased Starter, Pro or Business membership;
+credit top-ups and admin-trial-only access do not qualify. Mobile uses the
+server's theme entitlement, and API selection/publishing enforces the same rule.
+
+Expired or unavailable membership displays a temporary Simple appearance on
+the public page and editor preview, preserving the saved theme and all user
+content. Content edits can retain that saved style; new premium style changes
+require membership. Restoring membership makes the retained style available
+again unless the owner explicitly changes it. No schema migration or live
+rollout is included. See the [work record](docs/superpowers/plans/2026-11-03-profile-theme-membership.md).
+
 ## Combined Staging delivery (2026-11-03, Staging Live)
 
 Posting-readiness UX (PR #50) and Business (PR #56) are merged and pushed to

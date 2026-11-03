@@ -35,7 +35,7 @@ The default `npm.cmd run test` skips real-PostgreSQL tests (`describe.skipIf`). 
 | Variable | Required fixture | Suites |
 | --- | --- | --- |
 | `ADMIN_TEST_DATABASE_URL` | `127.0.0.1:55439/postdee_admin_fixture` | admin, admin usage, admin account deletion, service incidents, support chat |
-| `POSTDEE_TEST_DATABASE_URL` | `127.0.0.1:55441/postdee_addon_test` | monthly add-on, store-link slug reservation, post claim |
+| `POSTDEE_TEST_DATABASE_URL` | `127.0.0.1:55441/postdee_addon_test` | monthly add-on, store-link slug reservation and theme membership, post claim |
 | `POSTDEE_SOCIAL_LINKING_TEST_DATABASE_URL` | `127.0.0.1:55482/postdee_batch2_test` | social connection linking |
 | `POSTDEE_ADDON_DB_TEST_URL` | no guard; use a disposable database | non-expiring add-on quota concurrency |
 | `POSTDEE_CAPTION_BATCH_DB_TEST_URL` | no guard; use a disposable database | caption credit batches |

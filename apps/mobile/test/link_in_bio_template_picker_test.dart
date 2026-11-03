@@ -214,6 +214,7 @@ void main() {
               child: Scaffold(
                   body: SingleChildScrollView(
                       child: BioThemePicker(
+                          hasPremiumThemeAccess: true,
                           appearance: const LinkInBioAppearance(),
                           onChanged: (_) {}))))));
       await tester.pumpAndSettle();
@@ -241,6 +242,7 @@ void main() {
             home: Scaffold(
                 body: SingleChildScrollView(
                     child: BioThemePicker(
+                        hasPremiumThemeAccess: true,
                         appearance:
                             LinkInBioAppearance.forTemplate(choices.first.id),
                         enabled: enabled,
@@ -280,6 +282,7 @@ void main() {
           home: Scaffold(
               body: SingleChildScrollView(
                   child: BioThemePicker(
+                      hasPremiumThemeAccess: true,
                       appearance: appearance,
                       storeName: 'ร้านเดิม',
                       links: _links,
@@ -332,6 +335,7 @@ void main() {
       return Scaffold(
           body: SingleChildScrollView(
               child: BioThemePicker(
+                  hasPremiumThemeAccess: true,
                   appearance: appearance, onChanged: (_) => changes++)));
     })));
     await tester.pumpAndSettle();
@@ -360,6 +364,7 @@ void main() {
         home: Scaffold(
             body: SingleChildScrollView(
                 child: BioThemePicker(
+                    hasPremiumThemeAccess: true,
                     appearance: original,
                     storeName: 'ร้านเดิม',
                     links: _links,

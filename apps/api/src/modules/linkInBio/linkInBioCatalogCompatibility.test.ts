@@ -21,7 +21,9 @@ const fixture = () => {
   registerLinkInBioRoutes(router, (_request, response, next) => {
     response.locals.authUser = { id: 'owner', provider: 'mock' };
     next();
-  }, store, undefined, { subscriptionStore: { getPlan: async () => 'BASIC' }, validateImages, onPublished });
+  }, store, undefined, { subscriptionStore: {
+    getPlan: async () => 'STARTER', getPurchasedPlan: async () => 'STARTER'
+  }, validateImages, onPublished });
   app.use(router);
   return { app, store, validateImages, releaseImages, onPublished };
 };
@@ -30,7 +32,7 @@ const publishDimensional = (app: ReturnType<typeof express>) => request(app)
   .send({ ...page, appearance: createDefaultLinkInBioTemplateAppearance(templateId) });
 
 describe('expanded profile catalog compatibility', () => {
-  it('lets a Basic account publish a 3D template and exposes its real ID only to catalog 2 clients', async () => {
+  it('lets a purchased Starter account publish a 3D template and exposes its real ID only to catalog 2 clients', async () => {
     const { app, store } = fixture();
     const published = await publishDimensional(app).expect(200);
     expect(published.body.profile.appearance.templateId).toBe(templateId);

@@ -1,5 +1,20 @@
 # PostDee Mobile
 
+## Theme membership (2026-11-03, local candidate)
+
+The Simple category is free. Other theme categories require the authoritative
+`canUsePremiumProfileThemes` subscription capability: active purchased Starter,
+Pro or Business, excluding trial-only benefits and credit top-ups. Missing or
+failed capability reads lock premium application and offer recovery guidance.
+
+Expiry changes the effective preview to Simple while retaining authored draft
+and saved appearance/content. Content editing remains possible; a new premium
+style requires restored membership. Refresh membership before application and
+publication and after navigation/resume so restored purchases are reflected.
+Both languages and accessible layouts retain the current editor design.
+API rollout must come first. No device installation is included. See the
+[work record](../../docs/superpowers/plans/2026-11-03-profile-theme-membership.md).
+
 ## Provisional Business main plan (2026-11-02, local candidate)
 
 Prepare Business as a main monthly subscription: 400 post units, 220 AI caption

@@ -69,6 +69,8 @@ class LinkInBioText extends StatelessWidget {
 }
 
 const _englishMessages = <String, String>{
+  'ธีมสำหรับสมาชิก · สมัคร Starter, Pro หรือ Business เพื่อใช้ธีมนี้':
+      'Member theme · Subscribe to Starter, Pro or Business to use this theme.',
   'กำลังบันทึกแบบร่างในเครื่อง...': 'Saving draft on this device...',
   'มีการแก้ไขที่ยังไม่ได้บันทึก': 'Unsaved changes',
   'บันทึกแบบร่างในเครื่องแล้ว': 'Draft saved on this device',

@@ -7,8 +7,10 @@ import { readUtcMonthBounds } from '../posts/postUsage.js';
 import {
   canSchedulePosts,
   maxProfileLinksByPlan,
+  hasPaidProfileThemeMembership,
   monthlyAiCaptionGenerationLimits,
-  monthlyPostUnitLimits
+  monthlyPostUnitLimits,
+  readPurchasedSubscriptionPlan
 } from '../subscriptions/subscriptionEntitlements.js';
 import type {
   PaidSubscriptionPlan,
@@ -337,6 +339,7 @@ export const registerBillingRoutes = (
           aiCaptions: Math.max(0, (addonGrants?.aiCaptions ?? 0) - usedAddonAiCaptions)
         }
       }), businessPlanAvailable,
+      canUsePremiumProfileThemes: hasPaidProfileThemeMembership(await readPurchasedSubscriptionPlan(subscriptionStore, authUser)),
       monthlyQuotaResetsAt: readUtcMonthBounds(new Date(now)).end.toISOString(),
       ...(subscriptionStore.getPurchasedPlan ? { purchasedPlan } : {}) }
     });

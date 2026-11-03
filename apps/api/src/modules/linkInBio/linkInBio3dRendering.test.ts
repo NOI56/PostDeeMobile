@@ -118,7 +118,7 @@ describe('3D storefront rendering', () => {
 });
 
 describe('3D storefront access', () => {
-  it.each(templateIds)('allows Basic to publish %s and a visitor to open it without authentication', async (templateId) => {
+  it.each(templateIds)('allows purchased Starter to publish %s and a visitor to open it without authentication', async (templateId) => {
     const app = express();
     app.use(express.json());
     const router = express.Router();
@@ -127,7 +127,7 @@ describe('3D storefront access', () => {
       res.locals.authUser = { id: 'owner', provider: 'mock' };
       next();
     }, createInMemoryLinkInBioStore(), undefined, {
-      subscriptionStore: { getPlan: async () => 'BASIC' }
+      subscriptionStore: { getPlan: async () => 'STARTER', getPurchasedPlan: async () => 'STARTER' }
     });
     app.use(router);
     const input = { storeName: 'ร้านของคุณ', slug: 'three-d-shop', links,
@@ -143,8 +143,11 @@ describe('3D storefront access', () => {
     expect(publicPage.headers['content-security-policy']).toContain("img-src 'self'");
     const rejected = await request(app).post('/link-in-bio/publish').set('Authorization', 'Bearer owner-token')
       .set('X-PostDee-Profile-Catalog', '3')
-      .send({ ...input, links: [...links, { id: 'third', title: 'สาม', url: 'https://example.com' }] }).expect(403);
-    expect(rejected.body.code).toBe('LINK_IN_BIO_LINK_LIMIT_EXCEEDED');
+      .send({ ...input, links: [...links, ...Array.from({ length: 6 }, (_, index) => ({
+        id: `extra-${index}`, title: `Extra ${index + 1}`, url: `https://example.com/${index}`
+      }))] }).expect(403);
+    expect(rejected.body).toMatchObject({ code: 'LINK_IN_BIO_LINK_LIMIT_EXCEEDED',
+      plan: 'STARTER', maxProfileLinks: 7, requestedLinks: 8 });
     expect((await request(app).get('/p/three-d-shop').expect(200)).text).toContain(`data-template="${templateId}"`);
   });
 });

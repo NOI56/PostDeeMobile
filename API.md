@@ -2,6 +2,40 @@
 
 PostDee backend API reference.
 
+## Store-link theme access (2026-11-03, local candidate)
+
+`GET /billing/subscription` adds `subscription.canUsePremiumProfileThemes`.
+It reflects active purchased Starter/Pro/Business membership, independently of
+effective trial benefits and purchased credit balances. New Mobile treats an
+absent field or failed lookup as unavailable premium access; deploy API first.
+Existing post/caption/link-count entitlements and billing behavior are unchanged.
+
+Only catalog category `minimal` is free. Every other category, including 3D,
+Cartoon, other classic categories and future categories, requires membership;
+legacy non-minimal themes are covered too. New or changed premium styling on
+`POST /link-in-bio/publish` is rejected with
+`403 LINK_IN_BIO_PREMIUM_THEME_REQUIRED` without access. Omitted appearance,
+legacy catalog replay and content-only edits can retain an existing premium
+style; they must not silently replace it with the displayed fallback. Existing
+appearance-conflict and link-limit checks retain their contracts.
+An unavailable membership lookup returns
+`503 LINK_IN_BIO_ENTITLEMENTS_UNAVAILABLE` for a new premium style. Retaining an
+existing style is checked against the current row at the atomic write boundary;
+a concurrent style change returns `409 LINK_IN_BIO_APPEARANCE_CONFLICT`.
+
+Authenticated profile reads retain authored appearance. Public rendering checks
+the profile owner's membership, never the visitor's headers or membership.
+Without access or when entitlement lookup fails, it renders a copied Simple
+appearance while preserving text, links and user images. It never writes that
+fallback to storage, and page responses cannot cache a past entitlement.
+Restored membership re-enables the retained design on the next read/render.
+Static public decoration assets remain readable for public paid pages.
+
+No Prisma schema migration or data rewrite. API/readers precede compatible
+Mobile. Older clients may still preview premium designs locally, but cannot
+publish a new premium style without membership, and public output remains
+authoritative. Deployment, app installation and remote publication are excluded.
+
 ## Combined Staging delivery (2026-11-03, Staging Live)
 
 Owner-approved PR #56 Business and PR #50 posting-readiness UX are on `main`.

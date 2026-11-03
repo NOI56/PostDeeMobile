@@ -10,6 +10,7 @@ Future<SubscriptionStatusResult> loadBioProSubscription() async =>
         userId: PostDeeAuthSessionStore.instance.session.stableUserId ?? 'bio-test-owner',
         plan: 'PRO',
         status: 'ACTIVE',
+        canUsePremiumProfileThemes: true,
         maxProfileLinks: 20,
         canSchedule: true,
         canUseAiCaptions: true,

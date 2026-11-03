@@ -31,10 +31,19 @@ export type PublishLinkInBioInput = {
   appearance?: LinkInBioAppearance;
 };
 
+export type PublishLinkInBioOptions = {
+  // Synchronous internal policy check against the row actually being changed.
+  // Kept separate from persisted input and never accepted from request JSON.
+  validateCurrentAppearance?: (current: LinkInBioProfile | null) => undefined;
+};
+
 export type LinkInBioStore = {
   getForUser: (userId: string) => Promise<LinkInBioProfile | null>;
   getPublishedBySlug: (slug: string) => Promise<LinkInBioProfile | null>;
-  publish: (input: PublishLinkInBioInput) => Promise<LinkInBioProfile>;
+  // Internal authorization snapshot, never serialized as owner-facing JSON.
+  // Optional only for older injected stores; missing proof renders Simple.
+  getPublishedWithOwnerBySlug?: (slug: string) => Promise<{ userId: string; profile: LinkInBioProfile } | null>;
+  publish: (input: PublishLinkInBioInput, options?: PublishLinkInBioOptions) => Promise<LinkInBioProfile>;
   unpublish: (userId: string) => Promise<LinkInBioProfile | null>;
   deleteAllForUser?: (userId: string) => Promise<void>;
 };
@@ -82,7 +91,12 @@ export const createInMemoryLinkInBioStore = ({ now = () => new Date() } = {}): L
       const profile = ownerId ? profiles.get(ownerId) : undefined;
       return profile?.isPublished ? copyProfile(profile) : null;
     },
-    publish: async ({ userId, storeName, slug, links, appearance }) => {
+    getPublishedWithOwnerBySlug: async (slug) => {
+      const userId = ownersBySlug.get(slug);
+      const profile = userId ? profiles.get(userId) : undefined;
+      return userId && profile?.isPublished ? { userId, profile: copyProfile(profile)! } : null;
+    },
+    publish: async ({ userId, storeName, slug, links, appearance }, options) => {
       // No await between the uniqueness check and write: concurrent requests
       // cannot claim the same slug in this process. Prisma uses a unique index.
       const existingOwner = ownersBySlug.get(slug);
@@ -90,6 +104,7 @@ export const createInMemoryLinkInBioStore = ({ now = () => new Date() } = {}): L
         throw slugTakenError();
       }
       const previous = profiles.get(userId);
+      options?.validateCurrentAppearance?.(copyProfile(previous));
       const currentTime = now();
       if (previous?.slug !== slug) {
         const reservation = reservations.get(slug);

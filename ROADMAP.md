@@ -2,6 +2,18 @@
 
 Build roadmap for PostDee.
 
+## Simple free, other store themes for members (2026-11-03, local candidate)
+
+- Keep Simple free; require active purchased Starter/Pro/Business membership
+  for every other theme category, independently of top-ups or trial-only access.
+- Enforce selection/publication on the API and present consistent Thai/English
+  membership controls in Mobile, including loading/error/account-change states.
+- Preserve authored themes and content across expiry. Use a temporary Simple
+  rendering and restore the saved design when paid membership returns.
+- Deliver API before compatible Mobile; no migration, deployment, installation,
+  merge or remote publication is included in the local implementation.
+  [Work record](docs/superpowers/plans/2026-11-03-profile-theme-membership.md).
+
 ## Combined main and Staging delivery (2026-11-03, Staging Live)
 
 - PR #50 posting-readiness UX and PR #56 Business are merged and pushed. Staging

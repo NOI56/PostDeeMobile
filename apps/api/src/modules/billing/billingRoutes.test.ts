@@ -75,6 +75,7 @@ describe('billing routes', () => {
         canUseFreePostQuota: false,
         canSchedule: false,
         canUseAiCaptions: false,
+        canUsePremiumProfileThemes: false,
         canUseAnalytics: false,
         canUseAiAudioReview: false,
         canUseAiVideoReview: false
@@ -171,6 +172,7 @@ describe('billing routes', () => {
         canUseFreePostQuota: false,
         canSchedule: true,
         canUseAiCaptions: true,
+        canUsePremiumProfileThemes: true,
         canUseAnalytics: false,
         canUseAiAudioReview: false,
         canUseAiVideoReview: false
@@ -233,6 +235,7 @@ describe('billing routes', () => {
         canUseFreePostQuota: false,
         canSchedule: true,
         canUseAiCaptions: true,
+        canUsePremiumProfileThemes: true,
         canUseAnalytics: false,
         canUseAiAudioReview: false,
         canUseAiVideoReview: false

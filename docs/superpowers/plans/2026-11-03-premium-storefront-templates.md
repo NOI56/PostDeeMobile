@@ -8,10 +8,11 @@ candidate (Codex, same day) only exposed the catalog's existing classic
 colours, have no artwork of their own and one is plain white. The owner judged
 them not beautiful and asked for the category to be redone.
 
-Work continues on `codex/store-premium-themes` in the root checkout, based on
+Implementation used `codex/store-premium-themes` in the root checkout, based on
 freshly fetched `origin/main` `9c05fa8e`. The first candidate's uncommitted diff
 was backed up before it was replaced. Unrelated dirty files (Windows generated
-plugin files, scratch folders) are left untouched.
+plugin files, scratch folders) were left untouched. PR #59 was merged and the
+API delivered to Staging on 2026-11-04; device delivery is recorded below.
 
 ## Decision
 
@@ -122,5 +123,42 @@ must keep a catalog-5 reader; never clear stored designs.
   opt-in skipped, with 5 cases in 2 unrelated files (Sentry fatal process,
   platform-logo catalog) timing out under full-suite load; both files pass
   alone (24/24) and are unchanged by this work.
-- [ ] Staging API deploy, APK install and owner review on a device. No merge,
-  push, deploy or Production change has been made.
+- [x] PR #59 committed and pushed as `46f981a5`, then merged from base
+  `9c05fa8e` as `6d10c7181214172d8ac46ddcd2b3d44c56408287` with an identical
+  tree and `[skip render]` after the owner authorized merge, Staging deploy
+  and device installation.
+- [x] [Main CI 41683155488](https://github.com/NOI56/PostDeeMobile/actions/runs/41683155488)
+  passed on the exact merge SHA: API 3,699 passed / 77 opt-in skipped;
+  Mobile 5,119 passed / 10 optional skipped; typecheck, analyze, build, Prisma
+  and artwork guards passed. [iOS 41683155448](https://github.com/NOI56/PostDeeMobile/actions/runs/41683155448)
+  passed without codesigning; no iOS build was distributed.
+- [x] Staging API deploy `dep-dbl1sjm7bikc7385rgm0` became Live at
+  2026-11-04 00:49:27 Asia/Bangkok on `6d10c718`. Startup found 30 migrations,
+  none pending; activation/backlog guard passed. Read-only public smoke checks
+  passed 53/53, including auth/catalog guards and all twenty premium PNGs.
+  The initial error/warn log query returned a transient 503; the retry succeeded
+  with no app error/warn logs from 17:47:58 to 17:51:15 UTC (`hasMore: false`).
+- [x] Staging APK 12099 built from exact merge SHA `6d10c718` through the
+  guarded helper; signature and twenty bundled premium assets verified.
+  SHA-256: `5ba00b5d49d839e5d039bda3ee8b0c20219c75fa5c3f4aa425d4c71fdf596c90`.
+- [x] Guarded APK update 12098 to 12099 preserved UID 10197 and internal
+  storage; installed SHA-256 matches the built APK and all 68 previous private
+  files remained before native launch.
+- [x] Native check on `emulator-5554`: STAGING and the signed-in Basic account
+  remained; draft `1000000795.mp4`, the existing shop slug and links remained.
+  The premium category showed twenty designs; one native `premium-guilloche`
+  preview showed the real shop name/links and the Starter/Pro/Business
+  membership message with application disabled for Basic. Closing the preview
+  and reopening decoration retained the selected `dimensional-clay-mint` and
+  its temporary Simple fallback message. No apply/save/publish/purchase was
+  performed. The latest 1,500 logcat lines had no FATAL, Flutter/Unhandled
+  exception or overflow matches. This is not native end-to-end verification
+  of all twenty designs.
+- [ ] Owner review on a device.
+- [ ] Applied/saved/published premium design on an active purchased account
+  and membership expiry/restoration on Staging; the device account is Basic.
+- [ ] Physical-device verification; this delivery used an Android emulator.
+
+Evidence is in `artifacts/premium-redesign/`; see the
+[Staging delivery receipt](../../STAGING.md). No schema, migration, environment
+or Production change was made. Production remains suspended.

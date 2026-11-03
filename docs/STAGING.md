@@ -1,5 +1,59 @@
 # PostDee Staging
 
+## ธีมร้านหรูหรา / พรีเมียม 20 แบบ — 4 พฤศจิกายน 2026
+
+- เจ้าของสั่ง merge PR #59, deploy Staging และติดตั้งแอป จึงรวม `46f981a5`
+  จากฐาน `9c05fa8e` เป็น `6d10c7181214172d8ac46ddcd2b3d44c56408287`
+  แล้ว push main; tree ตรงกับ PR head ทุก byte และคง `[skip render]`
+  เพิ่ม catalog 5 โดยเก็บ 140 ธีมเดิม, membership, 3D/การ์ตูน, Facebook Reels
+  และขอบเขต retired เดิม ไม่มี schema, migration, environment หรือ secret เปลี่ยน
+- [CI 41683155488](https://github.com/NOI56/PostDeeMobile/actions/runs/41683155488)
+  ของ merge SHA นี้ผ่านก่อน deploy: API **3,699 ผ่าน / 77 opt-in ข้าม**,
+  Mobile **5,119 ผ่าน / 10 optional ข้าม** พร้อม typecheck, analyze, build,
+  Prisma และ artwork guards;
+  [iOS 41683155448](https://github.com/NOI56/PostDeeMobile/actions/runs/41683155448)
+  ผ่านแบบ no codesign ไม่ได้แจก iOS
+- ตรวจเลือก My Workspace (`tea-d45nsamuk2gs73cmhol0`) และ Staging service
+  `srv-d9bb72ojs32c739osa5g` ใหม่ก่อน deploy
+  [`dep-dbl1sjm7bikc7385rgm0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbl1sjm7bikc7385rgm0)
+  เริ่ม **00:47:58 น. ไทย วันที่ 4 พ.ย. (17:47:58 UTC วันที่ 3 พ.ย.)** และ
+  **Live 00:49:27 น. ไทย (17:49:27 UTC)** ที่ SHA `6d10c718` ตรงกับ CI
+  แทน `5b425501` / `dep-dbkvm267bikc7380mu9g`; หากมีการบันทึกธีมใหม่แล้ว
+  rollback ต้องคง catalog-5 reader ห้ามล้างดีไซน์ที่บันทึกไว้
+- Startup instance `zlc8r` พบ 30 migrations และ "No pending migrations to apply";
+  publishing activation/backlog guard ผ่าน, ฟัง port 10000 และใช้ memory scheduler
+  การอ่าน app logs ครั้งแรกตอบ 503 ชั่วคราว แต่ตรวจซ้ำสำเร็จและไม่พบ error/warn
+  ในช่วง 17:47:58–17:51:15 UTC (`hasMore: false`)
+- ตรวจ public GET สด **00:49:35–38 น. ไทย (17:49:35–38 UTC)** ผ่าน **53/53**:
+  `/health`, `/ready` พร้อม database/queue `ok` และ `no-store`, auth guards
+  3 routes × catalog headers 1–6 ตอบ 401, slug ที่ไม่มีตอบ 404 พร้อม `no-store`,
+  premium PNG 20/20 ตรง source SHA-256 พร้อม MIME/cache/nosniff และชื่อภาพ
+  นอก allowlist 11 แบบตอบ 404 ทั้งหมดเป็นการอ่าน ไม่เขียนข้อมูลลูกค้า
+- สร้าง APK Staging **12099** จาก merge SHA `6d10c718` ด้วย
+  `postdee-staging.ps1 -Command build-apk --no-pub --build-number=12099`;
+  package `com.postdee.postdee_mobile.staging`, ลายเซ็นและภาพ premium 20/20
+  ตรง source; SHA-256
+  `5ba00b5d49d839e5d039bda3ee8b0c20219c75fa5c3f4aa425d4c71fdf596c90`
+- ใช้ guarded updater บน `emulator-5554`: **12098 → 12099** โดย UID 10197 และ
+  internal storage เดิม;
+  installed SHA-256 ตรง APK และไฟล์ข้อมูลเดิม 68/68 ยังอยู่ก่อนเปิดแอป
+  native เปิดพร้อม STAGING และบัญชี Basic ที่ล็อกอินเดิม ร่างโพสต์
+  `1000000795.mp4` ยังอยู่ ร้าน `Cartoon Test Shop` ใช้ slug
+  `/p/cartoon-test-0311` เดิมและลิงก์เดิมเปิด 1/2 รายการ
+- ตรวจหน้าตกแต่ง native: หมวดพรีเมียมแสดงจำนวน 20 แบบและภาพชุดใหม่;
+  เปิดตัวอย่าง "ลายเส้นกิโยเช" 1 แบบพร้อมชื่อร้าน/ลิงก์จริง พบคำอธิบายสิทธิ์
+  Starter/Pro/Business และปุ่มใช้ธีมถูกปิดสำหรับบัญชี Basic จากนั้นปิดตัวอย่าง
+  กลับเข้าใหม่ ธีม 3D `dimensional-clay-mint` เดิมยังถูกเลือกและแสดงข้อความ
+  "เก็บธีม ดินปั้นมิ้นต์ ไว้แล้ว · ขณะนี้ใช้ธีมเรียบง่ายชั่วคราว"; ไม่กดใช้/บันทึก/
+  เผยแพร่/ซื้อ ไม่พบ FATAL, Flutter/Unhandled exception หรือ overflow จาก
+  logcat ล่าสุด 1,500 บรรทัดที่กรองตรวจ ไม่ถือว่าได้ทดสอบ native ครบทั้ง 20 แบบ
+- หลักฐานอยู่ใน `artifacts/premium-redesign/` รวมภาพ `device-home-12099.png`,
+  `device-store-12099.png`, `device-premium-category-12099.png`,
+  `device-premium-preview-12099.png`, `device-premium-cancelled-12099.png` และ
+  `device-retained-style-12099.png`; ยังไม่ยืนยัน owner review, การใช้/บันทึก/
+  เผยแพร่ธีมใหม่ด้วยบัญชีสมาชิก, หมดอายุ/ต่ออายุบน Staging หรืออุปกรณ์จริง
+  Production ตรวจล่าสุดยัง suspended ไม่ได้ deploy/resume
+
 ## ธีมร้านพรีเมียมสำหรับสมาชิก — 3 พฤศจิกายน 2026
 
 - เจ้าของสั่ง merge PR #57 และ deploy จึงรวมเป็น `5b425501` จากฐาน

@@ -66,7 +66,7 @@ products or device install are included. See the
 
 Flutter mobile app scaffold for PostDee.
 
-## Premium storefront category (2026-11-03, local candidate)
+## Premium storefront category (2026-11-04, API on Staging / APK installed)
 
 The template picker shows a fourth category chip, หรูหรา / พรีเมียม (Luxury /
 Premium), with twenty new `premium-*` designs. They render through
@@ -76,6 +76,18 @@ Premium), with twenty new `premium-*` designs. They render through
 page's `linkInBioPremiumStyles.ts`. Thai and English names are localized; the
 classic `luxury-*` designs are no longer listed. Mobile now sends
 `X-PostDee-Profile-Catalog: 5` (generated catalog version).
+PR #59 is merged as `6d10c718`; its compatible API is Live on Staging before
+Mobile delivery. Exact-source Staging APK 12099 is installed with its signature,
+twenty premium assets and installed hash verified. The guarded update preserved
+UID 10197, internal storage and all 68 previous private files; native signed-in
+startup, STAGING, the existing post draft and shop content passed verification
+on `emulator-5554`. The category shows twenty designs; one `premium-guilloche`
+preview was checked with the real shop content and Basic membership lock.
+Closing it retained the existing 3D selection and temporary Simple fallback.
+No apply/save/publish/purchase was performed. Main CI passes 5,119 Mobile tests
+(10 optional fixtures skipped) and analysis. Owner design review, paid-member
+application/publication, expiry/restoration and physical-device checks remain.
+Production remains suspended.
 See the [premium plan](../../docs/superpowers/plans/2026-11-03-premium-storefront-templates.md).
 
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)

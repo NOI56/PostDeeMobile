@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createLinkInBioStoreFromConfig } from './linkInBioStoreFactory.js';
 import { createPrismaLinkInBioRepository, type PrismaLinkInBioClient } from './prismaLinkInBioRepository.js';
 import { createDefaultLinkInBioAppearance } from './linkInBioAppearance.js';
+import { LinkInBioError } from './linkInBioStore.js';
 
 const input = {
   userId: 'owner', storeName: 'ร้านของดี', slug: 'my-shop',
@@ -32,6 +33,26 @@ const fixture = () => {
 };
 
 describe('Prisma link in bio repository', () => {
+  it('checks a retained appearance against the current transactional row before writing', async () => {
+    const { store, linkInBioProfile } = fixture();
+    const validateCurrentAppearance = vi.fn((): undefined => {
+      throw new LinkInBioError(409, 'LINK_IN_BIO_APPEARANCE_CONFLICT', 'Reload the changed style');
+    });
+    await expect(store.publish(input, { validateCurrentAppearance })).rejects.toMatchObject({ code: 'LINK_IN_BIO_APPEARANCE_CONFLICT' });
+    expect(validateCurrentAppearance).toHaveBeenCalledWith(expect.objectContaining({ slug: input.slug }));
+    expect(linkInBioProfile.upsert).not.toHaveBeenCalled();
+  });
+
+  it('reads the public owner and profile from one published row without adding owner identity to profile JSON', async () => {
+    const { store, linkInBioProfile } = fixture();
+    const snapshot = await store.getPublishedWithOwnerBySlug!('my-shop');
+    expect(snapshot?.userId).toBe(input.userId);
+    expect(snapshot?.profile.storeName).toBe(input.storeName);
+    expect(snapshot?.profile).not.toHaveProperty('userId');
+    expect(linkInBioProfile.findFirst).toHaveBeenCalledExactlyOnceWith({ where: { slug: 'my-shop', isPublished: true } });
+    expect(linkInBioProfile.findUnique).not.toHaveBeenCalled();
+  });
+
   it('uses one user-scoped upsert and returns only the public profile fields', async () => {
     const { store, linkInBioProfile } = fixture();
     expect(await store.publish(input)).toEqual({

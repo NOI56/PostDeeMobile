@@ -10,6 +10,7 @@ import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../billing/paywall_screen.dart';
 import 'link_in_bio_appearance_editor.dart';
 import 'link_in_bio_color_picker.dart' show BioOwnedModalScope;
 import 'link_in_bio_draft_store.dart';
@@ -23,6 +24,7 @@ import 'link_in_bio_preview.dart';
 import 'link_in_bio_publication_status.dart';
 import 'link_in_bio_ui_motion.dart';
 import 'link_in_bio_validation.dart';
+import 'link_in_bio_theme_access.dart';
 
 typedef LinkInBioProfileLoader = Future<LinkInBioProfileResult?> Function();
 typedef LinkInBioProfilePublisher = Future<LinkInBioProfileResult> Function({
@@ -55,6 +57,7 @@ class LinkInBioScreen extends StatefulWidget {
     this.isActive = true,
     this.loadProfile,
     this.loadSubscription,
+    this.openMembershipPlans,
     this.publishProfile,
     this.unpublishProfile,
     this.openLink,
@@ -72,6 +75,7 @@ class LinkInBioScreen extends StatefulWidget {
   final bool isActive;
   final LinkInBioProfileLoader? loadProfile;
   final Future<SubscriptionStatusResult> Function()? loadSubscription;
+  final Future<void> Function()? openMembershipPlans;
   final LinkInBioProfilePublisher? publishProfile;
   final LinkInBioProfileUnpublisher? unpublishProfile;
   final LinkInBioLinkOpener? openLink;
@@ -86,7 +90,8 @@ class LinkInBioScreen extends StatefulWidget {
   State<LinkInBioScreen> createState() => _LinkInBioScreenState();
 }
 
-class _LinkInBioScreenState extends State<LinkInBioScreen> {
+class _LinkInBioScreenState extends State<LinkInBioScreen>
+    with WidgetsBindingObserver {
   late final PostDeeApiClient _apiClient;
   late final PostDeeAuthSessionStore _sessionStore;
   late final AuthSessionBinding _screenSession;
@@ -124,6 +129,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   Future<SubscriptionStatusResult?>? _subscriptionRequest;
   bool _subscriptionLoading = false;
   bool _subscriptionFailed = false;
+  int _subscriptionReadGeneration = 0;
+  final _themeMembership = ValueNotifier<bool>(false);
   bool _addingLink = false;
   bool _publicationUncertain = false;
   int _editVersion = 0;
@@ -143,6 +150,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       _ownerUserId != null && _sessionStore.session.stableUserId == _ownerUserId;
   bool get _ownerStillCurrent => mounted && _ownerMatchesSession;
   bool get _canEdit => _ownerStillCurrent && !_isBusy;
+  LinkInBioAppearance get _effectiveAppearance => bioEffectiveThemeAppearance(
+      _appearance, hasMembership: _themeMembership.value);
   List<LinkInBioCustomLink> get _activeLinks =>
       _customLinks.where((link) => _enabledLinkIds.contains(link.id)).toList();
   LinkInBioDraft get _draft => LinkInBioDraft(
@@ -301,6 +310,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     _ownerUserId = _sessionStore.session.stableUserId;
     _apiClient = PostDeeApiClient(sessionBinding: _screenSession);
     _sessionStore.addListener(_handleSessionChanged);
+    WidgetsBinding.instance.addObserver(this);
     _draftStore = widget.draftStore ??
         SharedPreferencesLinkInBioDraftStore(ownerUserId: _ownerUserId, sessionBinding: _screenSession);
     _storeNameController =
@@ -337,7 +347,16 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && widget.isActive && _ownerStillCurrent) {
+      unawaited(_refreshSubscription(force: true));
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _themeMembership.dispose();
     _sessionStore.removeListener(_handleSessionChanged);
     _closeOwnedModals();
     _closeDeleteUndo();
@@ -392,6 +411,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
 
   void _handleSessionChanged() {
     if (_screenSession.isCurrent || !mounted) return;
+    _subscriptionReadGeneration++;
+    _themeMembership.value = false;
     _closeOwnedModals();
     _closeDeleteUndo();
     _noticeTimer?.cancel();
@@ -508,6 +529,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
         backgroundColor: Colors.transparent,
         builder: (context) => _ownedModal(context, LinkInBioAppearanceEditor(
             showThemePicker: false,
+            hasPremiumThemeAccess: _themeMembership.value,
+            premiumThemeAccess: _themeMembership,
+            beforeApply: (value) => _checkThemeApplication(value, allowRetainedStyle: true),
             appearance: _appearance,
             storeName: _storeNameController.text,
             slug: _slugController.text,
@@ -527,13 +551,13 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       storeName: _storeNameController.text,
       slug: _slugController.text,
       links: _activeLinks,
-      appearance: _appearance,
+      appearance: _effectiveAppearance,
       images: _images,
       cornerRadius: cornerRadius);
 
   Future<void> _loadProfile() async {
     if (_isLoading || _isBusy) return;
-    unawaited(_refreshSubscription());
+    unawaited(_refreshSubscription(force: true));
     setState(() {
       _isLoading = true;
       _profileLoadFailed = false;
@@ -706,21 +730,23 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
   static const _subscriptionUnavailable =
       'ยังตรวจสอบสิทธิ์ลิงก์ไม่ได้ กรุณาลองใหม่ คุณยังแก้ไขแบบร่างเดิมได้';
 
-  Future<SubscriptionStatusResult?> _refreshSubscription() {
+  Future<SubscriptionStatusResult?> _refreshSubscription({bool force = false}) {
     if (!_ownerStillCurrent) return Future.value(null);
     final pending = _subscriptionRequest;
-    if (pending != null) return pending;
+    if (!force && pending != null) return pending;
+    final generation = ++_subscriptionReadGeneration;
     setState(() => _subscriptionLoading = true);
-    final request = _readSubscription();
+    _themeMembership.value = false;
+    final request = _readSubscription(generation);
     _subscriptionRequest = request;
     return request;
   }
 
-  Future<SubscriptionStatusResult?> _readSubscription() async {
+  Future<SubscriptionStatusResult?> _readSubscription(int generation) async {
     try {
       final value = await Future<SubscriptionStatusResult>.sync(
           widget.loadSubscription ?? _apiClient.loadCurrentSubscription);
-      if (!_ownerStillCurrent) return null;
+      if (!_ownerStillCurrent || generation != _subscriptionReadGeneration) return null;
       if (value.userId != _ownerUserId) {
         throw StateError('Subscription owner changed');
       }
@@ -730,7 +756,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       });
       return value;
     } catch (_) {
-      if (_ownerStillCurrent) {
+      if (_ownerStillCurrent && generation == _subscriptionReadGeneration) {
         setState(() {
           _subscription = null;
           _subscriptionFailed = true;
@@ -738,9 +764,38 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       }
       return null;
     } finally {
-      _subscriptionRequest = null;
-      if (_ownerStillCurrent) setState(() => _subscriptionLoading = false);
+      if (generation == _subscriptionReadGeneration) {
+        _subscriptionRequest = null;
+        if (_ownerStillCurrent) {
+          setState(() => _subscriptionLoading = false);
+          _themeMembership.value = !_subscriptionFailed && bioHasThemeMembership(_subscription);
+        }
+      }
     }
+  }
+
+  static const _themeMembershipRequired =
+      'ธีมสำหรับสมาชิก · สมัคร Starter, Pro หรือ Business เพื่อใช้ธีมนี้';
+
+  Future<bool> _checkThemeApplication(LinkInBioAppearance value,
+      {bool allowRetainedStyle = false}) async {
+    final subscription = await _refreshSubscription(force: true);
+    if (!_ownerStillCurrent || !_canEdit) return false;
+    if (!bioRequiresThemeMembership(value) || bioHasThemeMembership(subscription)) return true;
+    if (allowRetainedStyle && bioSameThemeStyle(_appearance, value)) return true;
+    _message(subscription == null ? _subscriptionUnavailable : _themeMembershipRequired);
+    return false;
+  }
+
+  Future<void> _openMembershipPlans() async {
+    if (!_ownerStillCurrent) return;
+    if (widget.openMembershipPlans != null) {
+      await widget.openMembershipPlans!();
+    } else {
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+          builder: (_) => PaywallScreen(sessionStore: _sessionStore)));
+    }
+    if (_ownerStillCurrent) await _refreshSubscription(force: true);
   }
 
   String _additionLimitMessage(int limit) =>
@@ -781,10 +836,16 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
     });
     var requested = false;
     try {
-      final subscription = await _refreshSubscription();
+      final subscription = await _refreshSubscription(force: true);
       if (!_ownerStillCurrent) return;
       if (subscription == null) {
         throw const ApiException(_subscriptionUnavailable);
+      }
+      if (bioRequiresThemeMembership(draft.appearance) &&
+          !bioHasThemeMembership(subscription) &&
+          (_profile == null || !bioSameThemeStyle(_profile!.appearance, draft.appearance))) {
+        throw const ApiException(_themeMembershipRequired, statusCode: 403,
+            code: 'LINK_IN_BIO_PREMIUM_THEME_REQUIRED');
       }
       if (links.length > subscription.maxProfileLinks) {
         throw ApiException(
@@ -859,7 +920,9 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
       setState(() {
         _publicationUncertain = requested && !definitive;
         _errorMessage =
-            error is ApiException && error.code == 'LINK_IN_BIO_SLUG_TAKEN'
+            error is ApiException && error.code == 'LINK_IN_BIO_PREMIUM_THEME_REQUIRED'
+                ? _themeMembershipRequired
+                : error is ApiException && error.code == 'LINK_IN_BIO_SLUG_TAKEN'
                 ? 'ชื่อ URL นี้มีคนใช้แล้ว กรุณาเลือกชื่อใหม่'
                 : _publicationUncertain
                     ? 'ยังไม่ทราบผลการเผยแพร่ กรุณาตรวจสถานะก่อนลองอีกครั้ง'
@@ -868,7 +931,8 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                             'เผยแพร่หน้าโปรไฟล์ไม่สำเร็จ กรุณาลองใหม่');
       });
       if (error is ApiException &&
-          error.code == 'LINK_IN_BIO_LINK_LIMIT_EXCEEDED') {
+          (error.code == 'LINK_IN_BIO_LINK_LIMIT_EXCEEDED' ||
+              error.code == 'LINK_IN_BIO_PREMIUM_THEME_REQUIRED')) {
         unawaited(_refreshSubscription());
       }
     } finally {
@@ -965,9 +1029,11 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
         useSafeArea: false,
         builder: (context) => _ownedModal(
             context,
+            ValueListenableBuilder<bool>(valueListenable: _themeMembership,
+                builder: (context, value, child) =>
             Dialog.fullscreen(
                 key: const ValueKey('link-in-bio-full-preview'),
-                backgroundColor: bioColor(_appearance.background.color),
+                backgroundColor: bioColor(_effectiveAppearance.background.color),
                 child: Semantics(
                     namesRoute: true,
                     label: localizeLinkInBioMessage(context, 'ตัวอย่างก่อนเผยแพร่'),
@@ -997,7 +1063,7 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
                                               onPressed: () =>
                                                   Navigator.pop(context),
                                               icon: const Icon(Icons.close)))),
-                                ]))))))));
+                                ])))))))));
   }
 
   Future<void> _showAddLinkSheet() async {
@@ -1715,10 +1781,15 @@ class _LinkInBioScreenState extends State<LinkInBioScreen> {
             height: (MediaQuery.sizeOf(context).height * .17)
                 .clamp(120.0, 150.0)
                 .toDouble(),
-            appearance: _appearance,
+            appearance: _effectiveAppearance,
             child: _draftPreview()),
         const SizedBox(height: 16),
         BioOwnedModalScope(onOpened: _recordModal, child: BioThemePicker(
+            hasPremiumThemeAccess: _themeMembership.value,
+            premiumThemeAccess: _themeMembership,
+            beforeApply: _checkThemeApplication,
+            onMembershipRequested: _openMembershipPlans,
+            onMembershipRetry: () async { await _refreshSubscription(force: true); },
             appearance: _appearance,
             storeName: _storeNameController.text,
             slug: _slugController.text,

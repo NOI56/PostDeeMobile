@@ -1,6 +1,6 @@
 import {
   type LinkInBioLink, type LinkInBioProfile, type LinkInBioStore,
-  type PublishLinkInBioInput, slugTakenError
+  type PublishLinkInBioInput, slugTakenError, LinkInBioError
 } from './linkInBioStore.js';
 import { createDefaultLinkInBioAppearance, normalizeStoredLinkInBioAppearance } from './linkInBioAppearance.js';
 import {
@@ -10,6 +10,7 @@ import {
 } from './linkInBioSlugPolicy.js';
 
 type PrismaLinkInBioProfile = {
+  userId?: string;
   storeName: string;
   slug: string;
   links: unknown;
@@ -74,7 +75,8 @@ type PrismaLinkInBioTransaction = {
 };
 
 export type PrismaLinkInBioClient = PrismaLinkInBioTransaction & {
-  $transaction: <T>(action: (transaction: PrismaLinkInBioTransaction) => Promise<T>) => Promise<T>;
+  $transaction: <T>(action: (transaction: PrismaLinkInBioTransaction) => Promise<T>,
+    options?: { isolationLevel: 'Serializable' }) => Promise<T>;
 };
 
 const assertSlugClaimable = async (
@@ -136,12 +138,17 @@ export const createPrismaLinkInBioRepository = ({
   getPublishedBySlug: async (slug) => mapProfile(await prisma.linkInBioProfile.findFirst({
     where: { slug, isPublished: true }
   })),
-  publish: async ({ userId, ...input }) => {
+  getPublishedWithOwnerBySlug: async (slug) => {
+    const row = await prisma.linkInBioProfile.findFirst({ where: { slug, isPublished: true } });
+    return row ? { userId: row.userId ?? '', profile: mapProfile(row)! } : null;
+  },
+  publish: async ({ userId, ...input }, options) => {
     const timestamp = now();
     const data = { ...input, isPublished: true, publishedAt: timestamp, updatedAt: timestamp };
     try {
-      return mapProfile(await prisma.$transaction(async (transaction) => {
+      const mutation = async (transaction: PrismaLinkInBioTransaction) => {
         const current = await transaction.linkInBioProfile.findUnique({ where: { userId } });
+        options?.validateCurrentAppearance?.(mapProfile(current));
         if (current?.slug !== input.slug) {
           await assertSlugClaimable(transaction, { userId, slug: input.slug, now: timestamp });
         }
@@ -154,8 +161,15 @@ export const createPrismaLinkInBioRepository = ({
           await reserveReleasedSlug(transaction, { ownerId: userId, slug: current.slug, now: timestamp });
         }
         return profile;
-      }))!;
+      };
+      const profile = options?.validateCurrentAppearance
+        ? await prisma.$transaction(mutation, { isolationLevel: 'Serializable' })
+        : await prisma.$transaction(mutation);
+      return mapProfile(profile)!;
     } catch (error) {
+      if (options?.validateCurrentAppearance && typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034') {
+        throw new LinkInBioError(409, 'LINK_IN_BIO_APPEARANCE_CONFLICT', 'รูปแบบหน้าเว็บเปลี่ยนไป กรุณาโหลดข้อมูลล่าสุดก่อนเผยแพร่');
+      }
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
         throw slugTakenError();
       }

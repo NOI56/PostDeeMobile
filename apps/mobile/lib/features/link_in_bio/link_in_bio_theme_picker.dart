@@ -11,6 +11,7 @@ import 'link_in_bio_localizations.dart';
 import 'link_in_bio_preview.dart';
 import 'link_in_bio_template_preview.dart';
 import 'link_in_bio_ui_motion.dart';
+import 'link_in_bio_theme_access.dart';
 
 LinkInBioAppearance _keepContent(
         LinkInBioAppearance original, LinkInBioAppearance preset) =>
@@ -37,6 +38,11 @@ class BioThemePicker extends StatefulWidget {
       required this.appearance,
       required this.onChanged,
       this.enabled = true,
+      this.hasPremiumThemeAccess = false,
+      this.premiumThemeAccess,
+      this.beforeApply,
+      this.onMembershipRequested,
+      this.onMembershipRetry,
       this.storeName = '',
       this.slug = '',
       this.links = const [],
@@ -45,6 +51,11 @@ class BioThemePicker extends StatefulWidget {
   final LinkInBioAppearance appearance;
   final ValueChanged<LinkInBioAppearance> onChanged;
   final bool enabled;
+  final bool hasPremiumThemeAccess;
+  final ValueListenable<bool>? premiumThemeAccess;
+  final Future<bool> Function(LinkInBioAppearance)? beforeApply;
+  final Future<void> Function()? onMembershipRequested;
+  final Future<void> Function()? onMembershipRetry;
   final String storeName;
   final String slug;
   final List<LinkInBioCustomLink> links;
@@ -56,6 +67,13 @@ class BioThemePicker extends StatefulWidget {
 
 class _BioThemePickerState extends State<BioThemePicker> {
   late String _category;
+  bool _applying = false;
+  bool get _hasAccess => widget.premiumThemeAccess?.value ?? widget.hasPremiumThemeAccess;
+
+  Widget _watchAccess(WidgetBuilder builder) => widget.premiumThemeAccess == null
+      ? Builder(builder: builder)
+      : ValueListenableBuilder<bool>(valueListenable: widget.premiumThemeAccess!,
+          builder: (context, value, child) => builder(context));
 
   static const _categories = ['minimal', 'dimensional', 'cartoon'];
 
@@ -89,7 +107,9 @@ class _BioThemePickerState extends State<BioThemePicker> {
         builder: (context) {
           final route = ModalRoute.of(context);
           if (route != null) ownership?.onOpened(route);
-          return BioUiMotionScope(
+          return _watchAccess((context) => StatefulBuilder(builder: (context, update) {
+            final locked = bioRequiresThemeMembership(candidate) && !_hasAccess;
+            return BioUiMotionScope(
               child: FractionallySizedBox(
                   heightFactor: .9,
                   child: Column(children: [
@@ -126,12 +146,40 @@ class _BioThemePickerState extends State<BioThemePicker> {
                         child: SingleChildScrollView(
                             key: const ValueKey('link-in-bio-template-preview'),
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: widget.imageRevision == null
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    if (locked)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          Text(linkInBioText(context, 'ธีมสำหรับสมาชิก', 'Member theme'),
+                              key: const ValueKey('link-in-bio-template-membership-required'),
+                              style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Text(linkInBioText(context,
+                              'ดูตัวอย่างได้ สมัคร Starter, Pro หรือ Business เพื่อนำไปใช้',
+                              'Preview this theme. Subscribe to Starter, Pro or Business to apply it.')),
+                          if (widget.onMembershipRetry != null)
+                            TextButton(key: const ValueKey('link-in-bio-template-membership-retry'),
+                                onPressed: _applying ? null : () async {
+                                  update(() => _applying = true);
+                                  try { await widget.onMembershipRetry!(); }
+                                  finally {
+                                    _applying = false;
+                                    if (context.mounted) update(() {});
+                                  }
+                                },
+                                child: Text(linkInBioText(context, 'ตรวจสอบสมาชิกอีกครั้ง', 'Check membership again'))),
+                          if (widget.onMembershipRequested != null)
+                            TextButton(key: const ValueKey('link-in-bio-template-membership-plans'),
+                                onPressed: _applying ? null : widget.onMembershipRequested,
+                                child: Text(linkInBioText(context, 'ดูแพ็กเกจสมาชิก', 'View membership plans'))),
+                        ])),
+                            widget.imageRevision == null
                                 ? _page(candidate)
                                 : ValueListenableBuilder<int>(
                                     valueListenable: widget.imageRevision!,
                                     builder: (_, value, child) =>
-                                        _page(candidate)))),
+                                        _page(candidate)),
+                            ]))),
                     SafeArea(
                         top: false,
                         child: Padding(
@@ -142,13 +190,24 @@ class _BioThemePickerState extends State<BioThemePicker> {
                                     child: FilledButton(
                                         key: const ValueKey(
                                             'link-in-bio-template-use'),
-                                        onPressed: () =>
-                                            Navigator.pop(context, candidate),
+                                        onPressed: locked || _applying || !widget.enabled ? null : () async {
+                                          update(() => _applying = true);
+                                          try {
+                                            final allowed = await widget.beforeApply?.call(candidate) ?? true;
+                                            if (!mounted || !context.mounted || !widget.enabled || !allowed) return;
+                                            if (bioRequiresThemeMembership(candidate) && !_hasAccess) return;
+                                            Navigator.pop(context, candidate);
+                                          } finally {
+                                            _applying = false;
+                                            if (context.mounted) update(() {});
+                                          }
+                                        },
                                         child: Text(linkInBioText(
                                             context,
                                             'ใช้กับแบบร่าง',
                                             'Apply to draft'))))))),
                   ])));
+          }));
         });
     if (!mounted || result == null || !widget.enabled) return;
     widget.onChanged(result);
@@ -163,18 +222,21 @@ class _BioThemePickerState extends State<BioThemePicker> {
 
   @override
   Widget build(BuildContext context) =>
-      BioUiMotionScope(child: Builder(builder: _buildPicker));
+      BioUiMotionScope(child: _watchAccess(_buildPicker));
 
   Widget _buildPicker(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final templates =
         profileTemplates.where((item) => item.category == _category).toList();
     final current = getProfileTemplate(widget.appearance.templateId);
+    final savedOnly = !_hasAccess && bioRequiresThemeMembership(widget.appearance);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final category in _categories)
           ChoiceChip(
               key: ValueKey('link-in-bio-category-$category'),
+              avatar: category != 'minimal' && !_hasAccess
+                  ? const Icon(Icons.lock_outline, size: 16) : null,
               label: Text(localizeLinkInBioMessage(
                   context, profileTemplateCategories[category]!)),
               selected: _category == category,
@@ -199,10 +261,13 @@ class _BioThemePickerState extends State<BioThemePicker> {
         Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-                linkInBioText(
+                savedOnly ? linkInBioText(context,
+                    'เก็บธีม ${current?.name ?? linkInBioThemeNames[widget.appearance.themeId]} ไว้แล้ว · ขณะนี้ใช้ธีมเรียบง่ายชั่วคราว',
+                    'Saved ${localizeLinkInBioMessage(context, current?.name ?? linkInBioThemeNames[widget.appearance.themeId] ?? '')} · Using Minimal temporarily.') : linkInBioText(
                     context,
                     'กำลังใช้ ${current?.name ?? linkInBioThemeNames[widget.appearance.themeId]}',
                     'Currently using ${localizeLinkInBioMessage(context, current?.name ?? linkInBioThemeNames[widget.appearance.themeId] ?? '')}'),
+                key: savedOnly ? const ValueKey('link-in-bio-saved-theme-membership') : null,
                 style: TextStyle(fontSize: 12, color: colors.primary))),
       const SizedBox(height: 12),
       LayoutBuilder(

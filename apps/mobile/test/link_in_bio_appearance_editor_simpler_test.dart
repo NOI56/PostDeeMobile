@@ -61,6 +61,7 @@ Future<void> _openEditor(WidgetTester tester,
                             context: context,
                             isScrollControlled: true,
                             builder: (_) => LinkInBioAppearanceEditor(
+                                hasPremiumThemeAccess: true,
                                 appearance: appearance,
                                 storeName: 'ร้านทดสอบ',
                                 slug: 'test-shop',

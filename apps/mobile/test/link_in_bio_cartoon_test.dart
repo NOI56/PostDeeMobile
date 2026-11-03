@@ -327,6 +327,7 @@ void main() {
     final original = LinkInBioAppearance.forTemplate('minimal-white-editorial')
         .copyWith(description: 'ข้อความเดิมของร้าน');
     await tester.pumpWidget(_localized(BioThemePicker(
+        hasPremiumThemeAccess: true,
         appearance: original,
         storeName: 'ร้านของฉัน',
         links: const [
@@ -433,6 +434,7 @@ void main() {
           home: Scaffold(
               body: SingleChildScrollView(
                   child: BioThemePicker(
+                      hasPremiumThemeAccess: true,
                       appearance: LinkInBioAppearance.forTemplate(
                           'cartoon-rocket-night'),
                       onChanged: (_) {})))));

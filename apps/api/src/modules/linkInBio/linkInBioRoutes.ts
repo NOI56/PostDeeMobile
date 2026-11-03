@@ -5,16 +5,18 @@ import type { Request, RequestHandler, Response, Router } from 'express';
 import { readAuthUser } from '../auth/authTypes.js';
 import type { UserStore } from '../users/userStore.js';
 import { maxProfileLinksByPlan, readPlanLabel } from '../subscriptions/subscriptionEntitlements.js';
-import type { SubscriptionPlan, SubscriptionStore } from '../subscriptions/subscriptionStore.js';
+import type { SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
 import { LinkInBioError, type LinkInBioLink, type LinkInBioProfile, type LinkInBioStore } from './linkInBioStore.js';
 import { linkInBioFonts, linkInBioIcons, normalizeStoredLinkInBioAppearance, readLinkInBioAppearance, readLinkInBioColor, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
 import { renderLinkInBioPage } from './linkInBioRenderer.js';
 import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
 import { readLinkInBioUrl } from './linkInBioDestinations.js';
 import { getProfileTemplate, profileTemplateCatalogVersion, profileTemplates } from './profileTemplateCatalog.generated.js';
+import { createFreeProfileThemeAppearance, hasPaidProfileThemeMembership, profileThemeRequiresMembership,
+  readPurchasedProfileThemePlan, samePremiumProfileStyling, type ProfileThemeSubscriptionStore } from './linkInBioThemeAccess.js';
 
 export type LinkInBioRouteOptions = {
-  subscriptionStore?: Pick<SubscriptionStore, 'getPlan'>;
+  subscriptionStore?: ProfileThemeSubscriptionStore;
   validateImages?: (userId: string, appearance: LinkInBioAppearance) => Promise<void | (() => Promise<void>)>;
   onPublished?: (userId: string, profile: LinkInBioProfile) => Promise<void>;
   withImageMutation?: (userId: string, operation: () => Promise<LinkInBioProfile>) => Promise<LinkInBioProfile>;
@@ -166,7 +168,10 @@ export const registerLinkInBioRoutes = (
         const catalog = readProfileCatalog(request);
         const legacyFallback = catalog < profileTemplateCatalogVersion &&
           input.appearance?.themeId === 'minimal' && input.appearance.templateId === null;
-        const previous = input.appearance === undefined || legacyFallback
+        const requestedPremium = profileThemeRequiresMembership(input.appearance);
+        const purchasedPlan = requestedPremium ? await readPurchasedProfileThemePlan(options.subscriptionStore, user) : undefined;
+        const canSelectPremium = hasPaidProfileThemeMembership(purchasedPlan);
+        const previous = input.appearance === undefined || legacyFallback || (requestedPremium && !canSelectPremium)
           ? await store.getForUser(user.id) : null;
         const storedAppearance = normalizeStoredLinkInBioAppearance(previous?.appearance, input.links);
         // Only a saved template this client cannot see makes a null-template
@@ -185,6 +190,13 @@ export const registerLinkInBioRoutes = (
           publishInput = { ...input, appearance: undefined };
         }
         const appearance = publishInput.appearance ?? storedAppearance;
+        if (publishInput.appearance && profileThemeRequiresMembership(appearance) && !canSelectPremium &&
+            (!previous || !samePremiumProfileStyling(storedAppearance, appearance))) {
+          if (purchasedPlan === undefined) {
+            throw new LinkInBioError(503, 'LINK_IN_BIO_ENTITLEMENTS_UNAVAILABLE', 'ตรวจสอบสิทธิ์ธีมหน้าร้านไม่ได้ กรุณาลองใหม่ภายหลัง');
+          }
+          throw new LinkInBioError(403, 'LINK_IN_BIO_PREMIUM_THEME_REQUIRED', 'ธีมนี้ใช้ได้สำหรับสมาชิก Starter, Pro หรือ Business ที่ยังใช้งานอยู่');
+        }
         if (appearance.logoKey || appearance.coverKey || appearance.background.imageKey) {
           if (!options.validateImages) throw new LinkInBioError(400, 'LINK_IN_BIO_IMAGE_INVALID', 'ระบบรูปหน้าโปรไฟล์ยังไม่พร้อม กรุณานำรูปออกก่อนเผยแพร่');
         }
@@ -192,7 +204,17 @@ export const registerLinkInBioRoutes = (
         imageGuard.release = typeof releaseImages === 'function' ? releaseImages : undefined;
         // Omitted appearance remains omitted at the atomic store update, so an
         // older client cannot overwrite a concurrent appearance customization.
-        return store.publish({ ...publishInput, userId: user.id });
+        const validateCurrentAppearance = publishInput.appearance && profileThemeRequiresMembership(appearance) && !canSelectPremium
+          ? (current: LinkInBioProfile | null): undefined => {
+            const currentAppearance = normalizeStoredLinkInBioAppearance(current?.appearance, input.links);
+            if (!current || !samePremiumProfileStyling(currentAppearance, appearance)) {
+              throw new LinkInBioError(409, 'LINK_IN_BIO_APPEARANCE_CONFLICT', 'รูปแบบหน้าเว็บเปลี่ยนไป กรุณาโหลดข้อมูลล่าสุดก่อนเผยแพร่');
+            }
+            return undefined;
+          } : undefined;
+        return validateCurrentAppearance
+          ? store.publish({ ...publishInput, userId: user.id }, { validateCurrentAppearance })
+          : store.publish({ ...publishInput, userId: user.id });
       };
       // The same image-owner guard protects pruning and this validate/write
       // boundary. Cleanup below runs after release to avoid a nested lock.
@@ -220,11 +242,21 @@ export const registerLinkInBioRoutes = (
     const slug = request.params.slug;
     if (typeof slug !== 'string' || !slugPattern.test(slug)) { response.status(404).type('text').send('ไม่พบหน้าเว็บร้านค้า'); return; }
     try {
-      const profile = await store.getPublishedBySlug(slug);
+      const snapshot = store.getPublishedWithOwnerBySlug ? await store.getPublishedWithOwnerBySlug(slug) : undefined;
+      const profile = store.getPublishedWithOwnerBySlug ? snapshot?.profile ?? null : await store.getPublishedBySlug(slug);
       if (!profile) { response.status(404).type('text').send('ไม่พบหน้าเว็บร้านค้า'); return; }
+      let rendered = profile;
+      if (profileThemeRequiresMembership(profile.appearance)) {
+        const purchasedPlan = snapshot?.userId ? await readPurchasedProfileThemePlan(options.subscriptionStore,
+          { id: snapshot.userId, provider: 'firebase' }) : undefined;
+        if (!hasPaidProfileThemeMembership(purchasedPlan)) {
+          rendered = { ...profile, appearance: createFreeProfileThemeAppearance(
+            normalizeStoredLinkInBioAppearance(profile.appearance, profile.links)) };
+        }
+      }
       const nonce = randomBytes(18).toString('base64');
       response.set('Content-Security-Policy', `default-src 'none'; script-src 'none'; style-src 'nonce-${nonce}'; img-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`);
-      response.type('html').send(renderLinkInBioPage(profile, nonce));
+      response.type('html').send(renderLinkInBioPage(rendered, nonce));
     } catch (error) { respondError(response, error); }
   });
 };

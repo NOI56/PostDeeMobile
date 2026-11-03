@@ -61,6 +61,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(_page(
         BioThemePicker(
+            hasPremiumThemeAccess: true,
             appearance: LinkInBioAppearance.forTemplate(_ids.first),
             onChanged: (_) {}),
         language: 'en'));
@@ -94,6 +95,7 @@ void main() {
     final original = LinkInBioAppearance.forTemplate('minimal-white-editorial')
         .copyWith(description: 'ข้อความเดิมของร้าน');
     await tester.pumpWidget(_page(BioThemePicker(
+        hasPremiumThemeAccess: true,
         appearance: original,
         storeName: 'ร้านของฉัน',
         links: _links,
@@ -128,6 +130,7 @@ void main() {
       (tester) async {
     var changes = 0;
     await tester.pumpWidget(_page(BioThemePicker(
+        hasPremiumThemeAccess: true,
         appearance: LinkInBioAppearance.forTemplate(_ids.last),
         onChanged: (_) => changes++)));
     await tester.pumpAndSettle();

@@ -1,4 +1,5 @@
-import type { SubscriptionPlan } from './subscriptionStore.js';
+import type { AuthUser } from '../auth/authTypes.js';
+import type { SubscriptionPlan, SubscriptionStore } from './subscriptionStore.js';
 
 export const monthlyPostUnitLimits: Record<SubscriptionPlan, number> = {
   BASIC: 3,
@@ -29,6 +30,24 @@ export const maxProfileLinksByPlan: Record<SubscriptionPlan, number> = {
 };
 
 export type RealClipCaptionEntitlementMode = 'AUDIO_ONLY' | 'AUDIO_WITH_FRAMES';
+
+// Resolve the purchased plan first; an elevated admin trial is not membership.
+export const hasPaidProfileThemeMembership = (plan: unknown) =>
+  plan === 'STARTER' || plan === 'PRO' || plan === 'BUSINESS';
+
+export const readPurchasedSubscriptionPlan = async (
+  subscriptions: (Pick<SubscriptionStore, 'getPlan'> & Partial<Pick<SubscriptionStore, 'getPurchasedPlan'>>) | undefined,
+  owner: AuthUser
+): Promise<SubscriptionPlan | undefined> => {
+  if (!subscriptions) return undefined;
+  // Mock plan headers remain useful for other development features, but cannot
+  // prove a purchased membership for this paid-only policy.
+  const principal: AuthUser = { id: owner.id, provider: owner.provider };
+  try {
+    const plan = await (subscriptions.getPurchasedPlan ? subscriptions.getPurchasedPlan(principal) : subscriptions.getPlan(principal));
+    return plan === 'BASIC' || plan === 'STARTER' || plan === 'PRO' || plan === 'BUSINESS' ? plan : undefined;
+  } catch { return undefined; }
+};
 
 export const canSchedulePosts = (plan: SubscriptionPlan) => plan !== 'BASIC';
 

@@ -2386,6 +2386,7 @@ class SubscriptionStatusResult {
     this.monthlyPostLimit,
     this.monthlyAiCaptionLimit,
     this.businessPlanAvailable = false,
+    this.canUsePremiumProfileThemes = false,
     this.usedPostsThisMonth,
     this.remainingPostsThisMonth,
     this.monthlyQuotaResetsAt,
@@ -2415,6 +2416,8 @@ class SubscriptionStatusResult {
   final int? monthlyAiCaptionLimit;
   /// Explicit server readiness for new Business sales. Old APIs default off.
   final bool businessPlanAvailable;
+  /// Server-owned paid membership. Older APIs fail closed for member themes.
+  final bool canUsePremiumProfileThemes;
   final int? usedPostsThisMonth;
   final int? remainingPostsThisMonth;
   /// Server-owned UTC month boundary, independent of purchased credit lifetime.
@@ -2468,6 +2471,7 @@ class SubscriptionStatusResult {
         monthlyAiCaptionLimit: json['monthlyAiCaptionLimit'] is int
             ? json['monthlyAiCaptionLimit'] as int : null,
         businessPlanAvailable: json['businessPlanAvailable'] == true,
+        canUsePremiumProfileThemes: json['canUsePremiumProfileThemes'] == true,
         usedPostsThisMonth: json['usedPostsThisMonth'] as int?,
         remainingPostsThisMonth: json['remainingPostsThisMonth'] as int?,
         monthlyQuotaResetsAt: DateTime.tryParse(

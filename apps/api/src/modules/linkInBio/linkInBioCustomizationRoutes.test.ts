@@ -15,7 +15,9 @@ const fixture = (options?: LinkInBioRouteOptions) => {
   registerLinkInBioRoutes(router, (_request, response, next) => {
     response.locals.authUser = { id: 'owner', provider: 'mock' };
     next();
-  }, store, undefined, { subscriptionStore: { getPlan: async () => 'BASIC' }, ...options });
+  }, store, undefined, { subscriptionStore: {
+    getPlan: async () => 'STARTER', getPurchasedPlan: async () => 'STARTER'
+  }, ...options });
   app.use(router);
   return { app, store };
 };

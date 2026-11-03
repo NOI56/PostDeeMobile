@@ -2,6 +2,27 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Theme membership projection (2026-11-03, local candidate)
+
+Store-link styling separates authored data from effective rendering. The
+stored appearance is retained across subscription expiry; a copied Simple
+projection is used when active purchased membership is absent or unavailable.
+Text, links and owned images remain user content. Public rendering resolves
+membership for the owner from an internal owner/profile snapshot, without
+exposing the owner identifier or using visitor subscription headers.
+
+The subscription API exposes an additive premium-theme capability. Trial-only
+effective plans and consumable banks cannot enable it. Selection/publication
+and Mobile application use the same Simple-free/non-Simple-paid boundary,
+including legacy theme IDs. Existing premium styling may be retained during
+content edits, but a new or changed premium style requires access. Legacy
+catalog conflict handling and image lifecycle protection remain in place.
+Membership restoration changes the effective view, not the saved design.
+Expired explicit style retention validates the current row synchronously in
+memory or inside a Prisma Serializable transaction. The validator is internal
+and never part of request JSON or stored profile data.
+No schema migration, automatic deletion or hosted rollout is part of this change.
+
 ## Combined Staging integration (2026-11-03, Staging Live)
 
 The owner-approved combined source is Live on Staging at `bd096ea3`, preserving

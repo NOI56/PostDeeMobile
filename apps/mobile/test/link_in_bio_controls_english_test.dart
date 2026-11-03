@@ -75,6 +75,7 @@ Widget _colorLauncher(ValueChanged<String?> onResult) => Builder(
         ));
 
 Widget _editor({bool themes = false}) => LinkInBioAppearanceEditor(
+      hasPremiumThemeAccess: true,
       appearance: const LinkInBioAppearance(description: 'ข้อความร้านของฉัน'),
       storeName: 'ร้านของคุณ',
       slug: 'raw-store',
@@ -93,6 +94,7 @@ Widget _editorLauncher(ValueChanged<LinkInBioAppearance?> onResult,
                     context: context,
                     isScrollControlled: true,
                     builder: (_) => LinkInBioAppearanceEditor(
+                        hasPremiumThemeAccess: true,
                         appearance: _appearance,
                         storeName: 'ร้านของคุณ',
                         slug: 'raw-store',
@@ -180,6 +182,7 @@ void main() {
         fixture,
         SingleChildScrollView(
             child: BioThemePicker(
+                hasPremiumThemeAccess: true,
                 appearance: const LinkInBioAppearance(), onChanged: (_) {})));
     expect(find.text('Minimal · 20 templates'), findsOneWidget);
   });
@@ -486,6 +489,7 @@ void main() {
         fixture,
         SingleChildScrollView(
             child: BioThemePicker(
+                hasPremiumThemeAccess: true,
                 appearance: _appearance,
                 storeName: 'ร้านของคุณ',
                 onChanged: results.add)));
@@ -586,6 +590,7 @@ void main() {
           fixture,
           SingleChildScrollView(
               child: BioThemePicker(
+                  hasPremiumThemeAccess: true,
                   appearance: _appearance,
                   storeName: 'ร้านของคุณ',
                   onChanged: results.add)));

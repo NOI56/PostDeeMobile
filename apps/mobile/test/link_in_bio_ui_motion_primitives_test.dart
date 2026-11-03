@@ -181,6 +181,7 @@ void main() {
         home: Scaffold(
             body: SingleChildScrollView(
                 child: BioThemePicker(
+                    hasPremiumThemeAccess: true,
                     appearance: const LinkInBioAppearance(),
                     onChanged: (_) => changes++)))));
     await tester.pumpAndSettle();
@@ -250,6 +251,7 @@ void main() {
         home: Scaffold(
             body: SingleChildScrollView(
                 child: BioThemePicker(
+                    hasPremiumThemeAccess: true,
                     appearance: const LinkInBioAppearance(),
                     enabled: false,
                     onChanged: (_) => changes++)))));

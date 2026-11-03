@@ -10,6 +10,7 @@ import 'link_in_bio_localizations.dart';
 import 'link_in_bio_preview.dart';
 import 'link_in_bio_theme_picker.dart';
 import 'link_in_bio_ui_motion.dart';
+import 'link_in_bio_theme_access.dart';
 export 'link_in_bio_theme_picker.dart';
 
 const bioFontOptions = {
@@ -169,6 +170,9 @@ class LinkInBioAppearanceEditor extends StatefulWidget {
       required this.images,
       required this.uploadImage,
       this.imageRevision,
+      this.hasPremiumThemeAccess = false,
+      this.premiumThemeAccess,
+      this.beforeApply,
       this.showThemePicker = true});
   final LinkInBioAppearance appearance;
   final String storeName;
@@ -178,6 +182,9 @@ class LinkInBioAppearanceEditor extends StatefulWidget {
   final BioImageUpload uploadImage;
   final ValueListenable<int>? imageRevision;
   final bool showThemePicker;
+  final bool hasPremiumThemeAccess;
+  final ValueListenable<bool>? premiumThemeAccess;
+  final Future<bool> Function(LinkInBioAppearance)? beforeApply;
   @override
   State<LinkInBioAppearanceEditor> createState() =>
       _LinkInBioAppearanceEditorState();
@@ -206,6 +213,11 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
   late final _description = TextEditingController(text: _value.description);
   late final _featuredLabel = TextEditingController(text: _value.featuredLabel);
   bool _uploading = false;
+  bool _applying = false;
+  bool get _hasAccess => widget.premiumThemeAccess?.value ?? widget.hasPremiumThemeAccess;
+  bool get _styleLocked => !_hasAccess && bioRequiresThemeMembership(_value);
+  LinkInBioAppearance get _effectiveAppearance => bioEffectiveThemeAppearance(
+      _value, hasMembership: _hasAccess);
   String? _error;
   @override
   void dispose() {
@@ -218,14 +230,17 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
     super.dispose();
   }
 
-  void _change(LinkInBioAppearance value) => setState(() => _value = value);
+  void _change(LinkInBioAppearance value) {
+    if (_styleLocked && !bioSameThemeStyle(_value, value)) return;
+    setState(() => _value = value);
+  }
 
   Widget _preview() {
     Widget preview() => LinkInBioPreview(
         storeName: widget.storeName,
         slug: widget.slug,
         links: widget.links,
-        appearance: _value,
+        appearance: _effectiveAppearance,
         images: widget.images);
     final revision = widget.imageRevision;
     final content = revision == null
@@ -235,7 +250,7 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
     return BioPreviewViewport(
         key: const ValueKey('link-in-bio-decoration-preview'),
         height: widget.showThemePicker ? 200 : 120,
-        appearance: _value,
+        appearance: _effectiveAppearance,
         child: content);
   }
 
@@ -270,6 +285,7 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
           {IconData? icon}) =>
       ExpansionTile(
           key: ValueKey('link-in-bio-disclosure-$id'),
+          enabled: !_styleLocked || !const {'effects', 'buttons', 'styles'}.contains(id),
           controller: _disclosures[id],
           maintainState: true,
           tilePadding: const EdgeInsets.symmetric(horizontal: 4),
@@ -284,9 +300,11 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
               style:
                   const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           children: [
-            Column(
+            IgnorePointer(
+              ignoring: _styleLocked && const {'effects', 'buttons', 'styles'}.contains(id),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: children)
+                children: children))
           ]);
 
   Widget _style(String id, String label, LinkInBioTextStyle value,
@@ -420,8 +438,10 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                   _value.background.imageKey,
                   () => _change(_value.copyWith(
                       background: _value.background
-                          .copyWith(imageKey: null, mode: 'solid')))),
+                          .copyWith(imageKey: null, mode:
+                              _value.background.mode == 'image' ? 'solid' : _value.background.mode)))),
               const SizedBox(height: 8),
+              if (!_styleLocked) ...[
               DropdownButtonFormField<String>(
                   key: ValueKey(
                       'link-in-bio-background-mode-${_value.background.mode}'),
@@ -468,6 +488,7 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                     onChanged: (value) => _change(_value.copyWith(
                         background: _value.background
                             .copyWith(overlay: value.round()))))
+              ],
               ],
             ],
             icon: Icons.image_outlined),
@@ -548,7 +569,8 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
             icon: Icons.star_border),
       ];
 
-  void _apply() {
+  Future<void> _apply() async {
+    if (_uploading || _applying) return;
     final invalid = _form.currentState!.validateGranularly();
     if (invalid.isNotEmpty) {
       for (final field in invalid) {
@@ -560,12 +582,24 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
       }
       return;
     }
-    Navigator.pop(context, _value);
+    setState(() => _applying = true);
+    try {
+      final allowed = await widget.beforeApply?.call(_value) ??
+          (!_styleLocked || bioSameThemeStyle(widget.appearance, _value));
+      if (!mounted || !allowed) return;
+      if (_styleLocked && !bioSameThemeStyle(widget.appearance, _value)) return;
+      Navigator.pop(context, _value);
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) =>
-      BioUiMotionScope(child: Builder(builder: _buildEditor));
+      BioUiMotionScope(child: widget.premiumThemeAccess == null
+          ? Builder(builder: _buildEditor)
+          : ValueListenableBuilder<bool>(valueListenable: widget.premiumThemeAccess!,
+              builder: (context, value, child) => _buildEditor(context)));
 
   Widget _buildEditor(BuildContext context) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -613,6 +647,11 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                         CrossAxisAlignment.stretch,
                                     children: [
                                       _preview(),
+                                      if (_styleLocked)
+                                        Text(linkInBioText(context,
+                                            'ธีมเดิมถูกเก็บไว้ สมัครสมาชิกเพื่อปรับรูปแบบ ระหว่างนี้ยังแก้ข้อความและรูปได้',
+                                            'Your original theme is saved. Subscribe to edit its style. You can still edit text and images.'),
+                                            key: const ValueKey('link-in-bio-premium-style-locked')),
                                       const SizedBox(height: 16),
                                       if (widget.showThemePicker) ...[
                                         Text(linkInBioText(context, 'เลือกธีมเริ่มต้น', 'Choose a starting theme'),
@@ -620,6 +659,9 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                                 fontWeight: FontWeight.w700)),
                                         const SizedBox(height: 10),
                                         BioThemePicker(
+                                            hasPremiumThemeAccess: _hasAccess,
+                                            premiumThemeAccess: widget.premiumThemeAccess,
+                                            beforeApply: widget.beforeApply,
                                             appearance: _value,
                                             storeName: widget.storeName,
                                             slug: widget.slug,
@@ -661,7 +703,7 @@ class _LinkInBioAppearanceEditorState extends State<LinkInBioAppearanceEditor> {
                                 child: FilledButton(
                                     key: const ValueKey(
                                         'link-in-bio-decoration-done'),
-                                    onPressed: _uploading ? null : _apply,
+                                    onPressed: _uploading || _applying ? null : _apply,
                                     child:
                                         Text(linkInBioText(context, 'ใช้แบบนี้กับแบบร่าง', 'Apply to draft')))))),
                   ])))));

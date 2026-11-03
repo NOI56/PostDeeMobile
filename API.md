@@ -2,7 +2,7 @@
 
 PostDee backend API reference.
 
-## Edit scheduled post caption (2026-11-03, local candidate)
+## Edit scheduled post caption (2026-11-03; Staging 2026-11-04)
 
 `PATCH /posts/:id/caption` edits an owned `QUEUED` post scheduled more than
 60 seconds in the future. Request: `{ caption: string, platformCaptions?:
@@ -41,8 +41,14 @@ remain in place, including Facebook Page Reels (never a Page feed fallback).
 
 The existing `PATCH /posts/:id` reschedule contract remains compatible with old
 clients. **No Prisma migration. Deploy API first, then compatible Mobile.**
-No merge, deployment, device installation or real-account publishing is included.
-See the [work record](docs/superpowers/plans/2026-11-03-edit-scheduled-caption.md).
+Rollback must retain the persisted-settings reader for legacy YouTube posts
+with `{ visibility: 'private', title: ... }` and no newly invented consent fields.
+Older strict readers may reject this shape after a caption/title edit. Keep the
+latest-content-after-claim worker for edited queued jobs and the catalog-5 reader;
+do not clear saved posts or designs to roll back.
+See the [work record](docs/superpowers/plans/2026-11-03-edit-scheduled-caption.md)
+and the separately owner-authorized [Staging delivery record](docs/STAGING.md).
+Real-account publishing acceptance remains a separate check.
 
 ## Store-link theme access (2026-11-03, local candidate)
 

@@ -193,10 +193,70 @@ Regression tests accompany these changes. Product docs are synchronized in
 
 ## Delivery limits
 
-No new migration. Deploy API before compatible Mobile. Keep the PR in Draft
-and include `[skip render]` in its commit/title so a later main merge cannot
-accidentally trigger Production delivery. This task does not merge or deploy.
-After separately authorized Staging deployment, verify a real scheduled post
-delivers the edited text with `postdee-publish-e2e`, then use the guarded updater
-from `postdee-android-build` for device acceptance. Those actions are pending
-owner instruction; no device/account/entitlement acceptance is claimed here.
+The initial feature and title-follow-up scope kept the PR in Draft and did not
+authorize merge, deployment or installation. No new migration is required;
+deploy API before compatible Mobile and retain `[skip render]` on main commits.
+The owner subsequently authorized merge, Staging deployment and installation;
+that separate delivery phase is recorded below. Real-account publishing still
+requires the approved accounts and modes from `postdee-publish-e2e`.
+
+## Owner-authorized Staging delivery — 2026-11-04
+
+The owner authorized merge/deploy/install and explicitly selected Render
+My Workspace. The same worktree was retained for source changes and the build;
+root and other worktree sources were preserved. The shared workspace SDK and
+the helper's existing ignored Test Store overlay resolution were reused without
+printing or copying configuration/signing files. Fresh `origin/main`
+was `f4715b754d8704679c8a6289e42dfb3c1303819b`, with the premium storefront
+work already integrated. Only README/ROADMAP section conflicts needed resolution;
+both feature histories were retained. Combined head `32b38cb3` preserved
+catalog 5 (160 themes, including 20 premium), membership, TikTok consent,
+Facebook Page Reels and retired-feature boundaries without flag/schema changes.
+
+- [Combined-head CI 41690204459](https://github.com/NOI56/PostDeeMobile/actions/runs/41690204459)
+  passed API 3,757 / 80 opt-in skipped and Mobile 5,208 / 10 optional skipped.
+- PR #58 was merged as `2893dabd62731b69418ae70265fd2c24e0f7e58e` with
+  `[skip render]`. Its entire tree equals tested head `32b38cb3`, tree ID
+  `af18d6803fe3c28998f706641bcea243b94ce013`.
+- [Exact-main CI 41692387613](https://github.com/NOI56/PostDeeMobile/actions/runs/41692387613)
+  passed Backend API and Flutter Mobile before the Staging deploy.
+- Local full API passed 3,757 / 80 skipped with default timeouts and one worker
+  after an initial adminRefresh timeout; that suite passed 33/33 in isolation.
+  Typecheck, build, Prisma validate, seed/config tsc, catalog and 152 artwork
+  checks passed. No test or timeout setting was changed to obtain the final pass.
+- Local combined Mobile passed 2,652 / 6 skipped before paging-file/OOM failure.
+  This interrupted run is not a full-suite pass; the exact-source CI provides
+  complete coverage as permitted by the brief. CI uses Flutter 3.47.9; local
+  build uses workspace Flutter 3.44.1 / Dart 3.12.1.
+- Dedicated PostgreSQL post claim/caption and theme membership suites passed
+  8/8 with the original default timeout after a warm retry. The fixture retained
+  30 migrations, was stopped and no longer answered on port 55441. No regular
+  or Render database was used for these tests.
+- Built Staging APK 12100 from clean exact merge SHA `2893dabd`, package
+  `com.postdee.postdee_mobile.staging`, matching the existing installed signer.
+  The first build failed in Java-resource packaging after the process-only
+  memory cap omitted the existing en/US locale flags. Restoring those flags
+  passed without source, helper or global-cache changes.
+- Staging deploy `dep-dbl2grtbedkc73etcei0` is Live at exact `2893dabd`;
+  health/readiness, database/queue, auth guards and migration/error-log checks
+  passed. APK 12100 was installed through the guarded updater after API health
+  verification. UID 10197/internal storage stayed unchanged, installed APK hash
+  matched and all 78 persisted-file hashes matched before launch.
+- Native retained the STAGING Basic session and saved draft, loaded old posts,
+  hid caption editing on a published post and refreshed the calendar. No eligible
+  queued post exists, so positive native editing and real delivery remain
+  unverified. A first-screen Android system ANR cleared with Wait once and did
+  not recur during checks; 2,110 app-log lines contained no fatal/Flutter error
+  or overflow. No post was created/saved/published and no purchase was attempted.
+- Automatic iOS workflow could not acquire a macOS runner and ended before any
+  compile/test step; it provides no iOS acceptance. Android/API CI passed.
+
+Deploy ID/times, health/log checks, APK hash and guarded-update/native evidence
+are recorded in [docs/STAGING.md](../../STAGING.md). No production delivery or
+real social post is claimed. A saved custom title identical to the automatic
+suggestion retains the accepted automatic-mode ambiguity.
+
+Rollback must retain the new persisted legacy-YouTube settings reader, the
+latest-caption-after-claim worker and catalog-5 reader once edited posts or
+new designs exist. No migration does not make every older reader compatible;
+never clear saved posts or designs to roll back.

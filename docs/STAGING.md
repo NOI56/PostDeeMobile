@@ -1,5 +1,95 @@
 # PostDee Staging
 
+## แก้แคปชั่นโพสต์ที่ตั้งเวลาและชื่อ YouTube — 4 พฤศจิกายน 2026
+
+- เจ้าของสั่ง merge PR #58, deploy Staging และติดตั้งแอป พร้อมยืนยันใช้
+  My Workspace; รวม main ล่าสุด `f4715b75` เข้างานเป็น `32b38cb3`
+  แล้ว merge เป็น `2893dabd62731b69418ae70265fd2c24e0f7e58e`
+  พร้อม `[skip render]` โดย tree ตรงกับชุดที่ทดสอบทุกไฟล์
+  คง catalog 5 จำนวน 160 ธีม รวมพรีเมียม 20 แบบ, membership, TikTok consent,
+  Facebook Page Reels และขอบเขต retired เดิม ไม่มี schema/migration,
+  dependency, environment หรือค่าเริ่มต้น feature flag เปลี่ยน
+- [CI 41692387613 ของ merge 2893dabd](https://github.com/NOI56/PostDeeMobile/actions/runs/41692387613)
+  ผ่านก่อน deploy: API **3,757 ผ่าน / 80 opt-in ข้าม**, Mobile
+  **5,208 ผ่าน / 10 optional ข้าม**, analyze ไม่มีปัญหา (23.3 วินาที),
+  typecheck/build/Prisma/artwork guards ผ่าน ใช้ Node 22.23.4 / Flutter 3.47.9;
+  [CI ของ combined head](https://github.com/NOI56/PostDeeMobile/actions/runs/41690204459)
+  ผ่านจำนวนเดียวกัน [iOS อัตโนมัติ](https://github.com/NOI56/PostDeeMobile/actions/runs/41692387689)
+  workflow ล้มจาก macOS runner capacity: job ถูก cancelled ก่อนเริ่ม ไม่มี
+  compile/test step ทำงาน จึงยังไม่ยืนยัน iOS และไม่ได้แจกหรือติดตั้ง iOS
+- Local Node 22.23.3: full API ผ่าน 3,757 / 80 ข้าม ด้วย default timeout เดิม
+  และหนึ่ง worker หลัง adminRefresh เคย timeout; isolated ผ่าน 33/33
+  Mobile local ผ่าน 2,652 / 6 ข้ามก่อนหยุดเพราะ paging-file/OOM จึงอ้าง full CI
+  ของ source เดียวกันตาม brief ไม่ถือว่ารอบ local นี้ผ่านครบ
+  Typecheck, build, Prisma validate/helpers, catalog และ artwork 152 checks ผ่าน
+- PostgreSQL fixture แยก `127.0.0.1:55441/postdee_addon_test` มี 30 migrations:
+  post claim/caption และ theme membership ผ่าน 2 suites / 8 tests
+  รอบแรกมี 1 timeout ที่ 5 วินาที; warm retry ผ่านแล้วตรวจซ้ำด้วย default timeout
+  เดิมผ่าน 8/8 ใน 2.77 วินาที ไม่แก้ source หรือ migration และหยุด fixture แล้ว
+  ไม่แตะฐาน 5432 หรือใช้ Render database สำหรับทดสอบชุดนี้
+- ตรวจ workspace/service ใหม่ก่อน trigger: My Workspace
+  `tea-d45nsamuk2gs73cmhol0` / `postdee-api-staging`
+  `srv-d9bb72ojs32c739osa5g` ซึ่งเป็น manual/off แทน Live `6d10c718` /
+  `dep-dbl1sjm7bikc7385rgm0` ด้วย
+  [`dep-dbl2grtbedkc73etcei0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbl2grtbedkc73etcei0)
+  เริ่ม **01:31:12 น. ไทย วันที่ 4 พ.ย. (18:31:12 UTC วันที่ 3 พ.ย.)** และ
+  **Live 01:32:40 น. ไทย (18:32:40 UTC)** ที่ SHA `2893dabd` ตรงกับ CI
+- Startup 18:32:21 UTC พบ 30 migrations และ "No pending migrations to apply";
+  18:32:33 UTC ฟัง port 10000 ด้วย Node 22.23.3 ตรวจ app error logs ตั้งแต่
+  18:31:12–18:33:08 UTC ไม่พบ error (`hasMore: false`)
+- ตรวจสดหลัง Live เสร็จ **01:33:45 น. ไทย (18:33:45 UTC)**:
+  `/health` 200, `/ready` 200 พร้อม database/queue `ok`
+  และ `Cache-Control: no-store`; unauthenticated `GET /posts` และ
+  `PATCH /posts/codex-unauth-smoke-2893/caption` ตอบ 401 ไม่มีการเขียนข้อมูลลูกค้า
+  ผล health/auth guard ยังไม่ใช่หลักฐานการเผยแพร่จริง
+- สร้าง APK Staging **12100** จาก clean merge SHA `2893dabd` ด้วย
+  `postdee-staging.ps1 -Command build-apk --no-pub --build-number=12100`;
+  ใช้ workspace Flutter 3.44.1 / Dart 3.12.1, package
+  `com.postdee.postdee_mobile.staging`, version `0.1.0-staging`, minSdk 24 /
+  targetSdk 36 ตัวช่วยตรวจ Staging API, Firebase Auth, local mock ปิด และ
+  RevenueCat Test Store ก่อนสร้าง โดยไม่พิมพ์หรือคัดลอก config/key
+  รอบแรกแพ็ก Java resources ไม่ผ่านหลัง process-only memory cap ตกหล่น
+  locale en/US เดิม; คืน flags นี้แล้ว build ผ่านโดยไม่แก้ source/helper/global cache
+- APK 331,011,590 bytes; signature verify ผ่านและ certificate ตรงกับแอปเดิม
+  certificate SHA-256
+  `014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`;
+  APK SHA-256
+  `a1edb562095e6360bc1c96f05d23210af32dd531aca9dc45f8873caa61df887d`
+- Guarded updater รอบแรกตอบ error โดยไม่มีรายละเอียดจาก adb จึงหยุดทันที
+  ภายหลัง host shutdown/reboot และ emulator ปิด; ยังไม่ยืนยันสาเหตุของ error แรก
+  เปิด AVD Pixel_8 เดิมด้วย `-no-snapshot-load` แล้วตรวจพบ 12099, UID 10197,
+  internal storage และข้อมูล 78/78 ไฟล์ hash ตรงก่อนติดตั้งทุกไฟล์
+  ไม่มีการ uninstall, clear data, wipe/recreate หรือเปลี่ยน storage volume
+- รัน guarded updater ซ้ำหลังตรวจเงื่อนไขเดิมครบ สำเร็จ **02:02:00 น. ไทย**:
+  **12099 → 12100**, UID 10197 และ internal volume เดิม ตรวจ **02:02:15 น. ไทย
+  (19:02:15 UTC วันที่ 3 พ.ย.)** ก่อนเปิดแอป: installed APK SHA-256 ตรงตัวสร้าง
+  และข้อมูล 78/78 ไฟล์มี hash ตรงทุกไฟล์ (`HashDiffLines: 0`)
+  หลักฐาน `recovery-guard-result.json`, `recovery-device-verification.json`
+  และรายการ hash อยู่ใน
+  `D:\PostDeeCaptionScratch\20261103-edit-scheduled-caption\delivery-12100`
+- Native แสดง STAGING พร้อมบัญชี Basic เดิมและร่าง `1000000795.mp4`;
+  รายการโพสต์เดิม 7 รายการยังแสดง เปิดรายละเอียด YouTube ที่เผยแพร่แล้วได้
+  และไม่มีปุ่มแก้แคปชั่นตามกฎ ตัวกรองรอส่งว่าง จึงไม่ได้ทดสอบ editor กับ QUEUED
+  จริง ปฏิทินเปิดและ refresh ได้ ตรวจ log ของ PID แอป 2,110 บรรทัดไม่พบ
+  fatal/Flutter exception/overflow และยืนยัน package/hash เดิมอีกครั้ง
+  **02:05:39 น. ไทย**; ไม่สร้าง/บันทึก/เผยแพร่โพสต์หรือซื้อ
+- ตอนเปิด native ครั้งแรกมี Android **system ANR** เลือก Wait หนึ่งครั้งแล้วหาย
+  ไม่พบซ้ำระหว่างตรวจ จึงไม่อ้างว่าไม่มี ANR เลยหรือผ่าน performance acceptance
+  หลักฐานอยู่ในโฟลเดอร์ข้างต้น: `native-verification-receipt.json`,
+  `native-home-ready-12100.png`, `native-published-detail-12100.png`,
+  `native-queued-filter-12100.png` และ `native-calendar-refreshed-12100.png`
+  emulator เดิมยังเปิดแบบ headless และแอปอยู่หน้าปฏิทิน
+- ข้อควรระวัง rollback: เมื่อแก้ชื่อโพสต์ YouTube แบบ legacy แล้ว อาจมี settings
+  `{visibility: 'private', title: ...}` โดยไม่มี consent fields ใหม่ ต้องคง reader
+  ที่รองรับรูปแบบนี้ เพราะ API ก่อนฟีเจอร์อาจอ่านโพสต์นั้นไม่ได้ รวมถึงคง
+  catalog-5 reader และ worker ที่อ่านแคปชั่นล่าสุดหลัง claim สำหรับคิวที่แก้แล้ว
+  ห้ามล้างโพสต์หรือดีไซน์เพื่อย้อนรุ่น แม้ไม่มี migration ใหม่
+- Production ตรวจแบบอ่านอย่างเดียวแล้วยัง suspended; Live เดิม
+  `dep-d9g4dl58nd3s73enhf60` / `a43ce6aa` ไม่ได้ deploy/resume หรือแก้ environment
+  ยังไม่ทดสอบโพสต์จริงบน Staging ด้วยแคปชั่นและชื่อ YouTube ที่แก้แล้ว
+  ต้องเลือกบัญชี/ช่องทาง/โหมดที่เจ้าของอนุมัติก่อน ส่วนชื่อที่ตั้งเองแต่ตรงกับชื่อ
+  อัตโนมัติพอดียังมีข้อจำกัดถูกมองเป็นอัตโนมัติตามที่ตกลงไว้
+
 ## ธีมร้านหรูหรา / พรีเมียม 20 แบบ — 4 พฤศจิกายน 2026
 
 - เจ้าของสั่ง merge PR #59, deploy Staging และติดตั้งแอป จึงรวม `46f981a5`

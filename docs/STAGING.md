@@ -1,5 +1,57 @@
 # PostDee Staging
 
+## UX การโพสต์และแพ็กเกจ Business — 3 พฤศจิกายน 2026
+
+- เจ้าของสั่ง `main/push/deploy` จึงรวม PR #56 เป็น `4e98d2f7` และ PR #50
+  เป็น `5f3fc159` จากฐาน GitHub `6c7ff068` แล้ว push main; ทั้งสอง PR เป็น merged
+  รักษาหมวดแพ็กเกจ/เครดิตเติม, 3D, การ์ตูน 20 แบบ, การคืนเครดิต/receipt เก่า,
+  owner/session guards, Facebook Reels และขอบเขต retired เดิมไว้ครบ
+- ระหว่างตรวจมีเอกสารส่งมอบธีมร้าน `bd096ea3` เพิ่มบน main จึงรับเข้ามาแบบ
+  fast-forward; `apps`, `scripts`, `shared` และ `.github` ตรงกับชุดรวมที่ทดสอบทุก byte
+- Local ใช้ Node 22.23.3: API **3,569 ผ่าน / 75 opt-in ข้าม** พร้อม typecheck,
+  build, Prisma generate/validate/helpers; ฐาน PostgreSQL 18.1 จำลองแยกผ่าน
+  **22/22 tests** ใน 6 suites หลัง apply 30 migrations ไม่แตะฐานข้อมูลใช้งานเดิม
+  และหยุด fixture แล้ว; catalog check, generator 28, artwork 61 และ CI guards 21 ผ่าน
+- Mobile ใช้ SDK workspace Flutter 3.44.1 / Dart 3.12.1: analyze ไม่มีปัญหา,
+  targeted 113 ผ่าน และ full suite **5,010 ผ่าน / 9 optional ข้าม** (สอง workers)
+- [CI 41579002434](https://github.com/NOI56/PostDeeMobile/actions/runs/41579002434)
+  ของ `bd096ea37e860f9725d62808982b2413fc104348` ผ่านทั้ง API และ Mobile ก่อน deploy;
+  [iOS 41578939413](https://github.com/NOI56/PostDeeMobile/actions/runs/41578939413)
+  ของ source runtime เดียวกัน `5f3fc159` ผ่านแบบ no codesign ไม่ได้แจก iOS
+- Deploy [`dep-dbkmdnmk1f9s73dd9jq0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbkmdnmk1f9s73dd9jq0)
+  เริ่ม **11:45:18 น. ไทย (04:45:18 UTC)** และ **Live 11:47:04 น. ไทย
+  (04:47:04 UTC)** ที่ SHA `bd096ea3` ตรงกับ CI แทน `6c7ff068` /
+  `dep-dbkm7d3ncjis73enomc0`
+- Startup instance `vn7g6` พบ 30 migrations และ apply
+  `20261102020000_business_subscription_plan` สำเร็จ; grant-snapshot migration
+  ใช้ใน deploy ก่อนหน้าแล้ว Publishing activation guard ผ่านและ backlog ว่าง
+  เมื่อมี Business rows แล้ว rollback ต้องคง Business-aware readers/enum ห้ามลบข้อมูล
+- ตรวจ public GET สดจบ **11:47:25 น. ไทย**: 10 route checks ผ่าน (`/health`,
+  `/ready` พร้อม database/queue `ok` และ `no-store`, auth guards และ catalog 1–4),
+  PNG ใหม่ 30/30 ไฟล์ตรง SHA-256/ขนาด/MIME/signature และชื่อที่ไม่มีได้ 404
+  ไม่พบ app logs ระดับ error/warn ในช่วง deploy ถึง 04:47:24 UTC
+- สร้าง APK Staging **12096**, package `com.postdee.postdee_mobile.staging`,
+  API `https://postdee-api-staging.onrender.com`, Firebase project
+  `project-798caf7e-85b8-45e3-af7`, Firebase Auth เปิด / local mock ปิด และ
+  RevenueCat Test Store ผ่าน helper; ลายเซ็นผ่านและ PNG การ์ตูน 20/20 ตรง source
+  APK/installed SHA-256 ตรงกัน:
+  `37f5c7f6ffed849c0eaecd22e9e3ca4226a08dd041eda19d21a3fad4050dd17a`
+- ใช้ guarded updater บน Pixel_8 / `emulator-5554`: 12095 → 12096 โดย UID 10197
+  และ internal volume เดิม ไม่ uninstall/clear data; native เปิดถึงหน้าข้อมูลร้าน
+  พร้อม STAGING หลังราวสองนาที ขณะ guest load สูงสุดที่วัดได้ 27.98 และลดลงภายหลัง
+  ไม่พบ fatal Flutter error ที่กรองตรวจ แต่ยังไม่สรุปสาเหตุเปิดช้าและยังไม่ผ่าน native
+  changed-flow acceptance ครบ; ไม่ทดลองบันทึก/เผยแพร่ร้าน โพสต์โซเชียล หรือซื้อจริง
+- ไม่เปลี่ยน environment, secret, Store products หรือเปิดขาย; code defaults ของ
+  `BILLING_BUSINESS_ENABLED` / `BILLING_ADDON_TIERS_ENABLED` ยังคง false แต่ยังอ่าน
+  ค่า Dashboard จริงไม่ได้ (UI guard ระบุ URL ไม่ได้, CLI ไม่มี auth) ฐานข้อมูลปิด
+  external connections จึงตรวจ migration ผ่าน startup logs โดยไม่แก้ IP allowlist
+  Production ยังคง suspended และไม่ deploy/resume งานทดลอง Gemini Files ไม่รวม
+  เพราะต้อง port cancellation/cleanup/grounding tests เข้ากระบวนการแคปชั่นปัจจุบันก่อน
+- หลักฐานอยู่ใน `artifacts/staging-integration-20261103/`: API/DB/Mobile logs,
+  `android-build-12096-receipt.json`, `device-update-receipt.json`, public smoke
+  receipt และ native screenshots; APK Business เดิม `be95927e…` สำรองไว้ครบ
+  การแก้บันทึกส่งมอบภายหลังเปลี่ยนเฉพาะเอกสาร ไม่ต้อง deploy API ซ้ำ
+
 ## ธีม 3D ชุดที่สอง หมวดการ์ตูน 20 แบบ และแพ็กเกจเติมเครดิต — 3 พฤศจิกายน 2026
 
 - เจ้าของสั่งรวม PR #51 (3D ชุดที่สอง, แคตตาล็อก 3) เป็น `e43833cf` แล้ว PR #54

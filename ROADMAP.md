@@ -2,16 +2,19 @@
 
 Build roadmap for PostDee.
 
-## Combined main and Staging delivery (2026-11-03, authorized / pending)
+## Combined main and Staging delivery (2026-11-03, Staging Live)
 
-- The owner authorized merge into `main`, push and the combined Staging API
-  deployment. Preserve the `6c7ff068` package/top-up and 3D/Cartoon capabilities
-  while adding Business; retain the historical records below.
-- Finish exact-candidate validation, pending additive migrations, compatible
-  API/worker rollout and deployment readback before reporting delivery success.
-- Keep Business and replacement-tier sales default-off. Compatible Mobile,
-  native sandbox billing acceptance and store activation remain pending;
-  Production is outside this delivery.
+- PR #50 posting-readiness UX and PR #56 Business are merged and pushed. Staging
+  is Live at `bd096ea3`; package/top-up and catalog-4 3D/Cartoon capabilities
+  from `6c7ff068` are preserved. All 30 migrations applied before APK 12096.
+- Local API 3,569 passed / 75 opt-in skipped; Mobile 5,010 passed / 9 optional
+  skipped; affected PostgreSQL 22/22 and exact-source API/Mobile CI passed.
+- APK 12096 is installed with the same UID/storage and starts natively, but
+  slow emulator startup and native purchase/publishing acceptance remain open.
+- Sales code defaults remain off; no environment values or Production changes.
+  Actual Dashboard sales-switch values could not be read. Store setup and sales
+  activation remain pending; the old Gemini transport experiment stays separate.
+- See [delivery evidence](docs/STAGING.md#ux-การโพสต์และแพ็กเกจ-business--3-พฤศจิกายน-2026).
 
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 

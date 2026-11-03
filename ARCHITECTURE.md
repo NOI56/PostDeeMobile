@@ -2,16 +2,18 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Combined Staging integration (2026-11-03, verification pending)
+## Combined Staging integration (2026-11-03, Staging Live)
 
-The owner authorized merge, push and Staging API delivery of the combined
-candidate. Preserve `6c7ff068` package/top-up behavior and catalog-4 3D/Cartoon
-readers while adding Business-aware readers. Pending additive migrations must
-precede the compatible API/worker rollout, then Mobile. This is not deployment
-or native billing acceptance evidence. Business and replacement-tier sales stay
-default-off; store setup, native sandbox checks and activation remain pending.
-Production is outside this delivery. Dated preparation records below retain
-their original scope.
+The owner-approved combined source is Live on Staging at `bd096ea3`, preserving
+`6c7ff068` package/top-up behavior and catalog-4 3D/Cartoon readers while adding
+Business-aware readers and posting-readiness UX. All 30 migrations are applied;
+the API rollout preceded the APK 12096 update. Business and replacement-tier
+sales retain default-off code, with environment values unchanged and actual
+Dashboard values unread. Native billing/store activation remain pending.
+After Business rows exist, rollback must retain Business-aware readers and the
+enum; do not down-migrate or delete purchases. Production is unchanged.
+See [delivery evidence](docs/STAGING.md#ux-การโพสต์และแพ็กเกจ-business--3-พฤศจิกายน-2026).
+Dated preparation records below retain their original scope.
 
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 

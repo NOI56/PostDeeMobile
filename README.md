@@ -1,15 +1,17 @@
 # PostDee
 
-## Combined Staging delivery (2026-11-03, authorized / verification pending)
+## Combined Staging delivery (2026-11-03, Staging Live)
 
-The owner has authorized merging the pending work into `main`, pushing it and
-deploying the combined Staging API. The candidate keeps the package/top-up,
-3D and Cartoon work from `6c7ff068` and adds Business. Exact-candidate checks,
-pending migrations and deployment readback remain to be completed; this is not
-a successful-deployment record. Business and replacement credit-pack sales stay
-disabled by default. Store setup, native sandbox billing checks and activation
-remain pending; Production is outside this delivery. Older dated sections below
-record their original preparation scope.
+Posting-readiness UX (PR #50) and Business (PR #56) are merged and pushed to
+`main`. Staging is Live at `bd096ea3` with all 30 migrations, retaining the
+package/top-up, 3D and Cartoon work from `6c7ff068`. API/Mobile CI and local
+suites passed; APK 12096 was installed in place on Pixel_8 with its package UID
+and storage unchanged. Native startup reached the Staging store editor, but
+the emulator's slow startup remains unresolved. Sales defaults stay off and no
+environment values were changed; actual Dashboard values were not readable.
+Store setup, native billing and real publishing acceptance remain pending.
+Production is unchanged. See [delivery evidence](docs/STAGING.md#ux-การโพสต์และแพ็กเกจ-business--3-พฤศจิกายน-2026).
+Older dated sections below record their original preparation scope.
 
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 

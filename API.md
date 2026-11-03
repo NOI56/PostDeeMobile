@@ -2,16 +2,17 @@
 
 PostDee backend API reference.
 
-## Combined Staging delivery authorization (2026-11-03, verification pending)
+## Combined Staging delivery (2026-11-03, Staging Live)
 
-The owner has authorized integration into `main`, push and a Staging API
-deployment. The candidate preserves the package/top-up changes and catalog-4
-3D/Cartoon compatibility from `6c7ff068` while adding Business. This records
-authorization, not a completed deployment. Verify the exact candidate and apply
-the pending additive migrations before compatible API/worker readers and Mobile.
-`BILLING_BUSINESS_ENABLED` and `BILLING_ADDON_TIERS_ENABLED` stay default-off;
-store setup, native sandbox billing acceptance and sales activation remain
-pending. Production is outside this delivery.
+Owner-approved PR #56 Business and PR #50 posting-readiness UX are on `main`.
+Staging is Live at `bd096ea3`, preserving package/top-up behavior and catalog-4
+3D/Cartoon compatibility from `6c7ff068`. The Business migration applied before
+the compatible API started; Staging now has all 30 migrations. APK 12096 uses
+the same source and was installed after the API rollout. The two new sales
+switches retain default-off code and no environment values were changed;
+actual Dashboard values could not be read. Store setup, native sandbox billing
+acceptance and sales activation remain pending. Production is unchanged.
+See [delivery evidence](docs/STAGING.md#ux-การโพสต์และแพ็กเกจ-business--3-พฤศจิกายน-2026).
 
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 

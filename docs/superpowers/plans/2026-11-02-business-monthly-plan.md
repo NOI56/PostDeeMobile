@@ -15,8 +15,13 @@ not part of this deployment. Existing installed clients keep their legacy plan,
 quota and receipt paths. The old Gemini Files transport experiment is excluded
 because it needs cancellation and grounding tests against the current pipeline.
 
-Verification and the actual deployed SHA will be recorded in `docs/STAGING.md`
-after the combined candidate passes its checks and the deployment is Live.
+The combined candidate passed local API/Mobile suites, affected PostgreSQL
+tests and exact-source CI. Staging is Live at `bd096ea3` after the Business
+migration (30 total); matching APK 12096 was installed in place on Pixel_8.
+Native startup reached the Staging store editor after a slow emulator startup.
+No environment values were changed and actual Dashboard sales-switch values
+could not be read. Store setup, native billing and sales activation remain
+pending. See `docs/STAGING.md` for the deployment and verification record.
 
 ## Authorization and isolation
 

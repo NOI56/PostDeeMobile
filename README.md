@@ -1,5 +1,19 @@
 # PostDee
 
+## Premium storefront category (2026-11-03, local candidate)
+
+The store-link picker shows Simple, 3D, Cartoon and **หรูหรา / พรีเมียม (Luxury /
+Premium)**, twenty designs each. Premium is a new catalog category, `premium`,
+with twenty original drawn pictures (gold leaf, marble, Thai gold pattern, Art
+Deco, cut emerald, pearls, velvet and more) on five premium layouts with gilded,
+plated, stitched and cut-corner links. The classic `luxury-*` designs stay in
+the catalog unchanged for saved pages but are no longer listed.
+
+Catalog version 5 appends the twenty designs with `"since": 5`; apps that send
+catalog 4 or older keep receiving their fallback. Membership rules are
+unchanged. **Delivery order: API before Mobile.** No schema, migration or
+environment change. See the [premium plan](docs/superpowers/plans/2026-11-03-premium-storefront-templates.md).
+
 ## Store-link theme membership (2026-11-03, local candidate)
 
 The Simple (`minimal` / เรียบง่าย) category stays free. Every other theme

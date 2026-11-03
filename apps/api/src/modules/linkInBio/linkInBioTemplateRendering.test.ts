@@ -79,7 +79,7 @@ describe('categorized profile template rendering', () => {
       const html = renderLinkInBioPage(profile, 'nonce');
       expect(html.includes(`data-composition="${template.layout.composition}"] img.logo{object-fit:contain;object-position:center}`)).toBe(true);
       expect(html).toContain('<img class="logo" src="/p/template-shop/images/logo"');
-      expect(html).toMatch(/<img class="cover(?: profile-3d-cover| profile-cartoon-cover)?" src="\/p\/template-shop\/images\/cover"/);
+      expect(html).toMatch(/<img class="cover(?: profile-3d-cover| profile-cartoon-cover| profile-premium-cover)?" src="\/p\/template-shop\/images\/cover"/);
       expect(html).toMatch(/\.cover\{[^}]*object-fit:cover/);
       expect(html).toContain('background-size:cover;background-position:center;');
       expect(html).toContain('/p/template-shop/images/background');

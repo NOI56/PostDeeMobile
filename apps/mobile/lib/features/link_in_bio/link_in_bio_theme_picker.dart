@@ -75,7 +75,7 @@ class _BioThemePickerState extends State<BioThemePicker> {
       : ValueListenableBuilder<bool>(valueListenable: widget.premiumThemeAccess!,
           builder: (context, value, child) => builder(context));
 
-  static const _categories = ['minimal', 'dimensional', 'cartoon'];
+  static const _categories = ['minimal', 'dimensional', 'cartoon', 'premium'];
 
   String _savedCategory() {
     final saved = getProfileTemplate(widget.appearance.templateId)?.category;
@@ -378,7 +378,7 @@ class BioTemplateSample extends StatelessWidget {
                 size: Size(320, 900), disableAnimations: true),
             child: BioTemplatePreview(
                 template: template,
-                storeName: const {'dimensional', 'cartoon'}
+                storeName: const {'dimensional', 'cartoon', 'premium'}
                         .contains(template.category)
                     ? ''
                     : 'noikub',

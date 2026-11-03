@@ -69,7 +69,7 @@ void main() {
         };
       });
       expect(observedMethod, method);
-      expect(observedCatalog, '4');
+      expect(observedCatalog, '5');
     });
   }
 

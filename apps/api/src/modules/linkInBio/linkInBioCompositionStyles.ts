@@ -307,7 +307,7 @@ export const linkInBioCompositionStyles = (appearance: LinkInBioAppearance) => {
     ...(appearance.surfaceColor === template.palette.surface ? [[' main', 'background-image:url("/profile-decorations/paper.png");background-size:360px auto;background-repeat:repeat;background-blend-mode:multiply']] as [string, string][] : []),
     [' .background-motion', 'display:none']
   ]) : '';
-  const initialFont = { editorial: 24, bicolor: 36, portrait: 36, scallop: 32, collage: 32, window: 24, botanical: 36, glass: 18, torn: 36, seal: 26, tag: 22, gallery: 26, poster: 16, 'window-grid': 22, ticket: 18, rail: 26, ribbon: 28, notebook: 24, arch: 32, staircase: 22, clay: 36, 'paper-stack': 34, frosted: 36, showcase: 32, 'split-art': 26, 'tile-grid': 24, neon: 30, slab: 26, banner: 34, beside: 29, signboard: 26, panels: 35, chat: 26, stage: 35, pinboard: 29 }[composition];
+  const initialFont = { editorial: 24, bicolor: 36, portrait: 36, scallop: 32, collage: 32, window: 24, botanical: 36, glass: 18, torn: 36, seal: 26, tag: 22, gallery: 26, poster: 16, 'window-grid': 22, ticket: 18, rail: 26, ribbon: 28, notebook: 24, arch: 32, staircase: 22, clay: 36, 'paper-stack': 34, frosted: 36, showcase: 32, 'split-art': 26, 'tile-grid': 24, neon: 30, slab: 26, banner: 34, beside: 29, signboard: 26, panels: 35, chat: 26, stage: 35, pinboard: 29, crest: 37, cameo: 38, portal: 34, atelier: 32, vitrine: 29 }[composition];
   return `${rules([
     ['', 'display:flow-root'],
     [' main', 'padding:32px 20px 28px;min-height:calc(100svh - 32px)'],

@@ -67,6 +67,9 @@ jobs:
       - name: Test cartoon storefront artwork sources
         run: node --test ../../scripts/cartoon-storefront-art/scenes.test.mjs
 
+      - name: Test premium storefront artwork sources
+        run: node --test ../../scripts/premium-storefront-art/scenes.test.mjs
+
       - name: Run tests
         run: npm run test
 

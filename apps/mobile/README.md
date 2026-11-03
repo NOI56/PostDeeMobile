@@ -66,6 +66,18 @@ products or device install are included. See the
 
 Flutter mobile app scaffold for PostDee.
 
+## Premium storefront category (2026-11-03, local candidate)
+
+The template picker shows a fourth category chip, หรูหรา / พรีเมียม (Luxury /
+Premium), with twenty new `premium-*` designs. They render through
+`BioPremiumHeader`, `bioPremiumLinkDecoration`, `bioPremiumLink`,
+`bioPremiumPanelDecoration` and `bioPremiumFrame` in
+`lib/features/link_in_bio/link_in_bio_premium_scenes.dart`, matching the public
+page's `linkInBioPremiumStyles.ts`. Thai and English names are localized; the
+classic `luxury-*` designs are no longer listed. Mobile now sends
+`X-PostDee-Profile-Catalog: 5` (generated catalog version).
+See the [premium plan](../../docs/superpowers/plans/2026-11-03-premium-storefront-templates.md).
+
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 
 The template picker shows a third category chip, การ์ตูน / Cartoon, with twenty

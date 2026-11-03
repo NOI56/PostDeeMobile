@@ -3,6 +3,7 @@ import { getProfileTemplate } from './profileTemplateCatalog.generated.js';
 import { linkInBioCompositionStyles } from './linkInBioCompositionStyles.js';
 import { linkInBio3dStyles } from './linkInBio3dStyles.js';
 import { linkInBioCartoonStyles } from './linkInBioCartoonStyles.js';
+import { linkInBioPremiumStyles } from './linkInBioPremiumStyles.js';
 
 // Layout strings come from the generated catalog, never from request CSS.
 // Custom colors and fonts still come from the validated appearance snapshot.
@@ -61,5 +62,6 @@ ${root}[data-decoration="stripe"] main::after{bottom:12px;left:-12px;transform:r
 ${linkInBioCompositionStyles(appearance)}
 ${linkInBio3dStyles(appearance)}
 ${linkInBioCartoonStyles(appearance)}
+${linkInBioPremiumStyles(appearance)}
 `;
 };

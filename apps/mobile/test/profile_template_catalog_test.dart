@@ -6,7 +6,7 @@ import 'package:postdee_mobile/core/models/profile_template_catalog.generated.da
 
 void main() {
   test(
-      'five legacy categories, twenty 3D and twenty cartoon choices retain their catalogs',
+      'five legacy categories, twenty 3D, twenty cartoon and twenty premium choices retain their catalogs',
       () {
     expect(profileTemplateCategories.keys, [
       'minimal',
@@ -15,14 +15,15 @@ void main() {
       'luxury',
       'creative',
       'dimensional',
-      'cartoon'
+      'cartoon',
+      'premium'
     ]);
-    expect(profileTemplateCatalogVersion, 4);
-    expect(profileTemplates, hasLength(140));
+    expect(profileTemplateCatalogVersion, 5);
+    expect(profileTemplates, hasLength(160));
     expect(profileTemplates.map((template) => template.id).toSet(),
-        hasLength(140));
-    for (final category in profileTemplateCategories.keys
-        .where((id) => id != 'dimensional' && id != 'cartoon')) {
+        hasLength(160));
+    for (final category in profileTemplateCategories.keys.where((id) =>
+        id != 'dimensional' && id != 'cartoon' && id != 'premium')) {
       final templates = profileTemplates
           .where((template) => template.category == category)
           .toList();
@@ -58,6 +59,12 @@ void main() {
       'stage',
       'pinboard'
     });
+    final premium = profileTemplates.where((item) => item.category == 'premium');
+    expect(profileTemplateCategories['premium'], 'หรูหรา / พรีเมียม');
+    expect(premium, hasLength(20));
+    expect(premium.map((item) => item.name).toSet(), hasLength(20));
+    expect(premium.map((item) => item.layout.composition).toSet(),
+        {'crest', 'cameo', 'portal', 'atelier', 'vitrine'});
   });
 
   test('the three agreed reference compositions appear first in each category',

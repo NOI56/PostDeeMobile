@@ -84,6 +84,16 @@
   ไว้แล้วก่อน deploy โดย UID 10197 และข้อมูลเดิมคงอยู่; รอบล่าสุดแอปเปิดที่หน้าล็อกอิน
   จึงยังไม่ได้ทดลองบันทึกหรือเผยแพร่หน้าร้าน 3D/การ์ตูนจริงบน Staging และยังไม่ได้
   ตั้งค่าสินค้าเติมเครดิตใหม่ใน store/RevenueCat หรือทดลองซื้อ
+- ทดลองเผยแพร่จริงหลังเจ้าของล็อกอิน เวลา **11:53 น. ไทย (04:53 UTC)**: ตอนนั้น
+  Staging รัน `bd096ea3` (`dep-dbkmdnmk1f9s73dd9jq0` ของงาน UX/Business ด้านบน
+  ซึ่งมีการ์ตูนครบ) และเครื่องเป็น APK 12096 (`37f5c7f6…`) ที่อีกงานติดตั้งไว้;
+  ใช้ข้อมูลทดสอบที่เจ้าของอนุมัติ ชื่อร้าน `Cartoon Test Shop`, URL
+  `cartoon-test-0311`, ลิงก์ `https://example.com` แล้วเลือก "หน้าร้านริมทาง"
+  และเผยแพร่สำเร็จ หน้า `/p/cartoon-test-0311` ตอบ 200 พร้อม
+  `data-template="cartoon-street-front"`, `data-template-category="cartoon"`,
+  ภาพ `cartoon-street-front.png`, ป้ายร้าน, `no-store` และ CSP ไม่มี script
+  ไม่มี horizontal overflow ที่ 360px; แอป (catalog 4) อ่านกลับได้ "กำลังใช้
+  หน้าร้านริมทาง" ในหมวดการ์ตูน หน้าทดสอบนี้ยังเผยแพร่อยู่บน Staging
 - รายละเอียดอยู่ใน [แผนหมวดการ์ตูน](superpowers/plans/2026-11-02-cartoon-storefront-templates.md),
   [แผน 3D ชุดที่สอง](superpowers/plans/2026-11-02-3d-storefront-second-set.md) และ
   [แผนเติมเครดิตหลาย SKU](superpowers/plans/2026-11-02-multi-sku-topups.md)

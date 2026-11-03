@@ -1,5 +1,35 @@
 # PostDee Staging
 
+## ธีมร้านพรีเมียมสำหรับสมาชิก — 3 พฤศจิกายน 2026
+
+- เจ้าของสั่ง merge PR #57 และ deploy จึงรวมเป็น `5b425501` จากฐาน
+  `181f3126` แล้ว push main; tree ของ merge commit ตรงกับ PR head `0b2c9b3b`
+  ทุก byte ไม่มี Prisma migration, environment, secret หรือ Store products เปลี่ยน
+- [CI 41659976929](https://github.com/NOI56/PostDeeMobile/actions/runs/41659976929)
+  ของ `5b425501c5d99b549b5540192771a302d3f12cb2` ผ่านทั้ง Backend API และ
+  Flutter Mobile ก่อน deploy;
+  [iOS 41659977282](https://github.com/NOI56/PostDeeMobile/actions/runs/41659977282)
+  ผ่านแบบ no codesign ไม่ได้แจก iOS
+- Deploy [`dep-dbkvm267bikc7380mu9g`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbkvm267bikc7380mu9g)
+  เริ่ม **22:17:28 น. ไทย (15:17:28 UTC)** และ **Live 22:19:00 น. ไทย
+  (15:19:00 UTC)** ที่ SHA `5b425501` ตรงกับ CI แทน `bd096ea3` /
+  `dep-dbkmdnmk1f9s73dd9jq0` ซึ่งเก็บเป็นจุดอ้างอิงย้อนกลับ
+- Startup instance `nfvk7` พบ 30 migrations และ "No pending migrations to apply";
+  Publishing activation guard ผ่านและ backlog ว่าง ไม่พบ app logs ระดับ error/warn
+  ตั้งแต่ 15:17 ถึง 15:19:32 UTC
+- ตรวจ public GET สด 22:19 น. ไทย: `/health` 200, `/ready` 200 พร้อม
+  database/queue `ok` และ `no-store`, `/posts`, `/link-in-bio` และ
+  `/billing/subscription` ตอบ 401 เมื่อไม่มี token, slug ที่ไม่มีตอบ 404 พร้อม `no-store`
+- หน้าทดสอบ `/p/cartoon-test-0311`: ก่อน deploy แสดงแม่แบบ 3D
+  `dimensional-clay-mint`; หลัง deploy ตอบ 200 พร้อม `no-store` และ CSP ไม่มี script
+  แต่แสดงแบบเรียบง่ายชั่วคราว (`data-theme="minimal"` ไม่มี `data-template`)
+  โดยชื่อร้าน `Cartoon Test Shop` และลิงก์ยังอยู่ แสดงว่าเจ้าของหน้านี้ไม่มีแพ็กเกจที่ซื้อจริง
+  บน Staging; ดีไซน์ที่บันทึกไว้ไม่ถูกเขียนทับ แต่ยังไม่ได้พิสูจน์การกลับมาหลังต่ออายุบน Staging
+- ไม่ได้ทำ: ไม่สร้างหรือติดตั้ง APK ใหม่ (เครื่องยังเป็น 12096 ที่ไม่มีป้ายล็อก
+  การเลือกธีมพรีเมียมโดยไม่มีสมาชิกจะถูก API ปฏิเสธด้วย
+  `LINK_IN_BIO_PREMIUM_THEME_REQUIRED`), ไม่ทดสอบหมดอายุ/ต่ออายุกับบัญชีทดสอบ,
+  ไม่ซื้อจริง และ Production ยังคง suspended ไม่ deploy/resume
+
 ## UX การโพสต์และแพ็กเกจ Business — 3 พฤศจิกายน 2026
 
 - เจ้าของสั่ง `main/push/deploy` จึงรวม PR #56 เป็น `4e98d2f7` และ PR #50

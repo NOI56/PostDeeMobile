@@ -414,7 +414,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
           ),
           const SizedBox(height: 7),
           _PhoneVerificationText(
-            'แพ็กเกจ Basic ต้องยืนยันเบอร์โทรก่อนใช้สิทธิ์โพสต์ฟรี 3 ครั้งต่อเดือน',
+            'แพ็กเกจ Basic ต้องยืนยันเบอร์โทรก่อนใช้สิทธิ์โพสต์ฟรี 3 หน่วยต่อเดือน',
             style: TextStyle(
               fontSize: 13,
               height: 1.5,
@@ -736,7 +736,7 @@ const _englishPhoneVerificationMessages = <String, String>{
   'เบอร์โทร': 'Phone number',
   'รหัส OTP': 'OTP code',
   'ยืนยันเบอร์เพื่อปลดล็อกโพสต์ฟรี': 'Verify your phone to unlock free posting',
-  'แพ็กเกจ Basic ต้องยืนยันเบอร์โทรก่อนใช้สิทธิ์โพสต์ฟรี 3 ครั้งต่อเดือน':
+  'แพ็กเกจ Basic ต้องยืนยันเบอร์โทรก่อนใช้สิทธิ์โพสต์ฟรี 3 หน่วยต่อเดือน':
       'The Basic plan requires phone verification before you can use its 3 free post units per month.',
   'กำลังส่งรหัส...': 'Sending code...',
   'ส่งรหัส OTP': 'Send OTP',

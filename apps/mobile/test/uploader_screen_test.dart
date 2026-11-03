@@ -1884,6 +1884,7 @@ void main() {
   testWidgets('blocks upload AI captions for users without a paid package',
       (tester) async {
     var didGenerateCaption = false;
+    var paywallOpens = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -1909,6 +1910,7 @@ void main() {
               canUseAiCaptions: false,
               canUseAnalytics: false,
             ),
+            openPaywall: (_) async => paywallOpens++,
             generateCaption: (_) async {
               didGenerateCaption = true;
 
@@ -1939,7 +1941,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(didGenerateCaption, isFalse);
-    expect(find.textContaining('Starter หรือ Pro'), findsOneWidget);
+    // A confirmed Basic plan is sent to the packages, not to a dead end.
+    expect(paywallOpens, 1);
   });
 
   testWidgets('blocks scheduled posts for Basic users before uploading',
@@ -2472,7 +2475,7 @@ void main() {
 
     expect(subscriptionChecks, 1);
     expect(
-      find.text('ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 ครั้งต่อเดือน'),
+      find.text('ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 หน่วยต่อเดือน'),
       findsOneWidget,
     );
     expect(find.text('กำลังโพสต์...'), findsNothing);
@@ -3000,8 +3003,10 @@ void main() {
           await tester.pumpAndSettle();
         }
 
+        // No channel is connected here, so the posting checklist is the last
+        // item on the clip step.
         final finalItem = tester.getRect(
-          find.byKey(const ValueKey('uploader-cover-edit-button')),
+          find.byKey(const ValueKey('uploader-posting-checklist')),
         );
         final footer = tester.getRect(
           find.byKey(const ValueKey('uploader-sticky-action-bar')),

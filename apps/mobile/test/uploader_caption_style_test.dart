@@ -634,7 +634,7 @@ void main() {
             .widget<Text>(
                 find.byKey(const ValueKey('uploader-ai-style-summary')))
             .data,
-        const CaptionWritingStyle().summary);
+        'สไตล์: อัตโนมัติ');
     fail = false;
     await tester.tap(save);
     await tester.pumpAndSettle();

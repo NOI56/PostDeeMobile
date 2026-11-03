@@ -256,6 +256,8 @@ const _englishMessages = <String, String>{
   'เชื่อมต่อ PostDee API ไม่ได้': 'Could not connect to PostDee.',
   'เกิดข้อผิดพลาดระหว่างโหลดเทมเพลต':
       'An error occurred while loading templates.',
+  'ดูแพ็กเกจเพื่อใช้ AI': 'See packages to use AI',
+  'อีโมจิเล็กน้อย': 'Light emoji',
 };
 
 class CaptionText extends StatelessWidget {

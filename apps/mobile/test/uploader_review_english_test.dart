@@ -474,7 +474,7 @@ void main() {
         requiresPhoneVerification: true);
     await tapVideoEnglishControl(tester, 'publish-review-confirm');
     expect(find.byType(PublishFlowScreen), findsNothing);
-    expect(find.text('ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 ครั้งต่อเดือน'),
+    expect(find.text('ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 หน่วยต่อเดือน'),
         findsOneWidget);
     fixture.language.value = const Locale('en');
     await tester.pumpAndSettle();

@@ -1,5 +1,23 @@
 # Additional monthly main subscription
 
+## Integration authorization — 2026-11-03
+
+The owner approved merging the pending UX and Business work into `main`, pushing
+and deploying Staging in this chat. The combined candidate starts from verified
+remote main `6c7ff068eeabc8e21a7e159a89c71a30a20c9fca`, preserving catalog 4,
+twenty Cartoon designs and the second set of 3D templates. The earlier exclusions
+below describe the original isolated implementation, before this approval.
+
+Staging delivery includes the additive grant-snapshot migration before the
+Business enum migration. New Business and multi-size add-on sales remain off;
+Store setup, native billing acceptance, offer activation and Business trials are
+not part of this deployment. Existing installed clients keep their legacy plan,
+quota and receipt paths. The old Gemini Files transport experiment is excluded
+because it needs cancellation and grounding tests against the current pipeline.
+
+Verification and the actual deployed SHA will be recorded in `docs/STAGING.md`
+after the combined candidate passes its checks and the deployment is Live.
+
 ## Authorization and isolation
 
 The owner confirmed a main subscription at THB 399/month with 400 post units,

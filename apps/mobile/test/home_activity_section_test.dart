@@ -339,8 +339,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('เชื่อมแล้ว 2/4 ช่องทาง'), findsOneWidget);
     expect(find.textContaining('พร้อมโพสต์'), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('home-manage-connections')),
+            matching: find.text('จัดการ')),
+        findsOneWidget);
     await _tap(tester, 'home-manage-connections');
     expect(opened, 1);
+  });
+
+  testWidgets('no connected channel turns the action into Connect',
+      (tester) async {
+    await tester.pumpWidget(_app(_section(
+      loadConnections: () async => const [],
+      onOpenConnections: () {},
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('เชื่อมแล้ว 0/4 ช่องทาง'), findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('home-manage-connections')),
+            matching: find.text('เชื่อม')),
+        findsOneWidget);
   });
 
   testWidgets('shows only the earliest future queued post', (tester) async {

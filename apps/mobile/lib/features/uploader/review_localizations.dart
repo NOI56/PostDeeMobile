@@ -181,7 +181,7 @@ const _messages = <String, String>{
       'The previous time has passed. Choose a new time or Post now before confirming.',
   'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลย':
       'The previous time has passed. Choose a new time or Post now.',
-  'ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 ครั้งต่อเดือน':
+  'ยืนยันเบอร์โทรก่อนโพสต์ฟรี 3 หน่วยต่อเดือน':
       'Verify your phone number before using the 3 free post units per month.',
   'Starter ตั้งเวลาล่วงหน้าได้ 14 วัน และ Pro 30 วัน กรุณาเลือกเวลาใหม่':
       'Starter allows scheduling up to 14 days ahead and Pro up to 30 days. Choose another time.',

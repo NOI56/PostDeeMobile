@@ -42,6 +42,29 @@ class PostQuotaStrip extends StatelessWidget {
     final remainingFraction =
         limit > 0 ? (remaining / limit).clamp(0.0, 1.0) : 0.0;
     final canSpendAddon = subscription.isPaid;
+    // Until the phone is verified the API reports "0 left, 0 used", which
+    // reads as a broken quota. Explain the free allowance instead, and hide
+    // the numbers while they say nothing.
+    final phoneGate = subscription.requiresPhoneVerification;
+    final hideNumbers = phoneGate && remaining == 0 && used == 0;
+    final phoneGateText = Text(
+        uploaderText(
+            context,
+            'ยืนยันเบอร์โทรเพื่อรับโพสต์ฟรี $limit หน่วยต่อเดือน',
+            'Verify your phone to get $limit free post ${limit == 1 ? 'unit' : 'units'} per month'),
+        key: const ValueKey('uploader-post-quota-phone-gate'),
+        style: hideNumbers
+            ? secondaryStyle?.copyWith(
+                color: AppTheme.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              )
+            : secondaryStyle);
+    final unitHint = Text(
+        uploaderText(context, '1 หน่วย = โพสต์ 1 ช่องทาง',
+            '1 unit = 1 post to 1 channel'),
+        key: const ValueKey('uploader-post-quota-unit-hint'),
+        style: secondaryStyle);
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -98,65 +121,72 @@ class PostQuotaStrip extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 3),
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: AppTheme.spaceMd,
-              runSpacing: 2,
-              children: [
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '$remaining',
-                        style: secondaryStyle?.copyWith(
-                          color: AppTheme.textPrimary,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
+            if (hideNumbers) ...[
+              phoneGateText,
+              const SizedBox(height: 2),
+              unitHint,
+            ] else ...[
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: AppTheme.spaceMd,
+                runSpacing: 2,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '$remaining',
+                          style: secondaryStyle?.copyWith(
+                            color: AppTheme.textPrimary,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      TextSpan(
-                          text: uploaderText(context, ' / $limit หน่วย',
-                              ' / $limit ${limit == 1 ? 'unit' : 'units'}')),
-                    ],
+                        TextSpan(
+                            text: uploaderText(context, ' / $limit หน่วย',
+                                ' / $limit ${limit == 1 ? 'unit' : 'units'}')),
+                      ],
+                    ),
+                    style: secondaryStyle,
                   ),
-                  style: secondaryStyle,
+                  Text(
+                      uploaderText(context, 'ใช้ไป $used หน่วย',
+                          '$used ${used == 1 ? 'unit' : 'units'} used'),
+                      style: secondaryStyle),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  key: const ValueKey('uploader-post-quota-progress'),
+                  value: remainingFraction,
+                  minHeight: 3,
+                  backgroundColor:
+                      Color.lerp(AppTheme.border, AppTheme.accentCyanInk, 0.18),
+                  color: AppTheme.accentCyanInk,
+                  semanticsLabel: uploaderText(
+                      context,
+                      'โพสต์เหลือ $remaining จาก $limit หน่วย',
+                      '$remaining of $limit post ${limit == 1 ? 'unit' : 'units'} remaining'),
                 ),
+              ),
+              if (canSpendAddon && subscription.addonPostUnits > 0) ...[
+                const SizedBox(height: 4),
                 Text(
-                    uploaderText(context, 'ใช้ไป $used หน่วย',
-                        '$used ${used == 1 ? 'unit' : 'units'} used'),
+                    uploaderText(
+                        context,
+                        '+ เครดิตเติม ${subscription.addonPostUnits} หน่วย',
+                        '+ ${subscription.addonPostUnits} add-on ${subscription.addonPostUnits == 1 ? 'unit' : 'units'}'),
                     style: secondaryStyle),
               ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                key: const ValueKey('uploader-post-quota-progress'),
-                value: remainingFraction,
-                minHeight: 3,
-                backgroundColor:
-                    Color.lerp(AppTheme.border, AppTheme.accentCyanInk, 0.18),
-                color: AppTheme.accentCyanInk,
-                semanticsLabel: uploaderText(
-                    context,
-                    'โพสต์เหลือ $remaining จาก $limit หน่วย',
-                    '$remaining of $limit post ${limit == 1 ? 'unit' : 'units'} remaining'),
-              ),
-            ),
-            if (canSpendAddon && subscription.addonPostUnits > 0) ...[
-              const SizedBox(height: 4),
-              Text(
-                  uploaderText(
-                      context,
-                      '+ เครดิตเติม ${subscription.addonPostUnits} หน่วย',
-                      '+ ${subscription.addonPostUnits} add-on ${subscription.addonPostUnits == 1 ? 'unit' : 'units'}'),
-                  style: secondaryStyle),
-            ],
-            if (subscription.requiresPhoneVerification) ...[
-              const SizedBox(height: 4),
-              UploaderText('ยืนยันเบอร์เพื่อใช้โควตาฟรี',
-                  style: secondaryStyle),
+              if (phoneGate) ...[
+                const SizedBox(height: 4),
+                phoneGateText,
+              ],
+              const SizedBox(height: 2),
+              unitHint,
             ],
           ],
         ),

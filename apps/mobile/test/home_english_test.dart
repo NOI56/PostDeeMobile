@@ -256,7 +256,7 @@ void main() {
           .pumpWidget(_app(_home(subscription: () async => throw error)));
       await tester.pumpAndSettle();
       expect(find.text('Could not check package'), findsOneWidget);
-      expect(find.text('Free package'), findsNothing);
+      expect(find.text('Basic package'), findsNothing);
       expect(find.byKey(const ValueKey('home-plan-retry')), findsOneWidget);
       _expectEnglishInterface(tester);
     });

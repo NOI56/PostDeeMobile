@@ -420,7 +420,7 @@ void main() {
     ]);
     await tester.pumpAndSettle();
     expect(find.text('ข้อความส่วนตัวบัญชีเดิม'), findsNothing);
-    expect(find.text('แพ็กเกจฟรี'), findsOneWidget);
+    expect(find.text('แพ็กเกจ Basic'), findsOneWidget);
     expect(find.text('แพ็กเกจ Pro'), findsNothing);
     expect(postLoads, 2);
   });

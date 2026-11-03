@@ -363,8 +363,8 @@ void main() {
   }
 
   for (final tier in const {
-    'BASIC': 'Free',
-    'FREE': 'Free',
+    'BASIC': 'Basic',
+    'FREE': 'Basic',
     'STARTER': 'Starter',
     'PRO': 'Pro',
     'BUSINESS': 'Business',
@@ -388,6 +388,10 @@ void main() {
       await _reveal(tester, _key('profile-plan-$key'));
       expect(find.text(tier.value), findsOneWidget);
       expect(find.text('Current plan'), findsOneWidget);
+      if (tier.key == 'BUSINESS') {
+        expect(find.text('Active'), findsOneWidget);
+        expect(_key('profile-plan-unit-hint'), findsOneWidget);
+      }
       _expectEnglish(tester);
     });
   }

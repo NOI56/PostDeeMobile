@@ -836,7 +836,8 @@ void main() {
     final manage = find.byKey(const ValueKey('home-manage-connections'));
     await tester.ensureVisible(manage);
     await tester.pumpAndSettle();
-    expect(find.descendant(of: manage, matching: find.text('Manage')),
+    // With nothing connected yet the action reads as the next step.
+    expect(find.descendant(of: manage, matching: find.text('Connect')),
         findsOneWidget);
     await tester.tap(manage);
     await tester.pumpAndSettle();
@@ -963,7 +964,7 @@ void main() {
       expect(subscriptionLoads,
           loadsBeforeComposer + (origin == 'Calendar' ? 0 : 1));
       if (origin == 'Home') {
-        expect(find.text('Free package'), findsOneWidget);
+        expect(find.text('Basic package'), findsOneWidget);
         expect(find.text('0/3 units left'), findsOneWidget);
         expect(find.text('Pro package'), findsNothing);
       } else if (origin == 'Account') {
@@ -1005,7 +1006,7 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    expect(find.text('Free package'), findsOneWidget);
+    expect(find.text('Basic package'), findsOneWidget);
     expect(find.text('0/3 units left'), findsOneWidget);
 
     await tester.tap(_referenceNavButton('Account'));
@@ -1070,7 +1071,7 @@ void main() {
     expect(find.byKey(const ValueKey('profile-plan-pro')), findsNothing);
     await tester.tap(_referenceNavButton('Home'));
     await tester.pumpAndSettle();
-    expect(find.text('Free package'), findsOneWidget);
+    expect(find.text('Basic package'), findsOneWidget);
     expect(find.text('2/3 units left'), findsOneWidget);
     expect(loadedPlans, containsAll(['FREE', 'PRO', 'BASIC']));
     expect(PostDeeAuthSessionStore.instance.session.stableUserId,

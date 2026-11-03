@@ -16,6 +16,8 @@ import {
   PostIdempotencyKeyReusedError,
   buildIdempotentPostId,
   isMatchingIdempotentIntent,
+  isPostCaptionEditWindowOpen,
+  nextPostUpdatedAt,
   maxDuePostsPerPoll
 } from './postStore.js';
 import { normalizePersistedPlatformSettings } from './platformSettings.js';
@@ -46,6 +48,7 @@ type PrismaPost = {
   status: PrismaPostStatus;
   publishedAt: Date | null;
   createdAt: Date;
+  updatedAt?: Date;
   addonPostUnits?: number;
 };
 
@@ -116,8 +119,10 @@ type PostDelegate = {
       status: PrismaPostStatus;
       OR?: Array<{ scheduledAt: null } | { scheduledAt: Date }>;
       scheduledAt?: Date | null | { not: null };
+      updatedAt?: Date;
     };
-    data: { scheduledAt?: Date | null; status?: PrismaPostStatus; publishedAt?: Date };
+    data: { scheduledAt?: Date | null; status?: PrismaPostStatus; publishedAt?: Date;
+      caption?: string; platformSettings?: unknown; updatedAt?: Date };
   }) => Promise<{ count: number }>;
   deleteMany: (args: {
     where: { id: string; userId: string; status: PrismaPostStatus };
@@ -127,10 +132,10 @@ type PostDelegate = {
 
 type PrismaPostTransaction = PrismaOwnerLifecycleTransaction & Partial<PrismaMonthlyAddonReadTransaction> & {
   post: PostDelegate;
+  // Atomic publish claim and caption edits both require SQL row locking.
+  $queryRaw?: <T = unknown>(query: Prisma.Sql) => Promise<T>;
 };
 export type PrismaPostClient = PrismaPostTransaction & {
-  // Used only by claimForPublishWithSchedule's single UPDATE ... RETURNING.
-  $queryRaw?: <T = unknown>(query: Prisma.Sql) => Promise<T>;
   $transaction: <Result>(
     operation: (client: PrismaPostTransaction) => Promise<Result>,
     options: { isolationLevel: 'Serializable'; maxWait?: number; timeout?: number }
@@ -172,6 +177,7 @@ const mapPost = (post: PrismaPost): QueuedPost => {
     status: toPostStatus(post.status),
     publishedAt: post.publishedAt?.toISOString(),
     createdAt: post.createdAt.toISOString(),
+    ...(post.updatedAt ? { updatedAt: post.updatedAt.toISOString() } : {}),
     ...(post.addonPostUnits ? { addonPostUnits: post.addonPostUnits } : {})
   };
 };
@@ -511,6 +517,36 @@ export const createPrismaPostRepository = ({
 
     const post = await transaction.post.findFirst({ where: { id: postId } });
     return post ? mapPost(post) : undefined;
+  }),
+  updateCaption: (input) => runActiveOwnerTransaction(prisma, input.userId, async (transaction) => {
+    if (!transaction.$queryRaw) throw new Error('Atomic caption edit requires raw queries');
+    // A concurrent row lock can outlive the edit window. Wait for it first,
+    // then check the clock while this transaction holds the post lock.
+    const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id" FROM "Post"
+      WHERE "id" = ${input.postId} AND "userId" = ${input.userId} AND "status" = 'QUEUED'
+      FOR UPDATE`);
+    if (rows.length !== 1) return undefined;
+    if (!isPostCaptionEditWindowOpen(input.expectedScheduledAt, input.now())) return undefined;
+    const result = await transaction.post.updateMany({
+      where: { id: input.postId, userId: input.userId, status: 'QUEUED',
+        scheduledAt: new Date(input.expectedScheduledAt), updatedAt: new Date(input.expectedUpdatedAt) },
+      data: { caption: input.caption,
+        ...(input.platformSettings ? { platformSettings: normalizePersistedPlatformSettings(input.platformSettings, Object.keys(input.platformSettings) as Platform[]) } : {}),
+        updatedAt: new Date(nextPostUpdatedAt(input.expectedUpdatedAt)) }
+    });
+    if (result.count !== 1) return undefined;
+    const post = await transaction.post.findFirst({ where: { id: input.postId, userId: input.userId } });
+    return post ? mapPost(post) : undefined;
+  }).catch((error: unknown) => {
+    // Raw SELECT ... FOR UPDATE reports PostgreSQL's serialization/deadlock
+    // code through P2010; ORM writes use P2034. Both lost the attempted CAS.
+    if (typeof error === 'object' && error !== null && 'code' in error) {
+      if (error.code === 'P2034') return undefined;
+      if (error.code === 'P2010' && 'meta' in error && typeof error.meta === 'object' && error.meta !== null &&
+        'code' in error.meta && (error.meta.code === '40001' || error.meta.code === '40P01')) return undefined;
+    }
+    throw error;
   }),
   publishNow: ({ postId, userId, expectedScheduledAt }) => runActiveOwnerTransaction(prisma, userId, async (transaction) => {
     const result = await transaction.post.updateMany({

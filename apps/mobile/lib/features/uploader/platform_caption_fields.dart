@@ -123,12 +123,14 @@ class PlatformCaptionFields extends StatefulWidget {
     required this.onChanged,
     required this.validationMessage,
     this.readOnly = false,
+    this.visiblePlatforms = captionPlatforms,
   });
 
   final Map<SocialPlatform, String> captions;
   final void Function(SocialPlatform, String) onChanged;
   final String? Function(SocialPlatform) validationMessage;
   final bool readOnly;
+  final Iterable<SocialPlatform> visiblePlatforms;
 
   @override
   State<PlatformCaptionFields> createState() => _PlatformCaptionFieldsState();
@@ -191,7 +193,8 @@ class _PlatformCaptionFieldsState extends State<PlatformCaptionFields> {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final platform in captionPlatforms)
+          for (final platform
+              in captionPlatforms.where(widget.visiblePlatforms.contains))
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: PostDeeCard(

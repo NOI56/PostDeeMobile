@@ -15,6 +15,7 @@ const baseJob = {
 const createPostStoreStub = () =>
   ({
     claimForPublish: vi.fn(async () => true),
+    findOwned: vi.fn(async () => ({ id: 'p1', userId: 'u1', status: 'PUBLISHING', caption: '' })),
     updateStatus: vi.fn(async () => undefined)
   }) as unknown as PostStore;
 

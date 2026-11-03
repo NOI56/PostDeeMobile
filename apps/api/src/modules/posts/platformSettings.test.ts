@@ -8,6 +8,14 @@ import {
 } from './platformSettings.js';
 
 describe('platform publishing settings', () => {
+  it('retains an edited legacy YouTube title without creating uploader certifications', () => {
+    const settings = { YOUTUBE_SHORTS: { visibility: 'private' as const, title: 'Edited title' } };
+    expect(normalizePersistedPlatformSettings(settings, ['YOUTUBE_SHORTS'])).toEqual(settings);
+    // A new publishing request still needs every explicit uploader choice.
+    expect(readPlatformSettings(settings, ['YOUTUBE_SHORTS'])).toEqual({ ok: false });
+    expect(arePlatformSettingsEqual(settings, { YOUTUBE_SHORTS: { visibility: 'private' } }, ['YOUTUBE_SHORTS'])).toBe(false);
+  });
+
   for (const platform of ['INSTAGRAM_REELS', 'FACEBOOK_REELS'] as const) {
     const original = platform === 'INSTAGRAM_REELS'
       ? { shareToFeed: false }

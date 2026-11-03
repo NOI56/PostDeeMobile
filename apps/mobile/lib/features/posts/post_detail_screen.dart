@@ -16,6 +16,8 @@ import '../shared/postdee_publishing_motion.dart';
 import '../shared/postdee_notice.dart';
 import '../shared/tiktok_draft_next_step.dart';
 import '../uploader/post_video_preview_screen.dart';
+import 'post_caption_edit_screen.dart';
+import 'post_caption_localizations.dart';
 
 typedef PostDetailReader = Future<PostSummaryResult?> Function(String postId);
 
@@ -216,6 +218,36 @@ class _PostDetailScreenState extends State<PostDetailScreen>
 
   bool get _isScheduled =>
       _post.status.toUpperCase() == 'QUEUED' && _post.scheduledAt != null;
+
+  bool get _canEditCaption =>
+      _isScheduled && _post.scheduledAt!.isAfter(DateTime.now());
+
+  Future<void> _editCaption() async {
+    if (!_ownerStillCurrent ||
+        !_canEditCaption ||
+        _postUnavailable ||
+        _isWorking) {
+      return;
+    }
+    _readGeneration++;
+    _refreshTimer?.cancel();
+    setState(() => _isWorking = true);
+    final updated = await Navigator.of(context).push<PostSummaryResult>(
+        MaterialPageRoute(
+            builder: (_) => PostCaptionEditScreen(
+                post: _post, apiClient: _apiClient)));
+    if (!mounted || !_ownerStillCurrent) return;
+    _readGeneration++;
+    setState(() {
+      if (updated != null && updated.id == _post.id) _post = updated;
+      _isWorking = false;
+    });
+    if (updated != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(postCaptionText(context, 'บันทึกแคปชั่นแล้ว'))));
+    }
+    _syncRefreshTimer();
+  }
 
   bool get _isPublished => _post.status.toUpperCase() == 'PUBLISHED';
 
@@ -999,7 +1031,19 @@ class _PostDetailScreenState extends State<PostDetailScreen>
                             ),
                           ),
                           const SizedBox(height: 5),
-                          Text(
+                          if (_post.hasPlatformCaptions)
+                            for (final platform in _platforms) ...[
+                              Text(platform.label,
+                                  style: Theme.of(context).textTheme.labelMedium),
+                              Text(_post.effectiveCaption(platform.apiValue),
+                                  key: ValueKey(
+                                      'post-detail-caption-${platform.apiValue}'),
+                                  style: const TextStyle(
+                                      fontSize: 13.5, height: 1.55)),
+                              const SizedBox(height: AppTheme.spaceSm),
+                            ]
+                          else
+                            Text(
                             caption.isEmpty
                                 ? _text('(ไม่มีแคปชั่น)', 'No caption')
                                 : caption,
@@ -1063,43 +1107,55 @@ class _PostDetailScreenState extends State<PostDetailScreen>
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_isScheduled) ...[
-                Semantics(
-                  button: true,
-                  label: _text('ยกเลิกโพสต์', 'Cancel post'),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: _isWorking ? null : _cancelPost,
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: AppTheme.glass,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: const Icon(
-                        Icons.delete_outline,
-                        size: 21,
-                        color: Color(0xFFEF4444),
+              if (_canEditCaption) ...[
+                OutlinedButton.icon(
+                    key: const ValueKey('post-detail-edit-caption'),
+                    onPressed: _isWorking ? null : _editCaption,
+                    icon: const Icon(Icons.edit_outlined),
+                    label: Text(postCaptionText(context, 'แก้ไขแคปชั่น'))),
+                const SizedBox(height: AppTheme.spaceSm),
+              ],
+              Row(children: [
+                if (_isScheduled) ...[
+                  Semantics(
+                    button: true,
+                    label: _text('ยกเลิกโพสต์', 'Cancel post'),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: _isWorking ? null : _cancelPost,
+                      child: Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: AppTheme.glass,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline,
+                          size: 21,
+                          color: Color(0xFFEF4444),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _PrimaryActionButton(
-                    key: const ValueKey('post-detail-publish-now'),
-                    label: _isWorking
-                        ? _text('กำลังส่ง...', 'Sending...')
-                        : _text('โพสต์เลย', 'Publish now'),
-                    icon: Icons.bolt,
-                    onPressed: _isWorking ? null : _publishNow,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _PrimaryActionButton(
+                      key: const ValueKey('post-detail-publish-now'),
+                      label: _isWorking
+                          ? _text('กำลังส่ง...', 'Sending...')
+                          : _text('โพสต์เลย', 'Publish now'),
+                      icon: Icons.bolt,
+                      onPressed: _isWorking ? null : _publishNow,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ]),
             ],
           ),
         ),

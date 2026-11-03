@@ -724,6 +724,8 @@ class _CalendarScreenState extends State<CalendarScreen>
       final updatedPost = CalendarPostResult(
         id: updated.id,
         caption: updated.caption,
+        updatedAt: updated.updatedAt,
+        platformSettings: updated.platformSettings,
         videoS3Key: updated.videoS3Key,
         platforms: updated.platforms,
         status: updated.status,
@@ -876,6 +878,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                   CalendarPostResult(
                     id: latest.id,
                     caption: latest.caption,
+                    updatedAt: latest.updatedAt,
+                    platformSettings: latest.platformSettings,
                     videoS3Key: latest.videoS3Key,
                     platforms: latest.platforms,
                     status: latest.status,
@@ -1846,7 +1850,7 @@ class _DayPostRow extends StatelessWidget {
         button: onTap != null,
         onTap: onTap,
         label:
-            '${_formatTime(displayAt)} ${post.caption} $status $channelSummary',
+            '${_formatTime(displayAt)} ${post.captionPreview} $status $channelSummary',
         child: PostDeePressFeedback(
           enabled: animate && onTap != null,
           child: ExcludeSemantics(
@@ -1876,7 +1880,7 @@ class _DayPostRow extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                               color: AppTheme.textPrimary)),
                       const SizedBox(height: 4),
-                      Text(post.caption,
+                      Text(post.captionPreview,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

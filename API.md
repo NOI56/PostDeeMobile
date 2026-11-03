@@ -2,6 +2,41 @@
 
 PostDee backend API reference.
 
+## Edit scheduled post caption (2026-11-03, local candidate)
+
+`PATCH /posts/:id/caption` edits an owned `QUEUED` post scheduled more than
+60 seconds in the future. Request: `{ caption: string, platformCaptions?:
+{ <PLATFORM>: string | null }, youtubeTitle?: string, expectedUpdatedAt?: string }`.
+Caption overrides apply only to the post's existing destinations; `null` removes
+an override and restores the shared caption. YouTube's explicit empty description
+and title-from-caption behavior retain their existing validation rules.
+The response is `{ status: 'ok', post }`. Post responses add optional `updatedAt`
+for optimistic concurrency; new clients return that value when saving.
+
+Only `Post.caption`, nested platform `caption` values and the YouTube `title`
+can change. Other settings, consent, destination/account snapshots, video, cover
+and schedule remain intact. Existing length and character validation is reused.
+This manual edit neither reserves post units nor spends AI caption credits and
+does not recheck plan admission for an already accepted post. Publishing and
+active-owner guards still apply.
+
+Errors: `404` for an absent or other owner's post; `409 POST_NOT_EDITABLE`
+outside `QUEUED`; `409 POST_CAPTION_EDIT_WINDOW_CLOSED` at or below 60 seconds;
+`409 POST_CAPTION_CONFLICT` for a changed version/schedule or a lost atomic
+write race. Invalid captions use the existing `400` validation codes. Mobile
+handles an older API without this route as unavailable and offers recovery.
+
+Memory and Prisma stores compare owner, status, schedule and the loaded update
+version at the write boundary. Both memory polling and BullMQ publishing read
+the authoritative caption/settings after a successful publish claim instead of
+trusting the enqueue-time copy. Retries, recovery and provider delivery rules
+remain in place, including Facebook Page Reels (never a Page feed fallback).
+
+The existing `PATCH /posts/:id` reschedule contract remains compatible with old
+clients. **No Prisma migration. Deploy API first, then compatible Mobile.**
+No merge, deployment, device installation or real-account publishing is included.
+See the [work record](docs/superpowers/plans/2026-11-03-edit-scheduled-caption.md).
+
 ## Store-link theme access (2026-11-03, local candidate)
 
 `GET /billing/subscription` adds `subscription.canUsePremiumProfileThemes`.

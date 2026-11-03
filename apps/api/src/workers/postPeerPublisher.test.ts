@@ -31,6 +31,31 @@ afterEach(() => {
 });
 
 describe('createPostPeerPublisher', () => {
+  it.each([undefined, 'Edited legacy title'])(
+    'keeps legacy private YouTube publishing without inventing consent fields (title: %s)', async (title) => {
+      const requests: { content: string; platforms: { platformSpecificData: Record<string, unknown> }[] }[] = [];
+      const publisher = createPostPeerPublisher({
+        apiKey: 'key', baseUrl: 'https://api.postpeer.test',
+        accountIds: { YOUTUBE_SHORTS: 'youtube-account' },
+        fetchImpl: async (_url, init) => {
+          requests.push(JSON.parse(String(init.body)));
+          return { ok: true, status: 200, json: async () => ({ externalPostId: 'youtube-video' }) };
+        }
+      });
+      await publisher.publish({
+        userId: 'owner', postId: 'legacy-youtube', platform: 'YOUTUBE_SHORTS', caption: 'Caption based title',
+        platformSettings: { YOUTUBE_SHORTS: { visibility: 'private', ...(title ? { title } : {}) } }
+      });
+
+      expect(requests[0]).toEqual(expect.objectContaining({ content: 'Caption based title' }));
+      expect(requests[0].platforms[0].platformSpecificData).toEqual({
+        title: title ?? 'Caption based title', visibility: 'private'
+      });
+      expect(requests[0].platforms[0].platformSpecificData).not.toHaveProperty('madeForKids');
+      expect(requests[0].platforms[0].platformSpecificData).not.toHaveProperty('containsSyntheticMedia');
+    }
+  );
+
   it.each(['', '   '])('sends an explicitly empty YouTube description instead of the shared caption (%j)', async (caption) => {
     const requests: Record<string, unknown>[] = [];
     const publisher = createPostPeerPublisher({ apiKey: 'key', baseUrl: 'https://api.postpeer.test',

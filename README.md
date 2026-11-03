@@ -1,5 +1,16 @@
 # PostDee
 
+## Edit scheduled captions (2026-11-03, local candidate)
+
+Post details allow manual caption and YouTube-title edits for queued scheduled
+posts until 60 seconds before publication. Shared and per-channel captions use
+the existing validation, preserve other publishing settings and consume no
+additional post units or AI credits. Both queue modes publish the latest saved
+caption after claiming the post. Thai/English editing includes unsaved-change,
+conflict and account-change protection. API rollout must precede Mobile; no
+migration or live rollout is included. See the
+[work record](docs/superpowers/plans/2026-11-03-edit-scheduled-caption.md).
+
 ## Store-link theme membership (2026-11-03, local candidate)
 
 The Simple (`minimal` / เรียบง่าย) category stays free. Every other theme

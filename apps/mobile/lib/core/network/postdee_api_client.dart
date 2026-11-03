@@ -2814,6 +2814,8 @@ class ScheduledPostResult {
     required this.scheduledAt,
     required this.status,
     required this.createdAt,
+    this.updatedAt,
+    this.platformSettings = const {},
     this.userId,
     this.publishedAt,
     this.platformResults = const [],
@@ -2826,6 +2828,8 @@ class ScheduledPostResult {
   final DateTime scheduledAt;
   final String status;
   final DateTime createdAt;
+  final DateTime? updatedAt;
+  final Map<String, Object?> platformSettings;
   final String? userId;
   final DateTime? publishedAt;
   final List<PostPlatformResult> platformResults;
@@ -2862,6 +2866,10 @@ class ScheduledPostResult {
       scheduledAt: DateTime.parse(scheduledAt),
       status: json['status'] as String,
       createdAt: DateTime.parse(createdAt),
+      updatedAt: optionalDate(json['updatedAt']),
+      platformSettings: json['platformSettings'] is Map<String, Object?>
+          ? json['platformSettings'] as Map<String, Object?>
+          : const {},
       userId: optionalString(json['userId']),
       publishedAt: optionalDate(json['publishedAt']),
       platformResults: (json['platformResults'] as List<dynamic>? ?? const [])
@@ -2929,6 +2937,8 @@ class PostSummaryResult {
     required this.platforms,
     required this.status,
     required this.createdAt,
+    this.updatedAt,
+    this.platformSettings = const {},
     this.scheduledAt,
     this.publishedAt,
     this.platformResults = const [],
@@ -2944,6 +2954,8 @@ class PostSummaryResult {
   final List<String> platforms;
   final String status;
   final DateTime createdAt;
+  final DateTime? updatedAt;
+  final Map<String, Object?> platformSettings;
   final DateTime? scheduledAt;
   final DateTime? publishedAt;
   final List<PostPlatformResult> platformResults;
@@ -2951,6 +2963,30 @@ class PostSummaryResult {
   final Uri? coverImageUrl;
   final String? coverImageS3Key;
   final int? coverFrameTimeMs;
+
+  String effectiveCaption(String platform) {
+    final settings = platformSettings[platform];
+    return settings is Map && settings['caption'] is String
+        ? settings['caption'] as String
+        : caption;
+  }
+
+  bool get hasPlatformCaptions => platforms.any((platform) {
+        final settings = platformSettings[platform];
+        return settings is Map && settings['caption'] is String;
+      });
+
+  /// Lists keep a short preview; the detail shows each selected channel.
+  String get captionPreview {
+    if (hasPlatformCaptions) {
+      for (final platform in platforms) {
+        final text = effectiveCaption(platform).trim();
+        if (text.isNotEmpty) return text;
+      }
+      return '';
+    }
+    return caption;
+  }
 
   factory PostSummaryResult.fromJson(Map<String, Object?> json) {
     DateTime? parseDate(Object? value) =>
@@ -2986,6 +3022,10 @@ class PostSummaryResult {
           .toList(),
       status: json['status'] as String? ?? '',
       createdAt: createdAt,
+      updatedAt: parseDate(json['updatedAt']),
+      platformSettings: json['platformSettings'] is Map<String, Object?>
+          ? json['platformSettings'] as Map<String, Object?>
+          : const {},
       scheduledAt: parseDate(json['scheduledAt']),
       publishedAt: parseDate(json['publishedAt']),
       platformResults: (json['platformResults'] as List<dynamic>? ?? const [])
@@ -3022,6 +3062,8 @@ class CalendarPostResult extends PostSummaryResult {
     required super.platforms,
     required super.status,
     required super.createdAt,
+    super.updatedAt,
+    super.platformSettings,
     super.scheduledAt,
     super.publishedAt,
     super.platformResults,
@@ -3042,6 +3084,8 @@ class CalendarPostResult extends PostSummaryResult {
           platforms: post.platforms,
           status: post.status,
           createdAt: post.createdAt,
+          updatedAt: post.updatedAt,
+          platformSettings: post.platformSettings,
           scheduledAt: post.scheduledAt,
           publishedAt: post.publishedAt,
           platformResults: post.platformResults,
@@ -3060,6 +3104,8 @@ class CalendarPostResult extends PostSummaryResult {
       platforms: post.platforms,
       status: post.status,
       createdAt: post.createdAt,
+      updatedAt: post.updatedAt,
+      platformSettings: post.platformSettings,
       scheduledAt: post.scheduledAt,
       publishedAt: post.publishedAt,
       platformResults: post.platformResults,
@@ -3087,6 +3133,8 @@ class CalendarPostResult extends PostSummaryResult {
           scheduledAt: schedule,
           status: status,
           createdAt: createdAt,
+          updatedAt: updatedAt,
+          platformSettings: platformSettings,
           userId: userId,
           publishedAt: publishedAt,
           platformResults: platformResults,
@@ -3805,6 +3853,41 @@ class PostDeeApiClient {
 
   Future<void> cancelPost(String postId) async {
     await _deleteJson('/posts/$postId');
+  }
+
+  Future<PostSummaryResult> updatePostCaption(
+    String postId, {
+    required String caption,
+    Map<String, String?>? platformCaptions,
+    String? youtubeTitle,
+    DateTime? expectedUpdatedAt,
+  }) async {
+    try {
+      final response = await _patchJson(
+          '/posts/${Uri.encodeComponent(postId)}/caption', {
+        'caption': caption,
+        if (platformCaptions != null) 'platformCaptions': platformCaptions,
+        if (youtubeTitle != null) 'youtubeTitle': youtubeTitle,
+        if (expectedUpdatedAt != null)
+          'expectedUpdatedAt': expectedUpdatedAt.toUtc().toIso8601String(),
+      });
+      final post = response['post'];
+      if (response['status'] != 'ok' ||
+          post is! Map<String, Object?> ||
+          post['id'] != postId) {
+        throw const ApiException('บันทึกแคปชั่นไม่สำเร็จ กรุณาลองใหม่',
+            code: 'POST_CAPTION_RESPONSE_INVALID');
+      }
+      return PostSummaryResult.fromJson(post);
+    } on ApiException catch (error) {
+      _sessionBinding?.ensureCurrent();
+      if (error.statusCode == HttpStatus.notFound &&
+          error.code != 'POST_NOT_FOUND') {
+        throw const ApiException('ระบบยังไม่รองรับการแก้แคปชั่น กรุณาลองใหม่ภายหลัง',
+            statusCode: 404, code: 'POST_CAPTION_EDIT_UNAVAILABLE');
+      }
+      rethrow;
+    }
   }
 
   /// Checks deletion prerequisites and reports whether Firebase identity

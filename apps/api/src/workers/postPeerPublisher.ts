@@ -469,9 +469,9 @@ const buildPlatformTarget = ({
       throw new Error('YouTube publish settings are required');
     }
     target.platformSpecificData = {
-      title: 'title' in youtubeSettings ? youtubeSettings.title : deriveYoutubeTitle(caption),
+      title: youtubeSettings.title ?? deriveYoutubeTitle(caption),
       visibility: youtubeSettings.visibility,
-      ...('title' in youtubeSettings
+      ...('communityGuidelinesCertified' in youtubeSettings
         ? {
             madeForKids: youtubeSettings.madeForKids,
             containsSyntheticMedia: youtubeSettings.containsSyntheticMedia

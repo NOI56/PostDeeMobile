@@ -33,9 +33,10 @@ import {
   type Platform,
   type PostStore,
   type QueuedPost,
-  isValidPlatform
+  isValidPlatform,
+  isPostCaptionEditWindowOpen
 } from './postStore.js';
-import { normalizePersistedPlatformSettings, readEffectivePlatformCaption, readPlatformSettings, type PlatformSettings } from './platformSettings.js';
+import { isValidYoutubeTitle, normalizePersistedPlatformSettings, readEffectivePlatformCaption, readPlatformSettings, type PlatformSettings } from './platformSettings.js';
 import { readCaptionStorageIssue, readPlatformCaptionIssue } from './platformCaptionValidation.js';
 import { encodePostPageCursor, readPostPageRequest } from './postPageCursor.js';
 import {
@@ -1214,6 +1215,117 @@ export const registerPostRoutes = (
       }
     } finally {
       releaseCreation();
+    }
+  });
+
+  router.patch('/posts/:id/caption', authMiddleware, async (request, response) => {
+    const authUser = readAuthUser(response.locals);
+    if (!authUser) {
+      response.status(401).json({ status: 'error', message: 'Authenticated user is required' });
+      return;
+    }
+    if (!socialPublishingEnabled) {
+      response.status(503).json(socialPublishingUnavailableResponse);
+      return;
+    }
+    const expectedRevision = readOptionalIsoDate(request.body?.expectedUpdatedAt);
+    if (!expectedRevision.ok || request.body?.expectedUpdatedAt === null) {
+      response.status(400).json({ status: 'error', code: 'INVALID_EXPECTED_UPDATED_AT', message: 'expectedUpdatedAt must be a valid ISO date' });
+      return;
+    }
+    const postId = String(request.params.id);
+    const releaseOwner = await ownerMutationLock.acquire(authUser.id);
+    const releaseMutation = await acquireLock(mutationLocks, `${authUser.id}\0${postId}`);
+    try {
+      try {
+        await options.assertOwnerActive?.(authUser.id);
+      } catch (error) {
+        if (respondWithManagedUploadError(response, error)) return;
+        throw error;
+      }
+      const existingPost = await store.findOwned({ postId, userId: authUser.id });
+      if (!existingPost) {
+        response.status(404).json({ status: 'error', code: 'POST_NOT_FOUND', message: 'Post not found' });
+        return;
+      }
+      if (existingPost.status !== 'QUEUED') {
+        response.status(409).json({ status: 'error', code: 'POST_NOT_EDITABLE', message: 'This post can no longer be edited' });
+        return;
+      }
+      // Capture primitives: memory reads can share a row with a publish claim.
+      const expectedScheduledAt = existingPost.scheduledAt;
+      const expectedUpdatedAt = existingPost.updatedAt;
+      if (!isPostCaptionEditWindowOpen(expectedScheduledAt, now().toISOString())) {
+        response.status(409).json({ status: 'error', code: 'POST_CAPTION_EDIT_WINDOW_CLOSED', message: 'It is too close to the scheduled time to edit the caption' });
+        return;
+      }
+      if (!expectedUpdatedAt || (expectedRevision.value && expectedRevision.value !== expectedUpdatedAt)) {
+        response.status(409).json({ status: 'error', code: 'POST_CAPTION_CONFLICT', message: 'The post changed. Reload it before editing again.' });
+        return;
+      }
+      const platformSettings = structuredClone(normalizePersistedPlatformSettings(existingPost.platformSettings, existingPost.platforms));
+      const platformCaptions: unknown = request.body?.platformCaptions;
+      if (platformCaptions !== undefined) {
+        if (typeof platformCaptions !== 'object' || platformCaptions === null || Array.isArray(platformCaptions) ||
+          Object.entries(platformCaptions).some(([platform, value]) =>
+            !isValidPlatform(platform) || !existingPost.platforms.includes(platform) ||
+            (value !== null && (typeof value !== 'string' || (platform !== 'YOUTUBE_SHORTS' && !value.trim()))))) {
+          response.status(400).json({ status: 'error', code: 'INVALID_PLATFORM_CAPTIONS', message: 'platformCaptions must contain only captions for selected platforms' });
+          return;
+        }
+        for (const [platform, value] of Object.entries(platformCaptions)) {
+          const settings = platformSettings[platform as Platform]!;
+          if (value === null) delete settings.caption;
+          else settings.caption = (value as string).trim();
+        }
+      }
+      const youtubeTitle: unknown = request.body?.youtubeTitle;
+      if (youtubeTitle !== undefined) {
+        if (!existingPost.platforms.includes('YOUTUBE_SHORTS') || !isValidYoutubeTitle(youtubeTitle)) {
+          response.status(400).json({ status: 'error', code: 'INVALID_YOUTUBE_TITLE', message: 'YouTube titles must contain 1-100 characters and cannot contain < or >' });
+          return;
+        }
+        platformSettings.YOUTUBE_SHORTS!.title = youtubeTitle.trim();
+      }
+      const caption = readPostCaption(request.body?.caption, existingPost.platforms, platformSettings);
+      if (caption === undefined) {
+        response.status(400).json({ status: 'error', code: 'INVALID_CAPTION', message: 'caption must be a non-empty string unless the post has only YouTube with a title' });
+        return;
+      }
+      const captionIssue = readPlatformCaptionIssue(caption, existingPost.platforms, platformSettings) ??
+        readCaptionStorageIssue(caption, existingPost.platforms, platformSettings);
+      if (captionIssue) {
+        response.status(400).json({ status: 'error', code: 'PLATFORM_CAPTION_INVALID', ...captionIssue });
+        return;
+      }
+      if (platformSettings.TIKTOK?.publishMode === 'DIRECT_POST') {
+        try {
+          validateTikTokDirectCaption(readEffectivePlatformCaption(caption, 'TIKTOK', platformSettings));
+        } catch (error) {
+          if (error instanceof TikTokPublishingError) {
+            response.status(error.statusCode).json({ status: 'error', code: error.code, message: error.message });
+            return;
+          }
+          throw error;
+        }
+      }
+      // Accepted work needs no subscription, post reservation or AI-credit call.
+      const hasSettingsEdits = youtubeTitle !== undefined || (platformCaptions !== undefined && Object.keys(platformCaptions).length > 0);
+      const post = await store.updateCaption({ postId, userId: authUser.id,
+        expectedScheduledAt: expectedScheduledAt!, expectedUpdatedAt, caption,
+        platformSettings: existingPost.platformSettings || hasSettingsEdits ? platformSettings : undefined,
+        now: () => now().toISOString() });
+      if (!post) {
+        const windowOpen = isPostCaptionEditWindowOpen(expectedScheduledAt, now().toISOString());
+        response.status(409).json({ status: 'error',
+          code: windowOpen ? 'POST_CAPTION_CONFLICT' : 'POST_CAPTION_EDIT_WINDOW_CLOSED',
+          message: windowOpen ? 'The post changed. Reload it before editing again.' : 'It is too close to the scheduled time to edit the caption' });
+        return;
+      }
+      response.json({ status: 'ok', post: toPublicPost(post) });
+    } finally {
+      releaseMutation();
+      releaseOwner();
     }
   });
 

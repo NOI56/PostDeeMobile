@@ -25,9 +25,13 @@ const makeFakePostStore = ({ status = 'QUEUED' }: { status?: string } = {}) => {
           return false;
         }
 
+        status = 'PUBLISHING';
         statuses.push('PUBLISHING');
         return true;
       },
+      findOwned: async () => ({
+        id: 'post-1', userId: 'seller-1', status, caption: 'Caption'
+      }),
       updateStatus: async ({ status }: { status: string }) => {
         statuses.push(status);
       }

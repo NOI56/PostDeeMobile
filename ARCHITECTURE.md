@@ -2,6 +2,22 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Scheduled-caption mutation and publish snapshot (2026-11-03, local candidate)
+
+The additive caption route uses the same owner-operation and per-post mutation
+guards as rescheduling. Both repositories compare owner, `QUEUED` status,
+schedule and update version atomically before replacing caption/settings. Only
+caption and YouTube-title keys are merged; no new database column or migration
+is required. Public posts expose an additive update version for concurrent clients.
+
+BullMQ data remains a scheduling/target snapshot, but its caption/settings copy
+is no longer authoritative for sending. The shared worker reads owned persisted
+caption/settings after the successful publish claim and takes one coherent
+snapshot. Caption edits cannot succeed once the row is `PUBLISHING`. The same
+boundary covers memory polling, including edits between poll and claim. Failure
+to load the claimed owned row fails closed. Existing retry/recovery, target,
+TikTok and Facebook Reels behavior remains in place. API precedes Mobile.
+
 ## Theme membership projection (2026-11-03, local candidate)
 
 Store-link styling separates authored data from effective rendering. The

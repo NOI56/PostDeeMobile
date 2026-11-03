@@ -1,5 +1,19 @@
 # PostDee Mobile
 
+## Scheduled caption editor (2026-11-03, local candidate)
+
+Queued future-post details open a dedicated manual editor for shared or existing
+per-channel captions and YouTube titles. Reused composer validators and platform
+fields keep caption limits consistent. Editing locks at 60 seconds before the
+scheduled time; saving refreshes details and later calendar reads. A saved
+YouTube title matching the composer's suggestion is automatic and follows the
+edited effective YouTube caption; a distinct custom title stays unchanged.
+Thai/English copy, loading/retry, unsaved-change confirmation and owner/session
+guards cover the flow. No AI generation or additional quota/plan gate is added. An older API
+without the route reports that editing is unavailable. API must ship first;
+no migration, installation or hosted rollout is included. See the
+[work record](../../docs/superpowers/plans/2026-11-03-edit-scheduled-caption.md).
+
 ## Theme membership (2026-11-03, local candidate)
 
 The Simple category is free. Other theme categories require the authoritative

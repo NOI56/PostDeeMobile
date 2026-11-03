@@ -36,6 +36,8 @@ export type YoutubePlatformSettings =
       // certification or title. Preserve their existing private behavior;
       // only the explicit request parser may create the full shape below.
       visibility: 'private';
+      // Existing queued posts may edit a title without adding uploader choices.
+      title?: string;
     }
   | {
       title: string;
@@ -204,9 +206,10 @@ const readYoutubeSettings = (
   if (
     allowLegacyShape &&
     value.visibility === 'private' &&
-    hasExactKeys(value, ['visibility'])
+    (hasExactKeys(value, ['visibility']) ||
+      (hasExactKeys(value, ['visibility', 'title']) && isValidYoutubeTitle(value.title)))
   ) {
-    return { visibility: 'private' };
+    return { visibility: 'private', ...(typeof value.title === 'string' ? { title: value.title.trim() } : {}) };
   }
 
   if (
@@ -217,10 +220,7 @@ const readYoutubeSettings = (
       'containsSyntheticMedia',
       'communityGuidelinesCertified'
     ]) ||
-    typeof value.title !== 'string' ||
-    value.title.trim().length === 0 ||
-    [...value.title.trim()].length > 100 ||
-    /[<>]/.test(value.title) ||
+    !isValidYoutubeTitle(value.title) ||
     (value.visibility !== 'private' &&
       value.visibility !== 'unlisted' &&
       value.visibility !== 'public') ||
@@ -239,6 +239,10 @@ const readYoutubeSettings = (
     communityGuidelinesCertified: true
   };
 };
+
+export const isValidYoutubeTitle = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0 &&
+  [...value.trim()].length <= 100 && !/[<>]/.test(value);
 
 const readInstagramSettings = (
   value: unknown
@@ -387,8 +391,9 @@ export const arePlatformSettingsEqual = (
         return false;
       }
 
-      const leftIsExplicit = leftSettings && 'title' in leftSettings;
-      const rightIsExplicit = rightSettings && 'title' in rightSettings;
+      if (leftSettings?.title !== rightSettings?.title) return false;
+      const leftIsExplicit = leftSettings && 'communityGuidelinesCertified' in leftSettings;
+      const rightIsExplicit = rightSettings && 'communityGuidelinesCertified' in rightSettings;
       if (!leftIsExplicit || !rightIsExplicit) {
         return leftIsExplicit === rightIsExplicit;
       }

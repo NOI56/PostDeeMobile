@@ -429,6 +429,10 @@ export const processPublishJobForPost = async ({
       : false;
 
   const processForOwner = async (): Promise<PublishWorkerResult> => {
+    if (!jobData.userId) {
+      throw new Error('Publish job owner is required to read current post content');
+    }
+
     if (assertOwnerActive && jobData.userId) {
       await assertOwnerActive(jobData.userId);
     }
@@ -483,8 +487,25 @@ export const processPublishJobForPost = async ({
         return { ...createSkippedPublishResult(jobData), status: 'FAILED', platformResults };
       }
 
+      // Queue data (and the memory scheduler's poll) can predate a caption
+      // edit. Once claimed, caption edits cannot pass their QUEUED CAS, so one
+      // owner-scoped read gives a stable caption/settings pair for every retry
+      // and destination. Fail closed rather than sending the enqueue snapshot.
+      const claimedPost = await postStore.findOwned({
+        postId: jobData.postId, userId: jobData.userId
+      });
+      if (!claimedPost || claimedPost.status !== 'PUBLISHING') {
+        throw new Error('Claimed publish post is unavailable');
+      }
+      const currentJobData: BullMqPublishJobData = {
+        ...jobData,
+        caption: claimedPost.caption,
+        platformSettings: claimedPost.platformSettings
+          ? structuredClone(claimedPost.platformSettings)
+          : undefined
+      };
       const result = await processPublishJob({
-        jobData,
+        jobData: currentJobData,
         publisher,
         storage,
         platformPublishStore,

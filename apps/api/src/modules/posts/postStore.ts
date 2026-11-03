@@ -46,6 +46,8 @@ export type QueuedPost = {
   status: PostStatus;
   publishedAt?: string;
   createdAt: string;
+  // Optional for older clients/test adapters; persisted stores return a revision.
+  updatedAt?: string;
   // Internal allocation, fixed when accepted; never reallocated after a plan change.
   addonPostUnits?: number;
 };
@@ -139,6 +141,23 @@ export type ReschedulePostInput = {
   scheduledAt: string;
 };
 
+export type UpdatePostCaptionInput = {
+  postId: string;
+  userId: string;
+  expectedScheduledAt: string;
+  expectedUpdatedAt: string;
+  caption: string;
+  platformSettings?: PlatformSettings;
+  // Re-read after the owner lock so waiting cannot extend the editing window.
+  now: () => string;
+};
+
+export const isPostCaptionEditWindowOpen = (scheduledAt: string | undefined, now: string) =>
+  scheduledAt !== undefined && Date.parse(scheduledAt) - Date.parse(now) > 60_000;
+
+export const nextPostUpdatedAt = (previous?: string) =>
+  new Date(Math.max(Date.now(), previous ? Date.parse(previous) + 1 : 0)).toISOString();
+
 export type PublishPostNowInput = {
   postId: string;
   userId: string;
@@ -204,6 +223,7 @@ export type PostStore = {
   // Move a still-queued post (owned by userId) to a new time. Returns the
   // updated post, or undefined if it is missing, not owned, or already publishing.
   reschedule: (input: ReschedulePostInput) => Promise<QueuedPost | undefined>;
+  updateCaption: (input: UpdatePostCaptionInput) => Promise<QueuedPost | undefined>;
   publishNow: (input: PublishPostNowInput) => Promise<QueuedPost | undefined>;
   // Cancel a still-queued post (owned by userId). Returns true if removed.
   remove: (input: RemovePostInput) => Promise<boolean>;
@@ -252,7 +272,8 @@ export const createPostStore = ({
         : {}),
       scheduledAt: input.scheduledAt,
       status: 'QUEUED' as const,
-      createdAt
+      createdAt,
+      updatedAt: createdAt
     };
 
     posts.push(post);
@@ -277,6 +298,7 @@ export const createPostStore = ({
       const post = posts.find((candidate) => candidate.id === postId && candidate.status === 'PUBLISHING');
       if (!post) return false;
       post.status = status;
+      post.updatedAt = nextPostUpdatedAt(post.updatedAt);
       if (publishedAt) post.publishedAt = publishedAt;
       return true;
     },
@@ -398,6 +420,7 @@ export const createPostStore = ({
       }
 
       post.status = 'PUBLISHING';
+      post.updatedAt = nextPostUpdatedAt(post.updatedAt);
       return post.scheduledAt === undefined ? 'immediate' : 'scheduled';
     },
     claimForPublish: async ({ postId, expectedRunAt }) => {
@@ -412,6 +435,7 @@ export const createPostStore = ({
       }
 
       post.status = 'PUBLISHING';
+      post.updatedAt = nextPostUpdatedAt(post.updatedAt);
       return true;
     },
     updateStatus: async ({ postId, status, publishedAt }) => {
@@ -419,6 +443,7 @@ export const createPostStore = ({
 
       if (post) {
         post.status = status;
+        post.updatedAt = nextPostUpdatedAt(post.updatedAt);
 
         if (publishedAt) {
           post.publishedAt = publishedAt;
@@ -442,6 +467,19 @@ export const createPostStore = ({
       }
 
       post.scheduledAt = scheduledAt;
+      post.updatedAt = nextPostUpdatedAt(post.updatedAt);
+      return post;
+    }),
+    updateCaption: (input) => runWithActiveOwner(input.userId, async () => {
+      const post = posts.find((candidate) => candidate.id === input.postId &&
+        candidate.userId === input.userId && candidate.status === 'QUEUED' &&
+        candidate.scheduledAt === input.expectedScheduledAt && candidate.updatedAt === input.expectedUpdatedAt);
+      if (!post || !isPostCaptionEditWindowOpen(post.scheduledAt, input.now())) return undefined;
+      // No await between checking the revision and assigning the complete pair.
+      const settings = input.platformSettings ? structuredClone(input.platformSettings) : undefined;
+      post.caption = input.caption;
+      if (settings) post.platformSettings = settings;
+      post.updatedAt = nextPostUpdatedAt(post.updatedAt);
       return post;
     }),
     publishNow: ({ postId, userId, expectedScheduledAt }) => runWithActiveOwner(userId, async () => {
@@ -460,6 +498,7 @@ export const createPostStore = ({
       }
 
       delete post.scheduledAt;
+      post.updatedAt = nextPostUpdatedAt(post.updatedAt);
       return post;
     }),
     remove: async ({ postId, userId }) => {

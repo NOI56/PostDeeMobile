@@ -20,6 +20,16 @@ Build roadmap for PostDee.
   to the owner's later instruction. See the
   [work record](docs/superpowers/plans/2026-11-03-edit-scheduled-caption.md).
 
+## Premium storefront category (2026-11-03, local candidate)
+
+- Replace the first Luxury / Premium candidate (the classic `luxury-*` set
+  with no artwork) with a new `premium` category: twenty original drawn
+  designs on five premium layouts, beside Simple, 3D and Cartoon.
+- Catalog 5 appends them; the first 140 entries and every saved classic
+  design stay unchanged. Existing purchased-membership access applies.
+- Deliver API before Mobile, then review on a device. See the
+  [premium plan](docs/superpowers/plans/2026-11-03-premium-storefront-templates.md).
+
 ## Simple free, other store themes for members (2026-11-03, local candidate)
 
 - Keep Simple free; require active purchased Starter/Pro/Business membership

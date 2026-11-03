@@ -275,7 +275,7 @@ void main() {
           .id),
   ]) {
     testWidgets(
-        'picker offers minimal, 3D and cartoon for ${appearance.templateId ?? appearance.themeId}',
+        'picker offers minimal, 3D, cartoon and premium for ${appearance.templateId ?? appearance.themeId}',
         (tester) async {
       LinkInBioAppearance? selected;
       await tester.pumpWidget(MaterialApp(
@@ -289,22 +289,25 @@ void main() {
                       onChanged: (value) => selected = value)))));
       await tester.pumpAndSettle();
       final saved = getProfileTemplate(appearance.templateId)?.category;
-      final category =
-          const {'dimensional', 'cartoon'}.contains(saved) ? saved! : 'minimal';
+      final category = const {'dimensional', 'cartoon', 'premium'}.contains(saved)
+          ? saved!
+          : 'minimal';
       expect(
           find.text(switch (category) {
             'dimensional' => '3D · 20 แบบ',
             'cartoon' => 'การ์ตูน · 20 แบบ',
+            'premium' => 'หรูหรา / พรีเมียม · 20 แบบ',
             _ => 'เรียบง่าย · 20 แบบ',
           }),
           findsOneWidget);
-      expect(find.byType(ChoiceChip), findsNWidgets(3));
+      expect(find.byType(ChoiceChip), findsNWidgets(4));
       expect(find.byKey(const ValueKey('link-in-bio-legacy-themes')),
           findsNothing);
       for (final category in profileTemplateCategories.keys) {
         expect(
             find.byKey(ValueKey('link-in-bio-category-$category')),
-            const {'minimal', 'dimensional', 'cartoon'}.contains(category)
+            const {'minimal', 'dimensional', 'cartoon', 'premium'}
+                    .contains(category)
                 ? findsOneWidget
                 : findsNothing);
       }

@@ -17,7 +17,11 @@ const files = ['botanical-frame', 'forest', 'meadow', 'paper', 'letter-frame', '
   'cartoon-doodle-shop', 'cartoon-comic-panels', 'cartoon-tag-buddy', 'cartoon-sticker-sheet', 'cartoon-chalkboard',
   'cartoon-street-front', 'cartoon-chat-bubbles', 'cartoon-signposts', 'cartoon-crayon-sky', 'cartoon-rocket-night',
   'cartoon-puppet-stage', 'cartoon-corkboard', 'cartoon-treasure-map', 'cartoon-party-bunting', 'cartoon-jigsaw',
-  'cartoon-pixel-land', 'cartoon-rainy-day', 'cartoon-hot-air-balloons', 'cartoon-under-the-sea', 'cartoon-tiny-town'];
+  'cartoon-pixel-land', 'cartoon-rainy-day', 'cartoon-hot-air-balloons', 'cartoon-under-the-sea', 'cartoon-tiny-town',
+  'premium-gold-leaf', 'premium-white-marble', 'premium-thai-gold', 'premium-art-deco', 'premium-emerald-facet',
+  'premium-pearl-strand', 'premium-velvet-wine', 'premium-champagne', 'premium-guilloche', 'premium-rose-gold',
+  'premium-midnight-stars', 'premium-black-onyx', 'premium-silk-ribbon', 'premium-crystal', 'premium-damask',
+  'premium-golden-palms', 'premium-spotlight', 'premium-colonnade', 'premium-leather-stitch', 'premium-sapphire-wave'];
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
 describe('bundled profile decoration artwork', () => {
@@ -40,7 +44,7 @@ describe('bundled profile decoration artwork', () => {
     expect(hash(mobile)).toBe(hash(api));
   }, 15000);
 
-  it.each(['unknown.png', 'forest.jpg', 'FOREST.png', 'paper.svg', '..%2Fforest.png', '%2Eenv', 'cartoon-doodle-shop.svg', 'cartoon-unknown.png'])('rejects non-allowlisted asset %s', async (file) => {
+  it.each(['unknown.png', 'forest.jpg', 'FOREST.png', 'paper.svg', '..%2Fforest.png', '%2Eenv', 'cartoon-doodle-shop.svg', 'cartoon-unknown.png', 'premium-gold-leaf.svg', 'premium-unknown.png', 'luxury-gold-seal.png'])('rejects non-allowlisted asset %s', async (file) => {
     const app = express();
     const router = express.Router();
     registerLinkInBioRoutes(router, (_request, response) => { response.status(401).end(); }, createInMemoryLinkInBioStore());

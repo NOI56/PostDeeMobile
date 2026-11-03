@@ -52,6 +52,22 @@ enum; do not down-migrate or delete purchases. Production is unchanged.
 See [delivery evidence](docs/STAGING.md#ux-การโพสต์และแพ็กเกจ-business--3-พฤศจิกายน-2026).
 Dated preparation records below retain their original scope.
 
+## Premium storefront category (2026-11-03, local candidate)
+
+Catalog version 5 adds the `premium` category (twenty designs) on five
+premium-only compositions: `crest` (full-width picture fading into the page,
+avatar on its edge, diamond ornament), `cameo` (avatar in the middle of the
+picture), `portal` (arched window, avatar on the sill), `atelier` (avatar and
+name on the left) and `vitrine` (framed picture, avatar beside the name). Link
+finishes are plate, gilded, notched, hairline, stitched and pearl. Public CSS
+is `linkInBioPremiumStyles.ts`; native widgets are
+`link_in_bio_premium_scenes.dart`; both share one geometry table. Pictures are
+SVG written as code in `scripts/premium-storefront-art/` (original, no text,
+fonts or third-party assets, enforced by `scenes.test.mjs`) and bundled as
+byte-identical PNGs for API and Mobile. The classic `luxury` category stays in
+the catalog for saved pages and is no longer listed. See the
+[premium plan](docs/superpowers/plans/2026-11-03-premium-storefront-templates.md).
+
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 
 Catalog version 4 adds the `cartoon` category (twenty designs) on seven

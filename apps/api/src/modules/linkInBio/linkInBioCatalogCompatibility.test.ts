@@ -41,7 +41,8 @@ describe('expanded profile catalog compatibility', () => {
     const publishSpy = vi.spyOn(store, 'publish');
     expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200)).body.profile).toEqual(published.body.profile);
     expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '4').expect(200)).body.profile).toEqual(published.body.profile);
-    for (const capability of [undefined, '', '1', '5', '3, 2', '2, 1', '03', 'garbage']) {
+    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '5').expect(200)).body.profile).toEqual(published.body.profile);
+    for (const capability of [undefined, '', '1', '6', '3, 2', '2, 1', '03', 'garbage']) {
       const pending = request(app).get('/link-in-bio');
       if (capability !== undefined) pending.set('X-PostDee-Profile-Catalog', capability);
       const legacy = await pending.expect(200);
@@ -89,7 +90,7 @@ describe('expanded profile catalog compatibility', () => {
     expect((await request(app).get(`/p/${page.slug}`).expect(200)).text).toContain(`data-template="${templateId}"`);
   });
 
-  it.each([undefined, '1', '5', 'garbage'])('rejects a stale fallback captured before a newer theme was saved (catalog %s)', async (capability) => {
+  it.each([undefined, '1', '6', 'garbage'])('rejects a stale fallback captured before a newer theme was saved (catalog %s)', async (capability) => {
     const { app, store, validateImages, releaseImages, onPublished } = fixture();
     await publishDimensional(app).expect(200);
     const legacy = await request(app).get('/link-in-bio').expect(200);
@@ -202,7 +203,7 @@ describe('second 3D release compatibility', () => {
     expect(published.body.profile.appearance.templateId).toBe(sceneId);
     const current = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '3').expect(200);
     expect(current.body.profile).toEqual(published.body.profile);
-    for (const capability of [undefined, '1', '2', '5']) {
+    for (const capability of [undefined, '1', '2', '6']) {
       const pending = request(app).get('/link-in-bio');
       if (capability !== undefined) pending.set('X-PostDee-Profile-Catalog', capability);
       const older = await pending.expect(200);
@@ -263,7 +264,8 @@ describe('cartoon release compatibility', () => {
     expect(published.body.profile.appearance.templateId).toBe(cartoonId);
     const current = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '4').expect(200);
     expect(current.body.profile).toEqual(published.body.profile);
-    for (const capability of [undefined, '1', '2', '3', '5', '04']) {
+    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '5').expect(200)).body.profile).toEqual(published.body.profile);
+    for (const capability of [undefined, '1', '2', '3', '6', '04']) {
       const pending = request(app).get('/link-in-bio');
       if (capability !== undefined) pending.set('X-PostDee-Profile-Catalog', capability);
       const older = await pending.expect(200);
@@ -312,5 +314,73 @@ describe('cartoon release compatibility', () => {
     const current = await request(app).delete('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '4').expect(200);
     expect(current.body.profile.appearance.templateId).toBe(cartoonId);
     expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(cartoonId);
+  });
+});
+
+const premiumId = 'premium-thai-gold';
+const publishPremium = (app: ReturnType<typeof express>) => request(app)
+  .post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '5')
+  .send({ ...page, appearance: createDefaultLinkInBioTemplateAppearance(premiumId) });
+
+describe('premium release compatibility', () => {
+  it('shows premium designs only to catalog 5 clients while older apps keep their fallback', async () => {
+    const { app, store } = fixture();
+    const published = await publishPremium(app).expect(200);
+    expect(published.body.profile.appearance.templateId).toBe(premiumId);
+    const current = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '5').expect(200);
+    expect(current.body.profile).toEqual(published.body.profile);
+    for (const capability of [undefined, '1', '2', '3', '4', '6', '05']) {
+      const pending = request(app).get('/link-in-bio');
+      if (capability !== undefined) pending.set('X-PostDee-Profile-Catalog', capability);
+      const older = await pending.expect(200);
+      expect(older.headers.vary).toContain('X-PostDee-Profile-Catalog');
+      expect(older.headers['cache-control']).toBe('no-store');
+      expect(older.body.profile.appearance, String(capability)).toEqual({ ...current.body.profile.appearance, templateId: null });
+    }
+    expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(premiumId);
+    const publicPage = (await request(app).get(`/p/${page.slug}`).expect(200)).text;
+    expect(publicPage).toContain(`data-template="${premiumId}" data-template-category="premium"`);
+    expect(publicPage).toContain(`/profile-decorations/${premiumId}.png`);
+  });
+
+  it('keeps cartoon and 3D designs visible to catalog 5 clients', async () => {
+    const { app } = fixture();
+    await publishCartoon(app).expect(200);
+    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '5').expect(200)).body.profile.appearance.templateId).toBe(cartoonId);
+    await publishScene(app).expect(200);
+    expect((await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '5').expect(200)).body.profile.appearance.templateId).toBe(sceneId);
+  });
+
+  it('keeps the premium design when a catalog 4 app replays its exact fallback, and refuses an edited one', async () => {
+    const { app, store } = fixture();
+    await publishPremium(app).expect(200);
+    const older = await request(app).get('/link-in-bio').set('X-PostDee-Profile-Catalog', '4').expect(200);
+    const replayed = await request(app).post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '4')
+      .send({ ...page, storeName: 'ชื่อจากแอปรุ่นก่อน', appearance: older.body.profile.appearance }).expect(200);
+    expect(replayed.body.profile.appearance.templateId).toBeNull();
+    expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(premiumId);
+    expect((await store.getForUser('owner'))?.storeName).toBe('ชื่อจากแอปรุ่นก่อน');
+    const before = await store.getForUser('owner');
+    const edited = await request(app).post('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '4')
+      .send({ ...page, appearance: { ...older.body.profile.appearance, buttonColor: '#123456' } }).expect(409);
+    expect(edited.body.code).toBe('LINK_IN_BIO_APPEARANCE_CONFLICT');
+    expect(await store.getForUser('owner')).toEqual(before);
+  });
+
+  it('lets a catalog 4 app deliberately switch from a premium design to a cartoon design', async () => {
+    const { app, store } = fixture();
+    await publishPremium(app).expect(200);
+    await publishCartoon(app).expect(200);
+    expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(cartoonId);
+  });
+
+  it('serializes unpublish responses per catalog without changing the stored premium design', async () => {
+    const { app, store } = fixture();
+    await publishPremium(app).expect(200);
+    const older = await request(app).delete('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '4').expect(200);
+    expect(older.body.profile).toMatchObject({ isPublished: false, appearance: { templateId: null } });
+    const current = await request(app).delete('/link-in-bio/publish').set('X-PostDee-Profile-Catalog', '5').expect(200);
+    expect(current.body.profile.appearance.templateId).toBe(premiumId);
+    expect((await store.getForUser('owner'))?.appearance?.templateId).toBe(premiumId);
   });
 });

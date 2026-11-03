@@ -14,6 +14,7 @@ import 'link_in_bio_link_defaults.dart';
 import 'link_in_bio_localizations.dart';
 import 'link_in_bio_motion.dart';
 import 'link_in_bio_platform_logo.dart';
+import 'link_in_bio_premium_scenes.dart';
 import 'link_in_bio_preview_styles.dart';
 
 class BioTemplatePreview extends StatelessWidget {
@@ -36,6 +37,7 @@ class BioTemplatePreview extends StatelessWidget {
   String get _composition => template.layout.composition;
   bool get _is3d => template.category == 'dimensional';
   bool get _cartoon => template.category == 'cartoon';
+  bool get _premium => template.category == 'premium';
   Bio3dScene? get _scene => bio3dScenes[template.id];
   bool get _presetBackground =>
       appearance.background.imageKey == null &&
@@ -47,7 +49,7 @@ class BioTemplatePreview extends StatelessWidget {
   String _name(BuildContext context) => storeName.trim().isEmpty
       ? linkInBioText(context, 'ร้านของคุณ', 'Your store')
       : storeName.trim();
-  Color get _avatarColor => _is3d || _cartoon
+  Color get _avatarColor => _is3d || _cartoon || _premium
       ? bioColor(appearance.surfaceColor)
       : const {'seal', 'tag'}.contains(_composition)
           ? Colors.transparent
@@ -113,8 +115,10 @@ class BioTemplatePreview extends StatelessWidget {
   }
 
   Widget _avatar(double size, {double? height, bool arch = false}) {
-    // Cartoon avatars take their edge from the design's own ring or frame.
-    final plain = _cartoon || const {'seal', 'tag'}.contains(_composition);
+    // Cartoon and premium avatars take their edge from the design's own ring
+    // or frame.
+    final plain =
+        _cartoon || _premium || const {'seal', 'tag'}.contains(_composition);
     final circle = const {'bicolor', 'seal'}.contains(_composition);
     final avatar = Container(
         key: const ValueKey('link-in-bio-composition-avatar'),
@@ -239,6 +243,21 @@ class BioTemplatePreview extends StatelessWidget {
 
   Widget _header(double headingSize, double editorialSize) {
     final cover = appearance.coverKey;
+    if (_premium) {
+      final design = bioPremiumDesigns[template.id]!;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        BioPremiumHeader(
+            template: template,
+            appearance: appearance,
+            avatar: _avatar,
+            copy: (centered, size) =>
+                _copy(centered: centered, headingSize: size),
+            cover: images[cover] == null
+                ? null
+                : _photo(cover!, design.height)),
+        const SizedBox(height: 30),
+      ]);
+    }
     if (_cartoon) {
       final design = bioCartoonDesigns[template.id]!;
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -590,19 +609,32 @@ class BioTemplatePreview extends StatelessWidget {
         constraints: BoxConstraints(
             minHeight: grid
                 ? (_scene != null ? 116 : 112)
-                : _scene != null || _cartoon
+                : _premium
+                    ? bioPremiumLinkMinHeight(template)
+                    : _scene != null || _cartoon
                     ? 72
                     : _is3d
                         ? 76
                         : 64),
         padding: grid
             ? const EdgeInsets.all(14)
+            : _premium
+            ? bioPremiumLinkPadding(template, narrow,
+                custom: link.buttonColor != null)
             : _cartoon
             ? bioCartoonLinkPadding(template, narrow)
             : EdgeInsets.symmetric(
                 horizontal: narrow ? 12 : 16,
                 vertical: _is3d ? (narrow ? 14 : 16) : 12),
-        decoration: _cartoon
+        decoration: _premium
+            ? bioPremiumLinkDecoration(
+                template: template,
+                appearance: appearance,
+                color: color,
+                textColor: textColor,
+                open: transparent,
+                featured: featured)
+            : _cartoon
             ? bioCartoonLinkDecoration(
                 template: template,
                 appearance: appearance,
@@ -729,7 +761,14 @@ class BioTemplatePreview extends StatelessWidget {
                 const SizedBox(width: 8),
                 Icon(Icons.north_east, size: 18, color: textColor)
               ]));
-    Widget decorated = _cartoon
+    Widget decorated = _premium
+        ? bioPremiumLink(
+            template: template,
+            appearance: appearance,
+            link: link,
+            textColor: textColor,
+            child: button)
+        : _cartoon
         ? bioCartoonLink(
             template: template,
             appearance: appearance,
@@ -794,7 +833,8 @@ class BioTemplatePreview extends StatelessWidget {
       currentCategory = link.category.trim();
       groups.last.add((index, link));
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final list =
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       for (final group in groups) ...[
         if (group.first.$2.category.trim().isNotEmpty)
           Padding(
@@ -805,7 +845,9 @@ class BioTemplatePreview extends StatelessWidget {
         LayoutBuilder(
             builder: (_, size) => Wrap(
                     spacing: _scene?.gap ?? 12,
-                    runSpacing: _cartoon
+                    runSpacing: _premium
+                        ? bioPremiumDesigns[template.id]!.gap
+                        : _cartoon
                         ? bioCartoonDesigns[template.id]!.gap
                         : _scene?.gap ??
                             (_is3d ? bio3dGeometries[template.id]!.gap : 12),
@@ -823,6 +865,7 @@ class BioTemplatePreview extends StatelessWidget {
         const SizedBox(height: 12),
       ]
     ]);
+    return _premium ? bioPremiumLinkList(template, appearance, list) : list;
   }
 
   // A tile that would sit alone on the last row of its group takes the whole
@@ -867,6 +910,24 @@ class BioTemplatePreview extends StatelessWidget {
       ]));
 
   Widget _panel(Widget child) {
+    if (_premium) {
+      final frame = bioPremiumFrame(template, appearance);
+      return Builder(
+          builder: (context) => Container(
+              key: ValueKey(
+                  'link-in-bio-template-layout-${template.layout.header}-${template.layout.links}'),
+              decoration: bioPremiumPanelDecoration(template, appearance),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(children: [
+                Padding(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: bioPremiumSide(context)),
+                    child: KeyedSubtree(
+                        key: ValueKey('link-in-bio-composition-$_composition'),
+                        child: child)),
+                if (frame != null) frame,
+              ])));
+    }
     if (_cartoon) {
       final border = bioCartoonPanelBorder(template, appearance);
       final width = border.top.width;
@@ -1083,7 +1144,7 @@ class BioTemplatePreview extends StatelessWidget {
                             painter: BioCompositionPattern(
                                 'window', Colors.white)))),
               Padding(
-                  padding: _is3d || _cartoon
+                  padding: _is3d || _cartoon || _premium
                       ? const EdgeInsets.fromLTRB(12, 16, 12, 16)
                       : const EdgeInsets.fromLTRB(20, 36, 20, 20),
                   child: Align(
@@ -1102,7 +1163,9 @@ class BioTemplatePreview extends StatelessWidget {
                                 SizedBox(
                                     height: _composition == 'torn'
                                         ? 28
-                                        : _is3d || _cartoon
+                                        : _premium
+                                            ? 40
+                                            : _is3d || _cartoon
                                             ? 36
                                             : 48),
                                 Text('PostDee',

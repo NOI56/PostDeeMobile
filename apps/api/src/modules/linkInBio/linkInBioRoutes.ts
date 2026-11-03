@@ -91,7 +91,7 @@ const readProfileCatalog = (request: Request) => {
 };
 // Classic templates shipped in release 1 and the first 3D set in release 2.
 // Later templates carry the release that added them (second 3D set: 3,
-// cartoon: 4).
+// cartoon: 4, premium: 5).
 const profileTemplateRelease = (templateId: string | null | undefined) => {
   const template = getProfileTemplate(templateId);
   return template ? template.since ?? (template.category === 'dimensional' ? 2 : 1) : 1;
@@ -111,7 +111,7 @@ export const registerLinkInBioRoutes = (
   options: LinkInBioRouteOptions = {}
 ) => {
   const decorationFiles = ['botanical-frame.png', 'forest.png', 'meadow.png', 'paper.png', 'letter-frame.png', 'collage-tape.png', 'gold-seal.png', 'tag-cord.png',
-    ...profileTemplates.filter((template) => template.category === 'dimensional' || template.category === 'cartoon').map((template) => `${template.id}.png`)];
+    ...profileTemplates.filter((template) => ['dimensional', 'cartoon', 'premium'].includes(template.category)).map((template) => `${template.id}.png`)];
   router.get('/profile-decorations/:file', (request, response) => {
     const file = request.params.file;
     if (typeof file !== 'string' || !decorationFiles.includes(file)) { response.status(404).end(); return; }

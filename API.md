@@ -48,6 +48,23 @@ actual Dashboard values could not be read. Store setup, native sandbox billing
 acceptance and sales activation remain pending. Production is unchanged.
 See [delivery evidence](docs/STAGING.md#ux-การโพสต์และแพ็กเกจ-business--3-พฤศจิกายน-2026).
 
+## Premium storefront category (2026-11-03, local candidate)
+
+The shared profile-template catalog is version 5 and appends category
+`premium` with twenty `premium-*` templates marked `"since": 5`; the first 140
+entries are byte-identical. `X-PostDee-Profile-Catalog: 5` sees every template.
+Header `4` keeps cartoon, `3` both 3D sets, `2` the first 3D set, and missing,
+malformed or other values (now including `6`) see classic templates only.
+Premium templates are serialized to those clients as `templateId: null` with
+their editable appearance on authenticated GET/POST/DELETE; storage and
+`/p/:slug` keep the real design, and the exact-replay /
+`409 LINK_IN_BIO_APPEARANCE_CONFLICT` rules are unchanged. Published pages
+carry `data-template-category="premium"`; `/profile-decorations/` serves the
+twenty new PNGs from the catalog-derived allowlist. Premium designs need the
+same active purchased Starter/Pro/Business membership as every non-Simple
+category. No route, schema, entitlement or environment change. **Delivery
+order: API before Mobile.** See the [premium plan](docs/superpowers/plans/2026-11-03-premium-storefront-templates.md).
+
 ## Cartoon storefront category (2026-11-02, second set 2026-11-03, local candidate)
 
 The shared profile-template catalog is version 4 and appends category

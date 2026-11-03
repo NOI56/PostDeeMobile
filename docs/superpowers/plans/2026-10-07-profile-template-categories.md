@@ -1,5 +1,75 @@
 # Profile template categories — 2026-10-07
 
+## Premium gallery category — 2026-11-03 (local candidate)
+
+> **Superseded the same day.** The owner judged this classic `luxury` set not
+> beautiful. It is replaced by a new `premium` category with twenty drawn
+> designs (catalog 5); the picker no longer lists the classic set. See the
+> [premium plan](2026-11-03-premium-storefront-templates.md). The record below
+> stays as history of the first candidate and its APK 12098 emulator install.
+
+The owner requested twenty Premium designs. This follow-up starts from freshly
+fetched `origin/main` at `9c05fa8ea3e36f149da97a2be69148d3066dfca8` on
+`codex/store-premium-themes`, preserving existing unrelated local work.
+
+Expose the catalog's existing `luxury` category, **หรูหรา / พรีเมียม (Luxury /
+Premium)**, with all twenty stable `luxury-*` IDs. The visible picker becomes
+Minimal (20), 3D (20), Cartoon (20) and Luxury / Premium (20); Cute, Nature and
+Creative remain outside the picker. Catalog version 4 and its 140 entries,
+appearance serialization and native/public compositions are unchanged.
+
+The owner previews their real store before explicitly applying a template.
+Opening or cancelling a preview does not alter a draft; applying retains owned
+media, description and featured-link content. Existing purchased membership
+continues to govern every non-Minimal category, including Luxury / Premium;
+the saved-theme and temporary Simple fallback behavior is unchanged.
+
+This is a Mobile picker visibility change, with no API contract, Prisma
+migration, feature flag, environment or entitlement change. It needs no new
+API rollout. Verification for this candidate must cover category count,
+Thai/English selection, saved Premium reopening, preview/cancel/apply,
+membership gating, narrow layouts and preservation of the other categories.
+Older dated sections below remain historical scope and verification records.
+
+### Premium candidate verification — 2026-11-03
+
+Changed files: Mobile `link_in_bio_theme_picker.dart`; tests
+`link_in_bio_premium_picker_test.dart`, `link_in_bio_template_picker_test.dart`,
+`link_in_bio_appearance_editor_simpler_test.dart` and
+`link_in_bio_ui_motion_primitives_test.dart`; `README.md`, `ROADMAP.md` and this
+scope/verification record.
+
+- Regression-first check failed before the picker patch because the Premium
+  category control did not exist. After the patch, the four affected Mobile
+  test files passed 193 tests, including all 140 template content checks.
+- `flutter analyze --no-pub` passed with no issues using workspace Flutter
+  3.44.1. Full `flutter test --no-pub --concurrency=2 --reporter expanded`
+  passed 5,051 tests with ten optional screenshot-output fixtures skipped
+  because their output-directory variables were not set (14m 07s). No test
+  failures remain. The Premium screen was captured separately on Android.
+- Catalog generator `--check` passed with seven categories / 140 templates.
+  Eight API suites passed 396 tests: catalog, template rendering, theme access,
+  customization routes, catalog compatibility, decoration assets, appearance
+  and entitlements, using pinned Node 22.23.3. No API source changed.
+- The Staging helper built branch `codex/store-premium-themes` from baseline
+  `9c05fa8e` plus this picker patch as Android version code 12098. API is
+  `https://postdee-api-staging.onrender.com`, Firebase Auth is enabled,
+  local mock auth is disabled, Firebase project is
+  `project-798caf7e-85b8-45e3-af7`, and RevenueCat uses the validated Test Store
+  overlay. No schema, database state or entitlement migration is required.
+- Installed on `emulator-5554`, package `com.postdee.postdee_mobile.staging`.
+  Guarded update kept UID 10197 and internal storage; version advanced from
+  12097 to 12098. Built and installed APK SHA-256 both equal
+  `f4a83c865bdf61d631255b433dbc3683043f8273b490fb205561172260439b11`.
+- Native smoke check confirmed the signed-in Basic account and existing store
+  draft survived, the Premium heading shows twenty choices, Gold seal previews
+  the actual store content, and apply remains disabled for Basic. Closing the
+  preview retained the saved Clay mint theme. No draft apply or publication
+  was performed. Screenshots: `artifacts/premium-final.png` and
+  `artifacts/premium-preview.png` (local evidence, not checked-in assets).
+- Unrelated dirty Windows generated files and scratch files are preserved.
+  No merge, push, API deploy or Production release was performed.
+
 ## Separate 3D category — 2026-11-01 (local candidate)
 
 The owner approved implementing ten 3D designs as a separate category, then

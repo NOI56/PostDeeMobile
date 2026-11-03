@@ -132,8 +132,8 @@ void main() {
       'starts with a bounded preview and themes while details are closed',
       (tester) async {
     await _openEditor(tester);
-    // Minimal, 3D and Cartoon.
-    expect(find.byType(ChoiceChip), findsNWidgets(3));
+    // Minimal, 3D, Cartoon and Luxury / Premium.
+    expect(find.byType(ChoiceChip), findsNWidgets(4));
     expect(find.text('เรียบง่าย · 20 แบบ'), findsOneWidget);
     expect(find.byKey(const ValueKey('link-in-bio-legacy-themes')), findsNothing);
     expect(find.byKey(const ValueKey('link-in-bio-template-grid')),

@@ -25,9 +25,19 @@
   แต่แสดงแบบเรียบง่ายชั่วคราว (`data-theme="minimal"` ไม่มี `data-template`)
   โดยชื่อร้าน `Cartoon Test Shop` และลิงก์ยังอยู่ แสดงว่าเจ้าของหน้านี้ไม่มีแพ็กเกจที่ซื้อจริง
   บน Staging; ดีไซน์ที่บันทึกไว้ไม่ถูกเขียนทับ แต่ยังไม่ได้พิสูจน์การกลับมาหลังต่ออายุบน Staging
-- ไม่ได้ทำ: ไม่สร้างหรือติดตั้ง APK ใหม่ (เครื่องยังเป็น 12096 ที่ไม่มีป้ายล็อก
-  การเลือกธีมพรีเมียมโดยไม่มีสมาชิกจะถูก API ปฏิเสธด้วย
-  `LINK_IN_BIO_PREMIUM_THEME_REQUIRED`), ไม่ทดสอบหมดอายุ/ต่ออายุกับบัญชีทดสอบ,
+- เจ้าของสั่งติดตั้งแอปใหม่ จึงสร้าง APK Staging **12097** จาก main `91942657`
+  ด้วย `postdee-staging.ps1 -Command build-apk --build-number=12097` (Gradle 217.6
+  วินาที) เพราะ launcher จะเลือก worktree `main` ของ Codex ที่ค้างอยู่ `cd2d1698`;
+  package `com.postdee.postdee_mobile.staging` มี x86_64/arm64/armv7, RevenueCat
+  Test Store ผ่าน helper, SHA-256
+  `93f5a6ed91acc8e973684c0f8228ccecaa95af16321efaaaccaa84bdc841b28d`
+- ใช้ guarded updater บน Pixel_8 / `emulator-5554`: 12096 (`37f5c7f6…`) → 12097 โดย
+  UID 10197 และ internal storage เดิม ไม่ uninstall/clear data; installed SHA-256 ตรง
+  APK และไฟล์ข้อมูลแอป 78/78 ยังอยู่ แอปเปิด native พร้อม STAGING ล็อกอินอยู่ ร่างโพสต์
+  เดิมยังอยู่ หน้าตกแต่งแสดงกุญแจที่หมวด 3D/การ์ตูน และข้อความ "เก็บธีม ดินปั้นมิ้นต์
+  ไว้แล้ว · ขณะนี้ใช้ธีมเรียบง่ายชั่วคราว"; ไม่พบ fatal/Flutter error ใน logcat และไม่ได้
+  กดบันทึกหรือเผยแพร่ หลักฐานอยู่ใน `artifacts/staging-theme-membership-20261103/`
+- ไม่ได้ทำ: ไม่ทดสอบหมดอายุ/ต่ออายุกับบัญชีทดสอบ, ไม่ทดลองเลือกธีมพรีเมียมแล้วบันทึก,
   ไม่ซื้อจริง และ Production ยังคง suspended ไม่ deploy/resume
 
 ## UX การโพสต์และแพ็กเกจ Business — 3 พฤศจิกายน 2026

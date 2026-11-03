@@ -25,6 +25,9 @@ outside `QUEUED`; `409 POST_CAPTION_EDIT_WINDOW_CLOSED` at or below 60 seconds;
 `409 POST_CAPTION_CONFLICT` for a changed version/schedule or a lost atomic
 write race. Invalid captions use the existing `400` validation codes. Mobile
 handles an older API without this route as unavailable and offers recovery.
+Malformed fields use `INVALID_CAPTION`, `INVALID_PLATFORM_CAPTIONS`,
+`INVALID_YOUTUBE_TITLE` or `INVALID_EXPECTED_UPDATED_AT`; existing channel
+validation retains `PLATFORM_CAPTION_INVALID` and `TIKTOK_CAPTION_TOO_LONG`.
 
 Memory and Prisma stores compare owner, status, schedule and the loaded update
 version at the write boundary. Both memory polling and BullMQ publishing read

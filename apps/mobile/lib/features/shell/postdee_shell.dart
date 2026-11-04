@@ -38,6 +38,8 @@ import '../legal/legal_document_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import '../templates/templates_screen.dart';
 import '../uploader/uploader_screen.dart';
+import '../uploader/clip_group_draft_list.dart';
+import '../uploader/clip_group_draft_store.dart';
 import '../uploader/platform_publish_defaults_store.dart';
 import '../uploader/publish_draft.dart';
 import '../uploader/publish_draft_store.dart';
@@ -170,7 +172,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
     _pushMessagingGateway = widget.pushMessagingGateway ??
         createPushMessagingGatewayFromConfig(
           firebaseBootstrapResult: widget.firebaseBootstrapResult,
-          registerBoundToken: (token, binding) => PostDeeApiClient(sessionBinding: binding).registerDeviceToken(token),
+          registerBoundToken: (token, binding) =>
+              PostDeeApiClient(sessionBinding: binding)
+                  .registerDeviceToken(token),
           unregisterToken: (token, session) =>
               PostDeeApiClient(authTokenProvider: () async => session.idToken)
                   .unregisterDeviceToken(token),
@@ -178,7 +182,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
             final binding = PostDeeAuthSessionStore.instance.captureSession();
             final owner = _authController.session.stableUserId;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && binding.isCurrent && owner == _authController.session.stableUserId) {
+              if (mounted &&
+                  binding.isCurrent &&
+                  owner == _authController.session.stableUserId) {
                 unawaited(_openNotificationPost(postId));
               }
             });
@@ -214,7 +220,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
           userName: _authController.session.displayName,
         ),
         LinkInBioScreen(
-          key: ValueKey((_authController.session.stableUserId, _linkSessionGeneration)),
+          key: ValueKey(
+              (_authController.session.stableUserId, _linkSessionGeneration)),
           onBack: () => _selectTab(0),
           embeddedInTab: true,
           isActive: _selectedIndex == 1,
@@ -251,7 +258,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
           onRefreshEmailVerification: _authController.supportsEmailRecovery
               ? _authController.refreshEmailVerification
               : null,
-          runNativePhoneAuthOperation: _authController.runBoundNativeAuthOperation,
+          runNativePhoneAuthOperation:
+              _authController.runBoundNativeAuthOperation,
         ),
       ];
 
@@ -370,7 +378,13 @@ class _PostDeeShellState extends State<PostDeeShell> {
       return const [];
     }
     if (store == null) throw StateError('Draft store is unavailable.');
-    final drafts = await store.listDrafts();
+    var drafts = await store.listDrafts();
+    if (!mounted || owner != _authController.session.stableUserId) {
+      return const [];
+    }
+    if (store is ClipGroupDraftStore) {
+      drafts = projectClipGroupDrafts(drafts, await store.listClipGroups());
+    }
     if (!mounted || owner != _authController.session.stableUserId) {
       return const [];
     }
@@ -480,7 +494,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
               createPost: widget.createPost,
               checkPublishingReadiness: widget.checkPublishingReadiness,
               loadSocialConnections: widget.loadSocialConnections,
-              loadSocialPublishingReadiness: widget.loadSocialPublishingReadiness,
+              loadSocialPublishingReadiness:
+                  widget.loadSocialPublishingReadiness,
               probePublishMedia: widget.probePublishMedia,
               onScheduledPostCreated: (post) {
                 if (_composerBelongsToCurrentOwner(route)) {
@@ -576,11 +591,12 @@ class _PostDeeShellState extends State<PostDeeShell> {
 
     String deletionText(String thai, String english) =>
         (Localizations.of<PostDeeLocalizations>(context, PostDeeLocalizations)
-                    ?.locale.languageCode ??
-                'th') ==
-            'th'
-        ? thai
-        : english;
+                        ?.locale
+                        .languageCode ??
+                    'th') ==
+                'th'
+            ? thai
+            : english;
 
     setState(() => _isDeletingAccount = true);
     // Permanently deletes the account via DELETE /account, then signs out so the
@@ -611,8 +627,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
       final identityAlreadyDeleted = await checkAccountDeletionReady();
       deletionSession.ensureCurrent();
       if (!identityAlreadyDeleted) {
-        await _authController.runBoundNativeAuthOperation(sessionBinding: deletionSession,
-          operation: _accountAccessRevoker.revokeBeforeAccountDeletion);
+        await _authController.runBoundNativeAuthOperation(
+            sessionBinding: deletionSession,
+            operation: _accountAccessRevoker.revokeBeforeAccountDeletion);
       }
       deletionSession.ensureCurrent();
       await deleteAccount();
@@ -659,7 +676,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
       navigator.popUntil((route) => route.isFirst);
       AuthSessionBinding? signedOutSession;
       try {
-        final signOut = _authController.signOut(sessionBinding: deletionSession);
+        final signOut =
+            _authController.signOut(sessionBinding: deletionSession);
         signedOutSession = PostDeeAuthSessionStore.instance.captureSession();
         await signOut;
       } catch (_) {
@@ -682,8 +700,8 @@ class _PostDeeShellState extends State<PostDeeShell> {
                 'ลบบัญชีแล้ว แต่ลบข้อมูลในเครื่องไม่ครบ กรุณาล้างข้อมูลแอป',
                 'Account deleted, but some data remains on this device. Please clear app data.',
               )
-            : deletionText('ลบบัญชีและออกจากระบบแล้ว',
-                'Account deleted and signed out'),
+            : deletionText(
+                'ลบบัญชีและออกจากระบบแล้ว', 'Account deleted and signed out'),
       );
     } on AuthSessionChangedException {
       // A late deletion result must not sign out or navigate a later account.
@@ -739,8 +757,9 @@ class _PostDeeShellState extends State<PostDeeShell> {
     } catch (_) {
       if (!deletionSession.isCurrent || !mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text(deletionText('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง',
-            'Could not delete your account. Please try again.'))),
+        SnackBar(
+            content: Text(deletionText('ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง',
+                'Could not delete your account. Please try again.'))),
       );
     } finally {
       if (mounted) {
@@ -1205,8 +1224,8 @@ class _ReferenceNavButtonState extends State<_ReferenceNavButton>
                     key: ValueKey('postdee-nav-icon-halo-${widget.slot}'),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppTheme.navActive
-                          .withValues(alpha: .12 * progress),
+                      color:
+                          AppTheme.navActive.withValues(alpha: .12 * progress),
                     ),
                   ),
                 ),

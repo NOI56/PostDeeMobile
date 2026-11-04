@@ -70,6 +70,8 @@ class PublishDraft {
     this.cover,
     this.mediaContentFingerprint,
     this.uploadedMedia,
+    this.clipGroupId,
+    this.isClipGroupSource = false,
   });
 
   final int version;
@@ -94,6 +96,8 @@ class PublishDraft {
   final PublishDraftCover? cover;
   final String? mediaContentFingerprint;
   final PublishDraftUploadedMedia? uploadedMedia;
+  final String? clipGroupId;
+  final bool isClipGroupSource;
 }
 
 /// Persisted before sending the post request, including when its response is lost.
@@ -146,6 +150,8 @@ class PublishDraftSaveRequest {
     this.coverSourceImageFile,
     this.coverSourceImageName,
     this.uploadedMedia,
+    this.clipGroupId,
+    this.isClipGroupSource = false,
   });
 
   final String id;
@@ -171,4 +177,6 @@ class PublishDraftSaveRequest {
   final File? coverSourceImageFile;
   final String? coverSourceImageName;
   final PublishDraftUploadedMedia? uploadedMedia;
+  final String? clipGroupId;
+  final bool isClipGroupSource;
 }

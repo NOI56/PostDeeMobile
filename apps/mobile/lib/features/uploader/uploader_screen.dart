@@ -31,6 +31,12 @@ import '../shared/postdee_time_picker.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
+import 'clip_group_draft.dart';
+import 'clip_group_draft_store.dart';
+import 'clip_group_draft_edit.dart';
+import 'clip_group_draft_list.dart';
+import 'clip_group_review_screen.dart';
+import 'clip_group_submission.dart';
 import 'clip_segmenter.dart';
 import 'clip_split_draft_service.dart';
 import 'clip_split_plan.dart';
@@ -66,6 +72,8 @@ import 'video_duration_guide.dart';
 import 'watermark_video_processor.dart';
 
 export '../shared/post_schedule_policy.dart';
+
+part 'uploader_clip_group.dart';
 
 typedef UploaderTemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef UploaderSubscriptionLoader = Future<SubscriptionStatusResult>
@@ -221,6 +229,9 @@ class UploaderScreen extends StatefulWidget {
     this.coverImageProcessor,
     this.draftStore,
     this.initialDraftId,
+    this.clipGroupEditor = false,
+    this.clipGroupEditorStep = 1,
+    this.beforeClipGroupMemberSave,
     this.initialScheduleDate,
     this.now = DateTime.now,
     this.extractFrames,
@@ -275,6 +286,10 @@ class UploaderScreen extends StatefulWidget {
   // Resume a persisted draft by reloading it from the current owner's store.
   // An explicitly handed-over clip takes precedence over this request.
   final String? initialDraftId;
+  final bool clipGroupEditor;
+  final int clipGroupEditorStep;
+  final Future<void> Function(String draftId, String caption)?
+      beforeClipGroupMemberSave;
 
   // A local day chosen in Calendar. It remains a suggestion until the seller
   // enables scheduling and the existing entitlement check succeeds.
@@ -420,6 +435,15 @@ class _UploaderScreenState extends State<UploaderScreen>
   DateTime? _activeDraftCreatedAt;
   bool? _activeDraftWatermarkEnabled;
   PublishDraftUploadedMedia? _activeDraftUploadedMedia;
+  String? _activeClipGroupId;
+  bool _activeIsClipGroupSource = false;
+  bool _isOpeningClipGroup = false;
+  int _clipGroupRouteGeneration = 0;
+  Future<void> Function(QueuedPostResult)? _clipGroupAcceptedCheckpoint;
+
+  void _updateClipGroupState(VoidCallback update) {
+    if (mounted) setState(update);
+  }
   String? _resolvedDraftOwnerUserId;
   Future<PublishDraftStore?>? _draftStoreFuture;
   BuildContext? _draftSheetContext;
@@ -1197,6 +1221,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       );
 
   Future<void> _goToStep(int step) async {
+    if (widget.clipGroupEditor && step == 0) step = 1;
     if (_formBusy) return;
     if (step == 3 && !await _ensurePlatformDefaultsForReview()) {
       _revealFormError();
@@ -1419,7 +1444,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _openClipSplitPlan() async {
-    if (_formBusy ||
+    if (widget.clipGroupEditor ||
+        _formBusy ||
         _isGeneratingCaption ||
         _activeDraftUploadedMedia != null ||
         _requiresNewSubmissionAttempt) {
@@ -1545,6 +1571,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           fileName: original.videoName,
           store: store,
           ownerUserId: owner,
+          sourceDraftId: original.id,
           caption: _captionController.text,
           aiGuidance: _aiGuidanceController.text,
           captionLanguage: _captionLanguage,
@@ -1571,20 +1598,20 @@ class _UploaderScreenState extends State<UploaderScreen>
       if (progressRoute.isActive) navigator.removeRoute(progressRoute);
       progressRoute = null;
       final drafts = {
-        for (final draft in [..._drafts, ...batch.drafts]) draft.id: draft,
+        for (final draft in [
+          ..._drafts,
+          if (batch.sourceDraft != null) batch.sourceDraft!,
+          ...batch.drafts,
+        ]) draft.id: draft,
       }.values.toList()
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       setState(() => _drafts = drafts);
-      final first = batch.drafts.first;
-      await _restoreDraft(first);
-      if (!mounted || !session.isCurrent) return;
-      setState(() {
-        _setVideoDuration(batch.metadataByDraftId[first.id]?.durationSeconds);
-        _currentStep = 1;
-        _successMessage =
-            'เตรียมแล้ว ${batch.drafts.length} ร่าง · ตรวจแคปชั่นทีละตอน เปิดตอนอื่นได้จากฉบับร่าง';
-      });
-      if (_formScrollController.hasClients) _formScrollController.jumpTo(0);
+      if (batch.group == null) {
+        throw const PublishDraftValidationException(
+            'บันทึกชุดคลิปไม่สำเร็จ กรุณาเปิดฉบับร่างเพื่อตรวจรายการ');
+      }
+      setState(() => _isPlanningClipSplit = false);
+      await _openSavedClipGroup(batch.group!.id);
     } on ClipSplitDraftException catch (error) {
       if (!mounted || !session.isCurrent) return;
       setState(() {
@@ -2080,6 +2107,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     }
     _invalidateAiCaption();
     _clipSplitGeneration++;
+    _clipGroupRouteGeneration++;
+    _isOpeningClipGroup = false;
     _isPlanningClipSplit = false;
     _draftLoadGeneration += 1;
     _connectionLoadGeneration += 1;
@@ -2098,6 +2127,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       _draftStoreAvailable = false;
       _isLoadingDrafts = true;
       _activeDraftId = null;
+      _activeClipGroupId = null;
+      _activeIsClipGroupSource = false;
       _activeDraftCreatedAt = null;
       _activeDraftWatermarkEnabled = null;
       _activeDraftUploadedMedia = null;
@@ -2189,6 +2220,14 @@ class _UploaderScreenState extends State<UploaderScreen>
             });
           } else {
             await _restoreDraft(draft);
+            if (widget.clipGroupEditor) {
+              setState(() =>
+                  _currentStep = widget.clipGroupEditorStep.clamp(1, 2));
+            } else if (draft.clipGroupId != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) unawaited(_openSavedClipGroup(draft.clipGroupId!));
+              });
+            }
           }
         } catch (_) {
           if (!mounted || generation != _draftLoadGeneration) return;
@@ -3765,6 +3804,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _pickVideoFile() async {
+    if (widget.clipGroupEditor) return;
     final picker = widget.pickVideo ?? GalleryVideoPicker().pickVideo;
 
     try {
@@ -3929,8 +3969,12 @@ class _UploaderScreenState extends State<UploaderScreen>
     final previousDraftId = _activeDraftId;
     final previousCreatedAt = _activeDraftCreatedAt;
     final previousUploadedMedia = _activeDraftUploadedMedia;
+    final previousClipGroupId = _activeClipGroupId;
+    final previousIsClipGroupSource = _activeIsClipGroupSource;
     setState(() {
       _activeDraftId = null;
+      _activeClipGroupId = null;
+      _activeIsClipGroupSource = false;
       _activeDraftCreatedAt = null;
       _activeDraftUploadedMedia = null;
     });
@@ -3939,6 +3983,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (saved == null) {
       setState(() {
         _activeDraftId = previousDraftId;
+        _activeClipGroupId = previousClipGroupId;
+        _activeIsClipGroupSource = previousIsClipGroupSource;
         _activeDraftCreatedAt = previousCreatedAt;
         _activeDraftUploadedMedia = previousUploadedMedia;
       });
@@ -4041,6 +4087,15 @@ class _UploaderScreenState extends State<UploaderScreen>
     final coverLease = cover?.retainTemporaryFiles();
 
     try {
+      if (widget.beforeClipGroupMemberSave != null) {
+        await widget.beforeClipGroupMemberSave!(
+            draftId, _captionController.text);
+        if (!_draftOperationStillOwned(
+            ownerUserId: ownerUserIdAtStart,
+            generation: draftGenerationAtStart)) {
+          return null;
+        }
+      }
       final watermarkEnabled = await _watermarkEnabledForCurrentSelection();
       final desiredPlatforms = {
         ..._selectedPlatforms,
@@ -4075,6 +4130,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           coverSourceImageFile: cover?.sourceImageFile,
           coverSourceImageName: cover?.sourceImageName,
           uploadedMedia: _activeDraftUploadedMedia,
+          clipGroupId: _activeClipGroupId,
+          isClipGroupSource: _activeIsClipGroupSource,
         ),
       );
       if (!_draftOperationStillOwned(
@@ -4097,6 +4154,8 @@ class _UploaderScreenState extends State<UploaderScreen>
         _activeDraftCreatedAt = saved.createdAt;
         _activeDraftWatermarkEnabled = saved.watermarkEnabled;
         _activeDraftUploadedMedia = saved.uploadedMedia;
+        _activeClipGroupId = saved.clipGroupId;
+        _activeIsClipGroupSource = saved.isClipGroupSource;
         _platformSettings = saved.platformSettings;
         _selectedVideoName = saved.videoName;
         _localFilePathController.text = saved.videoPath;
@@ -4198,6 +4257,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       _blockedSubmissionDraftIds.remove(activeDraftId);
     }
     _activeDraftId = null;
+    _activeClipGroupId = null;
+    _activeIsClipGroupSource = false;
     _activeDraftCreatedAt = null;
     _activeDraftWatermarkEnabled = null;
     _activeDraftUploadedMedia = null;
@@ -4255,6 +4316,8 @@ class _UploaderScreenState extends State<UploaderScreen>
 
     setState(() {
       _activeDraftId = draft.id;
+      _activeClipGroupId = draft.clipGroupId;
+      _activeIsClipGroupSource = draft.isClipGroupSource;
       _platformValidationTarget = null;
       _recoveredPost = null;
       _platformSettingsFromRestoredDraft = true;
@@ -4528,6 +4591,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   /// no clip is selected yet, skip straight to [_createPost] so its validation
   /// message shows instead of reviewing an empty post.
   Future<void> _reviewThenPost() async {
+    if (widget.clipGroupEditor) {
+      await _saveClipGroupMemberAndClose();
+      return;
+    }
     if (_isPreparingReview ||
         _isSubmitting ||
         _isSavingDraft ||
@@ -4692,6 +4759,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   Future<QueuedPostResult?> _createPost([
     PublishProgressReporter? reportProgress,
   ]) async {
+    if (widget.clipGroupEditor) return null;
     if (_isPreparingSubmission ||
         _isSubmitting ||
         _isGeneratingCaption ||
@@ -5403,6 +5471,11 @@ class _UploaderScreenState extends State<UploaderScreen>
         return null;
       }
       report(PublishFlowStage.finalizing, 0.96);
+      final groupCheckpoint = _clipGroupAcceptedCheckpoint;
+      if (groupCheckpoint != null) {
+        await groupCheckpoint(post);
+        ensureSubmissionStillOwned();
+      }
       _blockedSubmissionDraftIds.remove(submittedDraftId);
 
       var draftCleanupWarning = '';
@@ -5695,6 +5768,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _setPlatformSelected(SocialPlatform platform, bool isSelected) {
+    if (widget.clipGroupEditor) return;
     if (isSelected && _durationProblem(platform) != null) return;
     setState(() {
       _clearTikTokFreshness();
@@ -5957,6 +6031,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _selectAllConnectedPlatforms() {
+    if (widget.clipGroupEditor) return;
     final compatible = _connectedPlatforms
         .where((platform) => _durationProblem(platform) == null)
         .toList();
@@ -5967,6 +6042,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _clearSelectedPlatforms() {
+    if (widget.clipGroupEditor) return;
     setState(() {
       _clearTikTokFreshness();
       _selectedPlatforms.clear();
@@ -6425,7 +6501,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       canPop: _allowExit,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || _formBusy) return;
-        if (_currentStep > 0) {
+        if (widget.clipGroupEditor && _currentStep <= 1) {
+          unawaited(_requestExit());
+        } else if (_currentStep > 0) {
           _goToStep(_currentStep - 1);
         } else {
           unawaited(_requestExit());
@@ -6435,7 +6513,9 @@ class _UploaderScreenState extends State<UploaderScreen>
     );
   }
 
-  Widget _buildToolbar(BuildContext context) => Padding(
+  Widget _buildToolbar(BuildContext context) => widget.clipGroupEditor
+      ? _buildClipGroupEditorToolbar(context)
+      : Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -6459,7 +6539,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                         ? null
                         : _openDrafts,
                 icon: const Icon(Icons.folder_open_outlined, size: 17),
-                label: UploaderText('ฉบับร่าง (${_drafts.length})')),
+                label: UploaderText(
+                    'ฉบับร่าง (${clipGroupDraftList(_drafts).length})')),
             OutlinedButton.icon(
                 key: const ValueKey('uploader-save-draft-button'),
                 style: OutlinedButton.styleFrom(
@@ -6896,6 +6977,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       );
 
   Widget _buildStickyActionBar(BuildContext context) {
+    if (widget.clipGroupEditor) {
+      return _buildClipGroupEditorActionBar(context);
+    }
     final canConfirm = _destinationsReady && _postTextValidationError() == null;
     final backAction = _press(
         OutlinedButton(

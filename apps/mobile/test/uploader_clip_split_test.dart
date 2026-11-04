@@ -165,7 +165,7 @@ void main() {
   });
 
   testWidgets(
-      'confirmed plan creates independent local drafts and opens captions',
+      'confirmed plan keeps independent requests together in one review group',
       (tester) async {
     final fixture = _Fixture();
     addTearDown(fixture.dispose);
@@ -178,12 +178,9 @@ void main() {
     await _tap(tester, 'clip-split-confirm');
     expect(fixture.segmentCalls, 1);
     expect(fixture.lastRequest!.ranges, hasLength(5));
-    // The original form is preserved first, then six independent part drafts.
-    expect(fixture.store.savedRequests, hasLength(7));
-    expect(
-        fixture.store.savedRequests
-            .fold<int>(0, (sum, draft) => sum + draft.platformApiValues.length),
-        7);
+    // Source and all six independent media drafts stay on the device, while
+    // the seller sees one group rather than opening the first child alone.
+    expect(fixture.store.drafts, hasLength(7));
     expect(
         fixture.store.drafts.values
             .skip(1)
@@ -196,7 +193,12 @@ void main() {
             d.scheduledAt == null &&
             d.coverDesign == null),
         isTrue);
-    expect(_key('uploader-step-caption'), findsOneWidget);
+    expect(_key('clip-group-review'), findsOneWidget);
+    expect(fixture.store.drafts.values.every((d) => d.clipGroupId != null),
+        isTrue);
+    expect(
+        fixture.store.drafts.values.where((d) => d.isClipGroupSource),
+        hasLength(1));
     expect(File(fixture.initialVideo!.path).readAsBytesSync(), source);
     expect(fixture.cleanups, 1);
     expect(fixture.apiWrites, 0);

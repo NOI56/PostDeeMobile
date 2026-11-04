@@ -11,6 +11,8 @@ import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/postdee_press_feedback.dart';
 import '../shared/postdee_skeleton.dart';
+import '../uploader/clip_group_draft_list.dart';
+import '../uploader/clip_group_draft_store.dart';
 import '../uploader/publish_draft.dart';
 import '../uploader/publish_draft_store_factory.dart';
 import 'home_draft_thumbnail.dart';
@@ -221,17 +223,22 @@ class HomeActivitySectionState extends State<HomeActivitySection>
         if (store == null) {
           throw StateError('Draft store is unavailable.');
         }
-        drafts = await store.listDrafts();
+        final localDrafts = await store.listDrafts();
+        if (!_stillOwned(owner, ownerGeneration) ||
+            generation != _draftGeneration) {
+          return false;
+        }
+        drafts = store is ClipGroupDraftStore
+            ? projectClipGroupDrafts(localDrafts, await store.listClipGroups())
+            : localDrafts;
       }
       if (!_stillOwned(owner, ownerGeneration) ||
           generation != _draftGeneration) {
         return false;
       }
-      final ownedDrafts = drafts
-          .where((draft) => draft.ownerUserId == owner)
-          .toList()
-        ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
-      final latest = ownedDrafts.isEmpty ? null : ownedDrafts.first;
+      final entries = clipGroupDraftList(
+          drafts.where((draft) => draft.ownerUserId == owner));
+      final latest = entries.firstOrNull?.primaryDraft;
       final coverPath = await _readableCoverPath(latest);
       if (!_stillOwned(owner, ownerGeneration) ||
           generation != _draftGeneration) {
@@ -483,9 +490,12 @@ class HomeActivitySectionState extends State<HomeActivitySection>
           ]));
     }
     final draft = _latestDraft;
+    final isGroup = draft?.clipGroupId != null;
     final firstPost = widget.hasPosts == false;
     final title = draft != null
-        ? _text('ทำโพสต์ต่อ', 'Continue your post')
+        ? isGroup
+            ? _text('ทำชุดคลิปต่อ', 'Continue your clip group')
+            : _text('ทำโพสต์ต่อ', 'Continue your post')
         : firstPost
             ? _text('เริ่มโพสต์แรกของคุณ', 'Create your first post')
             : _text('สร้างโพสต์ใหม่', 'Create a new post');
@@ -586,7 +596,13 @@ class HomeActivitySectionState extends State<HomeActivitySection>
             runSpacing: 7,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text(_text('ร่างที่บันทึกไว้', 'Saved draft on this device'),
+              Text(
+                  draft.clipGroupId != null
+                      ? _text('ชุดคลิปที่บันทึกไว้', 'Saved clip group')
+                      : _text('ร่างที่บันทึกไว้', 'Saved draft on this device'),
+                  key: draft.clipGroupId != null
+                      ? const ValueKey('home-saved-clip-group')
+                      : null,
                   style:
                       TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
               DecoratedBox(
@@ -620,7 +636,9 @@ class HomeActivitySectionState extends State<HomeActivitySection>
                     ? null
                     : () => unawaited(_openComposer(draft: draft)),
                 style: _primaryButtonStyle,
-                child: Text(_text('ทำต่อ', 'Continue')),
+                child: Text(draft.clipGroupId != null
+                    ? _text('ตรวจทั้งชุด', 'Review group')
+                    : _text('ทำต่อ', 'Continue')),
               ),
             );
             final newButton = PostDeePressFeedback(
@@ -663,6 +681,7 @@ class HomeActivitySectionState extends State<HomeActivitySection>
       );
 
   String _nextDraftStep(PublishDraft draft) {
+    if (draft.clipGroupId != null) return _text('ตรวจทั้งชุด', 'Review group');
     // Drafts persist fields, not a UI-step index. This is the next required
     // action inferred from those saved fields, not where the user last stopped.
     if (draft.caption.trim().isEmpty || draft.captionNeedsReview) {

@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
 import 'package:postdee_mobile/features/uploader/clip_segmenter.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_draft.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_draft_store.dart';
+import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
 import 'package:postdee_mobile/features/uploader/clip_split_draft_service.dart';
 import 'package:postdee_mobile/features/uploader/clip_split_plan.dart';
 import 'package:postdee_mobile/features/uploader/platform_publish_preflight.dart';
@@ -13,7 +16,11 @@ import 'package:postdee_mobile/features/uploader/publish_draft_store.dart';
 const _owner = 'split-owner';
 final _now = DateTime.utc(2026, 11, 4, 15);
 
-class _ControlledStore implements PublishDraftStore {
+class _ControlledStore
+    implements
+        PublishDraftStore,
+        ClipGroupDraftStore,
+        ClipGroupDraftRollbackStore {
   _ControlledStore(this.delegate);
 
   final PublishDraftStore delegate;
@@ -23,12 +30,18 @@ class _ControlledStore implements PublishDraftStore {
   int? failBeforeSave;
   void Function(int saved)? afterSave;
   bool failDelete = false;
+  bool failGroupAfterSave = false;
+  bool failSourceTagAfterSave = false;
+  Future<void> Function(ClipGroupDraft group)? afterGroupSave;
 
   @override
   Future<PublishDraft> saveDraft(PublishDraftSaveRequest request) async {
     saves.add(request);
     if (saves.length == failBeforeSave) throw const FileSystemException('full');
     final draft = await delegate.saveDraft(request);
+    if (request.isClipGroupSource && failSourceTagAfterSave) {
+      throw const FileSystemException('late source tag');
+    }
     afterSave?.call(saves.length);
     if (saves.length == failAfterSave) throw const FileSystemException('late');
     return draft;
@@ -47,6 +60,34 @@ class _ControlledStore implements PublishDraftStore {
   Future<List<PublishDraft>> listDrafts() => delegate.listDrafts();
   @override
   Future<void> deleteAllDrafts() => delegate.deleteAllDrafts();
+
+  @override
+  Future<ClipGroupDraft?> loadClipGroup(String id) =>
+      (delegate as ClipGroupDraftStore).loadClipGroup(id);
+  @override
+  Future<List<ClipGroupDraft>> listClipGroups() =>
+      (delegate as ClipGroupDraftStore).listClipGroups();
+  @override
+  Future<ClipGroupDraft> saveClipGroup(ClipGroupDraft group,
+      {required int? expectedRevision}) async {
+    final saved = await (delegate as ClipGroupDraftStore)
+        .saveClipGroup(group, expectedRevision: expectedRevision);
+    await afterGroupSave?.call(saved);
+    if (failGroupAfterSave) {
+      throw const FileSystemException('late group commit');
+    }
+    return saved;
+  }
+
+  @override
+  Future<void> deleteClipGroup(String id) =>
+      (delegate as ClipGroupDraftStore).deleteClipGroup(id);
+
+  @override
+  Future<bool> deleteUnacceptedClipGroup(String id,
+          {required int expectedRevision}) =>
+      (delegate as ClipGroupDraftRollbackStore)
+          .deleteUnacceptedClipGroup(id, expectedRevision: expectedRevision);
 }
 
 class _Fixture {
@@ -74,6 +115,7 @@ class _Fixture {
   bool missingOutput = false;
   bool sourceChangesDuringEncode = false;
   String? invalidMedia;
+  Future<void> Function()? beforeCleanup;
 
   ClipSplitPlan plan({bool all = false, double duration = 270}) =>
       ClipSplitPlan.create(
@@ -122,6 +164,7 @@ class _Fixture {
       parts: parts,
       cleanup: () async {
         cleanupCalls++;
+        await beforeCleanup?.call();
         if (cleanupFails) throw const FileSystemException('cleanup');
         for (final part in parts) {
           if (await part.file.exists()) await part.file.delete();
@@ -137,7 +180,8 @@ class _Fixture {
         createDraftId: createDraftId ?? () => 'new_${++id}',
       );
 
-  ClipSplitDraftRequest request({ClipSplitPlan? splitPlan}) =>
+  ClipSplitDraftRequest request(
+          {ClipSplitPlan? splitPlan, String? sourceDraftId}) =>
       ClipSplitDraftRequest(
         plan: splitPlan ?? plan(),
         inputFile: source,
@@ -166,6 +210,7 @@ class _Fixture {
           hasAudio: true,
         ),
         isCancelled: () => cancelled,
+        sourceDraftId: sourceDraftId,
       );
 
   Future<PublishDraft> seed(String id) => store.delegate.saveDraft(
@@ -382,6 +427,159 @@ void main() {
       expect(f.store.saves, isEmpty);
       expect(f.cleanupCalls, 1);
       expect(await f.source.readAsBytes(), List.filled(512, 7));
+    });
+  }
+
+  test(
+      'new split drafts commit one owner-bound group and tag its original only after commit',
+      () async {
+    final source = await f.seed('original');
+    f.source = File(source.videoPath);
+    final result = await f.service().call(f.request(sourceDraftId: source.id));
+    final group = result.group!;
+    expect(group.ownerUserId, _owner);
+    expect(group.sourceDraftId, source.id);
+    expect(group.items, hasLength(6));
+    expect(group.revision, 1);
+    expect(group.items.map((item) => item.draftId).toSet(),
+        result.drafts.map((d) => d.id).toSet());
+    expect(
+        group.items.every((item) =>
+            item.usesSharedCaption &&
+            !item.isAccepted &&
+            item.scheduledAt == null),
+        isTrue);
+    final original = (await f.store.loadDraft(source.id))!;
+    expect(original.clipGroupId, group.id);
+    expect(original.isClipGroupSource, isTrue);
+    expect(original.submissionRequestId, source.submissionRequestId);
+    expect(result.sourceDraft!.id, source.id);
+    expect(
+        result.drafts
+            .every((d) => d.clipGroupId == group.id && !d.isClipGroupSource),
+        isTrue);
+    expect((await f.store.loadClipGroup(group.id))!.items, hasLength(6));
+  });
+
+  for (final failed in ['group commit', 'source tagging']) {
+    test(
+        '$failed failure rolls back the new group and leaves original standalone',
+        () async {
+      final original = await f.seed('original');
+      f.source = File(original.videoPath);
+      f.store.failGroupAfterSave = failed == 'group commit';
+      f.store.failSourceTagAfterSave = failed == 'source tagging';
+      await expectLater(f.service().call(f.request(sourceDraftId: original.id)),
+          throwsA(isA<ClipSplitDraftException>()));
+      expect(await f.store.listClipGroups(), isEmpty);
+      final drafts = await f.store.listDrafts();
+      expect(drafts, hasLength(1));
+      expect(drafts.single.id, original.id);
+      expect(drafts.single.clipGroupId, isNull);
+      expect(drafts.single.isClipGroupSource, isFalse);
+      expect(await File(drafts.single.videoPath).readAsBytes(),
+          List.filled(512, 7));
+    });
+  }
+
+  test('a grouped source cannot be split again or modify its existing group',
+      () async {
+    final original = await f.seed('original');
+    f.source = File(original.videoPath);
+    final first = await f.service().call(f.request(sourceDraftId: original.id));
+    final existingIds =
+        (await f.store.listDrafts()).map((draft) => draft.id).toSet();
+    final existingGroup = first.group!;
+    final writesBefore = f.store.saves.length;
+    f.segmentRequest = null;
+    await expectLater(f.service().call(f.request(sourceDraftId: original.id)),
+        throwsA(isA<ClipSplitDraftException>()));
+    expect(f.segmentRequest, isNull);
+    expect(f.store.saves.length, writesBefore);
+    expect((await f.store.listDrafts()).map((draft) => draft.id).toSet(),
+        existingIds);
+    expect((await f.store.loadClipGroup(existingGroup.id))!.toJson(),
+        existingGroup.toJson());
+  });
+
+  for (final moment in ['before tag', 'during rollback']) {
+    test('source $moment keeps a concurrent caption cover and schedule edit',
+        () async {
+      final original = await f.seed('original');
+      f.source = File(original.videoPath);
+      final cover = File('${f.root.path}/new-cover.jpg')
+        ..writeAsBytesSync([8, 7, 6]);
+      Future<void> editSource() async {
+        final latest = (await f.store.loadDraft(original.id))!;
+        await f.store.delegate.saveDraft(PublishDraftSaveRequest(
+          id: latest.id,
+          createdAt: latest.createdAt,
+          updatedAt: _now,
+          videoFile: File(latest.videoPath),
+          videoName: latest.videoName,
+          videoSizeBytes: latest.videoSizeBytes,
+          caption: 'Concurrent caption',
+          aiGuidance: latest.aiGuidance,
+          watermarkEnabled: latest.watermarkEnabled,
+          platformApiValues: latest.platformApiValues,
+          scheduledAt: _now.add(const Duration(days: 2)),
+          coverImageFile: cover,
+          coverDesign: const CoverDesign(text: 'New cover'),
+          clipGroupId: latest.clipGroupId,
+          isClipGroupSource: latest.isClipGroupSource,
+        ));
+      }
+
+      if (moment == 'before tag') {
+        f.store.afterGroupSave = (_) => editSource();
+        await f.service().call(f.request(sourceDraftId: original.id));
+      } else {
+        f.beforeCleanup = editSource;
+        f.cleanupFails = true;
+        await expectLater(
+            f.service().call(f.request(sourceDraftId: original.id)),
+            throwsA(isA<ClipSplitDraftException>()));
+      }
+      final latest = (await f.store.loadDraft(original.id))!;
+      expect(latest.caption, 'Concurrent caption');
+      expect(latest.scheduledAt, _now.add(const Duration(days: 2)));
+      expect(latest.cover!.design.text, 'New cover');
+      expect(latest.submissionRequestId, original.submissionRequestId);
+    });
+  }
+
+  for (final accepted in [false, true]) {
+    test(
+        'cleanup failure never erases a concurrently ${accepted ? 'accepted' : 'edited'} group',
+        () async {
+      final original = await f.seed('original');
+      f.source = File(original.videoPath);
+      String? groupId;
+      f.beforeCleanup = () async {
+        final group = (await f.store.listClipGroups()).single;
+        groupId = group.id;
+        final items = [...group.items];
+        if (accepted) {
+          items[0] = items[0].copyWith(
+              acceptedPostId: 'already-posted', acceptedPostStatus: 'QUEUED');
+        }
+        await (f.store.delegate as ClipGroupDraftStore).saveClipGroup(
+            group.copyWith(sharedCaption: 'New user work', items: items),
+            expectedRevision: group.revision);
+        if (accepted) await f.store.delegate.deleteDraft(items[0].draftId);
+      };
+      f.cleanupFails = true;
+      await expectLater(
+          f.service().call(f.request(sourceDraftId: original.id)),
+          throwsA(isA<ClipSplitDraftException>().having(
+              (e) => e.residualDraftIds, 'preserved members', isNotEmpty)));
+      final retained = (await f.store.loadClipGroup(groupId!))!;
+      expect(retained.revision, 2);
+      expect(retained.sharedCaption, 'New user work');
+      expect(retained.items.first.acceptedPostId,
+          accepted ? 'already-posted' : null);
+      expect((await f.store.listDrafts()), hasLength(accepted ? 6 : 7));
+      expect((await f.store.loadDraft(original.id))!.clipGroupId, retained.id);
     });
   }
 }

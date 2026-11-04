@@ -2,6 +2,9 @@ import 'dart:io';
 import 'dart:math';
 
 import 'clip_segmenter.dart';
+import 'clip_group_draft.dart';
+import 'clip_group_draft_store.dart';
+import 'cover_image_processor.dart';
 import 'clip_split_plan.dart';
 import 'platform_publish_settings.dart';
 import 'platform_publish_preflight.dart';
@@ -23,6 +26,7 @@ class ClipSplitDraftRequest {
     this.sourceMetadata,
     this.isCancelled,
     this.onProgress,
+    this.sourceDraftId,
   });
 
   final ClipSplitPlan plan;
@@ -38,6 +42,7 @@ class ClipSplitDraftRequest {
   final PublishMediaMetadata? sourceMetadata;
   final bool Function()? isCancelled;
   final void Function(int completed, int total)? onProgress;
+  final String? sourceDraftId;
 }
 
 class ClipSplitDraftBatchResult {
@@ -45,12 +50,16 @@ class ClipSplitDraftBatchResult {
     required List<PublishDraft> drafts,
     required Map<String, PublishMediaMetadata> metadataByDraftId,
     required this.totalPostUnits,
+    this.group,
+    this.sourceDraft,
   })  : drafts = List.unmodifiable(drafts),
         metadataByDraftId = Map.unmodifiable(metadataByDraftId);
 
   final List<PublishDraft> drafts;
   final Map<String, PublishMediaMetadata> metadataByDraftId;
   final int totalPostUnits;
+  final ClipGroupDraft? group;
+  final PublishDraft? sourceDraft;
 }
 
 class ClipSplitDraftException implements Exception {
@@ -58,12 +67,15 @@ class ClipSplitDraftException implements Exception {
     this.message, {
     this.isCancelled = false,
     List<String> residualDraftIds = const [],
+    List<String> residualGroupIds = const [],
     this.cleanupFailed = false,
-  }) : residualDraftIds = List.unmodifiable(residualDraftIds);
+  })  : residualDraftIds = List.unmodifiable(residualDraftIds),
+        residualGroupIds = List.unmodifiable(residualGroupIds);
 
   final String message;
   final bool isCancelled;
   final List<String> residualDraftIds;
+  final List<String> residualGroupIds;
   final bool cleanupFailed;
 
   @override
@@ -90,6 +102,12 @@ class ClipSplitDraftService {
     ClipSegmentBatchResult? rendered;
     var cleanupAttempted = false;
     final intendedIds = <String>[];
+    ClipGroupDraftStore? groupStore;
+    ClipGroupDraft? intendedGroup;
+    ClipGroupDraft? savedGroup;
+    PublishDraft? originalDraft;
+    PublishDraft? taggedSource;
+    var sourceTagAttempted = false;
     try {
       _checkpoint(request);
       if (request.ownerUserId.trim().isEmpty ||
@@ -109,9 +127,44 @@ class ClipSplitDraftService {
             isCancelled: true);
       }
       final reserved = existing.map((draft) => draft.id).toSet();
+      if (request.sourceDraftId != null) {
+        if (request.store is! ClipGroupDraftStore ||
+            !isValidClipGroupId(request.sourceDraftId)) {
+          throw ClipSplitDraftException('พื้นที่ฉบับร่างยังเก็บชุดคลิปไม่ได้');
+        }
+        groupStore = request.store as ClipGroupDraftStore;
+        originalDraft = await request.store.loadDraft(request.sourceDraftId!);
+        _checkpoint(request);
+        if (originalDraft == null ||
+            originalDraft.ownerUserId != request.ownerUserId ||
+            originalDraft.clipGroupId != null ||
+            _normalizedPath(await File(originalDraft.videoPath)
+                    .resolveSymbolicLinks()) !=
+                _normalizedPath(
+                    await request.inputFile.resolveSymbolicLinks())) {
+          throw ClipSplitDraftException(
+              'เลือกฉบับร่างต้นฉบับใหม่ก่อนสร้างชุดคลิป');
+        }
+        _checkpoint(request);
+      }
       final ids = <int, String>{};
       for (final part in request.plan.groupedParts) {
         ids[part.index] = await _reserveId(request, reserved);
+      }
+      String? groupId;
+      if (groupStore != null) {
+        for (var attempt = 0; attempt < 128; attempt++) {
+          final candidate = await _reserveId(request, reserved);
+          final collision = await groupStore.loadClipGroup(candidate);
+          _checkpoint(request);
+          if (collision == null) {
+            groupId = candidate;
+            break;
+          }
+        }
+        if (groupId == null) {
+          throw ClipSplitDraftException('สร้างชุดคลิปใหม่ไม่สำเร็จ');
+        }
       }
       await _checkSource(request, sourceStamp);
 
@@ -187,6 +240,7 @@ class ClipSplitDraftService {
             tiktokCreatorInfoRevision: null,
             tiktokVideoDurationSeconds: null,
           ),
+          clipGroupId: groupId,
           // Each new media intent starts without another clip's consent,
           // upload receipt, cover frame or scheduled time.
         ));
@@ -200,6 +254,46 @@ class ClipSplitDraftService {
         metadataByDraftId[id] = metadata;
       }
       await _checkSource(request, sourceStamp);
+      if (groupStore != null && originalDraft != null) {
+        intendedGroup = ClipGroupDraft(
+          id: groupId!,
+          ownerUserId: request.ownerUserId,
+          sourceDraftId: originalDraft.id,
+          title: request.fileName,
+          sharedCaption: request.caption,
+          deliveryMode: ClipGroupDeliveryMode.immediate,
+          createdAt: createdAt,
+          updatedAt: createdAt,
+          items: [
+            for (final part in request.plan.groupedParts)
+              ClipGroupItem(
+                draftId: ids[part.index]!,
+                index: part.index,
+                sourceStartSeconds: part.startSeconds,
+                sourceEndSeconds: part.endSeconds,
+                platformApiValues:
+                    part.platforms.map((p) => p.apiValue).toSet(),
+              ),
+          ],
+        );
+        savedGroup = await groupStore.saveClipGroup(intendedGroup,
+            expectedRevision: null);
+        _checkpoint(request);
+        final latestSource = await request.store.loadDraft(originalDraft.id);
+        _checkpoint(request);
+        if (!_sameSourceIdentity(originalDraft, latestSource) ||
+            latestSource!.clipGroupId != null ||
+            latestSource.videoSizeBytes != originalDraft.videoSizeBytes) {
+          throw ClipSplitDraftException(
+              'ต้นฉบับเปลี่ยนแล้ว กรุณาเปิดชุดคลิปอีกครั้ง');
+        }
+        sourceTagAttempted = true;
+        taggedSource = await request.store.saveDraft(_sourceSaveRequest(
+            latestSource,
+            clipGroupId: savedGroup.id,
+            isSource: true));
+        _checkpoint(request);
+      }
       if (rendered != null) {
         cleanupAttempted = true;
         try {
@@ -214,11 +308,55 @@ class ClipSplitDraftService {
         drafts: drafts,
         metadataByDraftId: metadataByDraftId,
         totalPostUnits: request.plan.totalPostUnits,
+        group: savedGroup,
+        sourceDraft: taggedSource,
       );
     } catch (error) {
-      final residualIds = await _rollback(request.store, intendedIds);
-      var cleanupFailed =
-          error is ClipSplitDraftException && error.cleanupFailed;
+      var groupCleanupFailed = false;
+      var rollbackAllowed = true;
+      final residualGroups = <String>[];
+      if (groupStore != null && intendedGroup != null) {
+        try {
+          final current = await groupStore.loadClipGroup(intendedGroup.id);
+          if (current != null &&
+              current.sourceDraftId == intendedGroup.sourceDraftId &&
+              current.items.length == intendedGroup.items.length &&
+              current.items
+                  .every((item) => intendedIds.contains(item.draftId))) {
+            final store = groupStore;
+            rollbackAllowed = store is ClipGroupDraftRollbackStore &&
+                await (store as ClipGroupDraftRollbackStore)
+                    .deleteUnacceptedClipGroup(intendedGroup.id,
+                        expectedRevision: savedGroup?.revision ?? 1);
+            if (!rollbackAllowed) {
+              groupCleanupFailed = true;
+              residualGroups.add(intendedGroup.id);
+            }
+          }
+        } catch (_) {
+          groupCleanupFailed = true;
+          rollbackAllowed = false;
+          residualGroups.add(intendedGroup.id);
+        }
+      }
+      if (rollbackAllowed && sourceTagAttempted && originalDraft != null) {
+        try {
+          final latestSource = await request.store.loadDraft(originalDraft.id);
+          if (_sameSourceIdentity(originalDraft, latestSource) &&
+              latestSource!.clipGroupId == intendedGroup?.id) {
+            await request.store.saveDraft(_sourceSaveRequest(latestSource,
+                clipGroupId: originalDraft.clipGroupId,
+                isSource: originalDraft.isClipGroupSource));
+          }
+        } catch (_) {
+          groupCleanupFailed = true;
+        }
+      }
+      final residualIds = rollbackAllowed
+          ? await _rollback(request.store, intendedIds)
+          : await _existingDraftIds(request.store, intendedIds);
+      var cleanupFailed = groupCleanupFailed ||
+          (error is ClipSplitDraftException && error.cleanupFailed);
       if (rendered != null && !cleanupAttempted) {
         cleanupAttempted = true;
         try {
@@ -230,20 +368,76 @@ class ClipSplitDraftService {
       final cancelled = _isCancelled(request) ||
           (error is ClipSplitDraftException && error.isCancelled) ||
           (error is ClipSegmentException && error.isCancelled);
-      final message = residualIds.isNotEmpty
-          ? 'แบ่งคลิปไม่สำเร็จ และยังล้างร่างบางตอนไม่ครบ กรุณาตรวจฉบับร่างก่อนลองใหม่'
-          : cleanupFailed
-              ? 'แบ่งคลิปไม่สำเร็จ และยังล้างไฟล์ชั่วคราวไม่ครบ'
-              : cancelled
-                  ? 'หยุดแบ่งคลิปแล้ว ต้นฉบับยังอยู่'
-                  : error is ClipSplitDraftException
-                      ? error.message
-                      : 'เตรียมร่างจากการแบ่งคลิปไม่สำเร็จ กรุณาตรวจพื้นที่ว่างแล้วลองใหม่';
+      final message = residualGroups.isNotEmpty
+          ? 'ชุดคลิปมีข้อมูลใหม่แล้ว จึงเก็บชุดและฉบับร่างไว้ กรุณาเปิดชุดคลิปอีกครั้ง'
+          : residualIds.isNotEmpty
+              ? 'แบ่งคลิปไม่สำเร็จ และยังล้างร่างบางตอนไม่ครบ กรุณาตรวจฉบับร่างก่อนลองใหม่'
+              : cleanupFailed
+                  ? 'แบ่งคลิปไม่สำเร็จ และยังล้างไฟล์ชั่วคราวไม่ครบ'
+                  : cancelled
+                      ? 'หยุดแบ่งคลิปแล้ว ต้นฉบับยังอยู่'
+                      : error is ClipSplitDraftException
+                          ? error.message
+                          : 'เตรียมร่างจากการแบ่งคลิปไม่สำเร็จ กรุณาตรวจพื้นที่ว่างแล้วลองใหม่';
       throw ClipSplitDraftException(message,
           isCancelled: cancelled,
           residualDraftIds: residualIds,
+          residualGroupIds: residualGroups,
           cleanupFailed: cleanupFailed);
     }
+  }
+
+  bool _sameSourceIdentity(PublishDraft original, PublishDraft? latest) =>
+      latest != null &&
+      latest.id == original.id &&
+      latest.ownerUserId == original.ownerUserId &&
+      latest.submissionRequestId == original.submissionRequestId &&
+      _normalizedPath(latest.videoPath) == _normalizedPath(original.videoPath);
+
+  Future<List<String>> _existingDraftIds(
+      PublishDraftStore store, List<String> ids) async {
+    final existing = <String>[];
+    for (final id in ids) {
+      try {
+        if (await store.loadDraft(id) != null) existing.add(id);
+      } catch (_) {
+        existing.add(id);
+      }
+    }
+    return existing;
+  }
+
+  PublishDraftSaveRequest _sourceSaveRequest(PublishDraft source,
+      {required String? clipGroupId, required bool isSource}) {
+    final cover = source.cover;
+    return PublishDraftSaveRequest(
+      id: source.id,
+      createdAt: source.createdAt,
+      updatedAt: _now().toUtc(),
+      videoFile: File(source.videoPath),
+      videoName: source.videoName,
+      videoSizeBytes: source.videoSizeBytes,
+      videoWidth: source.videoWidth,
+      videoHeight: source.videoHeight,
+      caption: source.caption,
+      captionNeedsReview: source.captionNeedsReview,
+      captionLanguage: source.captionLanguage,
+      aiGuidance: source.aiGuidance,
+      watermarkEnabled: source.watermarkEnabled,
+      platformApiValues: source.platformApiValues,
+      platformSettings: source.platformSettings,
+      scheduledAt: source.scheduledAt,
+      uploadedMedia: source.uploadedMedia,
+      coverImageFile: cover == null ? null : File(cover.imagePath),
+      coverDesign: cover?.design,
+      coverDurationMs: cover?.durationMs,
+      coverSourceKind: cover?.sourceKind ?? CoverSourceKind.videoFrame,
+      coverSourceImageFile:
+          cover?.sourceImagePath == null ? null : File(cover!.sourceImagePath!),
+      coverSourceImageName: cover?.sourceImageName,
+      clipGroupId: clipGroupId,
+      isClipGroupSource: isSource,
+    );
   }
 
   Future<String> _reserveId(

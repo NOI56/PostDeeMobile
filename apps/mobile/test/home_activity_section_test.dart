@@ -26,6 +26,8 @@ PublishDraft _draft(
   bool needsReview = false,
   Set<String>? platforms,
   PublishDraftCover? cover,
+  String? clipGroupId,
+  bool isClipGroupSource = false,
 }) =>
     PublishDraft(
       version: publishDraftManifestVersion,
@@ -43,6 +45,8 @@ PublishDraft _draft(
       watermarkEnabled: true,
       platformApiValues: platforms ?? const {'TIKTOK'},
       cover: cover,
+      clipGroupId: clipGroupId,
+      isClipGroupSource: isClipGroupSource,
     );
 
 PostSummaryResult _post(String id, int minutes,
@@ -65,9 +69,10 @@ Widget _app(HomeActivitySection child,
         {double textScale = 1,
         double width = 390,
         bool reducedMotion = true,
-        bool tickerEnabled = true}) =>
+        bool tickerEnabled = true,
+        Locale locale = const Locale('th')}) =>
     MaterialApp(
-      locale: const Locale('th'),
+      locale: locale,
       supportedLocales: PostDeeLocalizations.supportedLocales,
       localizationsDelegates: const [
         PostDeeLocalizations.delegate,
@@ -322,6 +327,129 @@ void main() {
     expect(restored, same(newest));
     await _tap(tester, 'home-create-post');
     expect(created, 1);
+  });
+
+  testWidgets('latest group member resumes the source as one saved group entry',
+      (tester) async {
+    PublishDraft? resumed;
+    final source = _draft('original',
+        age: 20, clipGroupId: 'clip-group', isClipGroupSource: true);
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [
+        source,
+        _draft('unrelated', age: 5),
+        _draft('part-1', age: 3, clipGroupId: 'clip-group'),
+        _draft('part-2', age: 1, clipGroupId: 'clip-group'),
+        _draft('foreign', owner: 'another-owner', clipGroupId: 'clip-group'),
+      ],
+      onResumeDraft: (draft) async => resumed = draft,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ทำชุดคลิปต่อ'), findsOneWidget);
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsOneWidget);
+    expect(find.text('ถัดไป: ตรวจทั้งชุด'), findsOneWidget);
+    expect(find.text('แคปชัน original'), findsOneWidget);
+    expect(find.text('แคปชัน part-2'), findsNothing);
+    expect(find.text('แคปชัน unrelated'), findsNothing);
+    expect(find.text('แคปชัน foreign'), findsNothing);
+    expect(find.byKey(const ValueKey('home-resume-draft')), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    expect(resumed, same(source));
+  });
+
+  testWidgets('a newer unrelated draft outranks all older group members',
+      (tester) async {
+    PublishDraft? resumed;
+    final unrelated = _draft('unrelated', age: 0);
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [
+        _draft('original',
+            age: 20, clipGroupId: 'clip-group', isClipGroupSource: true),
+        _draft('part-2', age: 2, clipGroupId: 'clip-group'),
+        unrelated,
+      ],
+      onResumeDraft: (draft) async => resumed = draft,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsNothing);
+    expect(find.text('แคปชัน unrelated'), findsOneWidget);
+    expect(find.text('ร่างที่บันทึกไว้'), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    expect(resumed, same(unrelated));
+  });
+
+  testWidgets(
+      'a source-only group stays reachable without inventing a part count',
+      (tester) async {
+    PublishDraft? resumed;
+    final source =
+        _draft('original', clipGroupId: 'clip-group', isClipGroupSource: true);
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [source],
+      onResumeDraft: (draft) async => resumed = draft,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsOneWidget);
+    expect(find.textContaining('0 คลิป'), findsNothing);
+    expect(find.text('ถัดไป: ตรวจทั้งชุด'), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    expect(resumed, same(source));
+  });
+
+  testWidgets('a group without its source resumes a stable local member',
+      (tester) async {
+    PublishDraft? resumed;
+    final first = _draft('part-0', age: 5, clipGroupId: 'clip-group');
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [
+        _draft('part-2', age: 1, clipGroupId: 'clip-group'),
+        first,
+      ],
+      onResumeDraft: (draft) async => resumed = draft,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    expect(resumed, same(first));
+    expect(resumed!.clipGroupId, 'clip-group');
+  });
+
+  testWidgets('group labels and next action are translated into English',
+      (tester) async {
+    await tester.pumpWidget(_app(
+        _section(
+          loadDrafts: () async => [
+            _draft('original',
+                clipGroupId: 'clip-group', isClipGroupSource: true)
+          ],
+        ),
+        locale: const Locale('en')));
+    await tester.pumpAndSettle();
+    expect(find.text('Continue your clip group'), findsOneWidget);
+    expect(find.text('Saved clip group'), findsOneWidget);
+    expect(find.text('Next: Review group'), findsOneWidget);
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('home-resume-draft')),
+            matching: find.text('Review group')),
+        findsOneWidget);
+  });
+
+  testWidgets('group entry fits small screens and enlarged text',
+      (tester) async {
+    await tester.pumpWidget(_app(
+        _section(
+          loadDrafts: () async => [
+            _draft('long-source-name',
+                clipGroupId: 'clip-group', isClipGroupSource: true)
+          ],
+        ),
+        width: 320,
+        textScale: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('counts each supported connected platform once', (tester) async {

@@ -1,6 +1,6 @@
 # API.md
 
-## Mobile posting clarity follow-up (2026-11-05, local candidate)
+## Mobile posting clarity follow-up (2026-11-05, Staging APK 12110 checked)
 
 No route, payload, database, quota or entitlement change. Reopening valid cached
 AI choices is a local presentation action; fresh generation retains the existing
@@ -10,6 +10,9 @@ post units. Accepted group receipts are not proof of platform publication; actua
 status and TikTok follow-up use the existing post-detail contract. Recovery keeps
 the original per-item request identities and never treats an unresolved receipt
 as permission to charge/create a replacement post.
+Source `3e52737a` passed the full Mobile suite and guarded emulator checks;
+this UI-only delivery requires no API deploy or database migration. Real provider
+generation and publishing were not exercised during this follow-up.
 
 ## Expanded caption languages (2026-11-04, local candidate)
 

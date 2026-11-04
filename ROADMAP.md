@@ -2,7 +2,7 @@
 
 Build roadmap for PostDee.
 
-## Posting usability follow-up (2026-11-05, local candidate)
+## Posting usability follow-up (2026-11-05, Staging APK 12110 checked)
 
 - Preserve caption-first split sets and independently selected clip times.
 - Explain AI credits before generation, retain the latest valid result for
@@ -14,6 +14,9 @@ Build roadmap for PostDee.
 - Project current group captions into Home/Drafts without modifying backups or
   saved submission identities. No API/schema/entitlement/deployment change.
 - See [verification and limits](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+- Source `3e52737a`: full Mobile suite 5,518 passed / 10 optional skips, analysis
+  clean, and guarded x86_64 emulator APK 12110 smoke checks passed. No live AI,
+  real-account publishing, push, merge or hosted deploy was performed.
 
 ## Full documented caption language list (2026-11-04, local candidate)
 

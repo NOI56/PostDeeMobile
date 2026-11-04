@@ -2,7 +2,7 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
-## Posting usability follow-up (2026-11-05, local candidate)
+## Posting usability follow-up (2026-11-05, Staging APK 12110 checked)
 
 The Mobile composer reuses existing validation when opening review. AI result
 reuse is ephemeral and bound to the current owner/media/writing context; reopening
@@ -14,6 +14,8 @@ retaining the original `PublishDraft` payload for resume and recovery. Submissio
 activity is presentation-only. Accepted receipts stay separate from actual
 delivery outcomes; per-item status opens the existing post-detail loader and its
 platform-specific next steps. No persisted manifest, API or database migration.
+Analysis, the complete Mobile suite and native emulator checks for `3e52737a`
+are recorded in the [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Shared caption language catalog (2026-11-04, local candidate)
 

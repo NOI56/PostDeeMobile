@@ -18,10 +18,52 @@ No API/schema/provider/environment/entitlement change; no migration, push, merge
 hosted deployment, real publishing or paid AI request is authorized by this UI
 follow-up. Emulator updates use the guarded Staging updater and preserve data.
 
-Verification for this follow-up is pending; the older APK/suite receipts below
-remain evidence only for their named source. New regression tests precede the
-implementation. Final analysis, complete Mobile tests, exact-source Staging APK
-and native checks will be recorded after completion.
+Verification completed for runtime source `3e52737aed5e1fd8b6139e5f275beed170b87114`
+(implementation commits `60090d9b` and `3e52737a`). The older APK/suite receipts
+below remain evidence only for their named source. Regression tests preceded
+implementation; existing invalid-flow tests now exercise the earlier guard.
+
+- Final `flutter analyze --no-pub`: **No issues**, 14.7 seconds.
+- Final `flutter test --no-pub --concurrency=4 --reporter expanded`: **5,518
+  passed, 10 optional skips**, exit 0, **7m11s**. Source/tests stayed frozen for
+  this complete passing run. Log: `output/posting-ux-audit/full-mobile-12110-final.log`.
+- Fresh `origin/main` remained `8a340638`, merge base identical and behind 0.
+  Final source diff has no unexpected deleted files, API, Android configuration,
+  package/plugin, feature-flag, schema or environment changes. Existing generated
+  Windows changes and scratch output remain outside the commits.
+- Universal Staging APK built successfully (66.6 seconds), but the guarded
+  updater correctly stopped on `INSTALL_FAILED_INSUFFICIENT_STORAGE`; existing
+  version 12109, UID 10197 and internal volume stayed intact. No uninstall,
+  data clear, storage migration or guard bypass was used.
+- Built an x86_64 split APK through the same Staging helper, preserving the
+  Firebase/RevenueCat Test Store configuration. Flutter adds 4,000 to x86_64 split
+  version codes, so base `--build-number=8110 --target-platform=android-x64
+  --split-per-abi` produces actual package **12110**; verified with `aapt` before
+  installation. This avoids an artificial version jump for later updates.
+- Installed on **emulator-5554**, package `com.postdee.postdee_mobile.staging`,
+  UID **10197**, original internal volume, actual version **12110**. Built and
+  installed APK SHA-256 both:
+  `364386b1a49ec88cb55912421cb3a51a615093f8f86b0503e3536d3e77dab1f9`.
+  Artifact: `E:\PostDeeBuildArchive\clip-group-review-12110\app\outputs\flutter-apk\app-x86_64-debug.apk`.
+  Universal artifact is retained separately as `app-debug-universal-12110.apk`.
+- Helper validated Staging API `https://postdee-api-staging.onrender.com`,
+  Firebase enabled, mock auth disabled, Staging Firebase project
+  `project-798caf7e-85b8-45e3-af7`, and Test Store billing (SDK key never logged).
+  Native startup showed STAGING and retained the signed-in Basic account:
+  unverified phone, zero connected channels, and dormant purchased credits.
+- Immediately before/after update all **60 local draft/media files matched
+  byte-for-byte**. Native checks reopened the existing 3-part set, showed
+  Facebook part 1/2 → full clip for TikTok/YouTube/Instagram → Facebook part 2/2,
+  exercised the visible AI shortcut and per-part AI editor (correct 0:00–1:30
+  source, no generation), and returned to a visible Step 1 + saved feedback.
+  Draft count remained **14**. An empty review shortcut was blocked with the
+  missing-clip explanation. Screenshots: `output/posting-ux-audit/12110-*.png`.
+- After these navigation checks all 60 files remained; only the opened group
+  journal changed from its normal Back save. All source/media files and ordinary
+  draft manifests stayed identical. No captions or schedules were edited.
+- No live AI credits, real posts, subscription changes, API deployment, database
+  migration, push or merge. Paid/connected delivery/results paths are verified
+  by mock/widget tests, not claimed as a new real-account publishing proof.
 
 Integration regression checks retained publishing/consent/recovery assertions
 while preparing valid clips, captions and platform settings before review.

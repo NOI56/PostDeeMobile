@@ -1,6 +1,6 @@
 # PostDee
 
-## Posting clarity follow-up (2026-11-05, local candidate)
+## Posting clarity follow-up (2026-11-05, Staging APK 12110 checked)
 
 Keep the approved split → shared caption → individual schedules → confirmation
 flow. This Mobile-only follow-up makes AI cost/results, local versus platform
@@ -11,6 +11,11 @@ Successful AI choices can be reopened in the same valid editing context without
 another provider request; dismissing a preview does not refund generation usage.
 No API, schema, entitlement or publishing-policy change. Verification is recorded
 in the [clip flow work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+Source `3e52737a` passed analysis and all 5,518 Mobile tests (10 optional skips).
+The guarded emulator update preserved all 60 draft files; native caption/AI
+navigation, episode labels, Back recovery and review prerequisites were checked.
+The installed artifact is x86_64-only because the emulator rejected the larger
+universal APK for insufficient storage. Live AI and publishing were not run.
 
 ## Searchable caption languages (2026-11-04, local candidate)
 

@@ -1,14 +1,13 @@
 # Local clip splitting from the clip step — 2026-11-04
 
-Status updated 2026-11-05: the owner approved implementing the grouped-review
-prototype in the real app. The active `codex/clip-group-review` worktree uses
-verified `main` `8a340638` and preserves the earlier splitting feature, searchable
-109-language picker and PR #63's connection-screen change. Final app source is
-`b6efa3e5b22abca1892231bdefcba2e9db75001f`; final analysis, exact guarded Staging
-APK 12108 build/install, scoped native group checks and baseline diff review
-passed. The final complete-suite result is recorded in the current verification
-section below. APK 12104/12105 evidence remains prior-version history. No merge,
-push or hosted deployment is included.
+Status updated 2026-11-05: the owner selected **variant 2, shared caption first**
+for the real grouped flow. After splitting/reopening, the shared caption and
+existing AI panel open directly inline. This phase starts from `cffe7191` on
+verified `main` `8a340638`, retaining the split utility, 109-language picker and
+connection-screen update. Final source identity, full-suite, exact-build/install
+and native verification are pending. APK 12108 proves the earlier grouped-review
+version; APK 12104/12105 prove older splitting behavior. Those checks do not
+verify the new inline shared-AI flow. No merge, push or hosted deployment.
 
 ## Approved behavior and baseline
 
@@ -45,6 +44,13 @@ the intended work was checkpointed and ported into a new managed worktree from
 `8a340638` rather than continuing on the stale baseline. The earlier checkout and
 unrelated files remain preserved.
 
+The later same-day prototype decision selects **shared-caption-first variant 2**,
+separate from the original choice of inline split card. The shared editor opens
+expanded, with the existing AI panel and compact member rows in the same flow.
+Manual generation uses the full original; member overrides and independent
+dates/times remain. The retained original backup is never rewritten by shared
+caption/context edits.
+
 ## User flow
 
 1. Select or resume a clip. Keep the existing quota and duration guide, adding
@@ -61,8 +67,12 @@ unrelated files remain preserved.
    drafts with new submission identities. Full-length destinations use a copied
    source instead of unnecessary encoding. Commit one local group and open all
    results together for review. Keep the original stored as the group's source.
-6. Review a shared caption or edit individual captions, covers and publishing
-   settings. Member editors retain the planned source and destination membership.
+6. Open directly into the expanded shared caption and existing inline AI panel.
+   AI runs only when clicked and uses the full retained `group.sourceDraftId`.
+   Use compact member rows for a manual override, member AI, cover or channel
+   settings. Shared changes preserve overrides, accepted results and unresolved
+   receipt intents. Confirm explicitly before restoring a member's inheritance.
+   Member editors retain the planned source and destination membership.
 7. Choose immediate delivery or set each clip's date/time independently. There
    is no interval rule; remembered desired times survive switching to immediate.
 8. Review the final set and explicitly confirm. Pending members use the existing
@@ -73,6 +83,8 @@ unrelated files remain preserved.
 Opening the plan, previewing, encoding and saving drafts create no API upload,
 post or AI request and consume no post units or caption credits. The existing
 `POST /posts` path remains the point at which the existing quota rules apply.
+Choosing AI is a separate explicit action using the existing caption upload/API
+and credit rules; entering this screen or reopening a group never starts it.
 
 ## Planning and media preparation
 
@@ -133,6 +145,20 @@ Child editors bind to the opening auth lifecycle, including sign-out/sign-in to
 the same UID. Runtime media consent is reviewed again rather than restored as
 fresh consent from disk.
 
+An optional `captionContext` in the same version-1 journal stores `aiGuidance`
+and canonical `captionLanguage` (`auto` plus the existing 109 output choices).
+Older journals omit it and read as null; unrelated copies retain it. Unknown
+language/context data is rejected, and the existing 262144-byte journal ceiling
+still applies. Completed groups cannot rewrite context. The source backup's
+caption, guidance, language, media, cover, settings, schedule and submission ID
+remain untouched. Pending upload receipts lock shared/context changes before CAS.
+
+The shared editor reuses existing AI quota, style, undo and fallback behavior.
+Its generation context binds the current auth lifecycle, group revision and
+full-source identity; stale asynchronous results cannot apply after those change.
+Per-member overrides remain separate. This adds no provider, API, database or
+AI-credit-rule change and does not restore retired AI editing.
+
 On a live failure or cancellation, remove only newly intended draft IDs,
 including an ID whose filesystem promotion may have succeeded before save
 reported an error. Never delete a pre-existing or original draft. Roll back a
@@ -171,7 +197,30 @@ Facebook Page Video limits for Page Reels.
 - The `AGENTS.md` retirement table is unchanged because this time-based uploader
   utility does not restore any retired AI-editing feature.
 
-## Current grouped-flow verification — 2026-11-05
+## Current variant 2 verification — 2026-11-05
+
+This phase starts from `cffe7191` on verified `main` `8a340638`. **Final source
+hash, complete Mobile suite, whole-project analysis, exact Staging build/install,
+native inline-flow smoke and final diff audit are pending.** Do not attribute
+earlier APK/full-suite results to this changed implementation.
+
+A related component run passed **108 tests** across group-store, submission,
+split-service, legacy draft-store and draft-edit tests; scoped context/model/store
+analysis found no issues. Context cases verify roundtrip/legacy compatibility,
+copy/clear behavior, CAS, source backup bytes/submission ID preservation,
+invalid languages, the encoded byte cap and completed-context immutability.
+This component result is not a new full-suite, build or native acceptance result.
+
+No real AI generation, paid-account native scheduling picker, social publication,
+physical-phone or iOS acceptance is claimed. A Basic-account AI/schedule lock is
+an expected entitlement result, not evidence of live provider success. Final
+exact-source results will be added here after verification.
+
+## Prior grouped-review verification — APK 12108, 2026-11-05
+
+The following source/build/native evidence predates shared-caption-first variant
+2 and its optional caption context. Preserve it as the earlier grouped version's
+record, rather than current proof.
 
 ### Source and automated verification
 

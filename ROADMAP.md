@@ -14,7 +14,7 @@ Build roadmap for PostDee.
   per-language accuracy. API before Mobile, no migration/model change. Keep the
   candidate isolated for review. [Work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Review and schedule split clips as one set (2026-11-05, local candidate)
+## Shared-caption-first clip sets (2026-11-05, selected variant 2 candidate)
 
 - Retain the owner's selected inline card and save the original before preparing
   parts. The grouped-review work now uses verified `main` `8a340638`, preserving
@@ -26,8 +26,13 @@ Build roadmap for PostDee.
 - Encode locally with scoped cancellation, verify every output and save new
   owner-bound drafts. Preserve Facebook Publish/Page draft and AI declarations;
   require new clip-specific posting confirmations.
-- Review every clip together, use shared or individual captions, and edit each
-  cover/settings. Set each date/time independently, with no interval rule, then
+- Open the shared caption expanded with the existing AI panel inline after
+  splitting or reopening. Manual AI reads the full original source; its backup
+  remains untouched. Compact member rows retain individual caption/AI, cover and
+  channel actions. Shared changes preserve overrides/accepted/unknown intents;
+  restoring shared inheritance requires confirmation. Persist guidance/language
+  in optional local journal context, retaining existing AI credits/style/undo.
+- Set each date/time independently, with no interval rule, then
   explicitly confirm the final set. Drafts keeps one reopenable group row while
   retaining the original and independent member submission identities.
 - Persist each accepted post in the owner-bound group journal before deleting
@@ -38,14 +43,11 @@ Build roadmap for PostDee.
   accounting. Preparation creates no posts and uses no quota. No API, database,
   environment, entitlement or hosted deployment change is required; retired AI
   editing stays retired.
-- Source `b6efa3e5` on freshly verified `main` `8a340638` passed final analysis;
-  guarded APK 12108 built/installed with retained UID/data. Emulator preparation,
-  one-row set saving, captions, preview, restart/reopen and save-only settings
-  passed without upload/post/AI. Zero quota and unavailable destinations kept
-  confirmation disabled. Native paid scheduling pickers, real publishing, iOS
-  and physical phones remain unverified; independent schedule behavior has
-  automated coverage. Full-suite details are in the work record, alongside
-  separately labeled historical APK 12104/12105 evidence. No merge/push/deploy.
+- Variant 2 starts from `cffe7191` on verified `main` `8a340638`. Its final source,
+  full-suite, exact-build and native checks remain pending. APK 12108 grouped
+  review and APK 12104/12105 splitting evidence remain prior-version records.
+  Live AI, native paid pickers, real publishing, iOS and physical phones remain
+  unverified. No API/provider/credit-rule change or merge/push/deploy.
   See the [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## AI caption output language (2026-11-04, local candidate)

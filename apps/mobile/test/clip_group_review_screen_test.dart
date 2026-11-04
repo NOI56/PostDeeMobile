@@ -81,6 +81,56 @@ ClipGroupDraft _group() => ClipGroupDraft(
               platformApiValues: {'INSTAGRAM_REELS'}),
         ]);
 
+class _SharedEditor extends StatefulWidget {
+  const _SharedEditor({
+    required this.controller,
+    required this.onBusyChanged,
+    required this.enabled,
+    required this.onGenerate,
+  });
+  final TextEditingController controller;
+  final ValueChanged<bool> onBusyChanged;
+  final bool enabled;
+  final VoidCallback onGenerate;
+  @override
+  State<_SharedEditor> createState() => _SharedEditorState();
+}
+
+class _SharedEditorState extends State<_SharedEditor> {
+  bool _busy = false;
+  @override
+  Widget build(BuildContext context) {
+    // An embedded editor may report its current state while rebuilding.
+    widget.onBusyChanged(_busy);
+    return Column(children: [
+      TextField(
+          key: const ValueKey('shared-editor-input'),
+          controller: widget.controller,
+          enabled: widget.enabled && !_busy),
+      TextButton(
+          key: const ValueKey('shared-editor-ai-start'),
+          onPressed: widget.enabled && !_busy
+              ? () {
+                  setState(() => _busy = true);
+                  widget.onGenerate();
+                  widget.onBusyChanged(true);
+                }
+              : null,
+          child: const Text('Generate test caption')),
+      TextButton(
+          key: const ValueKey('shared-editor-ai-finish'),
+          onPressed: _busy
+              ? () {
+                  widget.controller.text = 'ข้อความจาก AI ของต้นฉบับ';
+                  setState(() => _busy = false);
+                  widget.onBusyChanged(false);
+                }
+              : null,
+          child: const Text('Finish test caption')),
+    ]);
+  }
+}
+
 void main() {
   late ClipGroupDraft persisted;
   late Map<String, PublishDraft> drafts;
@@ -109,6 +159,7 @@ void main() {
       Future<SubscriptionStatusResult> Function()? quota,
       Future<ClipGroupDraft> Function(ClipGroupDraft)? saveGroup,
       Future<PublishDraft?> Function(PublishDraft, ClipGroupEditSection)? edit,
+      ClipGroupSharedCaptionEditorBuilder? sharedEditor,
       Future<ClipGroupSubmissionResult> Function(ClipGroupDraft)?
           submit}) async {
     AppTheme.applyThemeMode(dark ? ThemeMode.dark : ThemeMode.light);
@@ -131,12 +182,23 @@ void main() {
         draftsById: drafts,
         ownerSession: PostDeeAuthSessionStore.instance.captureSession(),
         now: () => _now,
+        sharedCaptionEditorBuilder: sharedEditor,
         loadSubscription: () => Future.value(_quota),
         loadPostQuota: quota ?? () => Future.value(_quota),
         onSaveGroup: (group) async {
           saved++;
           if (saveGroup != null) return saveGroup(group);
           persisted = group.copyWith(revision: persisted.revision + 1);
+          for (final item in persisted.items) {
+            final draft = drafts[item.draftId];
+            if (item.usesSharedCaption &&
+                !item.isAccepted &&
+                draft != null &&
+                draft.uploadedMedia == null) {
+              drafts[item.draftId] =
+                  _draft(item.draftId, caption: persisted.sharedCaption);
+            }
+          }
           return persisted;
         },
         onSaveCaption: (draft, caption) async {
@@ -172,7 +234,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> tap(WidgetTester tester, String key) async {
+  Future<void> reveal(WidgetTester tester, String key) async {
     final finder = find.byKey(ValueKey(key));
     if (finder.evaluate().isEmpty) {
       await tester.fling(find.byKey(const ValueKey('clip-group-scroll')),
@@ -187,9 +249,159 @@ void main() {
     }
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
-    await tester.tap(finder);
+  }
+
+  Future<void> tap(WidgetTester tester, String key) async {
+    await reveal(tester, key);
+    await tester.tap(find.byKey(ValueKey(key)));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('caption page opens the shared editor immediately',
+      (tester) async {
+    await mount(tester);
+    expect(find.text('เขียนแคปชั่นทั้งชุด'), findsOneWidget);
+    expect(find.byKey(const ValueKey('clip-group-shared-caption')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('clip-group-shared-caption-toggle')),
+        findsNothing);
+    expect(find.byKey(const ValueKey('clip-group-clips')), findsOneWidget);
+    expect(saved, 0);
+    expect(submitted, 0);
+  });
+
+  testWidgets(
+      'embedded AI is explicit and blocks navigation without disabling itself',
+      (tester) async {
+    var generations = 0;
+    drafts['yt1'] = _draft('yt1', caption: 'ข้อความเฉพาะตอนแรก');
+    persisted = persisted.copyWith(items: [
+      persisted.items[0].copyWith(usesSharedCaption: false),
+      ...persisted.items.skip(1),
+    ]);
+    await mount(tester,
+        sharedEditor:
+            (context, controller, onBusy, enabled, onContextChanged) =>
+                _SharedEditor(
+                    controller: controller,
+                    onBusyChanged: onBusy,
+                    enabled: enabled,
+                    onGenerate: () => generations++));
+    expect(generations, 0);
+    expect(saved, 0);
+    await tester.enterText(find.byKey(const ValueKey('shared-editor-input')),
+        'ข้อความที่กำลังพิมพ์');
+    await tester.pumpAndSettle();
+    expect(tester.testTextInput.isVisible, isTrue);
+    await tap(tester, 'shared-editor-ai-start');
+    expect(generations, 1);
+    expect(tester.widget<_SharedEditor>(find.byType(_SharedEditor)).enabled,
+        isTrue);
+    for (final key in ['clip-group-save', 'clip-group-caption-yt1']) {
+      expect(tester.widget<TextButton>(find.byKey(ValueKey(key))).onPressed,
+          isNull);
+    }
+    expect(
+        tester
+            .widget<FilledButton>(find.byKey(const ValueKey('clip-group-next')))
+            .onPressed,
+        isNull);
+    expect(
+        tester
+            .widget<PopupMenuButton<ClipGroupEditSection>>(
+                find.byKey(const ValueKey('clip-group-edit-yt1')))
+            .enabled,
+        isFalse);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(ClipGroupReviewScreen), findsOneWidget);
+    expect(saved, 0);
+    await tester.fling(find.byKey(const ValueKey('clip-group-scroll')),
+        const Offset(0, -2500), 5000);
+    await tester.pumpAndSettle();
+    await reveal(tester, 'shared-editor-ai-finish');
+    expect(
+        tester
+            .widget<TextButton>(
+                find.byKey(const ValueKey('shared-editor-ai-finish')))
+            .onPressed,
+        isNotNull,
+        reason: 'Scrolling must retain the running editor state');
+    await tap(tester, 'shared-editor-ai-finish');
+    await tap(tester, 'clip-group-save');
+    expect(persisted.sharedCaption, 'ข้อความจาก AI ของต้นฉบับ');
+    expect(drafts['yt1']!.caption, 'ข้อความเฉพาะตอนแรก');
+    expect(persisted.items[0].usesSharedCaption, isFalse);
+    expect(generations, 1);
+    expect(submitted, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('context-only editor changes are saved exactly once on Back',
+      (tester) async {
+    late VoidCallback contextChanged;
+    await mount(tester,
+        sharedEditor: (context, controller, onBusy, enabled, onContextChanged) {
+      contextChanged = onContextChanged;
+      return const Text('Shared caption context editor');
+    });
+    final screen = tester
+        .widget<ClipGroupReviewScreen>(find.byType(ClipGroupReviewScreen));
+    // Exercise Back with a real previous route, as the uploader opens this page.
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(
+            builder: (context) => Scaffold(
+                body: TextButton(
+                    onPressed: () => Navigator.of(context)
+                        .push<void>(MaterialPageRoute(builder: (_) => screen)),
+                    child: const Text('open'))))));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(saved, 0, reason: 'Restoring an editor is not a context change');
+    contextChanged();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(saved, 1);
+    expect(find.byType(ClipGroupReviewScreen), findsNothing);
+    expect(persisted.sharedCaption, 'แคปชั่นหลัก');
+    expect(submitted, 0);
+  });
+
+  testWidgets('returning a custom clip to shared caption requires confirmation',
+      (tester) async {
+    drafts['yt1'] = _draft('yt1', caption: 'เฉพาะตอนแรก');
+    persisted = persisted.copyWith(items: [
+      persisted.items[0].copyWith(usesSharedCaption: false),
+      ...persisted.items.skip(1),
+    ]);
+    await mount(tester);
+    await tap(tester, 'clip-group-inherit-yt1');
+    await tap(tester, 'clip-group-inherit-cancel');
+    expect(persisted.items[0].usesSharedCaption, isFalse);
+    expect(drafts['yt1']!.caption, 'เฉพาะตอนแรก');
+    expect(saved, 0);
+    await tap(tester, 'clip-group-inherit-yt1');
+    await tap(tester, 'clip-group-inherit-confirm');
+    expect(persisted.items[0].usesSharedCaption, isTrue);
+    expect(drafts['yt1']!.caption, persisted.sharedCaption);
+  });
+
+  testWidgets(
+      'per-clip AI reuses the caption editor only on explicit selection',
+      (tester) async {
+    final sections = <ClipGroupEditSection>[];
+    await mount(tester, edit: (draft, section) async {
+      sections.add(section);
+      expect(draft.id, 'yt1');
+      expect(draft.videoPath, '/yt1.mp4');
+      return draft;
+    });
+    expect(sections, isEmpty);
+    await tap(tester, 'clip-group-edit-yt1');
+    await tap(tester, 'clip-group-ai-yt1');
+    expect(sections, [ClipGroupEditSection.caption]);
+    expect(submitted, 0);
+  });
 
   testWidgets(
       'all clips stay together and submit only after final confirmation',
@@ -242,7 +454,7 @@ void main() {
         find.byKey(const ValueKey('clip-group-caption-input')),
         'ข้อความเฉพาะตอนแรก');
     await tap(tester, 'clip-group-caption-apply');
-    await tap(tester, 'clip-group-shared-caption-toggle');
+    await reveal(tester, 'clip-group-shared-caption');
     await tester.enterText(
         find.byKey(const ValueKey('clip-group-shared-caption')),
         'ข้อความหลักใหม่');
@@ -291,14 +503,18 @@ void main() {
     drafts['yt2'] = _draft('yt2', receipt: true);
     persisted = persisted.copyWith(items: [
       persisted.items[0]
+          .copyWith(usesSharedCaption: false)
           .copyWith(acceptedPostId: 'existing', acceptedPostStatus: 'QUEUED'),
-      persisted.items[1],
+      persisted.items[1].copyWith(usesSharedCaption: false),
       persisted.items[2]
     ]);
     await mount(tester);
+    await reveal(tester, 'clip-group-edit-yt1');
     final first = find.byKey(const ValueKey('clip-group-edit-yt1'));
     expect(tester.widget<PopupMenuButton<ClipGroupEditSection>>(first).enabled,
         isFalse);
+    expect(find.byKey(const ValueKey('clip-group-inherit-yt1')), findsNothing);
+    expect(find.byKey(const ValueKey('clip-group-inherit-yt2')), findsNothing);
     await tap(tester, 'clip-group-next');
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('clip-group-date-yt2')), 150,
@@ -319,6 +535,7 @@ void main() {
     await mount(tester);
     drafts['yt1'] = _draft('yt1', receipt: true);
     await tap(tester, 'clip-group-save');
+    await reveal(tester, 'clip-group-edit-yt1');
     expect(
         tester
             .widget<PopupMenuButton<ClipGroupEditSection>>(
@@ -361,7 +578,6 @@ void main() {
       if (revisions.length == 1) throw StateError('member copy failed');
       return persisted;
     });
-    await tap(tester, 'clip-group-shared-caption-toggle');
     await tester.enterText(
         find.byKey(const ValueKey('clip-group-shared-caption')),
         'ข้อความที่ต้องเก็บไว้เพื่อลองบันทึกอีกครั้ง');

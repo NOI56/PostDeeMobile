@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_draft.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_caption_context.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_submission.dart';
 import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
@@ -236,6 +237,17 @@ void main() {
     final result = await coordinator()(confirmed);
     expect(result.error, isNotNull);
     expect(submissions, isEmpty);
+  });
+
+  test('changed shared AI context invalidates the confirmed group snapshot',
+      () async {
+    groups.current = confirmed.copyWith(
+        captionContext: const ClipGroupCaptionContext(
+            aiGuidance: 'Changed after confirmation', captionLanguage: 'th'));
+    final result = await coordinator()(confirmed);
+    expect(result.error, isNotNull);
+    expect(submissions, isEmpty);
+    expect(groups.writes, 0);
   });
 
   test('rejects a member with another owner or platform membership', () async {

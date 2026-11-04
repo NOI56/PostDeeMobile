@@ -19,7 +19,7 @@ drafts, and protects cancelled/obsolete selections and busy generation states.
 Existing quota/refund, platform validation and clip-duration guidance are retained.
 API precedes Mobile; no schema or environment change.
 
-## Local clip sets and reviewed submission (2026-11-05, local candidate)
+## Shared-caption-first clip sets (2026-11-05, variant 2 candidate)
 
 The uploader's approved inline card opens a pure duration plan and source-range
 preview. `ClipSplitPlan` derives balanced ranges from the existing platform
@@ -44,8 +44,21 @@ IDs, source intervals and planned destinations. The original remains stored and
 is hidden as a source only for a valid group. Manifest projection repairs missing
 tags and leaves orphan/conflicting records visible as ordinary drafts.
 
-`ClipGroupReviewScreen` edits the set together, with shared or individual
-captions and separately remembered desired dates/times. Switching to immediate
+`ClipGroupReviewScreen` opens with the shared caption expanded and the existing
+AI panel directly inline. The user must explicitly start generation. Shared AI
+resolves the full retained `group.sourceDraftId`, never a first part, and cannot
+rewrite the original backup. Compact member rows retain caption overrides,
+member AI editing and cover/channel actions; switching back to shared inheritance
+requires confirmation. Shared edits skip custom/accepted intents and are locked
+against unresolved receipts. Existing quota/style/undo/fallback behavior remains.
+
+Optional `ClipGroupCaptionContext` stores guidance and canonical `auto`/109-code
+language preferences in the version-1 journal. Old journals omit it and read as
+null; unrelated copies preserve it. The existing journal byte cap applies, and
+completed groups cannot rewrite context. Auth/session, group revision and source
+identity guards discard stale asynchronous AI results before applying changes.
+
+Schedules retain separately remembered desired dates/times. Switching to immediate
 delivery clears effective child schedules while retaining desired times; there
 is no interval rule. Child editors lock media/destination membership and bind
 to the opening auth lifecycle. Group intent is checkpointed before member saves,
@@ -64,15 +77,12 @@ report residual IDs. Source tag/untag writes preserve the latest source metadata
 Edited or accepted groups survive cleanup failure. Process termination can leave
 partial local drafts; inspect Drafts before retrying. No cross-process batch
 transaction, backend/schema/environment/entitlement change or retired AI-editor
-restoration is introduced. Source `b6efa3e5` uses freshly verified `main`
-`8a340638`; final analysis and guarded Staging APK 12108 build/install passed.
-All 16 local JSON files retained identical checksums across that in-place update.
-Native review, preview, restart/reopen and save-only member settings passed with
-no upload/post/AI. The Basic test account correctly refused scheduling; native
-paid scheduling pickers remain unverified, with independent UTC schedules covered
-automatically. Current suite results and historical APK 12104/12105 evidence are
-separate in the work record. No API deploy, migration, bootstrap change, merge or
-push is included. See the
+restoration is introduced. Variant 2 starts from `cffe7191` on verified `main`
+`8a340638`; final source, complete-suite, exact-build and native evidence remain
+pending. APK 12108's earlier grouped-review proof and APK 12104/12105 splitting
+evidence remain historical. Live AI, native paid scheduling, real publishing,
+iOS and physical phones remain unverified. No API/provider/credit-rule change,
+migration, bootstrap change, merge or push is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Caption language preference (2026-11-04, local candidate)

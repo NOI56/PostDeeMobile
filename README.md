@@ -14,7 +14,7 @@ accuracy for every language on the configured model. API must precede Mobile;
 no database migration or model/provider change. See the
 [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Review split clips as one saved set (2026-11-05, local candidate)
+## Shared caption first for split clips (2026-11-05, selected variant 2 candidate)
 
 The owner selected the inline card on the clip-selection step. An overlong clip
 can open a Thai/English plan, preview its source intervals and adjust a valid
@@ -22,9 +22,14 @@ first boundary. The default splits only affected channels; an alternative uses
 the same parts for every selected channel. Equal intervals share one draft,
 and the plan shows the existing per-channel post-unit cost before confirmation.
 
-Preparation saves the original first, then opens all resulting clips in one
-review. Use a shared caption or edit a clip's caption, cover and publishing
-settings. Choose each clip's date and time independently; there is no automatic
+Preparation saves the original first, then opens the shared caption expanded
+with the existing AI panel directly inline. AI runs only on an explicit click
+and reads the retained full original video; its backup draft is never rewritten.
+Compact member rows provide individual caption/AI, cover and channel actions.
+Shared edits preserve overrides and accepted/unknown submissions; restoring a
+member to the shared caption requires confirmation. Guidance and output language
+are saved in optional local group context. Choose each clip's date and time
+independently; there is no automatic
 interval. A final summary requires explicit confirmation before sending the
 remaining clips through the existing single-post pipeline. Save or reopen the
 entire set as one Drafts row. The original remains stored, and every member
@@ -33,15 +38,14 @@ retains its own submission identity and accepted-post checkpoint.
 Local preparation and saves consume no post units or AI credits. Actual post
 creation retains fresh readiness, consent and per-channel quota checks. No API,
 schema, entitlement or environment change is required; AI editing remains retired.
-Source `b6efa3e5` is based on freshly verified `main` `8a340638`. Final analysis
-passed and guarded Staging APK 12108 built/installed with the same UID and app
-data. Emulator checks covered one saved three-clip set, shared/custom captions,
-preview, restart/reopen and save-only channel settings. Posting stayed blocked
-by the test account's zero quota/unavailable channels; no upload, post or AI
-request was made. Paid-account native date/time pickers, real publishing, iOS
-and physical phones remain unverified. The current full-suite result is recorded
-in the work record; APK 12104/12105 evidence there remains historical. No merge,
-push or hosted deployment is included. See the
+This variant starts from `cffe7191` on verified `main` `8a340638`; its final
+source identity, full-suite, build and native verification remain pending in the
+work record. APK 12108 proves the earlier grouped-review version, while APK
+12104/12105 prove older splitting behavior; none verifies this new inline AI
+flow. Live AI, paid native scheduling, real publishing, iOS and physical phones
+remain unverified. Existing AI quota/style/undo/fallback and auth/race guards
+remain in use. No provider, credit rule, merge, push or hosted deployment change
+is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## AI caption output language (2026-11-04, local candidate)

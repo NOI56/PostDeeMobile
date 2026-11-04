@@ -419,6 +419,7 @@ String _groupSnapshot(ClipGroupDraft group) => jsonEncode([
       group.sourceDraftId,
       group.title,
       group.sharedCaption,
+      group.captionContext?.toJson(),
       group.deliveryMode.name,
       _date(group.createdAt),
       _date(group.updatedAt),

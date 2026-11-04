@@ -245,6 +245,8 @@ const _englishMessages = <String, String>{
       'AI captions are available on Starter or Pro. Please check your plan.',
   'คุณแก้ข้อความระหว่างที่ AI ทำงาน จึงเก็บข้อความที่คุณเขียนไว้':
       'You edited the text while AI was working. Your writing has been kept.',
+  'ข้อมูลชุดคลิปเปลี่ยนแล้ว ข้อความเดิมยังอยู่ กรุณาเปิดชุดคลิปใหม่':
+      'This clip set changed. Your text is kept. Reopen the clip set.',
   'ระบบ AI ยังส่งแคปชั่นไม่ครบช่องทางที่เลือก กรุณาลองใหม่ภายหลัง':
       'AI did not return captions for all selected channels. Please try again later.',
   'ใช้โควตา AI แคปชั่นของเดือนนี้ครบแล้ว สมาชิก Starter หรือ Pro ดูแพ็กเติมได้ในหน้าเลือกแพ็กเกจ หรือรอรอบเดือนถัดไป':

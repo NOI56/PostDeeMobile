@@ -26,7 +26,7 @@ exhaustive speech-language guarantee or measured quality on the configured
 clients continue sending their existing codes or Automatic. No migration.
 See the [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Local clip sets (2026-11-05, Mobile-only candidate)
+## Shared-caption-first clip sets (2026-11-05, variant 2 Mobile candidate)
 
 The approved inline clip-splitting flow adds no route, request/response field,
 database migration, entitlement or environment variable. Planning, encoding
@@ -41,6 +41,15 @@ endpoint or interval scheduling contract is introduced. Existing post creation
 charges one unit per destination; split estimates and local group saves reserve
 no quota. Identical intervals may share a draft with multiple destinations.
 
+The selected variant opens the shared caption and existing AI controls inline.
+Only an explicit AI action uses the existing caption/upload contract and its
+current credits, style, undo and fallback behavior. Shared generation reads the
+full retained original (`group.sourceDraftId`), while the source backup remains
+unchanged. Optional local `captionContext` stores guidance and canonical output
+language (`auto` plus the existing 109 choices); it adds no API field or provider
+change. Shared updates preserve custom captions and accepted/unknown request
+intents; per-member editing and independent schedules remain available.
+
 An owner-bound local journal checkpoints each accepted post before member-draft
 deletion. A partial run retains accepted results and resumes remaining members.
 An unknown result first uses the existing read-only submission recovery. Only
@@ -50,13 +59,12 @@ does not authorize a new POST. Facebook remains `platform: 'facebook'` with
 `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and
 optional `isAiGenerated`, with no Page-feed fallback.
 
-Source `b6efa3e5` uses freshly verified `main` `8a340638` without API/schema/
-environment/dependency changes or migration. Final analysis and guarded APK
-12108 build/install passed. Staging health answered HTTP 200; native group save,
-preview and restart recovery made no upload, post or AI request. Quota/channel
-gates kept posting disabled, so this is not real-publishing proof. Current suite
-results and historical APK 12104/12105 evidence are separated in the work record.
-No API deployment, bootstrap change, merge or push is included. See the
+The variant starts from `cffe7191` on verified `main` `8a340638` without API/
+schema/environment/dependency changes or migration. Its final source, complete
+suite, exact-build and native evidence are pending. Earlier APK 12108 grouped
+review and APK 12104/12105 splitting results remain separate historical proof.
+No live AI/real-publishing claim, API deployment, bootstrap change, merge or push
+is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Clip duration guide (2026-11-04, Mobile-only candidate)

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/network/postdee_api_client.dart';
@@ -21,6 +22,13 @@ import 'publish_review_screen.dart';
 import 'review_localizations.dart';
 
 enum ClipGroupEditSection { caption, cover, channels }
+
+typedef ClipGroupSharedCaptionEditorBuilder = Widget Function(
+    BuildContext context,
+    TextEditingController sharedCaption,
+    ValueChanged<bool> onBusyChanged,
+    bool enabled,
+    VoidCallback onContextChanged);
 
 typedef ClipGroupDatePicker = Future<DateTime?> Function(
     BuildContext context, DateTime initial, DateTime first, DateTime last);
@@ -47,6 +55,7 @@ class ClipGroupReviewScreen extends StatefulWidget {
     this.pickTime,
     this.previewClip,
     this.connectionDisplayNames = const {},
+    this.sharedCaptionEditorBuilder,
   });
   final ClipGroupDraft initialGroup;
   final Map<String, PublishDraft> draftsById;
@@ -65,6 +74,7 @@ class ClipGroupReviewScreen extends StatefulWidget {
   final ClipGroupTimePicker? pickTime;
   final Future<void> Function(PublishDraft)? previewClip;
   final Map<SocialPlatform, String> connectionDisplayNames;
+  final ClipGroupSharedCaptionEditorBuilder? sharedCaptionEditorBuilder;
   @override
   State<ClipGroupReviewScreen> createState() => _ClipGroupReviewScreenState();
 }
@@ -80,18 +90,21 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   SubscriptionStatusResult? _quota;
   int _stage = 0;
   bool _busy = false;
+  bool _sharedCaptionBusy = false;
+  bool _captionRefreshScheduled = false;
+  int _sharedBusyReport = 0;
   bool _navigating = false;
   bool _dirty = false;
   bool _checking = false;
   bool _quotaFailed = false;
   bool _result = false;
-  bool _showSharedCaption = false;
   bool _ownerChanged = false;
   String? _error;
   String? _message;
   ClipGroupSubmissionProgress? _progress;
 
   String _text(String th, String en) => clipGroupText(context, th, en);
+  bool get _actionBusy => _busy || _sharedCaptionBusy;
   List<ClipGroupItem> get _pending =>
       _group.items.where((item) => !item.isAccepted).toList();
   bool get _owned =>
@@ -103,7 +116,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   bool get _hasUnresolved => _pending.any(_hasReceipt);
   bool _editable(ClipGroupItem item) =>
       _owned &&
-      !_busy &&
+      !_actionBusy &&
       !_navigating &&
       !item.isAccepted &&
       _drafts[item.draftId] != null &&
@@ -113,6 +126,17 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   int get _freshUnits => _pending
       .where((item) => !_hasReceipt(item))
       .fold(0, (sum, item) => sum + item.platformApiValues.length);
+  int get _captionCount => _group.items
+      .where((item) =>
+          item.isAccepted ||
+          _platforms(item).every((platform) =>
+              _drafts[item.draftId]
+                  ?.platformSettings
+                  .effectiveCaption(platform, _caption(item))
+                  .trim()
+                  .isNotEmpty ==
+              true))
+      .length;
   bool get _missing => _pending.any((item) => _drafts[item.draftId] == null);
 
   @override
@@ -122,13 +146,50 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
     _result = _group.isComplete;
     _drafts = Map.of(widget.draftsById);
     _sharedCaption = TextEditingController(text: _group.sharedCaption);
-    _sharedCaption.addListener(() {
-      _dirty = true;
-    });
+    _sharedCaption.addListener(_sharedCaptionChanged);
     _ownerChanged = !widget.ownerSession.isCurrent;
     PostDeeAuthSessionStore.instance.addListener(_sessionChanged);
     _syncDates();
     unawaited(_loadQuota());
+  }
+
+  void _sharedCaptionChanged() {
+    _dirty = true;
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (_captionRefreshScheduled) return;
+      _captionRefreshScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _captionRefreshScheduled = false;
+        if (mounted) setState(() {});
+      });
+    } else {
+      setState(() {});
+    }
+  }
+
+  void _sharedBusyChanged(bool value) {
+    final report = ++_sharedBusyReport;
+    if (_sharedCaptionBusy == value) return;
+    void apply() {
+      if (mounted &&
+          report == _sharedBusyReport &&
+          _sharedCaptionBusy != value) {
+        setState(() => _sharedCaptionBusy = value);
+      }
+    }
+
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+    } else {
+      apply();
+    }
+  }
+
+  void _sharedContextChanged() {
+    if (_owned) _dirty = true;
   }
 
   void _syncDates() {
@@ -225,7 +286,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   }
 
   Future<bool> _save({bool feedback = false}) async {
-    if (!_owned || _busy) return false;
+    if (!_owned || _actionBusy) return false;
     setState(() {
       _busy = true;
       _error = null;
@@ -339,9 +400,43 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
     }
   }
 
+  Future<void> _useSharedCaption(ClipGroupItem item) async {
+    if (!_editable(item) || item.usesSharedCaption) return;
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: Text(
+                  _text('กลับไปใช้แคปชั่นหลัก?', 'Use the shared caption?')),
+              content: Text(_text(
+                  'ข้อความเฉพาะคลิปนี้จะถูกแทนที่ด้วยแคปชั่นหลักของชุด',
+                  'This clip’s custom caption will be replaced by the shared caption.')),
+              actions: [
+                TextButton(
+                    key: const ValueKey('clip-group-inherit-cancel'),
+                    onPressed: () => Navigator.pop(context, false),
+                    child: Text(_text('ยกเลิก', 'Cancel'))),
+                FilledButton(
+                    key: const ValueKey('clip-group-inherit-confirm'),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: Text(_text('ใช้แคปชั่นหลัก', 'Use shared caption'))),
+              ],
+            ));
+    if (confirmed != true || !mounted || !_editable(item)) return;
+    setState(() {
+      _group = _group.copyWith(items: [
+        for (final member in _group.items)
+          member.draftId == item.draftId
+              ? member.copyWith(usesSharedCaption: true)
+              : member,
+      ]);
+      _dirty = true;
+    });
+    await _save();
+  }
+
   Future<void> _preview(ClipGroupItem item) async {
     final draft = _drafts[item.draftId];
-    if (draft == null || !_owned || _busy) return;
+    if (draft == null || !_owned || _actionBusy) return;
     setState(() => _busy = true);
     try {
       if (widget.previewClip != null) {
@@ -366,7 +461,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   }
 
   Future<bool> _loadSchedulePolicy() async {
-    if (!_owned || _busy) return false;
+    if (!_owned || _actionBusy) return false;
     setState(() => _busy = true);
     try {
       final subscription = await widget.loadSubscription();
@@ -488,7 +583,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   }
 
   Future<void> _next() async {
-    if (!_owned || _busy || _navigating) return;
+    if (!_owned || _actionBusy || _navigating) return;
     setState(() => _navigating = true);
     try {
       if (_stage == 1 &&
@@ -576,7 +671,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   }
 
   Future<void> _submit() async {
-    if (_navigating || !_owned || _busy) return;
+    if (_navigating || !_owned || _actionBusy) return;
     setState(() => _navigating = true);
     try {
       await _runSubmission();
@@ -592,7 +687,10 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   }
 
   Future<void> _runSubmission() async {
-    if (_busy || !_owned || _pending.isEmpty || _confirmationError() != null) {
+    if (_actionBusy ||
+        !_owned ||
+        _pending.isEmpty ||
+        _confirmationError() != null) {
       return;
     }
     if (!await _save() || !mounted || !_owned) return;
@@ -645,7 +743,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   }
 
   Future<void> _back() async {
-    if (_busy || _navigating) return;
+    if (_actionBusy || _navigating) return;
     if (_stage > 0 && !_result) {
       setState(() => _stage--);
       if (_scroll.hasClients) _scroll.jumpTo(0);
@@ -658,7 +756,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final titles = [
-      _text('ตรวจคลิปในชุดนี้', 'Review this set'),
+      _text('เขียนแคปชั่นทั้งชุด', 'Write captions for this set'),
       _text('เลือกเวลาส่งแต่ละคลิป', 'Schedule each clip'),
       _text('ตรวจและยืนยันทั้งชุด', 'Confirm the entire set')
     ];
@@ -674,8 +772,8 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
               title: Text(_result
                   ? _text('ผลการส่งทั้งชุด', 'Set submission results')
                   : titles[_stage]),
-              leading:
-                  BackButton(onPressed: _busy || _navigating ? null : _back)),
+              leading: BackButton(
+                  onPressed: _actionBusy || _navigating ? null : _back)),
           body: SafeArea(
               bottom: false,
               child: ListView(
@@ -698,12 +796,11 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                     if (_result)
                       ..._resultWidgets()
                     else if (_stage == 0) ...[
-                      _sharedEditor(),
+                      _KeepSharedCaptionEditorAlive(
+                          key: const ValueKey('clip-group-source-editor'),
+                          child: _sharedEditor()),
                       const SizedBox(height: AppTheme.spaceLg),
-                      for (final item in _group.items) ...[
-                        _clipCard(item),
-                        const SizedBox(height: AppTheme.spaceMd)
-                      ],
+                      _clipsCard(),
                     ] else if (_stage == 1) ...[
                       _deliveryChoices(),
                       const SizedBox(height: AppTheme.spaceLg),
@@ -753,21 +850,22 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   Widget _sharedEditor() => PostDeeCard(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Expanded(
-              child: Text(_text('แคปชั่นหลักของชุดนี้', 'Shared caption'),
-                  style: Theme.of(context).textTheme.titleSmall)),
-          TextButton(
-              key: const ValueKey('clip-group-shared-caption-toggle'),
-              onPressed: _owned && !_busy && !_hasUnresolved
-                  ? () =>
-                      setState(() => _showSharedCaption = !_showSharedCaption)
-                  : null,
-              child: Text(_showSharedCaption
-                  ? _text('ย่อ', 'Collapse')
-                  : _text('แก้ไข', 'Edit')))
-        ]),
-        if (_showSharedCaption)
+        Text(_text('แคปชั่นหลักของชุดนี้', 'Shared caption'),
+            style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: AppTheme.spaceSm),
+        Text(
+            _text('ใช้กับคลิปที่ไม่ได้แก้แยก · ข้อความที่แก้แยกจะยังอยู่',
+                'Applies to clips without a custom caption. Custom captions stay unchanged.'),
+            style: TextStyle(color: AppTheme.textSecondary)),
+        const SizedBox(height: AppTheme.spaceMd),
+        if (widget.sharedCaptionEditorBuilder != null)
+          widget.sharedCaptionEditorBuilder!(
+              context,
+              _sharedCaption,
+              _sharedBusyChanged,
+              _owned && !_busy && !_hasUnresolved,
+              _sharedContextChanged)
+        else
           TextField(
               key: const ValueKey('clip-group-shared-caption'),
               controller: _sharedCaption,
@@ -775,37 +873,55 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
               maxLines: 8,
               enabled: _owned && !_busy && !_hasUnresolved,
               decoration: InputDecoration(
-                  labelText: _text('ใช้กับคลิปที่ไม่ได้แก้แยก',
-                      'Applies to clips without a custom caption')))
-        else
-          Text(
-              _sharedCaption.text.isEmpty
-                  ? _text('ยังไม่มีแคปชั่นหลัก', 'No shared caption yet')
-                  : _sharedCaption.text,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
-        if (_hasUnresolved)
+                  labelText: _text('แคปชั่นหลัก', 'Shared caption'))),
+        if (_hasUnresolved) ...[
+          const SizedBox(height: AppTheme.spaceSm),
           Text(_text(
               'มีรายการที่เคยเริ่มส่งแล้ว ตรวจผลเดิมก่อนเปลี่ยนแคปชั่นหลัก',
               'Some items already started submitting. Check their results before changing the shared caption.')),
+        ],
       ]));
+
+  Widget _clipsCard() => PostDeeCard(
+      key: const ValueKey('clip-group-clips'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var index = 0; index < _group.items.length; index++) ...[
+          if (index > 0) const Divider(height: AppTheme.spaceXl),
+          _clipRow(_group.items[index]),
+        ],
+        if (_group.items.any((item) =>
+            !item.isAccepted &&
+            _drafts[item.draftId]?.captionNeedsReview == true)) ...[
+          const SizedBox(height: AppTheme.spaceSm),
+          Text(
+              _text(
+                  'ตรวจแคปชั่นที่ใช้ร่วมกันและข้อความที่แก้แยก ก่อนยืนยันทั้งชุด',
+                  'Review the shared and custom captions before confirming the set.'),
+              style: TextStyle(color: AppTheme.textSecondary)),
+        ],
+      ]));
+
   String _label(ClipGroupItem item) =>
       _text('คลิป ${item.index + 1}', 'Clip ${item.index + 1}');
-  Widget _clipCard(ClipGroupItem item) {
+  Widget _clipRow(ClipGroupItem item) {
     final draft = _drafts[item.draftId];
     final editable = _editable(item);
-    return PostDeeCard(
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         Expanded(
-            child: Text(_label(item),
+            child: Text(
+                '${_label(item)} · ${_platforms(item).map((p) => p.label).join(' · ')}',
                 style: Theme.of(context).textTheme.titleSmall)),
         PopupMenuButton<ClipGroupEditSection>(
             key: ValueKey('clip-group-edit-${item.draftId}'),
             enabled: editable,
             onSelected: (section) => _edit(item, section),
             itemBuilder: (_) => [
+                  PopupMenuItem(
+                      key: ValueKey('clip-group-ai-${item.draftId}'),
+                      value: ClipGroupEditSection.caption,
+                      child: Text(_text(
+                          'ให้ AI ช่วยคลิปนี้', 'Write this clip with AI'))),
                   PopupMenuItem(
                       value: ClipGroupEditSection.cover,
                       child: Text(_text('หน้าปก', 'Cover'))),
@@ -814,7 +930,6 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                       child: Text(_text('ตั้งค่าช่องทาง', 'Channel settings'))),
                 ])
       ]),
-      Text(_platforms(item).map((p) => p.label).join(' · ')),
       Text(
           '${formatClipSplitTime(item.sourceStartSeconds)}–${formatClipSplitTime(item.sourceEndSeconds)}',
           style: TextStyle(color: AppTheme.textSecondary)),
@@ -831,32 +946,37 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
         Text(
             item.usesSharedCaption
                 ? _text('ใช้แคปชั่นหลัก', 'Uses the shared caption')
-                : _caption(item),
-            maxLines: 3,
+                : _text('แคปชั่นเฉพาะคลิป · ${_caption(item)}',
+                    'Custom caption · ${_caption(item)}'),
+            maxLines: 2,
             overflow: TextOverflow.ellipsis),
-      if (draft?.captionNeedsReview == true && !item.isAccepted)
-        Text(
-            _text('ตรวจแคปชั่นของตอนนี้อีกครั้งก่อนยืนยันทั้งชุด',
-                'Review this part’s caption before confirming the set.'),
-            style: TextStyle(color: AppTheme.textSecondary)),
       Wrap(spacing: AppTheme.spaceSm, children: [
         TextButton.icon(
-            onPressed:
-                draft != null && _owned && !_busy ? () => _preview(item) : null,
+            onPressed: draft != null && _owned && !_actionBusy
+                ? () => _preview(item)
+                : null,
             icon: const Icon(Icons.play_circle_outline),
             label: Text(_text('ดูคลิป', 'Preview'))),
         TextButton(
             key: ValueKey('clip-group-caption-${item.draftId}'),
             onPressed: editable ? () => _editCaption(item) : null,
             child: Text(_text('แก้แคปชั่น', 'Edit caption'))),
+        if (!item.usesSharedCaption &&
+            !item.isAccepted &&
+            !_hasReceipt(item) &&
+            draft != null)
+          TextButton(
+              key: ValueKey('clip-group-inherit-${item.draftId}'),
+              onPressed: editable ? () => _useSharedCaption(item) : null,
+              child: Text(_text('กลับไปใช้แคปชั่นหลัก', 'Use shared caption'))),
       ]),
-    ]));
+    ]);
   }
 
   Widget _deliveryChoices() => RadioGroup<ClipGroupDeliveryMode>(
       groupValue: _group.deliveryMode,
       onChanged: (mode) async {
-        if (mode == null || _busy || !_owned || _hasUnresolved) return;
+        if (mode == null || _actionBusy || !_owned || _hasUnresolved) return;
         if (mode == ClipGroupDeliveryMode.scheduled &&
             !await _loadSchedulePolicy()) {
           return;
@@ -869,7 +989,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
           child: Column(children: [
         RadioListTile<ClipGroupDeliveryMode>(
             key: const ValueKey('clip-group-mode-scheduled'),
-            enabled: !_hasUnresolved && _owned && !_busy,
+            enabled: !_hasUnresolved && _owned && !_actionBusy,
             value: ClipGroupDeliveryMode.scheduled,
             title: Text(
                 _text('ตั้งเวลาแยกแต่ละคลิป', 'Schedule each clip separately')),
@@ -877,7 +997,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                 'Choose a different date and time for each clip.'))),
         RadioListTile<ClipGroupDeliveryMode>(
             key: const ValueKey('clip-group-mode-immediate'),
-            enabled: !_hasUnresolved && _owned && !_busy,
+            enabled: !_hasUnresolved && _owned && !_actionBusy,
             value: ClipGroupDeliveryMode.immediate,
             title: Text(_text('ส่งทั้งหมดทันที', 'Send all now'))),
       ])));
@@ -1002,6 +1122,12 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_stage == 0 && !_result)
+                      Text(
+                          _text(
+                              'เขียนแคปชั่นแล้ว $_captionCount / ${_group.items.length} คลิป',
+                              '$_captionCount / ${_group.items.length} clips have captions'),
+                          style: TextStyle(color: AppTheme.textSecondary)),
                     Text(
                         _text('ใช้ $_pendingUnits หน่วยโพสต์',
                             '$_pendingUnits post units'),
@@ -1015,13 +1141,13 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                           style: TextStyle(color: AppTheme.textSecondary))
                     else if (_quotaFailed)
                       TextButton(
-                          onPressed: _busy ? null : _loadQuota,
+                          onPressed: _actionBusy ? null : _loadQuota,
                           child: Text(
                               _text('ตรวจโควตาใหม่', 'Retry post unit check'))),
                     const SizedBox(height: AppTheme.spaceSm),
                     if (_result)
                       FilledButton(
-                          onPressed: _busy || !_owned || _pending.isEmpty
+                          onPressed: _actionBusy || !_owned || _pending.isEmpty
                               ? null
                               : () {
                                   setState(() => _result = false);
@@ -1031,8 +1157,9 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                     else if (_stage < 2)
                       FilledButton(
                           key: const ValueKey('clip-group-next'),
-                          onPressed:
-                              _busy || _navigating || !_owned ? null : _next,
+                          onPressed: _actionBusy || _navigating || !_owned
+                              ? null
+                              : _next,
                           child: Padding(
                               padding: const EdgeInsets.symmetric(
                                   vertical: AppTheme.spaceSm),
@@ -1046,7 +1173,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                     else
                       FilledButton(
                           key: const ValueKey('clip-group-confirm'),
-                          onPressed: _busy ||
+                          onPressed: _actionBusy ||
                                   _navigating ||
                                   _checking ||
                                   confirmation != null ||
@@ -1073,7 +1200,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                     if (!_result)
                       TextButton(
                           key: const ValueKey('clip-group-save'),
-                          onPressed: _busy || _navigating || !_owned
+                          onPressed: _actionBusy || _navigating || !_owned
                               ? null
                               : () => _save(feedback: true),
                           child: Text(
@@ -1083,6 +1210,26 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                   ]))));
   Widget _notice(String message) => Text(message,
       style: TextStyle(color: Theme.of(context).colorScheme.error));
+}
+
+class _KeepSharedCaptionEditorAlive extends StatefulWidget {
+  const _KeepSharedCaptionEditorAlive({super.key, required this.child});
+  final Widget child;
+  @override
+  State<_KeepSharedCaptionEditorAlive> createState() =>
+      _KeepSharedCaptionEditorAliveState();
+}
+
+class _KeepSharedCaptionEditorAliveState
+    extends State<_KeepSharedCaptionEditorAlive>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
 }
 
 class _ClipGroupCaptionDialog extends StatefulWidget {

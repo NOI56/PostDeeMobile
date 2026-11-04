@@ -83,6 +83,61 @@ extension _UploaderClipGroups on _UploaderScreenState {
       }
 
       await reload();
+      final source = drafts[working!.sourceDraftId];
+      var sharedCaptionContext = working!.captionContext ??
+          (source == null
+              ? null
+              : ClipGroupCaptionContext(
+                  aiGuidance: source.aiGuidance,
+                  captionLanguage: source.captionLanguage));
+      var sharedCaptionEditorUsed = false;
+      bool hasUnresolvedCaptionIntent(ClipGroupDraft current) =>
+          current.items.any((item) =>
+              !item.isAccepted && drafts[item.draftId]?.uploadedMedia != null);
+      Future<bool> validateSharedCaptionContext() async {
+        try {
+          _guardClipGroup(session, owner);
+          final current = await groupStore.loadClipGroup(groupId);
+          _guardClipGroup(session, owner);
+          if (source == null ||
+              current == null ||
+              current.isComplete ||
+              current.ownerUserId != owner ||
+              current.revision != working!.revision ||
+              current.sourceDraftId != source.id) {
+            return false;
+          }
+          final original = await store.loadDraft(source.id);
+          _guardClipGroup(session, owner);
+          if (original == null ||
+              original.ownerUserId != owner ||
+              (original.clipGroupId != null &&
+                  original.clipGroupId != groupId) ||
+              original.uploadedMedia != null ||
+              original.videoPath != source.videoPath ||
+              original.videoSizeBytes != source.videoSizeBytes ||
+              original.mediaContentFingerprint !=
+                  source.mediaContentFingerprint ||
+              original.submissionRequestId != source.submissionRequestId) {
+            return false;
+          }
+          for (final item in current.items.where((item) => !item.isAccepted)) {
+            final member = await store.loadDraft(item.draftId);
+            _guardClipGroup(session, owner);
+            if (member == null ||
+                member.ownerUserId != owner ||
+                member.clipGroupId != groupId ||
+                member.isClipGroupSource ||
+                member.uploadedMedia != null) {
+              return false;
+            }
+          }
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
       await _loadConnections();
       _guardClipGroup(session, owner);
       final reviewBindings = {
@@ -95,7 +150,14 @@ extension _UploaderClipGroups on _UploaderScreenState {
       Future<ClipGroupDraft> saveGroup(ClipGroupDraft proposed) async {
         try {
           final saved = await _persistClipGroupEdits(
-              store, groupStore, proposed, session);
+              store,
+              groupStore,
+              sharedCaptionEditorUsed &&
+                      !working!.isComplete &&
+                      !hasUnresolvedCaptionIntent(working!)
+                  ? proposed.copyWith(captionContext: sharedCaptionContext)
+                  : proposed,
+              session);
           working = saved;
           await reload();
           return working!;
@@ -181,6 +243,39 @@ extension _UploaderClipGroups on _UploaderScreenState {
           onSaveGroup: saveGroup,
           onSaveCaption: saveCaption,
           onReloadGroup: reload,
+          sharedCaptionEditorBuilder:
+              (context, controller, onBusyChanged, enabled, onContextChanged) {
+            if (source == null ||
+                source.ownerUserId != owner ||
+                source.uploadedMedia != null ||
+                (source.clipGroupId != null && source.clipGroupId != groupId) ||
+                hasUnresolvedCaptionIntent(working!)) {
+              return TextField(
+                key: const ValueKey('clip-group-shared-caption'),
+                controller: controller,
+                minLines: 3,
+                maxLines: 8,
+                enabled: enabled,
+                decoration: InputDecoration(
+                    labelText: clipGroupText(
+                        context, 'แคปชั่นหลัก', 'Shared caption')),
+              );
+            }
+            sharedCaptionEditorUsed = true;
+            return _clipGroupMemberEditor(source, ClipGroupEditSection.caption,
+                store, session, (_, __) async {},
+                sharedCaptionController: controller,
+                captionContext: sharedCaptionContext,
+                onCaptionContextChanged: (value) {
+              if (session.isCurrent && value != sharedCaptionContext) {
+                sharedCaptionContext = value;
+                onContextChanged();
+              }
+            },
+                onCaptionBusyChanged: onBusyChanged,
+                captionEnabled: enabled,
+                validateCaptionContext: validateSharedCaptionContext);
+          },
           onEditClip: (draft, section) async {
             _guardClipGroup(session, owner);
             final member = working!.items
@@ -272,6 +367,7 @@ extension _UploaderClipGroups on _UploaderScreenState {
       throw const ClipGroupDraftConflictException();
     }
     final requests = <PublishDraftSaveRequest>[];
+    final contextChanged = current.captionContext != proposed.captionContext;
     for (final item in proposed.items.where((item) => !item.isAccepted)) {
       _guardClipGroup(session, proposed.ownerUserId);
       final draft = await store.loadDraft(item.draftId);
@@ -282,6 +378,10 @@ extension _UploaderClipGroups on _UploaderScreenState {
           draft.isClipGroupSource) {
         throw const ClipGroupDraftException(
             'ไม่พบคลิปบางรายการ ร่างที่เหลือยังอยู่ กรุณาตรวจชุดคลิป');
+      }
+      if (draft.uploadedMedia != null && contextChanged) {
+        throw const ClipGroupDraftException(
+            'คลิปนี้เคยเริ่มส่งแล้ว กรุณาตรวจรายการเดิมก่อนแก้ไข');
       }
       final caption =
           item.usesSharedCaption ? proposed.sharedCaption : draft.caption;
@@ -594,13 +694,25 @@ extension _UploaderClipGroups on _UploaderScreenState {
           ClipGroupEditSection section,
           PublishDraftStore store,
           AuthSessionBinding session,
-          Future<void> Function(String, String) beforeSave) =>
+          Future<void> Function(String, String) beforeSave,
+          {TextEditingController? sharedCaptionController,
+          ClipGroupCaptionContext? captionContext,
+          ValueChanged<ClipGroupCaptionContext>? onCaptionContextChanged,
+          ValueChanged<bool>? onCaptionBusyChanged,
+          bool captionEnabled = true,
+          Future<bool> Function()? validateCaptionContext}) =>
       UploaderScreen(
         fullScreen: true,
         initialDraftId: draft.id,
         draftStore: store,
         clipGroupEditor: true,
         clipGroupOwnerSession: session,
+        clipGroupSharedCaptionController: sharedCaptionController,
+        clipGroupCaptionContext: captionContext,
+        onClipGroupCaptionContextChanged: onCaptionContextChanged,
+        onClipGroupCaptionBusyChanged: onCaptionBusyChanged,
+        clipGroupCaptionEnabled: captionEnabled,
+        validateClipGroupCaptionContext: validateCaptionContext,
         clipGroupEditorStep: section == ClipGroupEditSection.channels ? 2 : 1,
         beforeClipGroupMemberSave: beforeSave,
         now: widget.now,
@@ -608,8 +720,11 @@ extension _UploaderClipGroups on _UploaderScreenState {
         loadSubscription: widget.loadSubscription,
         loadCaptionQuota: widget.loadCaptionQuota,
         loadPostQuota: widget.loadPostQuota,
+        resyncRevenueCatSubscription: widget.resyncRevenueCatSubscription,
         generateCaption: widget.generateCaption,
         generateRealClipCaption: widget.generateRealClipCaption,
+        createUpload: widget.createUpload,
+        uploadVideoFile: widget.uploadVideoFile,
         enableRevenueCatBilling: widget.enableRevenueCatBilling,
         captionWritingStyleStore: widget.captionWritingStyleStore,
         platformPublishDefaultsStore: widget.platformPublishDefaultsStore,

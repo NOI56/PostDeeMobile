@@ -322,7 +322,9 @@ class FileClipGroupDraftRepository
         a.platformApiValues.containsAll(b.platformApiValues);
     if (previous.sourceDraftId != next.sourceDraftId ||
         previous.createdAt != next.createdAt ||
-        previous.items.length != next.items.length) {
+        previous.items.length != next.items.length ||
+        (previous.isComplete &&
+            previous.captionContext != next.captionContext)) {
       throw const ClipGroupDraftException('สมาชิกชุดคลิปเปลี่ยนแล้ว');
     }
     for (var i = 0; i < previous.items.length; i++) {

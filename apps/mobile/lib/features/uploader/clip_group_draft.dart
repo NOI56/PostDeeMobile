@@ -1,3 +1,5 @@
+import 'clip_group_caption_context.dart';
+
 const _keepClipGroupValue = Object();
 final _clipGroupIdPattern = RegExp(r'^[A-Za-z0-9_-]{1,80}$');
 
@@ -122,6 +124,7 @@ class ClipGroupDraft {
     required this.createdAt,
     required this.updatedAt,
     this.revision = 0,
+    this.captionContext,
   }) : items = List.unmodifiable(items);
 
   final String id;
@@ -134,6 +137,7 @@ class ClipGroupDraft {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int revision;
+  final ClipGroupCaptionContext? captionContext;
   bool get isComplete =>
       items.isNotEmpty && items.every((item) => item.isAccepted);
 
@@ -144,6 +148,7 @@ class ClipGroupDraft {
     List<ClipGroupItem>? items,
     DateTime? updatedAt,
     int? revision,
+    Object? captionContext = _keepClipGroupValue,
   }) =>
       ClipGroupDraft(
         id: id,
@@ -156,6 +161,9 @@ class ClipGroupDraft {
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         revision: revision ?? this.revision,
+        captionContext: identical(captionContext, _keepClipGroupValue)
+            ? this.captionContext
+            : captionContext as ClipGroupCaptionContext?,
       );
 
   Map<String, Object?> toJson() => {
@@ -165,6 +173,7 @@ class ClipGroupDraft {
         'sourceDraftId': sourceDraftId,
         'title': title,
         'sharedCaption': sharedCaption,
+        if (captionContext != null) 'captionContext': captionContext!.toJson(),
         'deliveryMode': deliveryMode.name,
         'items': items.map((item) => item.toJson()).toList(),
         'createdAt': createdAt.toUtc().toIso8601String(),
@@ -177,6 +186,7 @@ class ClipGroupDraft {
         .where((mode) => mode.name == json['deliveryMode'])
         .firstOrNull;
     final items = json['items'];
+    final captionContext = json['captionContext'];
     if (json['version'] != 1 ||
         json['id'] is! String ||
         json['ownerUserId'] is! String ||
@@ -184,6 +194,7 @@ class ClipGroupDraft {
         json['title'] is! String ||
         json['sharedCaption'] is! String ||
         json['revision'] is! int ||
+        (captionContext != null && captionContext is! Map<String, dynamic>) ||
         mode == null ||
         items is! List ||
         items.length > 64 ||
@@ -203,6 +214,10 @@ class ClipGroupDraft {
       createdAt: _requiredDate(json['createdAt']),
       updatedAt: _requiredDate(json['updatedAt']),
       revision: json['revision'] as int,
+      captionContext: captionContext == null
+          ? null
+          : ClipGroupCaptionContext.fromJson(
+              captionContext as Map<String, dynamic>),
     );
     validateClipGroupDraft(group);
     return group;
@@ -224,6 +239,9 @@ void validateClipGroupDraft(ClipGroupDraft group) {
     throw const FormatException('Invalid clip group');
   }
   final ids = <String>{};
+  if (group.captionContext != null) {
+    validateClipGroupCaptionContext(group.captionContext!);
+  }
   final posts = <String>{};
   const platforms = {
     'TIKTOK',

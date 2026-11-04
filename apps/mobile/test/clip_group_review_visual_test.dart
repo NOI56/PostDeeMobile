@@ -200,21 +200,21 @@ void main() {
       dark: true,
       english: false,
       width: 320.0,
-      scale: 1.7
+      scale: 2.0
     ),
     (
       name: 'light-en-large',
       dark: false,
       english: true,
       width: 320.0,
-      scale: 1.7
+      scale: 2.0
     ),
     (
       name: 'dark-en-large',
       dark: true,
       english: true,
       width: 320.0,
-      scale: 1.7
+      scale: 2.0
     ),
   ]) {
     testWidgets('actual grouped review with real fonts ${mode.name}',
@@ -227,6 +227,37 @@ void main() {
       await _fonts(tester);
       await tester.pumpWidget(
           _app(dark: mode.dark, english: mode.english, scale: mode.scale));
+      await tester.pumpAndSettle();
+      expect(
+          find.text(mode.english
+              ? 'Write captions for this set'
+              : 'เขียนแคปชั่นทั้งชุด'),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('clip-group-shared-caption')),
+          findsOneWidget);
+      for (final key in ['clip-group-next', 'clip-group-save']) {
+        final bounds = tester.getRect(find.byKey(ValueKey(key)));
+        expect(bounds.left, greaterThanOrEqualTo(0));
+        expect(bounds.right, lessThanOrEqualTo(mode.width));
+        expect(bounds.bottom, lessThanOrEqualTo(1100));
+      }
+      await _capture(tester, 'clip-group-${mode.name}-caption');
+      final captionScroll = find
+          .descendant(
+              of: find.byKey(const ValueKey('clip-group-scroll')),
+              matching: find.byType(Scrollable))
+          .first;
+      final customCaption =
+          find.byKey(const ValueKey('clip-group-caption-yt2'));
+      // A long editable caption has its own scrollable; move the outer list
+      // directly rather than dragging through the text field's hit area.
+      final position = tester.state<ScrollableState>(captionScroll).position;
+      for (var i = 0; i < 50 && customCaption.evaluate().isEmpty; i++) {
+        position
+            .jumpTo((position.pixels + 180).clamp(0, position.maxScrollExtent));
+        await tester.pumpAndSettle();
+      }
+      await tester.ensureVisible(customCaption);
       await tester.pumpAndSettle();
       await _capture(tester, 'clip-group-${mode.name}-clips');
 

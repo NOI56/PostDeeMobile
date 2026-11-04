@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_caption_context.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_draft.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
@@ -65,6 +66,122 @@ void main() {
             ),
         ],
       );
+
+  test('caption context roundtrips and unrelated copies preserve it', () {
+    const context = ClipGroupCaptionContext(
+        aiGuidance: 'ขายของด้วยภาษาที่เป็นธรรมชาติ',
+        captionLanguage: 'mni-Mtei');
+    expect(ClipGroupCaptionContext.fromJson(context.toJson()), context);
+    final original = group().copyWith(captionContext: context);
+    final restored = ClipGroupDraft.fromJson(
+        jsonDecode(jsonEncode(original.toJson())) as Map<String, dynamic>);
+    expect(restored.captionContext, context);
+    expect(restored.copyWith(sharedCaption: 'Edited text').captionContext,
+        context);
+    expect(restored.copyWith(captionContext: null).captionContext, isNull);
+  });
+
+  test('older version one journals have no caption context', () {
+    final oldJson = group().toJson()..remove('captionContext');
+    expect(ClipGroupDraft.fromJson(oldJson).captionContext, isNull);
+    expect(group().toJson().containsKey('captionContext'), isFalse);
+  });
+
+  test('caption context CAS saves never rewrite the source backup', () async {
+    final original = await store.saveDraft(request('original'));
+    final sourceManifest = File('${root.path}/owners/a/original/manifest.json');
+    final originalManifest = await sourceManifest.readAsBytes();
+    final originalVideo = await File(original.videoPath).readAsBytes();
+    final first = await store.saveClipGroup(group(), expectedRevision: null);
+    const context = ClipGroupCaptionContext(
+        aiGuidance: 'Full original clip guidance', captionLanguage: 'en');
+    final edited = await store.saveClipGroup(
+        first.copyWith(
+            captionContext: context, sharedCaption: 'Full-source AI'),
+        expectedRevision: first.revision);
+    expect((await store.loadClipGroup(first.id))!.captionContext, context);
+    expect((await store.listClipGroups()).single.captionContext, context);
+    await expectLater(
+        store.saveClipGroup(first.copyWith(captionContext: context),
+            expectedRevision: first.revision),
+        throwsA(isA<ClipGroupDraftConflictException>()));
+    final scheduled = await store.saveClipGroup(
+        edited.copyWith(deliveryMode: ClipGroupDeliveryMode.scheduled),
+        expectedRevision: edited.revision);
+    expect(scheduled.captionContext, context);
+    expect(scheduled.items.map((item) => item.scheduledAt),
+        first.items.map((item) => item.scheduledAt));
+    expect(await sourceManifest.readAsBytes(), originalManifest);
+    expect(await File(original.videoPath).readAsBytes(), originalVideo);
+    expect((await store.loadDraft(original.id))!.submissionRequestId,
+        original.submissionRequestId);
+  });
+
+  test('unknown languages and malformed caption contexts are rejected',
+      () async {
+    await store.saveDraft(request('original'));
+    final first = await store.saveClipGroup(group(), expectedRevision: null);
+    for (final context in [
+      const ClipGroupCaptionContext(aiGuidance: '', captionLanguage: 'unknown'),
+      ClipGroupCaptionContext(
+          aiGuidance: List.filled(262145, 'g').join(), captionLanguage: 'auto'),
+    ]) {
+      await expectLater(
+          store.saveClipGroup(first.copyWith(captionContext: context),
+              expectedRevision: first.revision),
+          throwsA(isA<ClipGroupDraftException>()));
+    }
+    for (final value in [
+      <String, dynamic>{'aiGuidance': '', 'captionLanguage': 'unknown'},
+      <String, dynamic>{'aiGuidance': 4, 'captionLanguage': 'en'},
+      <String, dynamic>{'aiGuidance': ''},
+      <String>[],
+    ]) {
+      final json = Map<String, dynamic>.from(first.toJson());
+      json['captionContext'] = value;
+      expect(() => ClipGroupDraft.fromJson(json), throwsFormatException);
+    }
+    expect((await store.loadClipGroup(first.id))!.revision, first.revision);
+    expect((await store.loadClipGroup(first.id))!.captionContext, isNull);
+  });
+
+  test('caption context keeps the existing encoded journal byte cap', () async {
+    await store.saveDraft(request('original'));
+    final first = await store.saveClipGroup(group(), expectedRevision: null);
+    final context = ClipGroupCaptionContext(
+        aiGuidance: List.filled(90000, 'ก').join(), captionLanguage: 'th');
+    await expectLater(
+        store.saveClipGroup(first.copyWith(captionContext: context),
+            expectedRevision: first.revision),
+        throwsA(isA<ClipGroupDraftException>()));
+    expect((await store.loadClipGroup(first.id))!.captionContext, isNull);
+  });
+
+  test('a completed group cannot rewrite its caption context', () async {
+    await store.saveDraft(request('original'));
+    const context = ClipGroupCaptionContext(
+        aiGuidance: 'Original guidance', captionLanguage: 'en');
+    final first = await store.saveClipGroup(
+        group().copyWith(captionContext: context),
+        expectedRevision: null);
+    final accepted = await store.saveClipGroup(
+        first.copyWith(items: [
+          for (final item in first.items)
+            item.copyWith(acceptedPostId: 'post-${item.index}'),
+        ]),
+        expectedRevision: first.revision);
+    for (final next in [
+      null,
+      const ClipGroupCaptionContext(
+          aiGuidance: 'Changed after completion', captionLanguage: 'th'),
+    ]) {
+      await expectLater(
+          store.saveClipGroup(accepted.copyWith(captionContext: next),
+              expectedRevision: accepted.revision),
+          throwsA(isA<ClipGroupDraftException>()));
+    }
+    expect((await store.loadClipGroup(first.id))!.captionContext, context);
+  });
 
   test('optional group metadata preserves v3 and legacy drafts', () async {
     final original = await store.saveDraft(request('original'));

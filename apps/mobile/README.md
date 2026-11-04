@@ -1,6 +1,6 @@
 # PostDee Mobile
 
-## Split and review clips as one set (2026-11-05, local candidate)
+## Shared caption first after splitting (2026-11-05, selected variant 2 candidate)
 
 The owner approved the first design: a card in the existing clip-selection
 screen, shown when the measured source is too long for a destination. Opening
@@ -14,8 +14,15 @@ Confirmation saves the entire original draft before native preparation. Equal
 intervals across channels share one file and draft; full-length destinations
 retain a copied original. Every new draft has its own submission identity, with
 the chosen Facebook/TikTok modes and AI disclosures retained but clip-specific
-confirmations reset. All parts open together for shared/per-clip caption review
-and individual cover/settings edits. Each clip has an independently chosen date
+confirmations reset. After splitting or reopening, the shared caption is expanded
+with the existing AI panel inline. Generation requires a manual click and uses
+the full retained original video; the source backup is never rewritten. Compact
+member rows provide manual caption overrides, member AI, cover and channel
+editing. Shared edits retain overrides and accepted/unknown intents, and restoring
+shared inheritance requires explicit confirmation. Guidance and the canonical
+output language are saved in optional journal context; existing journals stay
+readable. AI credits, style, undo, fallback and session/race checks remain in use.
+Each clip has an independently chosen date
 and time; no interval is calculated. A final explicit confirmation sends pending
 members through the existing single-post flow. Drafts shows one reopenable group
 row; the original stays stored. Splitting and local saves use no post quota or AI
@@ -37,20 +44,14 @@ Process termination may leave partial local drafts; inspect Drafts before retryi
 The original and older drafts remain. This uploader utility does not restore the
 retired AI editor. No API, database, entitlement or environment change is required.
 
-Source `b6efa3e5` uses freshly verified `main` `8a340638`, retaining the
-109-language picker and connection-screen changes. Final analysis passed in
-19.3s. Guarded Staging APK 12108 built in 42.3s; installed SHA-256 matches
-`503bc8852b6726453df199d9394432ba2a88b2d357d7306a29c28a1ad5e41bf4`.
-The update on `emulator-5554` retained UID 10197/internal storage and all 16 local
-JSON checksums. Native preparation saved three clips as one set; caption edits,
-preview, restart/reopen and save-only member channel settings passed. Zero quota,
-unavailable channels and an unverified Basic account kept posting disabled; no
-upload, post or AI request was made. Basic scheduling refusal was expected;
-paid-account native date/time pickers remain unverified, while independent UTC
-times have automated coverage. Current suite details and prior APK 12104/12105
-evidence are separated in the work record. Physical phones, iOS, real publishing
-and live generation in all 109 languages remain separate checks. No API deploy,
-migration, bootstrap change, merge or push is included.
+Variant 2 starts from `cffe7191` on verified `main` `8a340638`, preserving the
+109-language picker and connection-screen changes. Its final source identity,
+complete suite, exact Staging build/install and native checks are pending. Earlier
+APK 12108 hashes/data-retention/grouped-review checks and APK 12104/12105 split
+evidence remain historical in the work record. They do not verify inline shared
+AI. Live AI, paid-account native date/time pickers, real publishing, physical
+phones, iOS and live quality in all 109 languages remain unverified. No API,
+provider, credit-rule, database, environment, deployment, merge or push change.
 See the
 [work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_draft.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_draft_edit.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
@@ -66,6 +68,9 @@ class _Fixture extends VideoEnglishFixture {
   final uploadedKeys = <String>[];
   final postRequests = <CreatePostRequest>[];
   final recoveryRequests = <CreatePostRequest>[];
+  final aiRequests = <GenerateRealClipCaptionRequest>[];
+  final uploadedPaths = <String>[];
+  Completer<RealClipCaptionResult>? aiGate;
   final acceptedOnServer = <String, QueuedPostResult>{};
   bool loseSecondResponse = false;
   bool recoverFound = true;
@@ -186,6 +191,29 @@ class _Fixture extends VideoEnglishFixture {
             plan: 'PRO',
             quota: RealClipCaptionQuota(
                 limit: 120, usedThisMonth: 0, remainingThisMonth: 120)),
+        generateRealClipCaption: (request) async {
+          aiRequests.add(request);
+          return aiGate?.future ??
+              RealClipCaptionResult(
+                caption: 'Shared caption from the entire original',
+                captionOptions: const [
+                  'Shared caption from the entire original'
+                ],
+                hooks: const [],
+                hashtags: const [],
+                seoKeywords: const [],
+                searchTitle: 'Entire original',
+                source: RealClipCaptionSource(
+                    videoS3Key: request.videoS3Key!,
+                    mode: 'AUDIO_ONLY',
+                    selectedFrameCount: 0),
+                quota: const RealClipCaptionQuota(
+                    limit: 120,
+                    usedThisMonth: 1,
+                    remainingThisMonth: 119,
+                    charged: true),
+              );
+        },
         loadSocialConnections: () async => const [
           SocialConnectionResult(
               platform: _platform,
@@ -213,6 +241,7 @@ class _Fixture extends VideoEnglishFixture {
         },
         uploadVideoFile: (upload, file) async {
           expect(file.existsSync(), isTrue);
+          uploadedPaths.add(file.path);
           uploadedKeys.add(upload.videoS3Key);
         },
         createPost: (request) async {
@@ -252,6 +281,10 @@ class _Fixture extends VideoEnglishFixture {
 
   @override
   Future<void> mount(WidgetTester tester, {bool settle = true}) async {
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    });
     await tester.binding.setSurfaceSize(const Size(430, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await super.mount(tester, settle: settle);
@@ -274,6 +307,7 @@ Future<void> _settle(WidgetTester tester) async {
 
 Future<void> _tap(WidgetTester tester, String key) async {
   await tester.ensureVisible(_key(key));
+  await tester.pumpAndSettle();
   final widget = tester.widget(_key(key));
   if (widget is FilledButton) {
     expect(widget.onPressed, isNotNull,
@@ -301,6 +335,171 @@ void main() {
         userId: videoEnglishOwner, idToken: 'group-submission-test'));
     addTearDown(() =>
         previous.isSignedIn ? sessions.signIn(previous) : sessions.clear());
+  });
+
+  testWidgets(
+      'shared AI reads the original and retains custom captions and schedules '
+      'without modifying the backup or sending posts', (tester) async {
+    final fixture = _Fixture()
+      ..quota = const SubscriptionStatusResult(
+          userId: videoEnglishOwner,
+          plan: 'STARTER',
+          status: 'ACTIVE',
+          monthlyPostLimit: 250,
+          usedPostsThisMonth: 240,
+          remainingPostsThisMonth: 10,
+          availablePostUnits: 10,
+          canSchedule: true,
+          canUseAiCaptions: true,
+          canUseAnalytics: false);
+    addTearDown(fixture.dispose);
+    await fixture.seed();
+    final group = fixture.store.groups[_groupId]!;
+    fixture.store.groups[_groupId] = group.copyWith(items: [
+      group.items.first,
+      group.items.last.copyWith(usesSharedCaption: false),
+    ]);
+    final custom = await fixture.store.saveDraft(clipGroupMemberSaveRequest(
+        fixture.store.drafts[_partIds.last]!,
+        caption: 'My custom ending',
+        now: _now));
+    final original = fixture.store.drafts['reviewed-source']!;
+    final first = fixture.store.drafts[_partIds.first]!;
+    await fixture.mount(tester);
+    expect(_key('uploader-ai-caption-panel'), findsOneWidget);
+    expect(_key('uploader-caption-field'), findsOneWidget);
+    expect(fixture.aiRequests, isEmpty);
+    expect(fixture.uploadRequests, isEmpty);
+    await _tap(tester, 'uploader-ai-open-panel');
+    await tester.ensureVisible(_key('uploader-ai-guidance-input'));
+    await tester.enterText(
+        _key('uploader-ai-guidance-input'), 'Shared guidance for this set');
+    await tester.pumpAndSettle();
+    await _tap(tester, 'uploader-ai-generate-button');
+    expect(fixture.aiRequests, hasLength(1));
+    expect(fixture.aiRequests.single.guidance, 'Shared guidance for this set');
+    expect(fixture.uploadedPaths, [original.videoPath]);
+    expect(fixture.uploadRequests.single.fileName, original.videoName);
+    expect(fixture.postRequests, isEmpty);
+    await _tap(tester, 'uploader-shared-ai-apply');
+    expect(
+        tester
+            .widget<TextField>(_key('uploader-caption-field'))
+            .controller!
+            .text,
+        'Shared caption from the entire original');
+    await _tap(tester, 'clip-group-save');
+    final saved = fixture.store.groups[_groupId]!;
+    expect(saved.sharedCaption, 'Shared caption from the entire original');
+    expect(saved.captionContext, isNotNull);
+    expect(saved.captionContext!.aiGuidance, 'Shared guidance for this set');
+    expect(saved.items.last.usesSharedCaption, isFalse);
+    expect(fixture.store.drafts[_partIds.first]!.caption, saved.sharedCaption);
+    expect(fixture.store.drafts[_partIds.first]!.submissionRequestId,
+        first.submissionRequestId);
+    expect(
+        fixture.store.drafts[_partIds.first]!.scheduledAt, first.scheduledAt);
+    expect(fixture.store.drafts[_partIds.last]!.caption, custom.caption);
+    expect(fixture.store.drafts[_partIds.last]!.submissionRequestId,
+        custom.submissionRequestId);
+    expect(
+        fixture.store.drafts[_partIds.last]!.scheduledAt, custom.scheduledAt);
+    expect(fixture.store.drafts['reviewed-source'], same(original));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await fixture.mount(tester);
+    expect(
+        tester
+            .widget<TextField>(_key('uploader-caption-field'))
+            .controller!
+            .text,
+        saved.sharedCaption);
+    expect(fixture.aiRequests, hasLength(1));
+    expect(fixture.postRequests, isEmpty);
+    await _tap(tester, 'uploader-ai-open-panel');
+    expect(
+        tester
+            .widget<TextField>(_key('uploader-ai-guidance-field'))
+            .controller!
+            .text,
+        'Shared guidance for this set');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('unknown member receipts keep shared AI unavailable on reopening',
+      (tester) async {
+    final fixture = _Fixture();
+    addTearDown(fixture.dispose);
+    await fixture.seed();
+    await fixture.seedUnknownReceipt(_partIds.first);
+    final original = fixture.store.drafts['reviewed-source']!;
+    await fixture.mount(tester);
+    expect(_key('uploader-ai-generate-button'), findsNothing);
+    expect(fixture.aiRequests, isEmpty);
+    expect(fixture.uploadRequests, isEmpty);
+    expect(fixture.store.drafts['reviewed-source'], same(original));
+    await _reviewToFinalConfirmation(tester);
+    expect(fixture.postRequests, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('guidance-only edits save on Back without rewriting the original',
+      (tester) async {
+    final fixture = _Fixture();
+    addTearDown(fixture.dispose);
+    await fixture.seed();
+    final original = fixture.store.drafts['reviewed-source']!;
+    await fixture.mount(tester);
+    await _tap(tester, 'uploader-ai-open-panel');
+    await tester.ensureVisible(_key('uploader-ai-guidance-input'));
+    await tester.enterText(
+        _key('uploader-ai-guidance-input'), 'Keep guidance when going back');
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await _settle(tester);
+    expect(fixture.store.groups[_groupId]!.captionContext!.aiGuidance,
+        'Keep guidance when going back');
+    expect(fixture.store.drafts['reviewed-source'], same(original));
+    expect(fixture.aiRequests, isEmpty);
+    expect(fixture.uploadRequests, isEmpty);
+    expect(fixture.postRequests, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await fixture.mount(tester);
+    await _tap(tester, 'uploader-ai-open-panel');
+    expect(
+        tester
+            .widget<TextField>(_key('uploader-ai-guidance-field'))
+            .controller!
+            .text,
+        'Keep guidance when going back');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'a receipt appearing while open preserves context and allows recovery '
+      'review after a failed local save', (tester) async {
+    final fixture = _Fixture();
+    addTearDown(fixture.dispose);
+    await fixture.seed();
+    final original = fixture.store.drafts['reviewed-source']!;
+    await fixture.mount(tester);
+    expect(_key('uploader-ai-caption-panel'), findsOneWidget);
+    final key = await fixture.seedUnknownReceipt(_partIds.first);
+    await _tap(tester, 'clip-group-save');
+    expect(_key('uploader-ai-generate-button'), findsNothing);
+    expect(fixture.store.groups[_groupId]!.captionContext, isNull);
+    await _reviewToFinalConfirmation(tester);
+    expect(_key('clip-group-confirm'), findsOneWidget);
+    expect(fixture.store.groups[_groupId]!.captionContext, isNull);
+    expect(
+        fixture.store.drafts[_partIds.first]!.uploadedMedia!.videoS3Key, key);
+    expect(fixture.store.drafts['reviewed-source'], same(original));
+    expect(fixture.aiRequests, isEmpty);
+    expect(fixture.uploadRequests, isEmpty);
+    expect(fixture.postRequests, isEmpty);
+    expect(fixture.recoveryRequests, isEmpty);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(

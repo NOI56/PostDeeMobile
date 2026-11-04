@@ -19,7 +19,7 @@ drafts, and protects cancelled/obsolete selections and busy generation states.
 Existing quota/refund, platform validation and clip-duration guidance are retained.
 API precedes Mobile; no schema or environment change.
 
-## Shared-caption-first clip sets (2026-11-05, variant 2 candidate)
+## Shared-caption-first clip sets (2026-11-05, Staging APK 12109 checked)
 
 The uploader's approved inline card opens a pure duration plan and source-range
 preview. `ClipSplitPlan` derives balanced ranges from the existing platform
@@ -77,9 +77,12 @@ report residual IDs. Source tag/untag writes preserve the latest source metadata
 Edited or accepted groups survive cleanup failure. Process termination can leave
 partial local drafts; inspect Drafts before retrying. No cross-process batch
 transaction, backend/schema/environment/entitlement change or retired AI-editor
-restoration is introduced. Variant 2 starts from `cffe7191` on verified `main`
-`8a340638`; final source, complete-suite, exact-build and native evidence remain
-pending. APK 12108's earlier grouped-review proof and APK 12104/12105 splitting
+restoration is introduced. Variant 2 source `54b222638` builds on `cffe7191` and
+verified `main` `8a340638`; final analysis, full Mobile suite and guarded APK 12109
+build/install passed. Native direct caption landing, custom/shared propagation,
+context-only Back saving and force-stop/restart passed. All 22 older JSON files
+and the new source manifest/video hashes stayed unchanged. The work record
+separates current proof from APK 12108's earlier grouped review and APK 12104/12105 splitting
 evidence remain historical. Live AI, native paid scheduling, real publishing,
 iOS and physical phones remain unverified. No API/provider/credit-rule change,
 migration, bootstrap change, merge or push is included. See the

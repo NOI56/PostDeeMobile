@@ -1,6 +1,6 @@
 # PostDee Mobile
 
-## Shared caption first after splitting (2026-11-05, selected variant 2 candidate)
+## Shared caption first after splitting (2026-11-05, Staging APK 12109 checked)
 
 The owner approved the first design: a card in the existing clip-selection
 screen, shown when the measured source is too long for a destination. Opening
@@ -44,9 +44,17 @@ Process termination may leave partial local drafts; inspect Drafts before retryi
 The original and older drafts remain. This uploader utility does not restore the
 retired AI editor. No API, database, entitlement or environment change is required.
 
-Variant 2 starts from `cffe7191` on verified `main` `8a340638`, preserving the
-109-language picker and connection-screen changes. Its final source identity,
-complete suite, exact Staging build/install and native checks are pending. Earlier
+Variant 2 source `54b222638` builds on `cffe7191` and verified `main` `8a340638`,
+preserving the 109-language picker and connection-screen changes. Final analysis
+passed in 18.0s. Guarded Staging APK 12109 built in 42.8s; installed SHA-256 matches
+`bdfc5338181cad46dd3e97f2acc198d83cfbe05e0952d169653c656a72f2179b`.
+The update retained UID 10197/internal storage on `emulator-5554`; the complete
+Mobile suite passed 5,489 tests with 10 optional skips in 8m01s. A fresh 180-second
+source split into one three-clip set and opened directly on the shared-caption/
+AI page. Native override preservation, language-only Back saving, restart/reopen
+and cancelling inheritance restoration passed. All 22 older JSON files and the
+new original backup retained their hashes. Detailed proof is in the work record.
+No actual AI, credit spend or social posting. Earlier
 APK 12108 hashes/data-retention/grouped-review checks and APK 12104/12105 split
 evidence remain historical in the work record. They do not verify inline shared
 AI. Live AI, paid-account native date/time pickers, real publishing, physical

@@ -14,7 +14,7 @@ Build roadmap for PostDee.
   per-language accuracy. API before Mobile, no migration/model change. Keep the
   candidate isolated for review. [Work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Shared-caption-first clip sets (2026-11-05, selected variant 2 candidate)
+## Shared-caption-first clip sets (2026-11-05, Staging APK 12109 checked)
 
 - Retain the owner's selected inline card and save the original before preparing
   parts. The grouped-review work now uses verified `main` `8a340638`, preserving
@@ -43,8 +43,12 @@ Build roadmap for PostDee.
   accounting. Preparation creates no posts and uses no quota. No API, database,
   environment, entitlement or hosted deployment change is required; retired AI
   editing stays retired.
-- Variant 2 starts from `cffe7191` on verified `main` `8a340638`. Its final source,
-  full-suite, exact-build and native checks remain pending. APK 12108 grouped
+- Variant 2 source `54b222638` builds on `cffe7191` and verified `main` `8a340638`.
+  Final analysis, full Mobile suite and guarded APK 12109 build/install passed.
+  Fresh native split → direct shared-caption page, override preservation,
+  language-only Back saving and restart/reopen passed. UID/storage, all 22 older
+  JSON files and the new source backup were retained. No live AI/spend/publishing.
+  Detailed evidence is in the work record. APK 12108 grouped
   review and APK 12104/12105 splitting evidence remain prior-version records.
   Live AI, native paid pickers, real publishing, iOS and physical phones remain
   unverified. No API/provider/credit-rule change or merge/push/deploy.

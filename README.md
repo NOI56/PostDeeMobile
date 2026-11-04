@@ -14,7 +14,7 @@ accuracy for every language on the configured model. API must precede Mobile;
 no database migration or model/provider change. See the
 [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Shared caption first for split clips (2026-11-05, selected variant 2 candidate)
+## Shared caption first for split clips (2026-11-05, Staging APK 12109 checked)
 
 The owner selected the inline card on the clip-selection step. An overlong clip
 can open a Thai/English plan, preview its source intervals and adjust a valid
@@ -38,9 +38,13 @@ retains its own submission identity and accepted-post checkpoint.
 Local preparation and saves consume no post units or AI credits. Actual post
 creation retains fresh readiness, consent and per-channel quota checks. No API,
 schema, entitlement or environment change is required; AI editing remains retired.
-This variant starts from `cffe7191` on verified `main` `8a340638`; its final
-source identity, full-suite, build and native verification remain pending in the
-work record. APK 12108 proves the earlier grouped-review version, while APK
+Source `54b222638` builds on `cffe7191` and verified `main` `8a340638`. Final
+analysis, the complete Mobile suite and guarded Staging APK 12109 build/install
+passed. Fresh native splitting opened the shared-caption/AI page directly;
+override preservation, language-only Back saving and restart/reopen passed. The
+source backup and all 22 older JSON files stayed unchanged. No live AI or
+publishing occurred. Full evidence is in the work record. APK 12108 proves the
+earlier grouped-review version, while APK
 12104/12105 prove older splitting behavior; none verifies this new inline AI
 flow. Live AI, paid native scheduling, real publishing, iOS and physical phones
 remain unverified. Existing AI quota/style/undo/fallback and auth/race guards

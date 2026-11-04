@@ -26,7 +26,7 @@ exhaustive speech-language guarantee or measured quality on the configured
 clients continue sending their existing codes or Automatic. No migration.
 See the [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Shared-caption-first clip sets (2026-11-05, variant 2 Mobile candidate)
+## Shared-caption-first clip sets (2026-11-05, Staging APK 12109 checked)
 
 The approved inline clip-splitting flow adds no route, request/response field,
 database migration, entitlement or environment variable. Planning, encoding
@@ -59,9 +59,13 @@ does not authorize a new POST. Facebook remains `platform: 'facebook'` with
 `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and
 optional `isAiGenerated`, with no Page-feed fallback.
 
-The variant starts from `cffe7191` on verified `main` `8a340638` without API/
-schema/environment/dependency changes or migration. Its final source, complete
-suite, exact-build and native evidence are pending. Earlier APK 12108 grouped
+Source `54b222638` builds on `cffe7191` and verified `main` `8a340638` without
+API/schema/environment/dependency changes or migration. Final analysis, full Mobile
+suite and guarded Staging APK 12109 build/install passed; API health returned HTTP
+200 with the same Firebase auth/Test Store configuration. Native shared/override
+caption and language-context restart checks passed without changing the source
+backup. No live AI, credit spend or social post was made. Detailed current proof
+is in the work record. Earlier APK 12108 grouped
 review and APK 12104/12105 splitting results remain separate historical proof.
 No live AI/real-publishing claim, API deployment, bootstrap change, merge or push
 is included. See the

@@ -2,10 +2,12 @@
 
 Status updated 2026-11-05: the owner selected **variant 2, shared caption first**
 for the real grouped flow. After splitting/reopening, the shared caption and
-existing AI panel open directly inline. This phase starts from `cffe7191` on
-verified `main` `8a340638`, retaining the split utility, 109-language picker and
-connection-screen update. Final source identity, full-suite, exact-build/install
-and native verification are pending. APK 12108 proves the earlier grouped-review
+existing AI panel open directly inline. Source `54b222638` builds on `cffe7191`
+and verified `main` `8a340638`, retaining the split utility, 109-language picker
+and connection-screen update. Final analysis, the 5,489-test complete Mobile suite
+(10 optional skips), guarded Staging APK 12109 build/install and fresh native
+shared-caption/override/context restart checks passed within the limits below.
+APK 12108 proves the earlier grouped-review
 version; APK 12104/12105 prove older splitting behavior. Those checks do not
 verify the new inline shared-AI flow. No merge, push or hosted deployment.
 
@@ -199,22 +201,90 @@ Facebook Page Video limits for Page Reels.
 
 ## Current variant 2 verification — 2026-11-05
 
-This phase starts from `cffe7191` on verified `main` `8a340638`. **Final source
-hash, complete Mobile suite, whole-project analysis, exact Staging build/install,
-native inline-flow smoke and final diff audit are pending.** Do not attribute
-earlier APK/full-suite results to this changed implementation.
+### Source and automated verification
 
-A related component run passed **108 tests** across group-store, submission,
-split-service, legacy draft-store and draft-edit tests; scoped context/model/store
-analysis found no issues. Context cases verify roundtrip/legacy compatibility,
-copy/clear behavior, CAS, source backup bytes/submission ID preservation,
-invalid languages, the encoded byte cap and completed-context immutability.
-This component result is not a new full-suite, build or native acceptance result.
+- Final source: **`54b222638dbbc5085f2096a0a952f8b7e727076c`**, building on
+  `cffe7191` and verified `main` **`8a340638`**. Final diff capability review
+  found only intended changes and no deleted files or API/schema/environment/
+  dependency/entitlement changes.
+- Final whole-project Mobile analysis passed in **18.0s** with no issues.
+- Final complete Mobile suite on **`54b222638`**:
+  `flutter test --no-pub --concurrency=4 --reporter expanded` passed **5,489 tests
+  with 10 optional skips** in **8m01s** (exit 0, final log: All tests passed).
+- Root integration passed **39 tests** in **22s**, including full-original AI
+  source/manual generation, explicit preview, overrides/dates/IDs, source-backup
+  preservation and existing submission recovery. The two audit regressions prove
+  guidance-only Back saves/reopens and a receipt appearing while open cannot trap
+  recovery review or rewrite context. Other component runs include 13 child-editor
+  cases, 18 group-screen cases, 4 visual fixtures and the related 108-test store/
+  submission/split/draft run. These overlap; do not add them to the full-suite count.
+  Context tests cover legacy reads, copy/clear, CAS, unknown-language/byte bounds
+  and completed-context immutability.
 
-No real AI generation, paid-account native scheduling picker, social publication,
-physical-phone or iOS acceptance is claimed. A Basic-account AI/schedule lock is
-an expected entitlement result, not evidence of live provider success. Final
-exact-source results will be added here after verification.
+### Exact Staging APK and data preservation
+
+- Guarded helper built APK **12109** in **42.8s**, package
+  **`com.postdee.postdee_mobile.staging`**. Built/installed SHA-256:
+  **`bdfc5338181cad46dd3e97f2acc198d83cfbe05e0952d169653c656a72f2179b`**.
+- Guarded in-place update on **`emulator-5554`** retained **UID 10197** and the
+  same internal storage. All **22 JSON files** (20 draft manifests and two group
+  journals) had identical hashes after install and before launch. An in-progress
+  normal form was explicitly saved before updating; Drafts moved 11 → 12 rows
+  as expected from that save.
+- Staging API health returned **HTTP 200**. Firebase project remained
+  **`project-798caf7e-85b8-45e3-af7`**, Firebase auth enabled/mock auth disabled,
+  with **Test Store** billing mode. No hosted configuration changed.
+- C: fell to approximately 97 MB free after build. Only this task's completed
+  generated `apps/mobile/build/app` was moved to
+  `E:\PostDeeBuildArchive\clip-group-review-12109\app`, freeing 1.7 GB; no user
+  data was removed. The archived `outputs\flutter-apk\app-debug.apk` retained
+  the same checksum while the full tests continued.
+
+### Fresh native inline-flow verification
+
+On exact APK **12109**, a fresh 180-second 360x640 source cut into two Facebook
+parts plus one full-length TikTok/YouTube/Instagram member: **three clips in one
+set, five estimated post units**. It opened **เขียนแคปชั่นทั้งชุด** directly. The
+existing AI panel showed the full-original filename, 109-language picker and style
+controls on the same page. The Basic account showed the expected Starter/Pro gate
+with zero available AI credits. No AI/provider request, spend, upload or post ran.
+
+Entering **Shared caption 12109** updated the caption count to **3/3**. The first
+member was saved as **Shared caption 12109 - part1**; changing the main text to
+**Shared caption 12109 - updated** kept that custom text and updated the other
+two members. Native journal/child-manifest checks confirmed the first member's
+`usesSharedCaption=false` and the remaining two `true`. The per-clip date/time
+page was reachable; paid native date/time selection remains unverified.
+
+After returning to the caption page, changing **only** the AI output language
+from Automatic to Thai and pressing Back without Save persisted
+`captionContext.captionLanguage=th`. Drafts increased **12 → 13** as one new set.
+A force-stop/restart without clearing app data followed by Home's **Review entire
+set** reopened stage 0 with the updated main text and Thai selected. All three
+rows retained the custom first caption and the two shared captions. Opening
+**กลับไปใช้แคปชั่นหลัก** and cancelling its confirmation preserved the override.
+
+All **22 pre-existing JSON files** retained their hashes after this native flow.
+The new source backup's manifest and video hashes also matched the snapshot
+captured before edits (`output/caption-first/source-before-edit.json`). Video
+SHA-256 remained
+**`eacbf06116ec259b2f6da526aef9831f2bbf1c6431aba7a97491bea452e32fab`**.
+Current APK 12109 screenshots include `output/caption-first/final-caption.png`
+(reopened shared text, Thai and existing AI controls),
+`output/caption-first/overrides-reopened.png` (all three members in one card)
+and `output/caption-first/landing.png`. The final screenshots were visually
+inspected; these are fresh native evidence, separate from the prior APK 12108
+grouped-review screenshots. The app was left at the caption page's top.
+
+The current Basic account has zero usable post quota, dormant balances of 550
+post units/300 AI credits and no connected destinations; these gates remain in
+force. No actual AI generation, credit spend or social posting is claimed.
+Paid-account native scheduling pickers, physical phones, iOS and real publishing
+remain unverified. A Basic AI/schedule lock is an expected entitlement result,
+not evidence of live provider success. Controlled pipeline tests verify the
+full-original source/request, credit handling, preview, undo and stale-result
+guards; they do not replace paid live AI acceptance. No API deploy, migration, hosted
+environment/bootstrap change, merge or push occurred.
 
 ## Prior grouped-review verification — APK 12108, 2026-11-05
 

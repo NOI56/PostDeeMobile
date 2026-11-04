@@ -1,5 +1,51 @@
 # PostDee Mobile
 
+## Split overlong clips into drafts (2026-11-04, Staging APK installed)
+
+The owner approved the first design: a card in the existing clip-selection
+screen, shown when the measured source is too long for a destination. Opening
+the plan performs no write or upload. Thai/English controls select destinations,
+choose affected-channel or matching-part mode, inspect source intervals and
+adjust a valid first boundary. The duration rules remain those of the guide
+below; unknown TikTok Direct capabilities keep that destination unavailable in
+the split plan until verified.
+
+Confirmation saves the entire original draft before native preparation. Equal
+intervals across channels share one file and draft; full-length destinations
+retain a copied original. Every new draft has its own submission identity, with
+the chosen Facebook/TikTok modes and AI disclosures retained but clip-specific
+confirmations reset. Captions require review, covers and schedules are chosen
+per part, and the existing draft list opens the other parts. There is no automatic
+bulk posting. Splitting and local saves use no post quota or AI credits.
+
+Plans are limited to 64 distinct outputs. Native preparation uses H.264, AAC
+when the source has audio and CFR30, validates every output and provides scoped
+cancellation and temporary-file cleanup. Live failures roll back only this
+batch's new drafts and report incomplete cleanup. If the process is killed
+during persistence, some part drafts may remain; inspect Drafts before retrying.
+The original stays available. This is a local uploader utility, not a return of
+the retired AI editor. No API, database, entitlement or environment changes are
+required.
+
+The full Mobile suite passed 5,326 tests (10 skipped) in 11m47s; analysis passed.
+The guarded helper built Staging APK 12104 from `codex/clip-parts` at baseline
+`927a3020` plus its working diff. Its installed SHA-256 matches
+`b4fe4da62868e3b2adac57c75d45c5354376ebf0f00ee28e8fe01f8fbfe6c52e`.
+The update on `emulator-5554` / Pixel_8 retained UID 10197 and internal storage
+while increasing version code 12103 to 12104. Native source-range preview and
+splitting a 180-second 360x640 clip produced two fully decoded 90-second
+Facebook parts and one shared full-length TikTok/YouTube/Instagram draft
+(five estimated post units). The original was saved separately, its source hash
+was retained and the older user draft remained. Opening the second part passed.
+No upload or post was created.
+
+Live native cancellation was not completed: external user input was detected
+twice, so automation stopped and control was returned. Automated cancellation
+and owner-change checks passed, but do not establish that live-device result.
+iOS, physical phones, real publishing and the final source-diff audit remain
+unverified. No merge, push or hosted rollout was performed. See the
+[work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Clip duration guide (2026-11-04, local candidate)
 
 The clip-selection step lists all four supported destinations below the clip's

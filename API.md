@@ -26,6 +26,26 @@ exhaustive speech-language guarantee or measured quality on the configured
 clients continue sending their existing codes or Automatic. No migration.
 See the [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
+## Local clip splitting (2026-11-04, Mobile-only; Staging APK installed)
+
+The approved inline clip-splitting flow adds no route, request/response field,
+database migration, entitlement or environment variable. Planning, encoding
+and saving parts operate on device-local files and drafts; they call neither
+the publishing API nor an AI provider and reserve no credits.
+
+Each saved part later uses the existing upload and `POST /posts` flow with its
+own draft-derived submission identity, current account readiness, media checks
+and explicit consent. Existing post creation charges one unit per destination;
+the split-plan estimate does not reserve quota. Identical intervals may share
+one draft with multiple destinations. Facebook remains `platform: 'facebook'`
+with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT`
+and optional `isAiGenerated`, with no Page-feed fallback. Staging APK 12104 was
+checked with actual local split files and draft copies; no upload receipt,
+post creation or quota-consuming publish request was produced. Native live
+cancellation and real-account publishing remain unverified. No server rollout,
+merge or push was performed. See the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Clip duration guide (2026-11-04, Mobile-only candidate)
 
 The uploader's read-only TikTok capability lookup reuses the existing

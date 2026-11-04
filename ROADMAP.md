@@ -14,6 +14,27 @@ Build roadmap for PostDee.
   per-language accuracy. API before Mobile, no migration/model change. Keep the
   candidate isolated for review. [Work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
+## Split long clips from the clip step (2026-11-04, Staging APK installed)
+
+- Implement the owner's selected inline-card design on verified `main`
+  `927a3020`, preserving the original draft before creating any part drafts.
+- Offer balanced intervals for affected channels or matching parts for all
+  selected channels. Group identical ranges, retain minimum/maximum durations,
+  require a verified limit for TikTok Direct Post, and cap each plan at 64
+  distinct output files.
+- Encode locally with scoped cancellation, verify every output and save new
+  owner-bound drafts. Preserve Facebook Publish/Page draft and AI declarations;
+  require new clip-specific posting confirmations.
+- Keep the existing individual review/publish path and per-channel accounting.
+  Splitting creates no posts and uses no quota; it does not restore retired AI
+  editing. No API, database, entitlement or deployment change is required.
+- The full Mobile suite passed 5,326 tests (10 skipped), analysis passed and
+  guarded Staging APK 12104 is installed with the same UID/internal storage.
+  Native range preview, verified split files, original retention and opening
+  another part draft passed. Live native cancellation, iOS/physical phones and
+  real publishing remain unverified; no merge, push or hosted deployment occurred.
+  See the [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## AI caption output language (2026-11-04, local candidate)
 
 - Add Automatic and explicit output-language choices to the existing AI caption

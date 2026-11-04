@@ -31,6 +31,11 @@ import '../shared/postdee_time_picker.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
+import 'clip_segmenter.dart';
+import 'clip_split_draft_service.dart';
+import 'clip_split_plan.dart';
+import 'clip_split_prompt.dart';
+import 'clip_split_screen.dart';
 import 'caption_quota_strip.dart';
 import 'caption_localizations.dart';
 import 'caption_language_picker.dart';
@@ -211,6 +216,7 @@ class UploaderScreen extends StatefulWidget {
     this.analytics,
     this.watermarkVideo,
     this.prepareTikTokVideo,
+    this.segmentClip,
     this.openCoverEditor,
     this.coverImageProcessor,
     this.draftStore,
@@ -262,6 +268,7 @@ class UploaderScreen extends StatefulWidget {
   final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
   final UploaderTikTokVideoPreparer? prepareTikTokVideo;
+  final UploaderClipSegmenter? segmentClip;
   final UploaderCoverEditorLauncher? openCoverEditor;
   final CoverImageProcessor? coverImageProcessor;
   final PublishDraftStore? draftStore;
@@ -361,6 +368,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _isRecoveringSubmission = false;
   bool _isPreparingReview = false;
   bool _isPreparingSubmission = false;
+  bool _isPlanningClipSplit = false;
+  int _clipSplitGeneration = 0;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
   CaptionQuotaResult? _captionQuota;
@@ -1094,6 +1103,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   bool get _formBusy =>
+      _isPlanningClipSplit ||
       _isRestoringInitialDraft ||
       _isSavingDraft ||
       _isSubmitting ||
@@ -1371,6 +1381,240 @@ class _UploaderScreenState extends State<UploaderScreen>
             videoFile: File(path),
             videoName: _selectedVideoName ??
                 uploaderText(context, 'คลิปของคุณ', 'Your video'))));
+  }
+
+  Set<SocialPlatform> get _clipSplitPlatforms {
+    final selected = {..._selectedPlatforms, ..._draftUnavailablePlatforms};
+    return selected.isNotEmpty
+        ? selected
+        : {
+            SocialPlatform.tiktok,
+            SocialPlatform.youtubeShorts,
+            SocialPlatform.instagramReels,
+            SocialPlatform.facebookReels,
+          };
+  }
+
+  List<SocialPlatform> get _clipSplitExceededPlatforms {
+    final duration = _videoDurationSeconds;
+    if (duration == null || !duration.isFinite || duration <= 0) {
+      return const [];
+    }
+    final direct =
+        _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost;
+    final exceeded = <SocialPlatform>[];
+    for (final platform in _clipSplitPlatforms) {
+      if (platform == SocialPlatform.tiktok &&
+          direct &&
+          _tikTokGuideMaximum == null) {
+        continue;
+      }
+      final rule = platformVideoDurationRule(platform,
+          tikTokMaxDurationSeconds: direct ? _tikTokGuideMaximum : null);
+      if (rule != null && duration > rule.maximumSeconds) {
+        exceeded.add(platform);
+      }
+    }
+    return exceeded;
+  }
+
+  Future<void> _openClipSplitPlan() async {
+    if (_formBusy ||
+        _isGeneratingCaption ||
+        _activeDraftUploadedMedia != null ||
+        _requiresNewSubmissionAttempt) {
+      return;
+    }
+    final sourceDuration = _videoDurationSeconds;
+    var sourcePath = _localFilePathController.text.trim();
+    if (sourceDuration == null || sourcePath.isEmpty) return;
+    final session = PostDeeAuthSessionStore.instance.captureSession();
+    final owner = session.userId;
+    final generation = ++_clipSplitGeneration;
+    var cancelled = false;
+    bool isCancelled() =>
+        cancelled ||
+        !mounted ||
+        !session.isCurrent ||
+        generation != _clipSplitGeneration ||
+        _localFilePathController.text.trim() != sourcePath;
+    setState(() => _isPlanningClipSplit = true);
+    final navigator = Navigator.of(context);
+    DialogRoute<void>? progressRoute;
+    ValueNotifier<({int completed, int total, bool cancelled})>? progress;
+    try {
+      final plan = await navigator.push<ClipSplitPlan>(MaterialPageRoute(
+        builder: (_) => ClipSplitScreen(
+          sourceDurationSeconds: sourceDuration,
+          videoName: _selectedVideoName ?? _readFileNameFromPath(sourcePath),
+          videoFile: File(sourcePath),
+          ownerSession: session,
+          initialPlatforms: _clipSplitPlatforms,
+          tikTokDirectPost: _platformSettings.tiktokPublishMode ==
+              TikTokPublishMode.directPost,
+          tikTokMaxDurationSeconds: _tikTokGuideMaximum,
+        ),
+      ));
+      if (plan == null || isCancelled()) return;
+      if (owner == null ||
+          !PostDeeAuthSessionStore.instance.session.isSignedIn) {
+        setState(() =>
+            _errorMessage = 'ลงชื่อเข้าใช้ก่อนเก็บตอนที่แบ่งเป็นร่าง');
+        return;
+      }
+
+      // Keep the entire current form, cover and original media in its existing
+      // draft before opening any newly generated part. This never submits it.
+      final original = await _persistCurrentDraft(showSavedMessage: false);
+      if (original == null ||
+          !mounted ||
+          !session.isCurrent ||
+          generation != _clipSplitGeneration) {
+        return;
+      }
+      sourcePath = original.videoPath;
+      if (isCancelled()) return;
+      final store = await _resolveDraftStore();
+      if (isCancelled() || !mounted) return;
+      if (store == null) {
+        setState(() =>
+            _errorMessage = 'เปิดพื้นที่เก็บร่างไม่ได้ กรุณาลองอีกครั้ง');
+        return;
+      }
+
+      final notifier = ValueNotifier(
+          (completed: 0, total: plan.groupedParts.length, cancelled: false));
+      progress = notifier;
+      progressRoute = DialogRoute<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            key: const ValueKey('uploader-clip-split-progress'),
+            scrollable: true,
+            title: Text(uploaderText(dialogContext, 'กำลังเตรียมคลิปและบันทึกร่าง',
+                'Preparing clips and saving drafts')),
+            content: ValueListenableBuilder(
+              valueListenable: notifier,
+              builder: (_, value, __) => Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: AppTheme.spaceMd),
+                  Text(uploaderText(
+                      dialogContext,
+                      'เตรียมแล้ว ${value.completed} / ${value.total} รายการ',
+                      '${value.completed} / ${value.total} items prepared')),
+                  const SizedBox(height: AppTheme.spaceSm),
+                  Text(uploaderText(
+                      dialogContext,
+                      'ต้นฉบับเก็บเป็นร่างแล้ว · ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา',
+                      'Original saved as a draft · No upload, posts or post units used')),
+                  const SizedBox(height: AppTheme.spaceMd),
+                  OutlinedButton(
+                    key: const ValueKey('uploader-clip-split-cancel'),
+                    onPressed: value.cancelled
+                        ? null
+                        : () {
+                            cancelled = true;
+                            notifier.value = (
+                              completed: value.completed,
+                              total: value.total,
+                              cancelled: true,
+                            );
+                          },
+                    child: Text(uploaderText(
+                        dialogContext,
+                        value.cancelled ? 'กำลังหยุด...' : 'หยุดเตรียมคลิป',
+                        value.cancelled ? 'Stopping...' : 'Stop preparation')),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      unawaited(navigator.push(progressRoute));
+      final sourceFile = File(sourcePath);
+      final batch = await ClipSplitDraftService(segmenter: widget.segmentClip)(
+        ClipSplitDraftRequest(
+          plan: plan,
+          inputFile: sourceFile,
+          fileName: original.videoName,
+          store: store,
+          ownerUserId: owner,
+          caption: _captionController.text,
+          aiGuidance: _aiGuidanceController.text,
+          captionLanguage: _captionLanguage,
+          watermarkEnabled: original.watermarkEnabled,
+          platformSettings: _platformSettings,
+          sourceMetadata: PublishMediaMetadata(
+            durationSeconds: sourceDuration,
+            width: original.videoWidth,
+            height: original.videoHeight,
+            sizeBytes: sourceFile.lengthSync(),
+          ),
+          isCancelled: isCancelled,
+          onProgress: (completed, total) {
+            if (isCancelled()) return;
+            notifier.value = (
+              completed: completed,
+              total: total,
+              cancelled: false,
+            );
+          },
+        ),
+      );
+      if (isCancelled()) return;
+      if (progressRoute.isActive) navigator.removeRoute(progressRoute);
+      progressRoute = null;
+      final drafts = {
+        for (final draft in [..._drafts, ...batch.drafts]) draft.id: draft,
+      }.values.toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      setState(() => _drafts = drafts);
+      final first = batch.drafts.first;
+      await _restoreDraft(first);
+      if (!mounted || !session.isCurrent) return;
+      setState(() {
+        _setVideoDuration(batch.metadataByDraftId[first.id]?.durationSeconds);
+        _currentStep = 1;
+        _successMessage =
+            'เตรียมแล้ว ${batch.drafts.length} ร่าง · ตรวจแคปชั่นทีละตอน เปิดตอนอื่นได้จากฉบับร่าง';
+      });
+      if (_formScrollController.hasClients) _formScrollController.jumpTo(0);
+    } on ClipSplitDraftException catch (error) {
+      if (!mounted || !session.isCurrent) return;
+      setState(() {
+        _errorMessage = error.residualDraftIds.isNotEmpty
+                ? 'เตรียมคลิปไม่ครบ มีบางร่างที่เก็บไว้ กรุณาตรวจรายการฉบับร่างก่อนลองใหม่'
+                : error.cleanupFailed
+                    ? 'เตรียมคลิปไม่สำเร็จ และยังล้างไฟล์ชั่วคราวไม่ครบ ต้นฉบับยังอยู่ กรุณาตรวจพื้นที่ว่าง'
+                : error.isCancelled
+                    ? 'หยุดเตรียมคลิปแล้ว ต้นฉบับยังอยู่ในฉบับร่าง'
+                    : 'แบ่งคลิปไม่สำเร็จ ตรวจสอบพื้นที่ว่างแล้วลองใหม่ ต้นฉบับยังอยู่ในฉบับร่าง';
+        _successMessage = null;
+      });
+      unawaited(_loadDrafts());
+    } catch (_) {
+      if (!mounted || !session.isCurrent) return;
+      setState(() {
+        _errorMessage = 'แบ่งคลิปไม่สำเร็จ ต้นฉบับยังอยู่ กรุณาลองอีกครั้ง';
+        _successMessage = null;
+      });
+    } finally {
+      if (progressRoute != null &&
+          progressRoute.isActive &&
+          navigator.mounted) {
+        navigator.removeRoute(progressRoute);
+      }
+      progress?.dispose();
+      if (mounted && generation == _clipSplitGeneration) {
+        setState(() => _isPlanningClipSplit = false);
+      }
+    }
   }
 
   Future<void> _openPostPreview() async {
@@ -1835,6 +2079,8 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
     _invalidateAiCaption();
+    _clipSplitGeneration++;
+    _isPlanningClipSplit = false;
     _draftLoadGeneration += 1;
     _connectionLoadGeneration += 1;
     final draftSheetContext = _draftSheetContext;
@@ -2346,6 +2592,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   @override
   void dispose() {
+    _clipSplitGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     PostDeeAuthSessionStore.instance
         .removeListener(_handleCaptionQuotaSessionChanged);
@@ -5942,6 +6189,22 @@ class _UploaderScreenState extends State<UploaderScreen>
                               ],
                               const SizedBox(height: 12),
                               _buildPostQuota(),
+                              if (_clipSplitExceededPlatforms.isNotEmpty) ...[
+                                const SizedBox(height: AppTheme.spaceMd),
+                                ClipSplitPrompt(
+                                  exceededPlatforms: _clipSplitExceededPlatforms,
+                                  needsSubmissionRecovery:
+                                      _activeDraftUploadedMedia != null ||
+                                          _requiresNewSubmissionAttempt,
+                                  onOpen: _formBusy ||
+                                          _isGeneratingCaption ||
+                                          _activeDraftUploadedMedia != null ||
+                                          _requiresNewSubmissionAttempt
+                                      ? null
+                                      : _openClipSplitPlan,
+                                ),
+                                const SizedBox(height: AppTheme.spaceMd),
+                              ],
                               VideoDurationGuide(
                                 durationSeconds: _videoDurationSeconds,
                                 tikTokMaxDurationSeconds: _tikTokGuideMaximum,

@@ -14,6 +14,27 @@ accuracy for every language on the configured model. API must precede Mobile;
 no database migration or model/provider change. See the
 [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
+## Split long clips into local drafts (2026-11-04, Staging APK installed)
+
+The owner selected the inline card on the clip-selection step. An overlong clip
+can open a Thai/English plan, preview its source intervals and adjust a valid
+first boundary. The default splits only affected channels; an alternative uses
+the same parts for every selected channel. Equal intervals share one draft,
+and the plan shows the existing per-channel post-unit cost before confirmation.
+
+Preparation saves the original draft first, then creates separate local drafts
+with new submission identities. The seller reviews each part's caption, cover,
+destinations and schedule through the existing posting flow; no bulk posting is
+added. Local splitting consumes no post units or AI credits. No API, schema,
+entitlement or environment change is required, and AI editing remains retired.
+The full Mobile suite passed 5,326 tests (10 skipped), analysis passed and guarded
+Staging APK 12104 is installed on Pixel_8 with its UID/storage retained. A real
+180-second local clip produced two verified 90-second Facebook files and one
+shared full-length draft without posting; the original and older draft remained.
+Live native cancellation, physical-device/iOS and real publishing checks remain
+unverified. No merge, push or hosted rollout was performed. See the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## AI caption output language (2026-11-04, local candidate)
 
 The create-post AI caption panel offers Automatic plus seventeen explicit

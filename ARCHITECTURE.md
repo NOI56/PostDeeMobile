@@ -19,6 +19,40 @@ drafts, and protects cancelled/obsolete selections and busy generation states.
 Existing quota/refund, platform validation and clip-duration guidance are retained.
 API precedes Mobile; no schema or environment change.
 
+## Local clip-splitting preparation (2026-11-04, Staging APK installed)
+
+The uploader's approved inline card opens a pure duration plan and source-range
+preview. `ClipSplitPlan` derives balanced ranges from the existing platform
+duration rules, supports affected-channel and common-part modes, and groups
+equal ranges into at most 64 file/draft jobs. An unknown TikTok Direct maximum
+cannot be substituted with the inbox-transfer ceiling.
+
+After confirmation, the uploader persists the original form as a local draft.
+`FfmpegClipSegmenter` writes new H.264/CFR30 outputs, retains audio as AAC when
+present, probes each result and scopes cancellation to its own native sessions.
+`ClipSplitDraftService` copies verified results into new owner-bound drafts,
+retains the source and rejects changed source files or obsolete sessions.
+Reusable publishing choices, including Facebook Publish/Page draft and AI
+disclosures, survive; per-media confirmations, upload receipts, covers and
+scheduled times do not transfer to the new part intents.
+
+Failure or live cancellation rolls back only the new draft identities and
+cleans temporary files, reporting leftovers explicitly. Process termination
+during persistence can still leave some local part drafts; check them before
+retrying. There is no automatic batch submission or cross-process batch
+transaction. Existing per-draft consent, final media verification, idempotency
+and quota accounting remain authoritative. No backend, schema, entitlement or
+environment change is required. This uploader utility does not restore retired
+AI editing. Full Mobile tests and analysis passed; guarded Staging APK 12104 is
+installed with its hash, original package UID and internal storage verified.
+Native range preview and a real 180-second source produced verified, decodable
+90-second H.264/AAC parts and a byte-identical full-length copy. Live native
+cancellation remains unverified after external user input interrupted the check;
+cancellation and owner-change safeguards have automated coverage. Physical
+devices, iOS, real publishing and final source-diff audit remain pending. No
+merge, push or hosted deployment was performed. See the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Caption language preference (2026-11-04, local candidate)
 
 Caption requests add an optional validated output-language code. The media

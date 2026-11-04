@@ -18,8 +18,21 @@ class _ClipGroupRuntimeReview {
 }
 
 extension _UploaderClipGroups on _UploaderScreenState {
+  String? _groupIdForDraft(PublishDraft draft) {
+    for (final group in _clipGroupRecords.values) {
+      if (group.ownerUserId == draft.ownerUserId &&
+          (group.sourceDraftId == draft.id ||
+              group.items.any((item) => item.draftId == draft.id))) {
+        return group.id;
+      }
+    }
+    return null;
+  }
+
   void _guardClipGroup(AuthSessionBinding session, String owner) {
-    if (!mounted || !session.isCurrent || session.userId != owner ||
+    if (!mounted ||
+        !session.isCurrent ||
+        session.userId != owner ||
         PostDeeAuthSessionStore.instance.session.stableUserId != owner ||
         !PostDeeAuthSessionStore.instance.session.isSignedIn) {
       throw const ClipGroupDraftException(
@@ -61,45 +74,63 @@ extension _UploaderClipGroups on _UploaderScreenState {
         _guardClipGroup(session, owner);
         drafts
           ..clear()
-          ..addEntries(saved.where((d) => d.ownerUserId == owner)
+          ..addEntries(saved
+              .where((d) => d.ownerUserId == owner)
               .map((d) => MapEntry(d.id, d)));
         working = current;
+        _clipGroupRecords = {..._clipGroupRecords, current.id: current};
         return current;
       }
+
       await reload();
       await _loadConnections();
       _guardClipGroup(session, owner);
       final reviewBindings = {
-        for (final p in working!.items.expand((item) => item.platformApiValues)
-            .map(_platformFromApiValue).whereType<SocialPlatform>())
+        for (final p in working!.items
+            .expand((item) => item.platformApiValues)
+            .map(_platformFromApiValue)
+            .whereType<SocialPlatform>())
           p: _connectionBinding(p),
       };
       Future<ClipGroupDraft> saveGroup(ClipGroupDraft proposed) async {
-        final saved = await _persistClipGroupEdits(
-            store, groupStore, proposed, session);
-        working = saved;
-        await reload();
-        return working!;
+        try {
+          final saved = await _persistClipGroupEdits(
+              store, groupStore, proposed, session);
+          working = saved;
+          await reload();
+          return working!;
+        } catch (_) {
+          if (session.isCurrent) await reload();
+          rethrow;
+        }
       }
-      Future<PublishDraft> saveCaption(PublishDraft draft, String caption) async {
+
+      Future<PublishDraft> saveCaption(
+          PublishDraft draft, String caption) async {
         _guardClipGroup(session, owner);
         final current = working!;
-        final item = current.items
-            .where((item) => item.draftId == draft.id).firstOrNull;
+        final item =
+            current.items.where((item) => item.draftId == draft.id).firstOrNull;
         final actual = await store.loadDraft(draft.id);
         _guardClipGroup(session, owner);
-        if (item == null || item.isAccepted || actual == null ||
-            actual.uploadedMedia != null || actual.ownerUserId != owner) {
+        if (item == null ||
+            item.isAccepted ||
+            actual == null ||
+            actual.uploadedMedia != null ||
+            actual.ownerUserId != owner) {
           throw const ClipGroupDraftException(
               'คลิปนี้เคยเริ่มส่งแล้ว กรุณาตรวจรายการเดิมก่อนแก้ไข');
         }
         working = await _persistClipGroupEdits(
-            store, groupStore,
+            store,
+            groupStore,
             current.copyWith(items: [
               for (final member in current.items)
                 member.draftId == draft.id
-                    ? member.copyWith(usesSharedCaption: false) : member,
-            ]), session);
+                    ? member.copyWith(usesSharedCaption: false)
+                    : member,
+            ]),
+            session);
         _guardClipGroup(session, owner);
         final saved = await store.saveDraft(clipGroupMemberSaveRequest(actual,
             caption: caption, captionNeedsReview: false, now: widget.now()));
@@ -107,6 +138,7 @@ extension _UploaderClipGroups on _UploaderScreenState {
         drafts[saved.id] = saved;
         return saved;
       }
+
       Future<void> beforeMemberSave(String id, String caption) async {
         _guardClipGroup(session, owner);
         final current = await groupStore.loadClipGroup(groupId);
@@ -114,33 +146,37 @@ extension _UploaderClipGroups on _UploaderScreenState {
         if (current == null || current.revision != working!.revision) {
           throw const ClipGroupDraftConflictException();
         }
-        final member = current.items.where((item) => item.draftId == id)
-            .firstOrNull;
+        final member =
+            current.items.where((item) => item.draftId == id).firstOrNull;
         if (member == null || member.isAccepted) {
           throw const ClipGroupDraftException('รายการคลิปเปลี่ยนแล้ว');
         }
-        if (member.usesSharedCaption && caption != current.sharedCaption) {
-          working = await groupStore.saveClipGroup(current.copyWith(
-            updatedAt: widget.now().toUtc(),
-            items: [
-              for (final item in current.items)
-                item.draftId == id
-                    ? item.copyWith(usesSharedCaption: false) : item,
-            ],
-          ), expectedRevision: current.revision);
-          _guardClipGroup(session, owner);
-        }
+        working = await groupStore.saveClipGroup(
+            current.copyWith(
+              updatedAt: widget.now().toUtc(),
+              items: [
+                for (final item in current.items)
+                  item.draftId == id && caption != current.sharedCaption
+                      ? item.copyWith(usesSharedCaption: false)
+                      : item,
+              ],
+            ),
+            expectedRevision: current.revision);
+        _guardClipGroup(session, owner);
       }
+
       await navigator.push<void>(MaterialPageRoute(
         builder: (_) => ClipGroupReviewScreen(
           initialGroup: working!,
           draftsById: drafts,
           ownerSession: session,
+          connectionDisplayNames: Map.of(_reviewIdentities),
           now: widget.now,
           loadSubscription: _loadSubscription,
           loadPostQuota: widget.loadPostQuota ??
               PostDeeApiClient(
-                  authHeaders: PostDeeApiAuthHeaders(sessionBinding: session))
+                      authHeaders:
+                          PostDeeApiAuthHeaders(sessionBinding: session))
                   .loadCurrentSubscription,
           onSaveGroup: saveGroup,
           onSaveCaption: saveCaption,
@@ -148,10 +184,13 @@ extension _UploaderClipGroups on _UploaderScreenState {
           onEditClip: (draft, section) async {
             _guardClipGroup(session, owner);
             final member = working!.items
-                .where((item) => item.draftId == draft.id).firstOrNull;
+                .where((item) => item.draftId == draft.id)
+                .firstOrNull;
             final latest = await store.loadDraft(draft.id);
             _guardClipGroup(session, owner);
-            if (member == null || member.isAccepted || latest == null ||
+            if (member == null ||
+                member.isAccepted ||
+                latest == null ||
                 latest.uploadedMedia != null) {
               throw const ClipGroupDraftException(
                   'คลิปนี้เคยเริ่มส่งแล้ว กรุณาตรวจรายการเดิมก่อนแก้ไข');
@@ -160,6 +199,7 @@ extension _UploaderClipGroups on _UploaderScreenState {
               await _restoreDraft(latest);
               await _openCoverEditor();
               _guardClipGroup(session, owner);
+              await beforeMemberSave(latest.id, _captionController.text);
               final saved = await _persistCurrentDraft(showSavedMessage: false);
               if (saved == null) {
                 throw const ClipGroupDraftException('บันทึกหน้าปกไม่สำเร็จ');
@@ -167,7 +207,7 @@ extension _UploaderClipGroups on _UploaderScreenState {
             } else {
               await navigator.push<PublishDraft>(MaterialPageRoute(
                 builder: (_) => _clipGroupMemberEditor(
-                    latest, section, store, beforeMemberSave),
+                    latest, section, store, session, beforeMemberSave),
               ));
               _guardClipGroup(session, owner);
             }
@@ -176,7 +216,8 @@ extension _UploaderClipGroups on _UploaderScreenState {
           },
           onSubmit: (confirmed, onProgress) async {
             final prepared = await _persistClipGroupEdits(
-                store, groupStore, confirmed, session, captionsReviewed: true);
+                store, groupStore, confirmed, session,
+                captionsReviewed: true);
             working = prepared;
             final result = await _submitSavedClipGroup(prepared, store,
                 groupStore, session, reviewBindings, onProgress);
@@ -191,15 +232,22 @@ extension _UploaderClipGroups on _UploaderScreenState {
         if (cover != null) await cover.cleanupTemporaryFiles();
         _updateClipGroupState(() {
           _currentStep = 0;
-          _successMessage = 'เก็บชุดคลิปไว้แล้ว เปิดทำต่อได้จากฉบับร่าง';
+          _successMessage = working!.isComplete
+              ? uploaderText(
+                  context,
+                  'รับรายการครบทั้งชุดแล้ว ตรวจผลได้ในรายการโพสต์',
+                  'The entire set was accepted. Check the results in Posts.')
+              : uploaderText(
+                  context,
+                  'เก็บชุดคลิปไว้แล้ว เปิดทำต่อได้จากฉบับร่าง',
+                  'The clip set is saved. Continue from Drafts.');
         });
         await _loadDrafts();
       }
     } catch (error) {
       if (mounted && session.isCurrent) {
-        _updateClipGroupState(() => _errorMessage = apiErrorMessage(error,
-            fallbackMessage: error is ClipGroupDraftException
-                ? error.message : 'เปิดชุดคลิปไม่สำเร็จ กรุณาลองใหม่'));
+        _updateClipGroupState(
+            () => _errorMessage = clipGroupErrorText(context, error));
       }
     } finally {
       if (openingGeneration == _clipGroupRouteGeneration) {
@@ -218,7 +266,8 @@ extension _UploaderClipGroups on _UploaderScreenState {
     _guardClipGroup(session, proposed.ownerUserId);
     final current = await groupStore.loadClipGroup(proposed.id);
     _guardClipGroup(session, proposed.ownerUserId);
-    if (current == null || current.revision != proposed.revision ||
+    if (current == null ||
+        current.revision != proposed.revision ||
         current.ownerUserId != proposed.ownerUserId) {
       throw const ClipGroupDraftConflictException();
     }
@@ -227,21 +276,28 @@ extension _UploaderClipGroups on _UploaderScreenState {
       _guardClipGroup(session, proposed.ownerUserId);
       final draft = await store.loadDraft(item.draftId);
       _guardClipGroup(session, proposed.ownerUserId);
-      if (draft == null || draft.clipGroupId != proposed.id ||
-          draft.ownerUserId != proposed.ownerUserId || draft.isClipGroupSource) {
+      if (draft == null ||
+          draft.clipGroupId != proposed.id ||
+          draft.ownerUserId != proposed.ownerUserId ||
+          draft.isClipGroupSource) {
         throw const ClipGroupDraftException(
             'ไม่พบคลิปบางรายการ ร่างที่เหลือยังอยู่ กรุณาตรวจชุดคลิป');
       }
-      final caption = item.usesSharedCaption
-          ? proposed.sharedCaption : draft.caption;
+      final caption =
+          item.usesSharedCaption ? proposed.sharedCaption : draft.caption;
       final schedule = proposed.deliveryMode == ClipGroupDeliveryMode.scheduled
-          ? item.scheduledAt : null;
+          ? item.scheduledAt
+          : null;
       final reviewed = captionsReviewed ? false : draft.captionNeedsReview;
-      if (caption != draft.caption || schedule != draft.scheduledAt ||
+      if (caption != draft.caption ||
+          schedule != draft.scheduledAt ||
           reviewed != draft.captionNeedsReview) {
         requests.add(clipGroupMemberSaveRequest(draft,
-            caption: caption, captionNeedsReview: reviewed,
-            scheduledAt: schedule, replaceSchedule: true, now: widget.now()));
+            caption: caption,
+            captionNeedsReview: reviewed,
+            scheduledAt: schedule,
+            replaceSchedule: true,
+            now: widget.now()));
       }
     }
     // Desired form values are durable before applying the per-member edits.
@@ -275,6 +331,7 @@ extension _UploaderClipGroups on _UploaderScreenState {
         }
       }
     }
+
     final runtimeReviews = <String, _ClipGroupRuntimeReview>{};
     try {
       guard();
@@ -283,6 +340,29 @@ extension _UploaderClipGroups on _UploaderScreenState {
       final subscription = await _loadSubscription();
       guard();
       final pending = group.items.where((item) => !item.isAccepted).toList();
+      var freshUnits = 0;
+      var hasReceipt = false;
+      for (final item in pending) {
+        final draft = await store.loadDraft(item.draftId);
+        guard();
+        if (draft == null ||
+            !File(draft.videoPath).existsSync() ||
+            File(draft.videoPath).lengthSync() <= 0) {
+          if (draft?.uploadedMedia == null) {
+            throw const ClipGroupDraftException(
+                'ไม่พบไฟล์คลิปบางรายการ กรุณาตรวจชุดคลิปก่อนส่ง');
+          }
+        }
+        if (draft!.uploadedMedia == null) {
+          freshUnits += item.platformApiValues.length;
+        } else {
+          hasReceipt = true;
+        }
+      }
+      if (!hasReceipt && freshUnits > 0) {
+        await _requireClipGroupQuota(freshUnits, session);
+        guard();
+      }
       for (final item in pending) {
         final draft = await store.loadDraft(item.draftId);
         guard();
@@ -297,8 +377,10 @@ extension _UploaderClipGroups on _UploaderScreenState {
           if (!subscription.canSchedule ||
               item.scheduledAt == null ||
               !item.scheduledAt!.isAfter(widget.now()) ||
-              !isPostScheduleWithinLimit(scheduledAt: item.scheduledAt!,
-                  now: widget.now(), plan: subscription.plan)) {
+              !isPostScheduleWithinLimit(
+                  scheduledAt: item.scheduledAt!,
+                  now: widget.now(),
+                  plan: subscription.plan)) {
             throw ClipGroupDraftException(
                 postScheduleLimitMessage(subscription.plan));
           }
@@ -306,49 +388,11 @@ extension _UploaderClipGroups on _UploaderScreenState {
         onProgress(ClipGroupSubmissionProgress(
             itemIndex: item.index,
             completed: group.items.where((item) => item.isAccepted).length,
-            total: group.items.length, stage: ClipGroupSubmissionStage.checking,
+            total: group.items.length,
+            stage: ClipGroupSubmissionStage.checking,
             itemDraftId: item.draftId));
-        await _restoreDraft(draft);
-        await _readSelectedVideoDuration();
-        guard();
-        if (_draftUnavailablePlatforms.isNotEmpty ||
-            _selectedPlatformWithoutIdentity != null ||
-            _selectedPlatforms.length != item.platformApiValues.length) {
-          throw const ClipGroupDraftException(
-              'บางช่องทางในชุดคลิปยังไม่พร้อม กรุณาตรวจการเชื่อมต่อ');
-        }
-        for (final platform in _selectedPlatforms.toList()) {
-          final needsFreshTikTok = platform == SocialPlatform.tiktok &&
-              _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost;
-          if (needsFreshTikTok || !_resolvedPlatformSettings.canSubmit(platform)) {
-            await _openPlatformSettings(platform);
-            guard();
-            if (!_resolvedPlatformSettings.canSubmit(platform) ||
-                (needsFreshTikTok &&
-                    _tikTokConsentedIntent != _tikTokConsentIntent)) {
-              throw const ClipGroupDraftException(
-                  'ยังไม่ได้ยืนยันการตั้งค่าบางคลิป ชุดคลิปยังอยู่ในฉบับร่าง');
-            }
-          }
-        }
-        final textError = _postTextValidationError();
-        if (textError != null) throw ClipGroupDraftException(textError);
-        if (_selectedDurationProblem case final problem?) {
-          throw ClipGroupDraftException(problem.message);
-        }
-        final saved = await _persistCurrentDraft(showSavedMessage: false);
-        guard();
-        if (saved == null) {
-          throw const ClipGroupDraftException('บันทึกการตรวจคลิปไม่สำเร็จ');
-        }
-        runtimeReviews[draft.id] = _ClipGroupRuntimeReview(
-          form: _formSnapshot,
-          settings: _platformSettings,
-          bindings: Map.of(_savedPlatformSettingsBindings),
-          tikTokBinding: _tikTokConnectionBinding(),
-          tikTokIntent: _tikTokConsentedIntent,
-          tikTokOptions: _tikTokPublishingOptions,
-        );
+        runtimeReviews[draft.id] =
+            await _reviewClipGroupMember(draft, item, guard);
       }
       guard();
       return await ClipGroupSubmission(
@@ -361,8 +405,16 @@ extension _UploaderClipGroups on _UploaderScreenState {
             final recovered = await _recoverClipGroupMember(draft);
             guard();
             if (recovered != null) {
-              if (!const {'QUEUED','PUBLISHING','PUBLISHED','PARTIAL_PUBLISHED'}
-                  .contains(recovered.status.toUpperCase())) {
+              if (recovered.videoS3Key != draft.uploadedMedia!.videoS3Key) {
+                throw const ClipGroupDraftException(
+                    'ข้อมูลรายการเดิมไม่ตรงกับคลิป กรุณาตรวจผลก่อนลองใหม่');
+              }
+              if (!const {
+                'QUEUED',
+                'PUBLISHING',
+                'PUBLISHED',
+                'PARTIAL_PUBLISHED'
+              }.contains(recovered.status.toUpperCase())) {
                 throw const ClipGroupDraftException(
                     'พบรายการเดิมที่ยังส่งไม่สำเร็จ กรุณาตรวจรายละเอียดโพสต์');
               }
@@ -371,22 +423,30 @@ extension _UploaderClipGroups on _UploaderScreenState {
               await _deleteDraftAndConfirmAbsent(store, draft.id);
               return recovered;
             }
-            // Never invent a new intent after a response was lost.
-            throw const ClipGroupDraftException(
-                'ยังไม่พบผลรายการเดิม ร่างและข้อมูลอัปโหลดยังอยู่ กรุณาตรวจอีกครั้ง');
+            if (draft.scheduledAt != null &&
+                !draft.scheduledAt!.isAfter(widget.now())) {
+              throw const ClipGroupDraftException(
+                  'ยังไม่พบรายการเดิม และเวลาส่งผ่านไปแล้ว กรุณาตรวจผลอีกครั้ง');
+            }
+            // An explicit Not Found may retry the exact stable request ID and
+            // existing upload. Network/recovery errors never enter this path.
+            runtimeReviews[draft.id] =
+                await _reviewClipGroupMember(draft, item, guard);
           }
           await _restoreDraft(draft);
           await _readSelectedVideoDuration();
           guard();
           final proof = runtimeReviews[draft.id];
-          if (proof == null || proof.tikTokBinding != _tikTokConnectionBinding()) {
+          if (proof == null ||
+              proof.tikTokBinding != _tikTokConnectionBinding()) {
             throw const ClipGroupDraftException(
                 'ข้อมูลการตรวจคลิปเปลี่ยนแล้ว กรุณาตรวจชุดคลิปอีกครั้ง');
           }
           _updateClipGroupState(() {
             _platformSettings = proof.settings;
             _savedPlatformSettingsBindings
-              ..clear()..addAll(proof.bindings);
+              ..clear()
+              ..addAll(proof.bindings);
             _tikTokPublishingOptions = proof.tikTokOptions;
             _tikTokConsentedIntent = proof.tikTokIntent;
           });
@@ -396,13 +456,16 @@ extension _UploaderClipGroups on _UploaderScreenState {
             throw const ClipGroupDraftException(
                 'คลิปหรือเวลาส่งเปลี่ยนแล้ว กรุณาตรวจชุดคลิปอีกครั้ง');
           }
+          await _requireClipGroupQuota(item.platformApiValues.length, session);
+          guard();
           _clipGroupAcceptedCheckpoint = checkpoint;
           try {
             final post = await _createPost();
             guard();
             if (post == null) {
               throw ClipGroupDraftException(_errorMessage ??
-                  _pendingInlineError ?? _submissionInlineError ??
+                  _pendingInlineError ??
+                  _submissionInlineError ??
                   'ส่งคลิปนี้ไม่สำเร็จ รายการที่เหลือยังอยู่ในชุด');
             }
             return post;
@@ -413,16 +476,93 @@ extension _UploaderClipGroups on _UploaderScreenState {
       )(group, session: session, onProgress: onProgress);
     } catch (error) {
       final completed = group.items.where((item) => item.isAccepted).length;
-      return ClipGroupSubmissionResult(group: group, completed: completed,
-          remaining: group.items.length-completed, error: error,
+      return ClipGroupSubmissionResult(
+          group: group,
+          completed: completed,
+          remaining: group.items.length - completed,
+          error: error,
           cancelled: !session.isCurrent);
+    }
+  }
+
+  Future<_ClipGroupRuntimeReview> _reviewClipGroupMember(
+      PublishDraft draft, ClipGroupItem item, void Function() guard) async {
+    guard();
+    if (!File(draft.videoPath).existsSync() ||
+        File(draft.videoPath).lengthSync() <= 0) {
+      throw const ClipGroupDraftException('ไม่พบไฟล์วิดีโอของคลิปนี้ในเครื่อง');
+    }
+    await _restoreDraft(draft);
+    await _readSelectedVideoDuration();
+    guard();
+    if (_activeDraftId != draft.id ||
+        _draftUnavailablePlatforms.isNotEmpty ||
+        _selectedPlatformWithoutIdentity != null ||
+        _selectedPlatforms.length != item.platformApiValues.length) {
+      throw const ClipGroupDraftException(
+          'บางช่องทางในชุดคลิปยังไม่พร้อม กรุณาตรวจการเชื่อมต่อ');
+    }
+    for (final platform in _selectedPlatforms.toList()) {
+      final direct = platform == SocialPlatform.tiktok &&
+          _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost;
+      if (direct || !_resolvedPlatformSettings.canSubmit(platform)) {
+        await _openPlatformSettings(platform);
+        guard();
+        if (!_resolvedPlatformSettings.canSubmit(platform) ||
+            (direct && _tikTokConsentedIntent != _tikTokConsentIntent)) {
+          throw const ClipGroupDraftException(
+              'ยังไม่ได้ยืนยันการตั้งค่าบางคลิป ชุดคลิปยังอยู่ในฉบับร่าง');
+        }
+      }
+    }
+    final textError = _postTextValidationError();
+    if (textError != null) throw ClipGroupDraftException(textError);
+    if (_selectedDurationProblem case final problem?) {
+      throw ClipGroupDraftException(problem.message);
+    }
+    final saved = await _persistCurrentDraft(showSavedMessage: false);
+    guard();
+    if (saved == null) {
+      throw const ClipGroupDraftException('บันทึกการตรวจคลิปไม่สำเร็จ');
+    }
+    return _ClipGroupRuntimeReview(
+      form: _formSnapshot,
+      settings: _platformSettings,
+      bindings: Map.of(_savedPlatformSettingsBindings),
+      tikTokBinding: _tikTokConnectionBinding(),
+      tikTokIntent: _tikTokConsentedIntent,
+      tikTokOptions: _tikTokPublishingOptions,
+    );
+  }
+
+  Future<void> _requireClipGroupQuota(
+      int units, AuthSessionBinding session) async {
+    _guardClipGroup(session, session.userId!);
+    final value = await (widget.loadPostQuota ??
+        PostDeeApiClient(
+                authHeaders: PostDeeApiAuthHeaders(sessionBinding: session))
+            .loadCurrentSubscription)();
+    _guardClipGroup(session, session.userId!);
+    final available = value.availablePostUnits ??
+        (value.remainingPostsThisMonth == null
+            ? null
+            : value.remainingPostsThisMonth! +
+                (value.isPaid ? value.addonPostUnits : 0));
+    if (value.userId != session.userId || available == null || available < 0) {
+      throw const ClipGroupDraftException('ตรวจโควตาไม่สำเร็จ กรุณาลองใหม่');
+    }
+    if (available < units) {
+      throw const ClipGroupDraftException(
+          'หน่วยโพสต์ไม่พอสำหรับรายการที่เหลือ');
     }
   }
 
   Future<QueuedPostResult?> _recoverClipGroupMember(PublishDraft draft) async {
     final receipt = draft.uploadedMedia!;
-    final platforms = draft.platformApiValues.map(_platformFromApiValue)
-        .whereType<SocialPlatform>().toSet();
+    final platforms = draft.platformApiValues
+        .map(_platformFromApiValue)
+        .whereType<SocialPlatform>()
+        .toSet();
     var settings = draft.platformSettings;
     if (settings.youtubeMadeForKids != null &&
         settings.youtubeContainsSyntheticMedia != null &&
@@ -434,48 +574,59 @@ extension _UploaderClipGroups on _UploaderScreenState {
       settings = settings.copyWith(
           tiktokVideoDurationSeconds: receipt.videoDurationSeconds);
     }
-    return (widget.recoverPostSubmission ?? _apiClient.recoverPostSubmission)(
-        CreatePostRequest(
-          clientRequestId: draft.submissionRequestId,
-          caption: _requestCaption(draft.caption, settings, platforms),
-          videoS3Key: receipt.videoS3Key,
-          mediaContentFingerprint: receipt.mediaContentFingerprint,
-          platforms: draft.platformApiValues.toList(),
-          platformSettings: settings.toRecoveryApiJson(selectedPlatforms: platforms),
-          scheduledAt: draft.scheduledAt,
-          coverImageS3Key: receipt.coverImageS3Key,
-          coverFrameTimeMs: draft.cover?.design.coverFrameTimeMs,
-        ));
+    return (widget.recoverPostSubmission ??
+        _apiClient.recoverPostSubmission)(CreatePostRequest(
+      clientRequestId: draft.submissionRequestId,
+      caption: _requestCaption(draft.caption, settings, platforms),
+      videoS3Key: receipt.videoS3Key,
+      mediaContentFingerprint: receipt.mediaContentFingerprint,
+      platforms: draft.platformApiValues.toList(),
+      platformSettings:
+          settings.toRecoveryApiJson(selectedPlatforms: platforms),
+      scheduledAt: draft.scheduledAt,
+      coverImageS3Key: receipt.coverImageS3Key,
+      coverFrameTimeMs: draft.cover?.design.coverFrameTimeMs,
+    ));
   }
 
   UploaderScreen _clipGroupMemberEditor(
-      PublishDraft draft, ClipGroupEditSection section, PublishDraftStore store,
-      Future<void> Function(String, String) beforeSave) => UploaderScreen(
-    fullScreen: true, initialDraftId: draft.id, draftStore: store,
-    clipGroupEditor: true,
-    clipGroupEditorStep: section == ClipGroupEditSection.channels ? 2 : 1,
-    beforeClipGroupMemberSave: beforeSave,
-    now: widget.now, loadTemplates: widget.loadTemplates,
-    loadSubscription: widget.loadSubscription, loadCaptionQuota: widget.loadCaptionQuota,
-    loadPostQuota: widget.loadPostQuota, generateCaption: widget.generateCaption,
-    generateRealClipCaption: widget.generateRealClipCaption,
-    enableRevenueCatBilling: widget.enableRevenueCatBilling,
-    captionWritingStyleStore: widget.captionWritingStyleStore,
-    platformPublishDefaultsStore: widget.platformPublishDefaultsStore,
-    growthToolSettingsStore: widget.growthToolSettingsStore,
-    loadSocialConnections: widget.loadSocialConnections,
-    loadSocialPublishingReadiness: widget.loadSocialPublishingReadiness,
-    probePublishMedia: widget.probePublishMedia,
-    readVideoMetadata: widget.readVideoMetadata,
-    loadTikTokPublishingOptions: widget.loadTikTokPublishingOptions,
-    loadTikTokDurationOptions: widget.loadTikTokDurationOptions,
-    openCoverEditor: widget.openCoverEditor,
-    coverImageProcessor: widget.coverImageProcessor,
-    extractFrames: widget.extractFrames,
-    extractCaptionAudio: widget.extractCaptionAudio,
-    extractCaptionVisualProxy: widget.extractCaptionVisualProxy,
-    analytics: widget.analytics,
-  );
+          PublishDraft draft,
+          ClipGroupEditSection section,
+          PublishDraftStore store,
+          AuthSessionBinding session,
+          Future<void> Function(String, String) beforeSave) =>
+      UploaderScreen(
+        fullScreen: true,
+        initialDraftId: draft.id,
+        draftStore: store,
+        clipGroupEditor: true,
+        clipGroupOwnerSession: session,
+        clipGroupEditorStep: section == ClipGroupEditSection.channels ? 2 : 1,
+        beforeClipGroupMemberSave: beforeSave,
+        now: widget.now,
+        loadTemplates: widget.loadTemplates,
+        loadSubscription: widget.loadSubscription,
+        loadCaptionQuota: widget.loadCaptionQuota,
+        loadPostQuota: widget.loadPostQuota,
+        generateCaption: widget.generateCaption,
+        generateRealClipCaption: widget.generateRealClipCaption,
+        enableRevenueCatBilling: widget.enableRevenueCatBilling,
+        captionWritingStyleStore: widget.captionWritingStyleStore,
+        platformPublishDefaultsStore: widget.platformPublishDefaultsStore,
+        growthToolSettingsStore: widget.growthToolSettingsStore,
+        loadSocialConnections: widget.loadSocialConnections,
+        loadSocialPublishingReadiness: widget.loadSocialPublishingReadiness,
+        probePublishMedia: widget.probePublishMedia,
+        readVideoMetadata: widget.readVideoMetadata,
+        loadTikTokPublishingOptions: widget.loadTikTokPublishingOptions,
+        loadTikTokDurationOptions: widget.loadTikTokDurationOptions,
+        openCoverEditor: widget.openCoverEditor,
+        coverImageProcessor: widget.coverImageProcessor,
+        extractFrames: widget.extractFrames,
+        extractCaptionAudio: widget.extractCaptionAudio,
+        extractCaptionVisualProxy: widget.extractCaptionVisualProxy,
+        analytics: widget.analytics,
+      );
 
   Future<void> _saveClipGroupMemberAndClose() async {
     if (_formBusy || _isGeneratingCaption || !widget.clipGroupEditor) return;
@@ -487,43 +638,120 @@ extension _UploaderClipGroups on _UploaderScreenState {
   }
 
   Widget _buildClipGroupEditorToolbar(BuildContext context) => Padding(
-    padding: AppTheme.screenPadding,
-    child: Row(children: [
-      Expanded(child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(uploaderText(context, 'แก้คลิปในชุด', 'Edit clip in group'),
-              style: Theme.of(context).textTheme.titleLarge),
-          if (_selectedVideoName != null)
-            Text(_selectedVideoName!, maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-          Text(uploaderText(context, 'ช่องทางตามแผนแบ่งคลิป',
-              'Destinations follow the split plan'),
-              style: Theme.of(context).textTheme.bodySmall),
-        ],
-      )),
-      IconButton(onPressed: _formBusy ? null : _requestExit,
-          icon: const Icon(Icons.close),
-          tooltip: uploaderText(context, 'กลับไปที่ชุดคลิป', 'Back to group')),
-    ]),
-  );
+        padding: AppTheme.screenPadding,
+        child: Row(children: [
+          Expanded(
+              child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(uploaderText(context, 'แก้คลิปในชุด', 'Edit clip in group'),
+                  style: Theme.of(context).textTheme.titleLarge),
+              if (_selectedVideoName != null)
+                Text(_selectedVideoName!,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(
+                  uploaderText(context, 'ช่องทางตามแผนแบ่งคลิป',
+                      'Destinations follow the split plan'),
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          )),
+          IconButton(
+              onPressed: _formBusy ? null : _requestExit,
+              icon: const Icon(Icons.close),
+              tooltip:
+                  uploaderText(context, 'กลับไปที่ชุดคลิป', 'Back to group')),
+        ]),
+      );
 
   Widget _buildClipGroupEditorActionBar(BuildContext context) => SafeArea(
-    top: false,
-    child: Padding(
-      padding: const EdgeInsets.all(AppTheme.spaceMd),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        FilledButton(
-          key: const ValueKey('clip-group-member-save'),
-          onPressed: _formBusy || _isGeneratingCaption
-              ? null : _saveClipGroupMemberAndClose,
-          child: Text(uploaderText(context, 'บันทึกกลับเข้าชุด',
-              'Save and return to group')),
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(AppTheme.spaceMd),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            FilledButton(
+              key: const ValueKey('clip-group-member-save'),
+              onPressed: _formBusy || _isGeneratingCaption
+                  ? null
+                  : _saveClipGroupMemberAndClose,
+              child: Text(uploaderText(
+                  context, 'บันทึกกลับเข้าชุด', 'Save and return to group')),
+            ),
+            const SizedBox(height: AppTheme.spaceSm),
+            Text(uploaderText(context, 'บันทึกการแก้ไข ยังไม่ส่งโพสต์',
+                'Save changes without submitting')),
+          ]),
         ),
-        const SizedBox(height: AppTheme.spaceSm),
-        Text(uploaderText(context, 'บันทึกการแก้ไข ยังไม่ส่งโพสต์',
-            'Save changes without submitting')),
-      ]),
-    ),
-  );
+      );
+
+  Future<void> _deleteClipGroupEntry(ClipGroupDraftListEntry entry) async {
+    final session = PostDeeAuthSessionStore.instance.captureSession();
+    try {
+      await _deleteClipGroupEntryWhileOwned(entry, session);
+    } catch (error) {
+      if (mounted && session.isCurrent) {
+        _updateClipGroupState(
+            () => _errorMessage = clipGroupErrorText(context, error));
+      }
+    }
+  }
+
+  Future<void> _deleteClipGroupEntryWhileOwned(
+      ClipGroupDraftListEntry entry, AuthSessionBinding session) async {
+    final owner = session.userId;
+    if (owner == null || entry.primaryDraft.ownerUserId != owner) return;
+    final navigator = Navigator.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(uploaderText(dialogContext, 'ลบชุดคลิปในเครื่อง?',
+            'Delete this local clip set?')),
+        content: Text(uploaderText(
+            dialogContext,
+            'ลบต้นฉบับและคลิปในชุดออกจากเครื่อง โพสต์ที่ส่งแล้วจะยังอยู่',
+            'Delete the source and clips from this device. Submitted posts remain.')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(uploaderText(dialogContext, 'ยกเลิก', 'Cancel'))),
+          FilledButton(
+            key: const ValueKey('clip-group-delete-confirm'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(uploaderText(dialogContext, 'ลบชุดคลิป', 'Delete set')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true ||
+        !mounted ||
+        !navigator.mounted ||
+        !session.isCurrent) {
+      return;
+    }
+    final store = await _resolveDraftStore();
+    _guardClipGroup(session, owner);
+    if (store == null || store is! ClipGroupDraftStore) return;
+    final groupStore = store as ClipGroupDraftStore;
+    final group = await groupStore.loadClipGroup(entry.groupId!);
+    _guardClipGroup(session, owner);
+    if (group == null || group.ownerUserId != owner) return;
+    // Removing the journal first leaves interrupted local cleanup reachable
+    // as ordinary drafts. Never follow a path supplied by another owner.
+    await groupStore.deleteClipGroup(group.id);
+    _guardClipGroup(session, owner);
+    for (final id in [
+      group.sourceDraftId,
+      ...group.items.map((item) => item.draftId)
+    ]) {
+      final draft = await store.loadDraft(id);
+      _guardClipGroup(session, owner);
+      if (draft != null &&
+          draft.ownerUserId == owner &&
+          (draft.clipGroupId == group.id ||
+              (id == group.sourceDraftId && draft.clipGroupId == null))) {
+        await store.deleteDraft(id);
+        _guardClipGroup(session, owner);
+      }
+    }
+    await _loadDrafts();
+  }
 }

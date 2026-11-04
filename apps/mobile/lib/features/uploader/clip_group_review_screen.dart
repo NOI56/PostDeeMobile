@@ -209,6 +209,21 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
           .where((entry) => entry.value.ownerUserId == _group.ownerUserId)));
   }
 
+  Future<void> _refreshAfterFailure() async {
+    if (!mounted || !_owned) return;
+    try {
+      final current = await widget.onReloadGroup();
+      if (!mounted || !_owned) return;
+      _checkReturnedGroup(current);
+      setState(() {
+        _group = current;
+        _syncDrafts();
+      });
+    } catch (_) {
+      // Keep the local input if the saved state cannot be read yet.
+    }
+  }
+
   Future<bool> _save({bool feedback = false}) async {
     if (!_owned || _busy) return false;
     setState(() {
@@ -234,9 +249,13 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
       });
       return true;
     } catch (_) {
+      await _refreshAfterFailure();
       if (mounted && _owned) {
-        setState(() => _error = _text('บันทึกชุดคลิปไม่สำเร็จ กรุณาลองอีกครั้ง',
-            'Could not save this set. Please try again.'));
+        setState(() {
+          _dirty = true;
+          _error = _text('บันทึกชุดคลิปไม่สำเร็จ กรุณาลองอีกครั้ง',
+              'Could not save this set. Please try again.');
+        });
       }
       return false;
     } finally {
@@ -275,6 +294,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
         _dirty = false;
       });
     } catch (_) {
+      await _refreshAfterFailure();
       if (mounted && _owned) {
         setState(() => _error = _text('บันทึกแคปชั่นไม่สำเร็จ กรุณาลองใหม่',
             'Could not save the caption. Please try again.'));
@@ -309,6 +329,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
         _dirty = false;
       });
     } catch (_) {
+      await _refreshAfterFailure();
       if (mounted && _owned) {
         setState(() => _error = _text('เปิดแก้ไขคลิปไม่สำเร็จ กรุณาลองใหม่',
             'Could not edit this clip. Please try again.'));
@@ -564,6 +585,12 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
     }
   }
 
+  String _failureMessage(String summary, Object? error) {
+    if (error == null) return summary;
+    final reason = clipGroupErrorText(context, error);
+    return reason == summary ? summary : '$summary\n$reason';
+  }
+
   Future<void> _runSubmission() async {
     if (_busy || !_owned || _pending.isEmpty || _confirmationError() != null) {
       return;
@@ -589,27 +616,26 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
       _checkReturnedGroup(result.group);
       setState(() {
         _group = result.group;
+        _syncDrafts();
         _result = true;
         _error = result.remaining > 0
-            ? _text(
-                'ยังมีรายการที่ไม่สำเร็จ ตรวจรายการเดิมก่อนลองส่งส่วนที่เหลือ',
-                'Some items remain. Check existing submissions before retrying the remaining items.')
+            ? _failureMessage(
+                _text(
+                    'ยังมีรายการที่ไม่สำเร็จ ตรวจรายการเดิมก่อนลองส่งส่วนที่เหลือ',
+                    'Some items remain. Check existing submissions before retrying the remaining items.'),
+                result.error)
             : null;
       });
-    } catch (_) {
+    } catch (error) {
       if (mounted && _owned) {
-        try {
-          final group = await widget.onReloadGroup();
-          if (mounted && _owned) {
-            _checkReturnedGroup(group);
-            setState(() => _group = group);
-          }
-        } catch (_) {/* Keep the visible acknowledged state. */}
+        await _refreshAfterFailure();
         if (mounted && _owned) {
           setState(() {
             _result = true;
-            _error = _text('ส่งชุดคลิปไม่ครบ กรุณาตรวจผลก่อนลองใหม่',
-                'The set did not finish. Check the results before retrying.');
+            _error = _failureMessage(
+                _text('ส่งชุดคลิปไม่ครบ กรุณาตรวจผลก่อนลองใหม่',
+                    'The set did not finish. Check the results before retrying.'),
+                error);
           });
         }
       }

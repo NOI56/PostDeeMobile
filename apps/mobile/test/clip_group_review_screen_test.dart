@@ -8,6 +8,8 @@ import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_draft.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_draft_store.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_localizations.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_review_screen.dart';
 import 'package:postdee_mobile/features/uploader/clip_group_submission.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
@@ -104,7 +106,11 @@ void main() {
       {bool english = false,
       bool dark = false,
       double scale = 1,
-      Future<SubscriptionStatusResult> Function()? quota}) async {
+      Future<SubscriptionStatusResult> Function()? quota,
+      Future<ClipGroupDraft> Function(ClipGroupDraft)? saveGroup,
+      Future<PublishDraft?> Function(PublishDraft, ClipGroupEditSection)? edit,
+      Future<ClipGroupSubmissionResult> Function(ClipGroupDraft)?
+          submit}) async {
     AppTheme.applyThemeMode(dark ? ThemeMode.dark : ThemeMode.light);
     await tester.pumpWidget(MaterialApp(
       locale: Locale(english ? 'en' : 'th'),
@@ -129,6 +135,7 @@ void main() {
         loadPostQuota: quota ?? () => Future.value(_quota),
         onSaveGroup: (group) async {
           saved++;
+          if (saveGroup != null) return saveGroup(group);
           persisted = group.copyWith(revision: persisted.revision + 1);
           return persisted;
         },
@@ -143,10 +150,11 @@ void main() {
           ]);
           return updated;
         },
-        onEditClip: (draft, section) async => draft,
+        onEditClip: edit ?? (draft, section) async => draft,
         onReloadGroup: () async => persisted,
         onSubmit: (group, progress) async {
           submitted++;
+          if (submit != null) return submit(group);
           persisted = group.copyWith(items: [
             for (final item in group.items)
               item.copyWith(
@@ -305,6 +313,137 @@ void main() {
                 find.byKey(const ValueKey('clip-group-date-yt2')))
             .onPressed,
         isNull);
+  });
+  testWidgets('saved parent draft cache updates lock unresolved members',
+      (tester) async {
+    await mount(tester);
+    drafts['yt1'] = _draft('yt1', receipt: true);
+    await tap(tester, 'clip-group-save');
+    expect(
+        tester
+            .widget<PopupMenuButton<ClipGroupEditSection>>(
+                find.byKey(const ValueKey('clip-group-edit-yt1')))
+            .enabled,
+        isFalse);
+  });
+  testWidgets('partial submission refreshes receipts before reviewing the rest',
+      (tester) async {
+    await mount(tester, submit: (group) async {
+      drafts['yt1'] = _draft('yt1', receipt: true);
+      persisted = group.copyWith(items: [
+        group.items[0],
+        group.items[1]
+            .copyWith(acceptedPostId: 'post-yt2', acceptedPostStatus: 'QUEUED'),
+        group.items[2]
+            .copyWith(acceptedPostId: 'post-ig', acceptedPostStatus: 'QUEUED'),
+      ]);
+      return ClipGroupSubmissionResult(
+          group: persisted, completed: 2, remaining: 1);
+    });
+    await tap(tester, 'clip-group-next');
+    await tap(tester, 'clip-group-next');
+    await tap(tester, 'clip-group-confirm');
+    await tester.tap(find.text('ตรวจรายการที่เหลือ'));
+    await tester.pumpAndSettle();
+    expect(find.text('ตรวจรายการเดิมและส่งส่วนที่เหลือ'), findsOneWidget);
+    expect(find.text('ยืนยันส่ง 1 รายการ'), findsNothing);
+  });
+  testWidgets(
+      'save retries use the committed revision after a member save fails',
+      (tester) async {
+    final revisions = <int>[];
+    await mount(tester, saveGroup: (proposed) async {
+      revisions.add(proposed.revision);
+      if (proposed.revision != persisted.revision) {
+        throw StateError('revision conflict');
+      }
+      persisted = proposed.copyWith(revision: persisted.revision + 1);
+      if (revisions.length == 1) throw StateError('member copy failed');
+      return persisted;
+    });
+    await tap(tester, 'clip-group-shared-caption-toggle');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-group-shared-caption')),
+        'ข้อความที่ต้องเก็บไว้เพื่อลองบันทึกอีกครั้ง');
+    await tap(tester, 'clip-group-save');
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const ValueKey('clip-group-shared-caption')))
+            .controller!
+            .text,
+        'ข้อความที่ต้องเก็บไว้เพื่อลองบันทึกอีกครั้ง');
+    await tap(tester, 'clip-group-save');
+    expect(revisions, [0, 1]);
+    expect(persisted.revision, 2);
+    expect(
+        persisted.sharedCaption, 'ข้อความที่ต้องเก็บไว้เพื่อลองบันทึกอีกครั้ง');
+  });
+  testWidgets(
+      'English partial result explains a known failure without raw errors',
+      (tester) async {
+    await mount(tester,
+        english: true,
+        submit: (group) async => ClipGroupSubmissionResult(
+            group: group,
+            completed: 0,
+            remaining: 3,
+            error: const ClipGroupDraftException(
+                'หน่วยโพสต์ไม่พอสำหรับรายการที่เหลือ')));
+    await tap(tester, 'clip-group-next');
+    await tap(tester, 'clip-group-next');
+    await tap(tester, 'clip-group-confirm');
+    await tester.fling(find.byKey(const ValueKey('clip-group-scroll')),
+        const Offset(0, -2000), 5000);
+    await tester.pumpAndSettle();
+    expect(
+        find.textContaining('Not enough post units for the remaining items.'),
+        findsOneWidget);
+    expect(find.textContaining('หน่วยโพสต์ไม่พอ'), findsNothing);
+    final context = tester.element(find.byType(ClipGroupReviewScreen));
+    expect(clipGroupErrorText(context, StateError('private implementation')),
+        'Could not complete this set. Check existing submissions before retrying.');
+    expect(
+        clipGroupErrorText(
+            context, const ClipGroupDraftException('ข้อความที่ยังไม่มีคำแปล')),
+        'Could not complete this set. Check existing submissions before retrying.');
+    expect(
+        clipGroupErrorText(
+            context,
+            const PublishDraftValidationException(
+                'ร่างนี้เคยเริ่มส่งแล้ว กรุณาตรวจผลรายการเดิมก่อนแก้ไข')),
+        'This draft already started submitting. Check its existing request before editing.');
+    expect(
+        clipGroupErrorText(context,
+            const ApiException('private provider response', statusCode: 503)),
+        'PostDee is temporarily unavailable. Please try again later.');
+    for (final problem in ClipGroupSubmissionProblem.values) {
+      final message =
+          clipGroupErrorText(context, ClipGroupSubmissionException(problem));
+      expect(message, isNot(contains('Exception')));
+      expect(RegExp(r'[\u0E00-\u0E7F]').hasMatch(message), isFalse);
+    }
+  });
+  testWidgets('failed member editor reloads its committed group revision',
+      (tester) async {
+    final revisions = <int>[];
+    await mount(tester, saveGroup: (proposed) async {
+      revisions.add(proposed.revision);
+      if (proposed.revision != persisted.revision) {
+        throw StateError('revision conflict');
+      }
+      persisted = proposed.copyWith(revision: persisted.revision + 1);
+      return persisted;
+    }, edit: (draft, section) async {
+      persisted = persisted.copyWith(revision: persisted.revision + 1);
+      throw StateError('member save failed after group metadata');
+    });
+    await tap(tester, 'clip-group-edit-yt1');
+    await tester.tap(find.text('ตั้งค่าช่องทาง'));
+    await tester.pumpAndSettle();
+    await tap(tester, 'clip-group-save');
+    expect(revisions, [0, 2]);
+    expect(persisted.revision, 3);
   });
   testWidgets(
       'expired unknown request remains recoverable without fresh quota or plan',

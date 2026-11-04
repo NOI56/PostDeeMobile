@@ -1,12 +1,13 @@
 # Local clip splitting from the clip step — 2026-11-04
 
-Status: final Staging APK 12105 is installed from rebased feature commit
-`8b8ac033` on `main` `3b7da9d3`. Final analysis and 109-language catalog parity
-passed; the rebased complete suite passed 5,351 tests with 10 optional skips,
-actual native cancellation passed and the final diff audit passed. Initial APK
-12104 retains its separate complete-suite and successful-encoding evidence
-below. Physical phones, iOS, real publishing and live 109-language AI generation
-were not tested. No remote merge, push or hosted deployment was performed.
+Status updated 2026-11-05: the owner approved implementing the grouped-review
+prototype in the real app. The active `codex/clip-group-review` worktree uses
+verified `main` `8a340638` and preserves the earlier splitting feature, searchable
+109-language picker and PR #63's connection-screen change. Current group-flow
+full-suite, exact-build/install, emulator smoke and final diff verification are
+pending. APK 12104/12105 evidence below belongs to the prior independent-draft
+version; it does not establish the new grouped flow. No merge, push or hosted
+deployment is included.
 
 ## Approved behavior and baseline
 
@@ -24,9 +25,9 @@ The older root checkout and its unrelated uncommitted work are preserved.
 During implementation, `main` advanced to `3b7da9d3` with PR #62's searchable
 109-language catalog. The feature was committed locally and rebased onto that
 verified baseline, preserving both the language work and splitting sections in
-the documentation conflicts. The final feature commit is
+the documentation conflicts. That phase's feature commit was
 `8b8ac033736d6fec4e5803842e3fd62846894444`. Runtime implementation code did not
-change after that commit; subsequent work records verification evidence.
+change between that commit and its APK 12105 checks.
 The 12104 checks below belong to the initial `927a3020` candidate, not a claimed
 complete-suite result for the rebased source.
 
@@ -35,6 +36,13 @@ ownership and recovery, AI captions and output-language selection, cover
 editing, channel-bound settings, source/outgoing duration checks, TikTok Direct
 consent, Facebook Page Reels delivery choices, scheduling entitlements,
 idempotent submission and per-channel post-unit accounting.
+
+On 2026-11-05 the owner approved reviewing every result in a single set, editing
+captions/covers/settings, selecting each clip's date/time independently and
+explicitly confirming the final set. When `main` advanced during implementation,
+the intended work was checkpointed and ported into a new managed worktree from
+`8a340638` rather than continuing on the stale baseline. The earlier checkout and
+unrelated files remain preserved.
 
 ## User flow
 
@@ -50,11 +58,16 @@ idempotent submission and per-channel post-unit accounting.
    in the existing owner-bound draft store before preparing any parts.
 5. Encode required ranges locally, verify outputs and copy them into independent
    drafts with new submission identities. Full-length destinations use a copied
-   source instead of unnecessary encoding. Open the first result for caption
-   review; the other results remain available through the existing draft list.
-6. The seller reviews each draft's caption, cover, destination settings and
-   schedule through the current composer. There is no automatic bulk submission
-   or promise that separate platform feeds display parts in submission order.
+   source instead of unnecessary encoding. Commit one local group and open all
+   results together for review. Keep the original stored as the group's source.
+6. Review a shared caption or edit individual captions, covers and publishing
+   settings. Member editors retain the planned source and destination membership.
+7. Choose immediate delivery or set each clip's date/time independently. There
+   is no interval rule; remembered desired times survive switching to immediate.
+8. Review the final set and explicitly confirm. Pending members use the existing
+   single-post pipeline serially with fresh checks. Save/reopen the whole set as
+   one Drafts row. Accepted members keep their recorded result; partial completion
+   resumes only remaining clips. Platform-feed ordering is not guaranteed.
 
 Opening the plan, previewing, encoding and saving drafts create no API upload,
 post or AI request and consume no post units or caption credits. The existing
@@ -104,14 +117,40 @@ parts do not inherit the original upload receipt, cover-frame position or
 schedule. Existing text is marked for review; later submission still performs
 the current readiness, consent, actual-file preflight and entitlement checks.
 
+`ClipGroupDraft` stores a version-1 owner-bound journal under the existing draft
+owner directory. Optional `clipGroupId`/source-role fields keep draft manifest
+version 3 and older drafts compatible; no abstract draft-store API is broken.
+Group writes use the same owner serialization queue, atomic file promotion and
+revision comparison. Source/member identities, ranges and destinations remain
+immutable. A valid manifest controls the single group row/source visibility;
+projection repairs tags and leaves orphan/conflicting records visible ordinarily.
+
+The group journal retains shared text, each member's shared/custom choice and
+desired schedule independently of effective child schedules. Group intent is
+saved before child edits; reopening/retrying reconciles interrupted local writes.
+Child editors bind to the opening auth lifecycle, including sign-out/sign-in to
+the same UID. Runtime media consent is reviewed again rather than restored as
+fresh consent from disk.
+
 On a live failure or cancellation, remove only newly intended draft IDs,
 including an ID whose filesystem promotion may have succeeded before save
-reported an error. Never delete a pre-existing or original draft. Always attempt
-temporary cleanup, and surface residual IDs or cleanup failures rather than
-reporting success. A process killed during persistence can leave a subset of
-local part drafts, because this change does not add a cross-process batch
-transaction. Inspect Drafts before retrying; no part has been posted by this
-preparation step.
+reported an error. Never delete a pre-existing or original draft. Roll back a
+new group only at its untouched revision with no accepted member. If user edits
+or accepted receipts exist, preserve the group, children and source and report
+residual IDs. Tag/untag operations reload the source and preserve its latest
+caption/cover/schedule. Always attempt temporary cleanup and report failures.
+Process termination can leave partial local drafts; no cross-process batch
+transaction is added. Inspect Drafts before retrying preparation.
+
+`ClipGroupSubmission` snapshots confirmed group/member intent and persists each
+accepted post ID, status and effective schedule before deleting that child draft.
+Accepted posts are never rolled back or submitted again. Upload receipts and
+independent request IDs remain the recovery source if acknowledgement saving
+fails. An unknown outcome first performs the existing read-only recovery. Only
+explicit Not Found allows a freshly reviewed retry using the exact original ID
+and upload receipt; network/lookup errors never imply Not Found. An expired
+unknown schedule permits recovery only, with no new POST. Quota/readiness are
+checked freshly for every member; the server's existing accounting remains final.
 
 Facebook delivery retains `platform: 'facebook'` and
 `platformSpecificData.contentType: 'reel'`, existing `PUBLISH|PAGE_DRAFT` and
@@ -120,19 +159,33 @@ Facebook Page Video limits for Page Reels.
 
 ## Compatibility and delivery
 
-- Mobile-only preparation, using the existing API contract and draft manifest.
+- Mobile-only group storage/review, using existing publishing API contracts and
+  backward-compatible draft metadata plus a separate local group journal.
 - No route, DTO, Prisma model, migration, entitlement, price, environment variable
   or hosted-service configuration changes are required.
-- No server deployment order is introduced. The guarded Staging Mobile build
-  and in-place emulator update are recorded below; no hosted service changed.
+- No server deployment order is introduced. Earlier guarded Staging builds are
+  recorded below; current grouped-flow verification remains pending.
 - Existing and original drafts, scheduled posts, publishing records, purchased
   credits and all retired-feature boundaries remain in place.
 - The `AGENTS.md` retirement table is unchanged because this time-based uploader
   utility does not restore any retired AI-editing feature.
 
-## Verification record
+## Current grouped-flow verification — 2026-11-05
 
-Final component checks reported by the primary agent:
+The primary agent will fill this record from completed commands and exact build
+evidence. Current status: **full Mobile suite pending; analysis pending; exact
+Staging build/install and emulator group-flow smoke pending; final baseline diff
+audit pending**. Component checks do not replace those gates. Physical phones,
+iOS, real publishing and live 109-language model quality remain separate checks.
+No API deployment, database migration, environment/bootstrap change, merge or
+push is required or authorized by this implementation task.
+
+## Prior-version verification record — 2026-11-04
+
+The remaining evidence applies to the earlier independent-draft implementation,
+before the 2026-11-05 grouped-review changes.
+
+Prior-version final component checks reported by the primary agent:
 
 | Area | Reported component result |
 | --- | --- |
@@ -270,6 +323,7 @@ separate, with neither attributed to a run that did not happen.
 - No remote merge, push, Production deployment, hosted configuration change or
   real-account end-to-end publishing test was performed.
 
-The completed automated suite, native success/cancellation evidence and source
-audit establish this local Staging implementation's checked behavior. They do
-not establish production publishing readiness or close the out-of-scope checks.
+The prior-version automated suite, native success/cancellation evidence and
+source audit establish that earlier Staging implementation's checked behavior.
+They do not establish the new grouped flow, production publishing readiness or
+close the out-of-scope checks.

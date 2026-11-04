@@ -48,9 +48,8 @@ PublishDraftSaveRequest clipGroupMemberSaveRequest(
     coverDesign: cover?.design,
     coverDurationMs: cover?.durationMs,
     coverSourceKind: cover?.sourceKind ?? CoverSourceKind.videoFrame,
-    coverSourceImageFile: cover?.sourceImagePath == null
-        ? null
-        : File(cover!.sourceImagePath!),
+    coverSourceImageFile:
+        cover?.sourceImagePath == null ? null : File(cover!.sourceImagePath!),
     coverSourceImageName: cover?.sourceImageName,
     uploadedMedia: draft.uploadedMedia,
     clipGroupId: draft.clipGroupId,

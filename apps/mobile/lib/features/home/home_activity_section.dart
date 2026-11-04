@@ -229,7 +229,8 @@ class HomeActivitySectionState extends State<HomeActivitySection>
           return false;
         }
         drafts = store is ClipGroupDraftStore
-            ? projectClipGroupDrafts(localDrafts, await store.listClipGroups())
+            ? projectClipGroupDrafts(localDrafts,
+                await (store as ClipGroupDraftStore).listClipGroups())
             : localDrafts;
       }
       if (!_stillOwned(owner, ownerGeneration) ||

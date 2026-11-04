@@ -26,30 +26,34 @@ exhaustive speech-language guarantee or measured quality on the configured
 clients continue sending their existing codes or Automatic. No migration.
 See the [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Local clip splitting (2026-11-04, Mobile-only; Staging APK installed)
+## Local clip sets (2026-11-05, Mobile-only candidate)
 
 The approved inline clip-splitting flow adds no route, request/response field,
 database migration, entitlement or environment variable. Planning, encoding
 and saving parts operate on device-local files and drafts; they call neither
 the publishing API nor an AI provider and reserve no credits.
 
-Each saved part later uses the existing upload and `POST /posts` flow with its
-own draft-derived submission identity, current account readiness, media checks
-and explicit consent. Existing post creation charges one unit per destination;
-the split-plan estimate does not reserve quota. Identical intervals may share
-one draft with multiple destinations. Facebook remains `platform: 'facebook'`
-with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT`
-and optional `isAiGenerated`, with no Page-feed fallback. Initial APK 12104 was
-checked with actual local split files and draft copies without upload receipts,
-post creation or quota-consuming publish requests. Final APK 12105 comes from
-`8b8ac033` on updated `main` `3b7da9d3`, preserving the separate 109-language
-catalog work; splitting adds no API change relative to that baseline. Its final
-full Mobile suite passed 5,351 tests (10 optional skipped), actual native
-cancellation preserved local drafts with no upload receipts, and the final diff
-review found no API/schema/configuration change. No API deployment, database
-migration, bootstrap-configuration change, remote merge or push was performed.
-Real-account publishing and live AI generation in all 109 languages remain
-outside these checks. See the
+The Mobile group review saves shared/per-clip captions and independently chosen
+dates/times locally, then requires a final explicit confirmation. Each member
+uses the existing upload and `POST /posts` contract with its own stable
+`clientRequestId`, fresh readiness/consent and server quota checks. No batch-post
+endpoint or interval scheduling contract is introduced. Existing post creation
+charges one unit per destination; split estimates and local group saves reserve
+no quota. Identical intervals may share a draft with multiple destinations.
+
+An owner-bound local journal checkpoints each accepted post before member-draft
+deletion. A partial run retains accepted results and resumes remaining members.
+An unknown result first uses the existing read-only submission recovery. Only
+explicit Not Found permits a freshly reviewed retry with the same original
+request ID and upload receipt; a failed lookup or an expired unknown schedule
+does not authorize a new POST. Facebook remains `platform: 'facebook'` with
+`platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and
+optional `isAiGenerated`, with no Page-feed fallback.
+
+The candidate uses `main` `8a340638` without API/schema/environment changes or
+database migration. Group-flow full-suite/build/emulator verification is pending;
+APK 12104/12105 results in the work record describe the earlier version. No API
+deployment, bootstrap-configuration change, merge or push is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Clip duration guide (2026-11-04, Mobile-only candidate)

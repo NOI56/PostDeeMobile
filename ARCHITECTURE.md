@@ -19,7 +19,7 @@ drafts, and protects cancelled/obsolete selections and busy generation states.
 Existing quota/refund, platform validation and clip-duration guidance are retained.
 API precedes Mobile; no schema or environment change.
 
-## Local clip-splitting preparation (2026-11-04, Staging APK installed)
+## Local clip sets and reviewed submission (2026-11-05, local candidate)
 
 The uploader's approved inline card opens a pure duration plan and source-range
 preview. `ClipSplitPlan` derives balanced ranges from the existing platform
@@ -36,29 +36,38 @@ Reusable publishing choices, including Facebook Publish/Page draft and AI
 disclosures, survive; per-media confirmations, upload receipts, covers and
 scheduled times do not transfer to the new part intents.
 
-Failure or live cancellation rolls back only the new draft identities and
-cleans temporary files, reporting leftovers explicitly. Process termination
-during persistence can still leave some local part drafts; check them before
-retrying. There is no automatic batch submission or cross-process batch
-transaction. Existing per-draft consent, final media verification, idempotency
-and quota accounting remain authoritative. No backend, schema, entitlement or
-environment change is required. This uploader utility does not restore retired
-AI editing. The initial APK 12104 candidate passed full Mobile tests and native
-range preview/splitting: a real 180-second source produced decodable 90-second
-H.264/AAC parts and a byte-identical full-length copy. The final implementation
-was rebased onto `main` `3b7da9d3` as `8b8ac033`, retaining the generated
-109-language catalog, and installed as guarded APK 12105 with the same UID and
-internal storage. Final analysis and catalog parity passed; the rebased complete
-suite passed 5,351 tests (10 optional skipped). After the owner authorized
-continuing the initially interrupted check, final APK 12105 started an actual
-native render and cancelled it safely: its session ended with cancellation code
-255, no native session or split cache remained and all five draft IDs survived.
-The six core split files are byte-identical between APK 12104's successful
-encoding implementation and the rebased final source. Final diff review found
-no unexpected deletion or API/schema/configuration/flag/dependency change.
-Physical devices, iOS, real publishing and live 109-language AI generation were
-not tested. No API deployment, database/bootstrap-configuration change, remote
-merge or push was performed. See the
+`ClipGroupDraft` adds an owner-bound version-1 local journal alongside existing
+drafts. Optional group ID/source-role fields keep draft manifest version 3 and
+legacy reads compatible. Group writes share the owner's serialized store queue
+and compare revisions; immutable membership preserves independent submission
+IDs, source intervals and planned destinations. The original remains stored and
+is hidden as a source only for a valid group. Manifest projection repairs missing
+tags and leaves orphan/conflicting records visible as ordinary drafts.
+
+`ClipGroupReviewScreen` edits the set together, with shared or individual
+captions and separately remembered desired dates/times. Switching to immediate
+delivery clears effective child schedules while retaining desired times; there
+is no interval rule. Child editors lock media/destination membership and bind
+to the opening auth lifecycle. Group intent is checkpointed before member saves,
+and the final set requires explicit confirmation.
+
+`ClipGroupSubmission` serializes existing single-post operations. Fresh quota,
+readiness, media and consent checks remain authoritative per clip. Accepted post
+ID/status/effective schedule are persisted by revision before child deletion;
+partial completion never rolls back an accepted post. Unknown results recover
+the original intent first. Explicit Not Found can retry the same request ID and
+receipt after fresh review; lookup errors and expired unknown schedules do not
+issue a new POST.
+
+Preparation failures roll back only untouched, unaccepted new groups/drafts and
+report residual IDs. Source tag/untag writes preserve the latest source metadata.
+Edited or accepted groups survive cleanup failure. Process termination can leave
+partial local drafts; inspect Drafts before retrying. No cross-process batch
+transaction, backend/schema/environment/entitlement change or retired AI-editor
+restoration is introduced. Current baseline is verified `main` `8a340638`;
+group-flow full-suite, exact-build and emulator checks are pending. APK 12104/
+12105 evidence remains explicitly historical in the work record. No API deploy,
+migration, bootstrap change, merge or push is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Caption language preference (2026-11-04, local candidate)

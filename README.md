@@ -14,7 +14,7 @@ accuracy for every language on the configured model. API must precede Mobile;
 no database migration or model/provider change. See the
 [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Split long clips into local drafts (2026-11-04, Staging APK installed)
+## Review split clips as one saved set (2026-11-05, local candidate)
 
 The owner selected the inline card on the clip-selection step. An overlong clip
 can open a Thai/English plan, preview its source intervals and adjust a valid
@@ -22,22 +22,22 @@ first boundary. The default splits only affected channels; an alternative uses
 the same parts for every selected channel. Equal intervals share one draft,
 and the plan shows the existing per-channel post-unit cost before confirmation.
 
-Preparation saves the original draft first, then creates separate local drafts
-with new submission identities. The seller reviews each part's caption, cover,
-destinations and schedule through the existing posting flow; no bulk posting is
-added. Local splitting consumes no post units or AI credits. No API, schema,
-entitlement or environment change is required, and AI editing remains retired.
-The initial APK 12104 candidate passed 5,326 Mobile tests (10 skipped) and its
-native 180-second clip test preserved the original and older draft while
-producing verified parts without posting. The feature was then rebased onto
-`main` `3b7da9d3`, retaining the 109-language picker, as commit `8b8ac033`.
-Final Staging APK 12105 is installed with its UID/storage retained; analysis and
-catalog parity passed. Its full Mobile suite passed 5,351 tests (10 optional
-skipped); actual native cancellation stopped only its render, left no active
-native session or split cache and retained all five local drafts. Final diff
-review passed. Physical-device/iOS, real publishing and live AI generation in
-all 109 languages remain outside these checks. No remote merge, push or hosted
-rollout was performed. See the
+Preparation saves the original first, then opens all resulting clips in one
+review. Use a shared caption or edit a clip's caption, cover and publishing
+settings. Choose each clip's date and time independently; there is no automatic
+interval. A final summary requires explicit confirmation before sending the
+remaining clips through the existing single-post pipeline. Save or reopen the
+entire set as one Drafts row. The original remains stored, and every member
+retains its own submission identity and accepted-post checkpoint.
+
+Local preparation and saves consume no post units or AI credits. Actual post
+creation retains fresh readiness, consent and per-channel quota checks. No API,
+schema, entitlement or environment change is required; AI editing remains retired.
+The grouped-review candidate is based on verified `main` `8a340638`; its full
+suite, exact-build and emulator verification are pending. APK 12104/12105 results
+belong to the earlier independent-draft implementation and remain historical
+evidence, not proof of the new group flow. No merge, push or hosted deployment
+is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## AI caption output language (2026-11-04, local candidate)

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/uploader/clip_segmenter.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_draft_store.dart';
 import 'package:postdee_mobile/features/uploader/clip_split_screen.dart';
 import 'package:postdee_mobile/features/uploader/platform_publish_preflight.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
@@ -35,6 +36,7 @@ class _Fixture extends VideoEnglishFixture {
   UploaderScreen screen() => UploaderScreen(
         fullScreen: true,
         draftStore: store,
+        initialDraftId: initialDraftId,
         enableRevenueCatBilling: false,
         initialVideoPath: initialVideo?.path,
         initialVideoName: initialVideo?.name,
@@ -246,6 +248,44 @@ void main() {
     await revealVideoEnglishControl(tester, _key('uploader-clip-split-open'));
     expect(find.text('Review split plan'), findsOneWidget);
     expect(find.text('ดูแผนแบ่งคลิป'), findsNothing);
+  });
+
+  testWidgets('saving a set shows one draft entry and reopens the entire set',
+      (tester) async {
+    final fixture = _Fixture();
+    addTearDown(fixture.dispose);
+    fixture.initialVideo = fixture.makeVideo('long.mp4', duration: 270);
+    await fixture.mount(tester);
+    await revealVideoEnglishControl(tester, _key('uploader-clip-split-open'));
+    await _tap(tester, 'uploader-clip-split-open');
+    await _tap(tester, 'clip-split-review');
+    await _tap(tester, 'clip-split-confirm');
+    expect(_key('clip-group-review'), findsOneWidget);
+    await _tap(tester, 'clip-group-save');
+    final groups = await (fixture.store as ClipGroupDraftStore).listClipGroups();
+    expect(groups, hasLength(1));
+    final group = groups.single;
+    expect(group.items, hasLength(6));
+    await tester.binding.handlePopRoute();
+    for (var i = 0; i < 12; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('ฉบับร่าง (1)'), findsOneWidget);
+    await _tap(tester, 'uploader-open-drafts');
+    expect(find.byType(ListTile), findsOneWidget);
+    await _tap(tester, 'publish-draft-${group.sourceDraftId}');
+    expect(_key('clip-group-review'), findsOneWidget);
+    expect(fixture.apiWrites, 0);
+    expect(fixture.store.drafts, hasLength(7));
+    await tester.pumpWidget(const SizedBox.shrink());
+    fixture.initialVideo = null;
+    fixture.initialDraftId = group.sourceDraftId;
+    await fixture.mount(tester);
+    expect(_key('clip-group-review'), findsOneWidget);
+    expect(fixture.apiWrites, 0);
   });
 
   for (final sameOwner in [false, true]) {

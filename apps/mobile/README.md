@@ -1,6 +1,6 @@
 # PostDee Mobile
 
-## Split overlong clips into drafts (2026-11-04, Staging APK installed)
+## Split and review clips as one set (2026-11-05, local candidate)
 
 The owner approved the first design: a card in the existing clip-selection
 screen, shown when the measured source is too long for a destination. Opening
@@ -14,57 +14,38 @@ Confirmation saves the entire original draft before native preparation. Equal
 intervals across channels share one file and draft; full-length destinations
 retain a copied original. Every new draft has its own submission identity, with
 the chosen Facebook/TikTok modes and AI disclosures retained but clip-specific
-confirmations reset. Captions require review, covers and schedules are chosen
-per part, and the existing draft list opens the other parts. There is no automatic
-bulk posting. Splitting and local saves use no post quota or AI credits.
+confirmations reset. All parts open together for shared/per-clip caption review
+and individual cover/settings edits. Each clip has an independently chosen date
+and time; no interval is calculated. A final explicit confirmation sends pending
+members through the existing single-post flow. Drafts shows one reopenable group
+row; the original stays stored. Splitting and local saves use no post quota or AI
+credits.
 
 Plans are limited to 64 distinct outputs. Native preparation uses H.264, AAC
 when the source has audio and CFR30, validates every output and provides scoped
-cancellation and temporary-file cleanup. Live failures roll back only this
-batch's new drafts and report incomplete cleanup. If the process is killed
-during persistence, some part drafts may remain; inspect Drafts before retrying.
-The original stays available. This is a local uploader utility, not a return of
-the retired AI editor. No API, database, entitlement or environment changes are
-required.
+cancellation and temporary-file cleanup. An owner-bound version-1 group journal
+uses revision checks; optional group metadata keeps existing version-3 drafts
+compatible. Each accepted post is checkpointed before its child draft is deleted.
+Partial completion keeps accepted results and resumes remaining clips. Unknown
+outcomes recover the same original request first; only explicit Not Found permits
+a fresh review and exact-ID/receipt retry, while expired unknown schedules stay
+read-only. Quota, account readiness and per-media consent are checked per clip.
 
-The initial Mobile candidate passed 5,326 tests (10 skipped) in 11m47s and
-analysis. The guarded helper built Staging APK 12104 from `codex/clip-parts` at baseline
-`927a3020` plus its working diff. Its installed SHA-256 matches
-`b4fe4da62868e3b2adac57c75d45c5354376ebf0f00ee28e8fe01f8fbfe6c52e`.
-The update on `emulator-5554` / Pixel_8 retained UID 10197 and internal storage
-while increasing version code 12103 to 12104. Native source-range preview and
-splitting a 180-second 360x640 clip produced two fully decoded 90-second
-Facebook parts and one shared full-length TikTok/YouTube/Instagram draft
-(five estimated post units). The original was saved separately, its source hash
-was retained and the older user draft remained. Opening the second part passed.
-No upload or post was created.
+Live preparation failures remove only untouched, unaccepted new drafts/groups;
+edited or accepted groups survive cleanup failure with residual IDs reported.
+Process termination may leave partial local drafts; inspect Drafts before retrying.
+The original and older drafts remain. This uploader utility does not restore the
+retired AI editor. No API, database, entitlement or environment change is required.
 
-The final feature commit is `8b8ac033736d6fec4e5803842e3fd62846894444`, rebased
-onto updated `main` `3b7da9d3` to retain its searchable 109-language picker.
-The guarded helper built final Staging APK **12105** in 36.0s; built and
-installed SHA-256 both equal
-`4ab5741d6148e1265dcb6c19e31ee4c76a90cf86efda284349d9ee6211cac3c5`.
-The guarded 12104 → 12105 update retained UID 10197 and internal storage.
-Runtime code was unchanged after that source commit. Final Mobile analysis
-passed in 12.9s with no issues, and the generated 109-language catalog parity
-check passed. The final complete suite on that rebased source passed **5,351
-tests, with 10 optional skips**, in **6m51s** using `--concurrency=4`;
-`flutter-test-integrated.log` contains that final result.
-
-The initial live native cancellation attempt stopped after external user input
-was detected twice. The owner subsequently authorized continuing Emulator
-testing. On final APK 12105, reopening the source and saved parts passed; an
-actual new native render was stopped at progress 0/3. Read-only inspection
-confirmed its session 6 returned cancellation code 255, no active native session
-or temporary split cache remained, and all five existing draft IDs survived.
-The original and full-length copy retained their source hash; all four
-test-media drafts still had no upload receipt. The six core split runtime files
-are byte-identical between the successful 12104 implementation and final source.
-Final diff review passed with no API/schema/configuration/flag/dependency change
-or unexpected deletion. iOS, physical phones, real publishing and live AI
-generation in all 109 languages were not tested. No API deployment, database
-migration, bootstrap-configuration change, remote merge, push or hosted rollout
-was performed. See the
+The grouped-review candidate uses verified `main` `8a340638`, retaining the
+109-language picker and current connection-screen changes. Full-suite, exact
+Staging build/install and emulator group-flow checks are pending. Earlier APK
+12104/12105 suite, successful-split and cancellation results belong to the prior
+independent-draft implementation; detailed hashes and evidence remain in the
+work record. They do not verify the new review/submission flow. Physical phones,
+iOS, real publishing and live generation in all 109 languages remain separate
+checks. No API deploy, migration, bootstrap change, merge or push is included.
+See the
 [work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Clip duration guide (2026-11-04, local candidate)

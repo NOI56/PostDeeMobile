@@ -14,11 +14,11 @@ Build roadmap for PostDee.
   per-language accuracy. API before Mobile, no migration/model change. Keep the
   candidate isolated for review. [Work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
 
-## Split long clips from the clip step (2026-11-04, Staging APK installed)
+## Review and schedule split clips as one set (2026-11-05, local candidate)
 
-- Implement the owner's selected inline-card design, preserving the original
-  draft before creating any part drafts. Initial baseline `927a3020` was rebased
-  onto updated `main` `3b7da9d3` as `8b8ac033`, retaining the 109-language work.
+- Retain the owner's selected inline card and save the original before preparing
+  parts. The grouped-review work now uses verified `main` `8a340638`, preserving
+  the earlier split utility, 109-language picker and connection-screen update.
 - Offer balanced intervals for affected channels or matching parts for all
   selected channels. Group identical ranges, retain minimum/maximum durations,
   require a verified limit for TikTok Direct Post, and cap each plan at 64
@@ -26,18 +26,22 @@ Build roadmap for PostDee.
 - Encode locally with scoped cancellation, verify every output and save new
   owner-bound drafts. Preserve Facebook Publish/Page draft and AI declarations;
   require new clip-specific posting confirmations.
-- Keep the existing individual review/publish path and per-channel accounting.
-  Splitting creates no posts and uses no quota; it does not restore retired AI
-  editing. No API, database, entitlement or deployment change is required.
-- The initial APK 12104 candidate passed 5,326 tests (10 skipped), native range
-  preview, verified file splitting, original retention and opening another part.
-  Final APK 12105 is installed with the same UID/internal storage; final analysis
-  and 109-language catalog parity passed. The rebased full suite passed 5,351
-  tests (10 optional skipped); actual native cancellation retained all draft
-  identities, stopped its own session and left no temporary split cache. Final
-  diff review passed. iOS/physical phones, real publishing and live 109-language
-  AI generation remain outside these checks. No remote merge, push or hosted
-  deployment occurred.
+- Review every clip together, use shared or individual captions, and edit each
+  cover/settings. Set each date/time independently, with no interval rule, then
+  explicitly confirm the final set. Drafts keeps one reopenable group row while
+  retaining the original and independent member submission identities.
+- Persist each accepted post in the owner-bound group journal before deleting
+  its member draft. Partial completion resumes only the remaining items; accepted
+  posts are never rolled back or resubmitted. Unknown outcomes recover the same
+  request first; expired unknown schedules never create a new post.
+- Keep existing per-clip readiness, consent, entitlement and per-channel quota
+  accounting. Preparation creates no posts and uses no quota. No API, database,
+  environment, entitlement or hosted deployment change is required; retired AI
+  editing stays retired.
+- Group-flow full-suite, exact-build and emulator verification are pending.
+  Earlier APK 12104/12105 test/native results are preserved as prior-version
+  evidence in the work record; they do not verify this new grouped flow. Physical
+  phones, iOS and real publishing remain separate checks. No merge/push/deploy.
   See the [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## AI caption output language (2026-11-04, local candidate)

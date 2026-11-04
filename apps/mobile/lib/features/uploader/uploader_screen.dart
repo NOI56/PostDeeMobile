@@ -35,6 +35,7 @@ import 'clip_group_draft.dart';
 import 'clip_group_draft_store.dart';
 import 'clip_group_draft_edit.dart';
 import 'clip_group_draft_list.dart';
+import 'clip_group_localizations.dart';
 import 'clip_group_review_screen.dart';
 import 'clip_group_submission.dart';
 import 'clip_segmenter.dart';
@@ -231,6 +232,7 @@ class UploaderScreen extends StatefulWidget {
     this.initialDraftId,
     this.clipGroupEditor = false,
     this.clipGroupEditorStep = 1,
+    this.clipGroupOwnerSession,
     this.beforeClipGroupMemberSave,
     this.initialScheduleDate,
     this.now = DateTime.now,
@@ -288,6 +290,7 @@ class UploaderScreen extends StatefulWidget {
   final String? initialDraftId;
   final bool clipGroupEditor;
   final int clipGroupEditorStep;
+  final AuthSessionBinding? clipGroupOwnerSession;
   final Future<void> Function(String draftId, String caption)?
       beforeClipGroupMemberSave;
 
@@ -431,6 +434,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   Completer<VideoDimensions?>? _videoDurationReadResult;
   CoverEditorResult? _coverResult;
   List<PublishDraft> _drafts = const [];
+  Map<String, ClipGroupDraft> _clipGroupRecords = const {};
   String? _activeDraftId;
   DateTime? _activeDraftCreatedAt;
   bool? _activeDraftWatermarkEnabled;
@@ -1605,7 +1609,15 @@ class _UploaderScreenState extends State<UploaderScreen>
         ]) draft.id: draft,
       }.values.toList()
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      setState(() => _drafts = drafts);
+      setState(() {
+        _drafts = drafts;
+        if (batch.group != null) {
+          _clipGroupRecords = {
+            ..._clipGroupRecords,
+            batch.group!.id: batch.group!,
+          };
+        }
+      });
       if (batch.group == null) {
         throw const PublishDraftValidationException(
             'บันทึกชุดคลิปไม่สำเร็จ กรุณาเปิดฉบับร่างเพื่อตรวจรายการ');
@@ -1755,7 +1767,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     _initialDraftOwnerUserId =
         PostDeeAuthSessionStore.instance.session.stableUserId;
     unawaited(_loadVideoPoster());
-    if (widget.draftStore == null) {
+    if (widget.draftStore == null || widget.clipGroupEditor) {
       PostDeeAuthSessionStore.instance.addListener(_handleDraftOwnerChanged);
     }
     _captionStyleOwner = PostDeeAuthSessionStore.instance.session.stableUserId;
@@ -2124,6 +2136,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final previousCover = _coverResult;
     setState(() {
       _drafts = const [];
+      _clipGroupRecords = const {};
       _draftStoreAvailable = false;
       _isLoadingDrafts = true;
       _activeDraftId = null;
@@ -2191,8 +2204,17 @@ class _UploaderScreenState extends State<UploaderScreen>
       }
       final drafts = await _readStartupDraft(store.listDrafts());
       if (!mounted || generation != _draftLoadGeneration) return;
+      final groups = store is ClipGroupDraftStore
+          ? await _readStartupDraft(
+              (store as ClipGroupDraftStore).listClipGroups())
+          : <ClipGroupDraft>[];
+      if (!mounted || generation != _draftLoadGeneration) return;
       setState(() {
-        _drafts = drafts;
+        _clipGroupRecords = {
+          for (final group in groups)
+            if (group.ownerUserId == owner) group.id: group,
+        };
+        _drafts = projectClipGroupDrafts(drafts, _clipGroupRecords.values);
         _isLoadingDrafts = false;
         _draftStoreAvailable = true;
       });
@@ -2223,9 +2245,9 @@ class _UploaderScreenState extends State<UploaderScreen>
             if (widget.clipGroupEditor) {
               setState(() =>
                   _currentStep = widget.clipGroupEditorStep.clamp(1, 2));
-            } else if (draft.clipGroupId != null) {
+            } else if (_groupIdForDraft(draft) case final groupId?) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) unawaited(_openSavedClipGroup(draft.clipGroupId!));
+                if (mounted) unawaited(_openSavedClipGroup(groupId));
               });
             }
           }
@@ -2658,7 +2680,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         .removeListener(_handleCaptionStyleOwnerChanged);
     _posterGeneration++;
     unawaited(_videoPoster?.cleanupTemporaryFiles() ?? Future<void>.value());
-    if (widget.draftStore == null) {
+    if (widget.draftStore == null || widget.clipGroupEditor) {
       PostDeeAuthSessionStore.instance.removeListener(_handleDraftOwnerChanged);
     }
     final cover = _coverResult;
@@ -4164,7 +4186,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         _widthController.text = saved.videoWidth?.toString() ?? '';
         _heightController.text = saved.videoHeight?.toString() ?? '';
         _coverResult = persistedCover;
-        _drafts = drafts;
+        _drafts = projectClipGroupDrafts(drafts, _clipGroupRecords.values);
         _successMessage = showSavedMessage
             ? 'บันทึกร่างในเครื่องแล้ว · ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา'
             : null;
@@ -4222,6 +4244,15 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   bool _draftBelongsToCurrentSession(PublishDraft draft) {
+    if (widget.clipGroupEditor) {
+      final binding = widget.clipGroupOwnerSession;
+      return binding != null &&
+          binding.isCurrent &&
+          binding.userId == draft.ownerUserId &&
+          binding.userId ==
+              PostDeeAuthSessionStore.instance.session.stableUserId &&
+          PostDeeAuthSessionStore.instance.session.isSignedIn;
+    }
     if (widget.draftStore != null) return true;
     final ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
     return ownerUserId != null &&
@@ -4233,6 +4264,15 @@ class _UploaderScreenState extends State<UploaderScreen>
     required String? ownerUserId,
     required int generation,
   }) {
+    if (widget.clipGroupEditor) {
+      final binding = widget.clipGroupOwnerSession;
+      return binding != null &&
+          binding.isCurrent &&
+          generation == _draftLoadGeneration &&
+          binding.userId ==
+              PostDeeAuthSessionStore.instance.session.stableUserId &&
+          PostDeeAuthSessionStore.instance.session.isSignedIn;
+    }
     if (widget.draftStore != null) return true;
     return ownerUserId != null &&
         generation == _draftLoadGeneration &&
@@ -4462,7 +4502,8 @@ class _UploaderScreenState extends State<UploaderScreen>
             ownerUserId: ownerUserIdAtStart,
             generation: draftGenerationAtStart,
           )) {
-        setState(() => _drafts = drafts);
+        setState(() => _drafts =
+            projectClipGroupDrafts(drafts, _clipGroupRecords.values));
       }
     } catch (_) {
       // The requested draft is already gone and the local list was updated.
@@ -4538,14 +4579,17 @@ class _UploaderScreenState extends State<UploaderScreen>
                           physics: MediaQuery.textScalerOf(context).scale(14) > 20
                               ? const NeverScrollableScrollPhysics()
                               : null,
-                          itemCount: _drafts.length,
+                          itemCount: clipGroupDraftList(_drafts).length,
                           separatorBuilder: (_, __) => const Divider(),
                           itemBuilder: (context, index) {
-                            final draft = _drafts[index];
+                            final entry = clipGroupDraftList(_drafts)[index];
+                            final draft = entry.primaryDraft;
                             return ListTile(
                               key: ValueKey('publish-draft-${draft.id}'),
                               contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.video_file_outlined),
+                              leading: Icon(entry.isGroup
+                                  ? Icons.video_library_outlined
+                                  : Icons.video_file_outlined),
                               title: Text(
                                 draft.caption.trim().isEmpty
                                     ? draft.videoName
@@ -4553,23 +4597,35 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: UploaderText(
-                                '${draft.platformApiValues.length} ช่องทาง · เก็บในเครื่อง',
-                              ),
+                              subtitle: entry.isGroup
+                                  ? Text(uploaderText(context, 'ชุดคลิปที่บันทึกไว้',
+                                      'Saved clip set'))
+                                  : UploaderText(
+                                      '${draft.platformApiValues.length} ช่องทาง · เก็บในเครื่อง'),
                               trailing: IconButton(
                                 key: ValueKey(
                                   'publish-draft-delete-${draft.id}',
                                 ),
-                                tooltip: localizeUploaderMessage(context, 'ลบฉบับร่าง'),
+                                tooltip: entry.isGroup
+                                    ? uploaderText(context, 'ลบชุดคลิป', 'Delete clip set')
+                                    : localizeUploaderMessage(context, 'ลบฉบับร่าง'),
                                 onPressed: () async {
-                                  await _deleteDraft(draft);
+                                  if (entry.isGroup) {
+                                    await _deleteClipGroupEntry(entry);
+                                  } else {
+                                    await _deleteDraft(draft);
+                                  }
                                   if (mounted) setSheetState(() {});
                                 },
                                 icon: const Icon(Icons.delete_outline),
                               ),
                               onTap: () async {
                                 Navigator.of(sheetContext).pop();
-                                await _restoreDraft(draft);
+                                if (entry.isGroup) {
+                                  await _openSavedClipGroup(entry.groupId!);
+                                } else {
+                                  await _restoreDraft(draft);
+                                }
                               },
                             );
                           },
@@ -5473,6 +5529,10 @@ class _UploaderScreenState extends State<UploaderScreen>
       report(PublishFlowStage.finalizing, 0.96);
       final groupCheckpoint = _clipGroupAcceptedCheckpoint;
       if (groupCheckpoint != null) {
+        if (post.videoS3Key != uploadedVideoS3Key) {
+          throw const ClipGroupDraftException(
+              'ข้อมูลโพสต์ที่ตอบกลับไม่ตรงกับคลิป กรุณาตรวจรายการเดิม');
+        }
         await groupCheckpoint(post);
         ensureSubmissionStillOwned();
       }
@@ -5509,7 +5569,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                   ownerUserId: submittedDraftOwnerUserId,
                   generation: submittedDraftGeneration,
                 )) {
-              setState(() => _drafts = drafts);
+              setState(() => _drafts =
+                  projectClipGroupDrafts(drafts, _clipGroupRecords.values));
             }
           } catch (_) {
             draftCleanupWarning = ' · ลบร่างแล้ว แต่รีเฟรชรายการร่างไม่สำเร็จ';

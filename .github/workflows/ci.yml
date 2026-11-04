@@ -64,6 +64,12 @@ jobs:
       - name: Test profile template generator
         run: node --test ../../scripts/generate-profile-templates.test.mjs
 
+      - name: Check shared caption language catalog
+        run: node ../../scripts/generate-caption-languages.mjs --check
+
+      - name: Test caption language generator
+        run: node --test ../../scripts/generate-caption-languages.test.mjs
+
       - name: Test cartoon storefront artwork sources
         run: node --test ../../scripts/cartoon-storefront-art/scenes.test.mjs
 

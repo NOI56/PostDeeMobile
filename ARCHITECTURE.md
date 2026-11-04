@@ -2,6 +2,23 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Shared caption language catalog (2026-11-04, local candidate)
+
+`shared/caption-languages.json` snapshots the 109 documented general-use text
+languages with localized labels, aliases and permissible script families.
+`scripts/generate-caption-languages.mjs` emits static TypeScript and Dart data;
+the generator's validation and CI `--check` prevent API/Mobile drift without
+introducing a runtime network dependency or another catalog endpoint.
+
+The provider resolves canonical output codes (including `mni-Mtei`) independently
+of source-speech detection, sends a readable language name/code to writing and
+audit, and checks obvious script mismatches using the catalog's writing systems.
+Those guards do not identify languages sharing a script or certify model quality.
+The Mobile picker searches labels/codes locally, preserves explicit choices in
+drafts, and protects cancelled/obsolete selections and busy generation states.
+Existing quota/refund, platform validation and clip-duration guidance are retained.
+API precedes Mobile; no schema or environment change.
+
 ## Caption language preference (2026-11-04, local candidate)
 
 Caption requests add an optional validated output-language code. The media

@@ -1,5 +1,6 @@
 import type { Platform } from '../posts/postStore.js';
 import { readCaptionStorageIssue, readPlatformCaptionIssue } from '../posts/platformCaptionValidation.js';
+import { captionLanguageCatalog, type CaptionLanguageCode } from './captionLanguages.generated.js';
 
 const affiliateLinkPlaceholder = '[ใส่ลิงก์ Affiliate ที่นี่]';
 const trendingHashtags = ['#ของดีบอกต่อ', '#ช้อปออนไลน์', '#โปรดีบอกต่อ', '#รีวิวจริง', '#สายช้อป'];
@@ -71,10 +72,13 @@ export type RealClipCaptionMode = 'AUDIO_ONLY' | 'AUDIO_WITH_FRAMES';
 
 // Product output choices, not a claim about supported spoken/audio languages.
 export const realClipCaptionLanguages = [
-  'auto', 'th', 'en', 'zh', 'ja', 'ko', 'vi', 'id', 'ms', 'lo', 'km', 'my',
-  'es', 'fr', 'de', 'pt', 'ar', 'hi'
+  'auto', ...captionLanguageCatalog.map(({ code }) => code)
 ] as const;
-export type RealClipCaptionLanguage = typeof realClipCaptionLanguages[number];
+export type RealClipCaptionLanguage = 'auto' | CaptionLanguageCode;
+const realClipCaptionLanguageCodes = new Set<string>(realClipCaptionLanguages);
+const realClipCaptionLanguageRequestAliases = new Map<string, CaptionLanguageCode>(
+  captionLanguageCatalog.flatMap(({ code, aliases }) => aliases.map((alias) => [alias, code] as const))
+);
 
 export type RealClipCaptionWritingStyle = {
   tone: 'auto' | 'friendly' | 'playful' | 'direct_review' | 'soft_sell';
@@ -253,9 +257,13 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
   const writingStyle = validateWritingStyle(payload.writingStyle);
   if (!writingStyle.ok) return writingStyle;
 
-  const captionLanguage = payload.captionLanguage;
-  if (captionLanguage !== undefined && (typeof captionLanguage !== 'string' ||
-    !realClipCaptionLanguages.includes(captionLanguage as RealClipCaptionLanguage))) {
+  const rawCaptionLanguage = payload.captionLanguage;
+  const captionLanguage = typeof rawCaptionLanguage === 'string'
+    ? (realClipCaptionLanguageCodes.has(rawCaptionLanguage)
+      ? rawCaptionLanguage as RealClipCaptionLanguage
+      : realClipCaptionLanguageRequestAliases.get(rawCaptionLanguage))
+    : undefined;
+  if (rawCaptionLanguage !== undefined && !captionLanguage) {
     return { ok: false as const, message: 'captionLanguage must be auto or a supported caption output language' };
   }
 
@@ -282,7 +290,7 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
       ...(audioS3Key ? { mediaKind: 'audio' as const } : {}),
       ...(platforms !== undefined ? { platforms: platforms as Platform[] } : {}),
       guidance: readOptionalString(payload.guidance),
-      ...(captionLanguage !== undefined ? { captionLanguage: captionLanguage as RealClipCaptionLanguage } : {}),
+      ...(captionLanguage !== undefined ? { captionLanguage } : {}),
       ...(writingStyle.style ? { writingStyle: writingStyle.style } : {}),
       selectedFrameKeys,
       deleteAfterUse: readBoolean(payload.deleteAfterUse)

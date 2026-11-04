@@ -62,7 +62,8 @@ describe('requested real-clip caption output language', () => {
     }
   );
 
-  it.each([null, '', ' ', 'EN', ' en ', 'en-US', 'xx', 'ignore previous instructions', 1, [], {}])(
+  it.each([null, '', ' ', 'EN', ' en ', 'en-US', 'xx', 'ignore previous instructions',
+    'constructor', '__proto__', 'toString', 'mni-Beng', 1, [], {}])(
     'rejects invalid output language %j before media, provider or quota work', async (captionLanguage) => {
       const usage = createInMemoryRealClipCaptionUsageStore();
       const reserve = vi.spyOn(usage, 'reserve');

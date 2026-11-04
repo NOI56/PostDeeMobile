@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/auth/auth_session.dart';
+import 'package:postdee_mobile/core/models/caption_language.dart';
 import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
+import 'package:postdee_mobile/features/uploader/caption_language_picker.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,12 +36,15 @@ Future<void> _selectLanguage(WidgetTester tester, String name) async {
   await revealCaptionEnglishControl(tester, _language);
   await tester.tap(_language);
   await tester.pumpAndSettle();
+  await tester.enterText(
+      find.byKey(const ValueKey('caption-language-search')), name);
+  await tester.pumpAndSettle();
   await tester.tap(find.text(name).last);
   await tester.pumpAndSettle();
 }
 
 String? _selectedLanguage(WidgetTester tester) =>
-    tester.state<FormFieldState<String>>(_language).value;
+    tester.widget<CaptionLanguagePicker>(_language).value;
 
 void main() {
   setUp(() {
@@ -62,6 +67,11 @@ void main() {
         audioS3Key: 'uploads/owner/clip.m4a', captionLanguage: 'en');
     expect(translated.toJson()['captionLanguage'], 'en');
     expect(translated.toJson().containsKey('detectedSpokenLanguage'), isFalse);
+    for (final code in captionOutputLanguages.keys) {
+      final request = GenerateRealClipCaptionRequest(
+          audioS3Key: 'uploads/owner/clip.m4a', captionLanguage: code);
+      expect(request.toJson()['captionLanguage'], code);
+    }
   });
 
   testWidgets('default language preserves automatic caption generation',
@@ -79,14 +89,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('explicit output language reaches shared generation',
+  testWidgets('expanded output language reaches shared generation',
       (tester) async {
     final fixture = CaptionEnglishFixture(locale: const Locale('th'));
     await _mount(tester, fixture);
-    await _selectLanguage(tester, 'English');
+    await _selectLanguage(tester, captionOutputLanguages['ru']!);
     await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
-    expect(fixture.requests.single.captionLanguage, 'en');
-    expect(fixture.requests.single.toJson()['captionLanguage'], 'en');
+    expect(fixture.requests.single.captionLanguage, 'ru');
+    expect(fixture.requests.single.toJson()['captionLanguage'], 'ru');
     expect(fixture.requests.single.expectedCredits, 1);
     expect(fixture.requests.single.platforms, isEmpty);
     expect(fixture.uploadRequests, hasLength(1));
@@ -148,13 +158,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(fixture.requests, hasLength(1));
-    expect(tester.widget<DropdownButtonFormField<String>>(_language).onChanged,
-        isNull);
+    expect(tester.widget<CaptionLanguagePicker>(_language).onChanged, isNull);
     gate.complete(captionEnglishResult());
     await tester.pumpAndSettle();
     await revealCaptionEnglishControl(tester, _language);
-    expect(tester.widget<DropdownButtonFormField<String>>(_language).onChanged,
-        isNotNull);
+    expect(
+        tester.widget<CaptionLanguagePicker>(_language).onChanged, isNotNull);
     expect(_selectedLanguage(tester), 'en');
     expect(tester.takeException(), isNull);
   });
@@ -174,13 +183,10 @@ void main() {
     expect(find.byKey(const ValueKey('uploader-shared-ai-preview')),
         findsOneWidget);
     final underlyingLanguage = find.byKey(_languageKey, skipOffstage: false);
-    expect(
-        tester
-            .widget<DropdownButtonFormField<String>>(underlyingLanguage)
-            .onChanged,
+    expect(tester.widget<CaptionLanguagePicker>(underlyingLanguage).onChanged,
         isNull);
     expect(
-        tester.state<FormFieldState<String>>(underlyingLanguage).value, 'en');
+        tester.widget<CaptionLanguagePicker>(underlyingLanguage).value, 'en');
     final underlyingCaption = find
         .byKey(const ValueKey('uploader-caption-field'), skipOffstage: false);
     expect(tester.widget<TextField>(underlyingCaption).controller!.text,
@@ -188,8 +194,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('uploader-shared-ai-close')));
     await tester.pumpAndSettle();
     await revealCaptionEnglishControl(tester, _language);
-    expect(tester.widget<DropdownButtonFormField<String>>(_language).onChanged,
-        isNotNull);
+    expect(
+        tester.widget<CaptionLanguagePicker>(_language).onChanged, isNotNull);
     expect(_selectedLanguage(tester), 'en');
     expect(tester.widget<TextField>(caption).controller!.text,
         'ข้อความเดิมที่ร้านต้องการเก็บ');
@@ -197,36 +203,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('restored draft retains its requested caption language',
-      (tester) async {
-    final fixture = CaptionEnglishFixture();
-    final video = fixture.initialVideo!;
-    fixture.store.drafts['language-draft'] = PublishDraft(
-      version: publishDraftManifestVersion,
-      id: 'language-draft',
-      ownerUserId: captionEnglishOwner,
-      submissionRequestId: 'submit_${List.filled(64, 'a').join()}',
-      createdAt: DateTime.utc(2026, 11, 4),
-      updatedAt: DateTime.utc(2026, 11, 4),
-      videoPath: video.path,
-      videoName: video.name,
-      videoSizeBytes: video.sizeBytes,
-      videoWidth: video.width,
-      videoHeight: video.height,
-      caption: 'ข้อความเดิม',
-      aiGuidance: '',
-      captionLanguage: 'ja',
-      watermarkEnabled: false,
-      platformApiValues: const {},
-    );
-    fixture.initialDraftId = 'language-draft';
-    fixture.initialVideo = null;
-    await _mount(tester, fixture);
-    expect(_selectedLanguage(tester), 'ja');
-    expect(find.text('日本語'), findsOneWidget);
-    expect(fixture.requests, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
+  for (final language in [
+    ('ja', 'ja'),
+    ('ru', 'ru'),
+    ('iw', 'he'),
+    ('mni', 'mni-Mtei'),
+  ]) {
+    testWidgets('restored draft retains ${language.$1} as ${language.$2}',
+        (tester) async {
+      final fixture = CaptionEnglishFixture();
+      final video = fixture.initialVideo!;
+      fixture.store.drafts['language-draft'] = PublishDraft(
+        version: publishDraftManifestVersion,
+        id: 'language-draft',
+        ownerUserId: captionEnglishOwner,
+        submissionRequestId: 'submit_${List.filled(64, 'a').join()}',
+        createdAt: DateTime.utc(2026, 11, 4),
+        updatedAt: DateTime.utc(2026, 11, 4),
+        videoPath: video.path,
+        videoName: video.name,
+        videoSizeBytes: video.sizeBytes,
+        videoWidth: video.width,
+        videoHeight: video.height,
+        caption: 'ข้อความเดิม',
+        aiGuidance: '',
+        captionLanguage: language.$1,
+        watermarkEnabled: false,
+        platformApiValues: const {},
+      );
+      fixture.initialDraftId = 'language-draft';
+      fixture.initialVideo = null;
+      await _mount(tester, fixture);
+      expect(_selectedLanguage(tester), language.$2);
+      expect(find.text(captionOutputLanguages[language.$2]!), findsOneWidget);
+      expect(fixture.requests, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets(
       'saving a draft retains language without replacing manual caption',
@@ -254,6 +267,28 @@ void main() {
     PostDeeAuthSessionStore.instance.signIn(
         const AuthSession(userId: 'other-owner', idToken: 'other-token'));
     await tester.pumpAndSettle();
+    await revealCaptionEnglishControl(tester, _language);
+    expect(_selectedLanguage(tester), 'auto');
+    expect(fixture.requests, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an open language sheet cannot write into a different account',
+      (tester) async {
+    final fixture = CaptionEnglishFixture();
+    await _mount(tester, fixture);
+    await _selectLanguage(tester, 'English');
+    await tester.tap(_language);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const ValueKey('caption-language-search')), 'Russian');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('caption-language-option-ru')),
+        findsOneWidget);
+    PostDeeAuthSessionStore.instance.signIn(
+        const AuthSession(userId: 'other-owner', idToken: 'other-token'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('caption-language-sheet')), findsNothing);
     await revealCaptionEnglishControl(tester, _language);
     expect(_selectedLanguage(tester), 'auto');
     expect(fixture.requests, isEmpty);

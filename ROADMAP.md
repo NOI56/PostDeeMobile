@@ -2,6 +2,18 @@
 
 Build roadmap for PostDee.
 
+## Full documented caption language list (2026-11-04, local candidate)
+
+- Expand output choices from 17 to the 109 languages named in Google's general-use
+  text-language list, with Automatic retained as the default.
+- Use a shared generated catalog for API/Mobile parity and a searchable picker
+  with Thai/English/native names, codes and supported legacy aliases.
+- Preserve drafts, account/generation guards, platform captions, quota/refunds
+  and the clip-duration work already integrated on `main`.
+- Validate multi-script output sanely; do not claim untested speech coverage or
+  per-language accuracy. API before Mobile, no migration/model change. Keep the
+  candidate isolated for review. [Work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
+
 ## AI caption output language (2026-11-04, local candidate)
 
 - Add Automatic and explicit output-language choices to the existing AI caption

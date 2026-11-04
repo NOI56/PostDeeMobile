@@ -7415,13 +7415,6 @@ class _PlatformSelectorSection extends StatelessWidget {
                   .textTheme
                   .bodySmall
                   ?.copyWith(color: AppTheme.textSecondary)),
-          const SizedBox(height: AppTheme.spaceSm),
-          FilledButton.icon(
-            key: const ValueKey('uploader-connect-platforms-button'),
-            onPressed: onOpenConnections,
-            icon: const Icon(Icons.link_rounded, size: 18),
-            label: const ChannelText('เชื่อมต่อช่องทาง'),
-          ),
         ],
         if (hasConnectionError) ...[
           Align(

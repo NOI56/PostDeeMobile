@@ -294,17 +294,32 @@ void main() {
       expect(find.text('Connect at least 1 social account'), findsOneWidget);
     });
 
-    testWidgets('channels step offers a direct connect action',
-        (tester) async {
-      await pump(tester,
-          initialClip: clip(), loadConnections: () async => const []);
-      await goToUploaderStep(tester, 2);
-      final connect =
-          find.byKey(const ValueKey('uploader-connect-platforms-button'));
-      await show(tester, connect);
-      expect(connect, findsOneWidget);
-      expect(find.textContaining('TikTok, YouTube Shorts'), findsOneWidget);
-    });
+    for (final locale in const [Locale('th'), Locale('en')]) {
+      testWidgets(
+          'channels step omits the duplicate connect button in ${locale.languageCode}',
+          (tester) async {
+        await pump(tester,
+            initialClip: clip(),
+            loadConnections: () async => const [],
+            locale: locale);
+        await goToUploaderStep(tester, 2);
+        final status = find.text(locale.languageCode == 'en'
+            ? 'No channels connected'
+            : 'ยังไม่ได้เชื่อมต่อช่องทาง');
+        await show(tester, status);
+        expect(status, findsOneWidget);
+        expect(find.byKey(const ValueKey('uploader-connect-platforms-button')),
+            findsNothing);
+        expect(find.text('เชื่อมต่อช่องทาง'), findsNothing);
+        expect(find.text('Connect channels'), findsNothing);
+        expect(find.textContaining('TikTok, YouTube Shorts'), findsOneWidget);
+        final statusAction = tester.widget<GestureDetector>(find
+            .ancestor(of: status, matching: find.byType(GestureDetector))
+            .first);
+        expect(statusAction.onTap, isNotNull);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   group('AI caption access', () {

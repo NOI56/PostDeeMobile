@@ -1,0 +1,1162 @@
+{
+  "version": 1,
+  "source": {
+    "url": "https://firebase.google.com/docs/ai-logic/models#supported-languages",
+    "updated": "2026-11-03",
+    "checked": "2026-11-04",
+    "scope": "general-use-text-input-output",
+    "documentedLanguageCount": 109,
+    "notes": [
+      "Catalog of documented general-use text input/output languages, not an exhaustive audio recognition or speech synthesis language list.",
+      "Language quality varies by model and content; the catalog has not been accuracy-tested across all languages on gemini-2.5-flash-lite.",
+      "Chinese simplified and traditional share the single documented zh language entry.",
+      "Google lists Hebrew as iw; the application stores canonical he and accepts iw.",
+      "CLDR maps legacy tl to fil; the product uses Google’s Filipino (Tagalog) choice.",
+      "The mni alias selects the documented mni-Mtei output choice; explicit other Manipuri scripts are not aliases."
+    ],
+    "scriptSource": "https://raw.githubusercontent.com/unicode-org/cldr/main/common/supplemental/supplementalData.xml",
+    "scriptNotes": "Scripts are permissive output sanity checks, including established alternative scripts; they are not language identification or a model accuracy guarantee. Kazakh Latin and Romanian Cyrillic remain accepted script variants.",
+    "labelSources": [
+      "Unicode CLDR via Node Intl.DisplayNames, captured here rather than generated at runtime",
+      "Unicode CLDR common/main self names for co, dv, ht, la, ny and mni_Mtei",
+      "US Census Hmong glossary (Hmoob) and Gagana Sāmoa community language project"
+    ]
+  },
+  "languages": [
+    {
+      "code": "th",
+      "nativeName": "ไทย",
+      "englishName": "Thai",
+      "thaiName": "ไทย",
+      "scripts": [
+        "Thai"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "en",
+      "nativeName": "English",
+      "englishName": "English",
+      "thaiName": "อังกฤษ",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "zh",
+      "nativeName": "中文",
+      "englishName": "Chinese simplified and traditional",
+      "thaiName": "จีน",
+      "scripts": [
+        "Han"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ja",
+      "nativeName": "日本語",
+      "englishName": "Japanese",
+      "thaiName": "ญี่ปุ่น",
+      "scripts": [
+        "Han",
+        "Hiragana",
+        "Katakana"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ko",
+      "nativeName": "한국어",
+      "englishName": "Korean",
+      "thaiName": "เกาหลี",
+      "scripts": [
+        "Hangul",
+        "Han"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "vi",
+      "nativeName": "Tiếng Việt",
+      "englishName": "Vietnamese",
+      "thaiName": "เวียดนาม",
+      "scripts": [
+        "Latin",
+        "Han"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "id",
+      "nativeName": "Bahasa Indonesia",
+      "englishName": "Indonesian",
+      "thaiName": "อินโดนีเซีย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ms",
+      "nativeName": "Bahasa Melayu",
+      "englishName": "Malay",
+      "thaiName": "มาเลย์",
+      "scripts": [
+        "Latin",
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "lo",
+      "nativeName": "ລາວ",
+      "englishName": "Lao",
+      "thaiName": "ลาว",
+      "scripts": [
+        "Lao"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "km",
+      "nativeName": "ខ្មែរ",
+      "englishName": "Khmer",
+      "thaiName": "เขมร",
+      "scripts": [
+        "Khmer"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "my",
+      "nativeName": "မြန်မာ",
+      "englishName": "Myanmar (Burmese)",
+      "thaiName": "พม่า",
+      "scripts": [
+        "Myanmar"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "es",
+      "nativeName": "Español",
+      "englishName": "Spanish",
+      "thaiName": "สเปน",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "fr",
+      "nativeName": "Français",
+      "englishName": "French",
+      "thaiName": "ฝรั่งเศส",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "de",
+      "nativeName": "Deutsch",
+      "englishName": "German",
+      "thaiName": "เยอรมัน",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "pt",
+      "nativeName": "Português",
+      "englishName": "Portuguese",
+      "thaiName": "โปรตุเกส",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ar",
+      "nativeName": "العربية",
+      "englishName": "Arabic",
+      "thaiName": "อาหรับ",
+      "scripts": [
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "hi",
+      "nativeName": "हिन्दी",
+      "englishName": "Hindi",
+      "thaiName": "ฮินดี",
+      "scripts": [
+        "Devanagari"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "af",
+      "nativeName": "Afrikaans",
+      "englishName": "Afrikaans",
+      "thaiName": "แอฟริกานส์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sq",
+      "nativeName": "shqip",
+      "englishName": "Albanian",
+      "thaiName": "แอลเบเนีย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "am",
+      "nativeName": "አማርኛ",
+      "englishName": "Amharic",
+      "thaiName": "อัมฮารา",
+      "scripts": [
+        "Ethiopic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "hy",
+      "nativeName": "հայերեն",
+      "englishName": "Armenian",
+      "thaiName": "อาร์เมเนีย",
+      "scripts": [
+        "Armenian"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "as",
+      "nativeName": "অসমীয়া",
+      "englishName": "Assamese",
+      "thaiName": "อัสสัม",
+      "scripts": [
+        "Bengali"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "az",
+      "nativeName": "azərbaycan",
+      "englishName": "Azerbaijani",
+      "thaiName": "อาเซอร์ไบจาน",
+      "scripts": [
+        "Latin",
+        "Arabic",
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "eu",
+      "nativeName": "euskara",
+      "englishName": "Basque",
+      "thaiName": "บาสก์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "be",
+      "nativeName": "беларуская",
+      "englishName": "Belarusian",
+      "thaiName": "เบลารุส",
+      "scripts": [
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "bn",
+      "nativeName": "বাংলা",
+      "englishName": "Bengali",
+      "thaiName": "บังกลา",
+      "scripts": [
+        "Bengali"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "bs",
+      "nativeName": "bosanski",
+      "englishName": "Bosnian",
+      "thaiName": "บอสเนีย",
+      "scripts": [
+        "Latin",
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "bg",
+      "nativeName": "български",
+      "englishName": "Bulgarian",
+      "thaiName": "บัลแกเรีย",
+      "scripts": [
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ca",
+      "nativeName": "català",
+      "englishName": "Catalan",
+      "thaiName": "คาตาลัน",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ceb",
+      "nativeName": "Cebuano",
+      "englishName": "Cebuano",
+      "thaiName": "เซบู",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "co",
+      "nativeName": "corsu",
+      "englishName": "Corsican",
+      "thaiName": "คอร์ซิกา",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "hr",
+      "nativeName": "hrvatski",
+      "englishName": "Croatian",
+      "thaiName": "โครเอเชีย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "cs",
+      "nativeName": "čeština",
+      "englishName": "Czech",
+      "thaiName": "เช็ก",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "da",
+      "nativeName": "dansk",
+      "englishName": "Danish",
+      "thaiName": "เดนมาร์ก",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "dv",
+      "nativeName": "ދިވެހިބަސް",
+      "englishName": "Dhivehi",
+      "thaiName": "ธิเวหิ",
+      "scripts": [
+        "Thaana"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "nl",
+      "nativeName": "Nederlands",
+      "englishName": "Dutch",
+      "thaiName": "ดัตช์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "eo",
+      "nativeName": "Esperanto",
+      "englishName": "Esperanto",
+      "thaiName": "เอสเปรันโต",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "et",
+      "nativeName": "eesti",
+      "englishName": "Estonian",
+      "thaiName": "เอสโตเนีย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "fil",
+      "nativeName": "Filipino",
+      "englishName": "Filipino (Tagalog)",
+      "thaiName": "ฟิลิปปินส์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": [
+        "tl"
+      ]
+    },
+    {
+      "code": "fi",
+      "nativeName": "suomi",
+      "englishName": "Finnish",
+      "thaiName": "ฟินแลนด์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "fy",
+      "nativeName": "Frysk",
+      "englishName": "Frisian",
+      "thaiName": "ฟริเซียนตะวันตก",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "gl",
+      "nativeName": "galego",
+      "englishName": "Galician",
+      "thaiName": "กาลิเซีย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ka",
+      "nativeName": "ქართული",
+      "englishName": "Georgian",
+      "thaiName": "จอร์เจีย",
+      "scripts": [
+        "Georgian"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "el",
+      "nativeName": "Ελληνικά",
+      "englishName": "Greek",
+      "thaiName": "กรีก",
+      "scripts": [
+        "Greek"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "gu",
+      "nativeName": "ગુજરાતી",
+      "englishName": "Gujarati",
+      "thaiName": "คุชราต",
+      "scripts": [
+        "Gujarati"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ht",
+      "nativeName": "Kreyòl Ayisyen",
+      "englishName": "Haitian Creole",
+      "thaiName": "เฮติครีโอล",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ha",
+      "nativeName": "Hausa",
+      "englishName": "Hausa",
+      "thaiName": "เฮาซา",
+      "scripts": [
+        "Latin",
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "haw",
+      "nativeName": "ʻŌlelo Hawaiʻi",
+      "englishName": "Hawaiian",
+      "thaiName": "ฮาวาย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "he",
+      "nativeName": "עברית",
+      "englishName": "Hebrew",
+      "thaiName": "ฮิบรู",
+      "scripts": [
+        "Hebrew"
+      ],
+      "aliases": [
+        "iw"
+      ]
+    },
+    {
+      "code": "hmn",
+      "nativeName": "Hmoob",
+      "englishName": "Hmong",
+      "thaiName": "ม้ง",
+      "scripts": [
+        "Latin",
+        "Pahawh_Hmong",
+        "Nyiakeng_Puachue_Hmong"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "hu",
+      "nativeName": "magyar",
+      "englishName": "Hungarian",
+      "thaiName": "ฮังการี",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "is",
+      "nativeName": "íslenska",
+      "englishName": "Icelandic",
+      "thaiName": "ไอซ์แลนด์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ig",
+      "nativeName": "Igbo",
+      "englishName": "Igbo",
+      "thaiName": "อิกโบ",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ga",
+      "nativeName": "Gaeilge",
+      "englishName": "Irish",
+      "thaiName": "ไอริช",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "it",
+      "nativeName": "italiano",
+      "englishName": "Italian",
+      "thaiName": "อิตาลี",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "jv",
+      "nativeName": "Jawa",
+      "englishName": "Javanese",
+      "thaiName": "ชวา",
+      "scripts": [
+        "Latin",
+        "Javanese"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "kn",
+      "nativeName": "ಕನ್ನಡ",
+      "englishName": "Kannada",
+      "thaiName": "กันนาดา",
+      "scripts": [
+        "Kannada"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "kk",
+      "nativeName": "қазақ тілі",
+      "englishName": "Kazakh",
+      "thaiName": "คาซัค",
+      "scripts": [
+        "Cyrillic",
+        "Arabic",
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "kri",
+      "nativeName": "Krio",
+      "englishName": "Krio",
+      "thaiName": "คริโอ",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ku",
+      "nativeName": "kurdî (kurmancî)",
+      "englishName": "Kurdish",
+      "thaiName": "เคิร์ด",
+      "scripts": [
+        "Latin",
+        "Arabic",
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ky",
+      "nativeName": "кыргызча",
+      "englishName": "Kyrgyz",
+      "thaiName": "คีร์กีซ",
+      "scripts": [
+        "Cyrillic",
+        "Arabic",
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "la",
+      "nativeName": "Latina",
+      "englishName": "Latin",
+      "thaiName": "ละติน",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "lv",
+      "nativeName": "latviešu",
+      "englishName": "Latvian",
+      "thaiName": "ลัตเวีย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "lt",
+      "nativeName": "lietuvių",
+      "englishName": "Lithuanian",
+      "thaiName": "ลิทัวเนีย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "lb",
+      "nativeName": "Lëtzebuergesch",
+      "englishName": "Luxembourgish",
+      "thaiName": "ลักเซมเบิร์ก",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "mk",
+      "nativeName": "македонски",
+      "englishName": "Macedonian",
+      "thaiName": "มาซิโดเนีย",
+      "scripts": [
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "mg",
+      "nativeName": "Malagasy",
+      "englishName": "Malagasy",
+      "thaiName": "มาลากาซี",
+      "scripts": [
+        "Latin",
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ml",
+      "nativeName": "മലയാളം",
+      "englishName": "Malayalam",
+      "thaiName": "มาลายาลัม",
+      "scripts": [
+        "Malayalam"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "mt",
+      "nativeName": "Malti",
+      "englishName": "Maltese",
+      "thaiName": "มอลตา",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "mi",
+      "nativeName": "Māori",
+      "englishName": "Maori",
+      "thaiName": "เมารี",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "mr",
+      "nativeName": "मराठी",
+      "englishName": "Marathi",
+      "thaiName": "มราฐี",
+      "scripts": [
+        "Devanagari",
+        "Modi"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "mni-Mtei",
+      "nativeName": "ꯃꯤꯇꯩꯂꯣꯟ",
+      "englishName": "Meiteilon (Manipuri)",
+      "thaiName": "มณีปุระ (เมเทมาเยก)",
+      "scripts": [
+        "Meetei_Mayek"
+      ],
+      "aliases": [
+        "mni"
+      ]
+    },
+    {
+      "code": "mn",
+      "nativeName": "монгол",
+      "englishName": "Mongolian",
+      "thaiName": "มองโกเลีย",
+      "scripts": [
+        "Cyrillic",
+        "Mongolian",
+        "Phags_Pa"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ne",
+      "nativeName": "नेपाली",
+      "englishName": "Nepali",
+      "thaiName": "เนปาล",
+      "scripts": [
+        "Devanagari"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "no",
+      "nativeName": "norsk",
+      "englishName": "Norwegian",
+      "thaiName": "นอร์เวย์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ny",
+      "nativeName": "Nyanja",
+      "englishName": "Nyanja (Chichewa)",
+      "thaiName": "เนียนจา",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "or",
+      "nativeName": "ଓଡ଼ିଆ",
+      "englishName": "Odia (Oriya)",
+      "thaiName": "โอดิยา",
+      "scripts": [
+        "Oriya"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ps",
+      "nativeName": "پښتو",
+      "englishName": "Pashto",
+      "thaiName": "พัชโต",
+      "scripts": [
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "fa",
+      "nativeName": "فارسی",
+      "englishName": "Persian",
+      "thaiName": "เปอร์เซีย",
+      "scripts": [
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "pl",
+      "nativeName": "polski",
+      "englishName": "Polish",
+      "thaiName": "โปแลนด์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "pa",
+      "nativeName": "ਪੰਜਾਬੀ",
+      "englishName": "Punjabi",
+      "thaiName": "ปัญจาบ",
+      "scripts": [
+        "Gurmukhi",
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ro",
+      "nativeName": "română",
+      "englishName": "Romanian",
+      "thaiName": "โรมาเนีย",
+      "scripts": [
+        "Latin",
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ru",
+      "nativeName": "русский",
+      "englishName": "Russian",
+      "thaiName": "รัสเซีย",
+      "scripts": [
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sm",
+      "nativeName": "Gagana Sāmoa",
+      "englishName": "Samoan",
+      "thaiName": "ซามัว",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "gd",
+      "nativeName": "Gàidhlig",
+      "englishName": "Scots Gaelic",
+      "thaiName": "เกลิกสกอต",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sr",
+      "nativeName": "српски",
+      "englishName": "Serbian",
+      "thaiName": "เซอร์เบีย",
+      "scripts": [
+        "Cyrillic",
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "st",
+      "nativeName": "Sesotho",
+      "englishName": "Sesotho",
+      "thaiName": "โซโทใต้",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sn",
+      "nativeName": "chiShona",
+      "englishName": "Shona",
+      "thaiName": "โชนา",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sd",
+      "nativeName": "سنڌي",
+      "englishName": "Sindhi",
+      "thaiName": "สินธิ",
+      "scripts": [
+        "Arabic",
+        "Devanagari",
+        "Khojki",
+        "Khudawadi"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "si",
+      "nativeName": "සිංහල",
+      "englishName": "Sinhala (Sinhalese)",
+      "thaiName": "สิงหล",
+      "scripts": [
+        "Sinhala"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sk",
+      "nativeName": "slovenčina",
+      "englishName": "Slovak",
+      "thaiName": "สโลวัก",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sl",
+      "nativeName": "slovenščina",
+      "englishName": "Slovenian",
+      "thaiName": "สโลวีเนีย",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "so",
+      "nativeName": "Soomaali",
+      "englishName": "Somali",
+      "thaiName": "โซมาลี",
+      "scripts": [
+        "Latin",
+        "Arabic",
+        "Osmanya"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "su",
+      "nativeName": "Basa Sunda",
+      "englishName": "Sundanese",
+      "thaiName": "ซุนดา",
+      "scripts": [
+        "Latin",
+        "Sundanese"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sw",
+      "nativeName": "Kiswahili",
+      "englishName": "Swahili",
+      "thaiName": "สวาฮีลี",
+      "scripts": [
+        "Latin",
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "sv",
+      "nativeName": "svenska",
+      "englishName": "Swedish",
+      "thaiName": "สวีเดน",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "tg",
+      "nativeName": "тоҷикӣ",
+      "englishName": "Tajik",
+      "thaiName": "ทาจิก",
+      "scripts": [
+        "Cyrillic",
+        "Arabic",
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ta",
+      "nativeName": "தமிழ்",
+      "englishName": "Tamil",
+      "thaiName": "ทมิฬ",
+      "scripts": [
+        "Tamil"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "te",
+      "nativeName": "తెలుగు",
+      "englishName": "Telugu",
+      "thaiName": "เตลูกู",
+      "scripts": [
+        "Telugu"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "tr",
+      "nativeName": "Türkçe",
+      "englishName": "Turkish",
+      "thaiName": "ตุรกี",
+      "scripts": [
+        "Latin",
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "uk",
+      "nativeName": "українська",
+      "englishName": "Ukrainian",
+      "thaiName": "ยูเครน",
+      "scripts": [
+        "Cyrillic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ur",
+      "nativeName": "اردو",
+      "englishName": "Urdu",
+      "thaiName": "อูรดู",
+      "scripts": [
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "ug",
+      "nativeName": "ئۇيغۇرچە",
+      "englishName": "Uyghur",
+      "thaiName": "อุยกูร์",
+      "scripts": [
+        "Arabic",
+        "Cyrillic",
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "uz",
+      "nativeName": "o‘zbek",
+      "englishName": "Uzbek",
+      "thaiName": "อุซเบก",
+      "scripts": [
+        "Latin",
+        "Cyrillic",
+        "Arabic"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "cy",
+      "nativeName": "Cymraeg",
+      "englishName": "Welsh",
+      "thaiName": "เวลส์",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "xh",
+      "nativeName": "IsiXhosa",
+      "englishName": "Xhosa",
+      "thaiName": "คะห์โอซา",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "yi",
+      "nativeName": "ייִדיש",
+      "englishName": "Yiddish",
+      "thaiName": "ยิดดิช",
+      "scripts": [
+        "Hebrew"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "yo",
+      "nativeName": "Èdè Yorùbá",
+      "englishName": "Yoruba",
+      "thaiName": "โยรูบา",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    },
+    {
+      "code": "zu",
+      "nativeName": "isiZulu",
+      "englishName": "Zulu",
+      "thaiName": "ซูลู",
+      "scripts": [
+        "Latin"
+      ],
+      "aliases": []
+    }
+  ]
+}

@@ -154,6 +154,33 @@ void main() {
   });
 
   test(
+      'restores expanded caption languages and aliases without changing content',
+      () async {
+    final video = await fixture('expanded-language-source.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    await store.saveDraft(request(video: video, captionLanguage: 'ru'));
+    expect((await store.loadDraft('draft-1'))!.captionLanguage, 'ru');
+
+    final manifestFile =
+        File('${root.path}/store/firebase-user-a/draft-1/manifest.json');
+    final manifest =
+        jsonDecode(await manifestFile.readAsString()) as Map<String, dynamic>;
+    for (final language in [
+      ('iw', 'he'),
+      ('tl', 'fil'),
+      ('mni', 'mni-Mtei'),
+      ('MNI-MTEI', 'mni-Mtei'),
+    ]) {
+      manifest['captionLanguage'] = language.$1;
+      await manifestFile.writeAsString(jsonEncode(manifest), flush: true);
+      final restored = (await store.loadDraft('draft-1'))!;
+      expect(restored.captionLanguage, language.$2);
+      expect(restored.caption, 'แคปชันร่าง');
+      expect(restored.aiGuidance, 'โทนสนุก เน้นโปรวันนี้');
+    }
+  });
+
+  test(
       'persists caption review until explicitly acknowledged without a version bump',
       () async {
     final video = await fixture('source.mp4', [1, 2, 3, 4]);

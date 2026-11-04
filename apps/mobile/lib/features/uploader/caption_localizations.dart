@@ -118,6 +118,14 @@ const _fallbackMessages = <String, String>{
 };
 
 const _englishMessages = <String, String>{
+  'เลือกภาษาแคปชั่น': 'Choose caption language',
+  'ค้นหาชื่อภาษาหรือรหัสภาษา': 'Search languages or codes',
+  'ล้างการค้นหา': 'Clear search',
+  'ใช้ภาษาตามเสียงหรือเนื้อหาในคลิป': 'Match the speech or content in the clip',
+  'ไม่พบภาษาที่ค้นหา ลองชื่อหรือรหัสภาษาอื่น':
+      'No languages found. Try another name or code.',
+  'รายการภาษาสำหรับเขียนแคปชั่นอ้างอิงเอกสาร Gemini ของ Google คุณภาพอาจต่างกันตามภาษาและเนื้อหา':
+      'Caption languages follow Google’s Gemini documentation. Quality may vary by language and content.',
   'ภาษาแคปชั่น': 'Caption language',
   'อัตโนมัติ (ตามคลิป)': 'Auto (match clip)',
   'เลือกภาษาที่ให้ AI เขียนได้ แม้เสียงในคลิปเป็นอีกภาษา':

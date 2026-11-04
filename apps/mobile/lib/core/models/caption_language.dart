@@ -1,27 +1,36 @@
-/// Product choices for caption output, independent of the clip's spoken language.
-/// This list does not describe or guarantee audio recognition coverage.
-const captionOutputLanguages = <String, String>{
-  'th': 'ไทย',
-  'en': 'English',
-  'zh': '中文',
-  'ja': '日本語',
-  'ko': '한국어',
-  'vi': 'Tiếng Việt',
-  'id': 'Bahasa Indonesia',
-  'ms': 'Bahasa Melayu',
-  'lo': 'ລາວ',
-  'km': 'ខ្មែរ',
-  'my': 'မြန်မာ',
-  'es': 'Español',
-  'fr': 'Français',
-  'de': 'Deutsch',
-  'pt': 'Português',
-  'ar': 'العربية',
-  'hi': 'हिन्दी',
-};
+import 'caption_language_catalog.generated.dart';
 
-/// Preserve old drafts and drafts from a newer app without losing their content.
-String readCaptionOutputLanguage(Object? value) =>
-    value is String && captionOutputLanguages.containsKey(value)
-        ? value
-        : 'auto';
+export 'caption_language_catalog.generated.dart'
+    show CaptionLanguageDetails, captionLanguageCatalog;
+
+/// Product choices for text output, independent of the clip's spoken language.
+/// Google's text-language list does not guarantee audio recognition coverage.
+const captionOutputLanguages = captionLanguageNativeNames;
+
+/// Preserve old drafts, normalize aliases, and safely read future drafts.
+String readCaptionOutputLanguage(Object? value) => value is String
+    ? captionLanguageAliases[value.trim().toLowerCase()] ?? 'auto'
+    : 'auto';
+
+CaptionLanguageDetails? captionOutputLanguageDetails(String value) {
+  final code = readCaptionOutputLanguage(value);
+  for (final language in captionLanguageCatalog) {
+    if (language.code == code) return language;
+  }
+  return null;
+}
+
+/// Search app labels, native names, codes and compatibility aliases together.
+List<CaptionLanguageDetails> searchCaptionOutputLanguages(String query) {
+  final terms = query.trim().toLowerCase().split(RegExp(r'\s+'));
+  return captionLanguageCatalog.where((language) {
+    final searchable = [
+      language.code,
+      language.nativeName,
+      language.englishName,
+      language.thaiName,
+      ...language.aliases,
+    ].join(' ').toLowerCase();
+    return terms.every(searchable.contains);
+  }).toList(growable: false);
+}

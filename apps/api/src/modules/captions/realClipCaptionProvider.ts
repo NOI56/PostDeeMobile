@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 
 import { CaptionProviderError } from './captionGeneratorFactory.js';
+import { captionLanguageAliases, captionLanguageCatalog, type CaptionLanguageCode } from './captionLanguages.generated.js';
 import { readRealClipPlatformCaptions } from './captionService.js';
 import type {
   RealClipCaptionContext,
@@ -74,16 +75,44 @@ type ClipEvidence = {
   visualObservations: string[];
 };
 
+const captionLanguageNames = new Map<string, CaptionLanguageCode>([
+  ['chinese', 'zh'], ['simplified chinese', 'zh'], ['traditional chinese', 'zh']
+]);
+for (const language of captionLanguageCatalog) {
+  const names = [language.englishName, language.nativeName, language.thaiName,
+    language.englishName.replace(/\s*\([^)]*\)/gu, '').trim(),
+    ...[...language.englishName.matchAll(/\(([^)]+)\)/gu)].map((match) => match[1])];
+  for (const name of names) captionLanguageNames.set(name.trim().toLowerCase(), language.code);
+}
+
 const normalizeLanguage = (value: string) => {
-  const normalized = value.trim().toLowerCase();
-  const names: Record<string, string> = {
-    thai: 'th', english: 'en', chinese: 'zh', japanese: 'ja', korean: 'ko',
-    vietnamese: 'vi', indonesian: 'id', malay: 'ms', lao: 'lo', khmer: 'km',
-    burmese: 'my', spanish: 'es', french: 'fr', german: 'de', portuguese: 'pt',
-    arabic: 'ar', hindi: 'hi'
-  };
-  return names[normalized] ?? normalized.split(/[-_]/u)[0];
+  const normalized = value.trim().toLowerCase().replace(/_/gu, '-');
+  const name = captionLanguageNames.get(normalized);
+  if (name) return name;
+  if (Object.hasOwn(captionLanguageAliases, normalized)) return captionLanguageAliases[normalized];
+  // Gemini may return a regional tag rather than the requested code. Preserve
+  // an explicit conflicting Manipuri script instead of treating Bengali as Mtei.
+  const parts = normalized.split('-');
+  if (parts[0] === 'mni' && parts.slice(1).some((part) => /^[a-z]{4}$/u.test(part) && part !== 'mtei')) {
+    return normalized;
+  }
+  for (let end = parts.length - 1; end > 0; end -= 1) {
+    const prefix = parts.slice(0, end).join('-');
+    if (Object.hasOwn(captionLanguageAliases, prefix)) return captionLanguageAliases[prefix];
+  }
+  // Automatic source detection keeps accepting languages outside this product
+  // catalog, just as it did before the explicit output selector was expanded.
+  return parts[0];
 };
+
+const describeCaptionLanguage = (code: string) => {
+  const language = captionLanguageCatalog.find((entry) => entry.code === code);
+  return language ? `${code} (${language.englishName})` : code;
+};
+
+const captionScriptInstruction = (code: string) => code === 'mni-Mtei'
+  ? 'ใช้ตัวอักษร Meetei Mayek สำหรับภาษา Meiteilon (Manipuri) ที่ผู้ใช้เลือก ไม่เปลี่ยนเป็นอักษร Bengali. '
+  : '';
 
 const spokenCaptionLanguage = (evidence: ClipEvidence) => {
   const language = normalizeLanguage(evidence.detectedSpokenLanguage);
@@ -97,8 +126,8 @@ const languageInstruction = (request: RealClipCaptionRequest, evidence: ClipEvid
   const requested = requestedCaptionLanguage(request);
   const language = requested ?? spokenCaptionLanguage(evidence);
   return language
-    ? `ภาษาที่ต้องใช้ในข้อความทั้งหมดคือ ${language} ${requested ? 'ตามที่ผู้ใช้เลือก แม้ต่างจากภาษาพูดในคลิป' : 'ตามคำพูดจริง'} รวม caption, captionOptions, hooks, searchTitle, seoKeywords, hashtags และทุก platformCaptions ` +
-      `กำหนด captionLanguage เป็น "${language}" ห้ามเปลี่ยนเป็นภาษาไทยเพียงเพราะคำสั่งนี้เขียนภาษาไทย. `
+    ? `ภาษาที่ต้องใช้ในข้อความทั้งหมดคือ ${describeCaptionLanguage(language)} ${requested ? 'ตามที่ผู้ใช้เลือก แม้ต่างจากภาษาพูดในคลิป' : 'ตามคำพูดจริง'} รวม caption, captionOptions, hooks, searchTitle, seoKeywords, hashtags และทุก platformCaptions ` +
+      `กำหนด captionLanguage เป็น "${language}" ห้ามเปลี่ยนเป็นภาษาไทยเพียงเพราะคำสั่งนี้เขียนภาษาไทย. ` + captionScriptInstruction(language)
     : '';
 };
 
@@ -122,7 +151,8 @@ const systemPrompt =
 const buildSystemPrompt = (request: RealClipCaptionRequest) => {
   const language = requestedCaptionLanguage(request);
   return (language
-    ? `ภาษาที่ผู้ใช้เลือกคือ ${language} ใช้ภาษานี้กับข้อความที่สร้างทั้งหมด แม้เสียงหรือข้อความในคลิปเป็นภาษาอื่น ` +
+    ? `ภาษาที่ผู้ใช้เลือกคือ ${describeCaptionLanguage(language)} ใช้ภาษานี้กับข้อความที่สร้างทั้งหมด แม้เสียงหรือข้อความในคลิปเป็นภาษาอื่น ` +
+      captionScriptInstruction(language) +
       'แปลความหมายจากหลักฐานโดยรักษาคำปฏิเสธ ข้อเสีย ข้อจำกัด ตัวเลข หน่วย และระดับความมั่นใจ ไม่แต่งข้อมูลใหม่ ' +
       'คงชื่อเฉพาะตามหลักฐานได้ ไม่เปลี่ยนภาษาที่ตรวจพบของคำพูดเดิม ภาษาของคำแนะนำหรือตัวอย่างสไตล์ไม่เปลี่ยนภาษาที่เลือก. ' + sharedSystemPrompt
     : systemPrompt) + (request.writingStyle ? writingStyleSystemPrompt : '');
@@ -429,17 +459,9 @@ const buildAuditInstruction = (
 // Only a script sanity check, not language identification: several supported
 // languages share Latin (and Chinese/Japanese can share Han). The model audit
 // still checks the requested language and fidelity to the original evidence.
-const captionLanguageScripts: Record<string, RegExp> = {
-  th: /\p{Script=Thai}/u,
-  zh: /\p{Script=Han}/u,
-  ja: /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u,
-  ko: /[\p{Script=Hangul}\p{Script=Han}]/u,
-  lo: /\p{Script=Lao}/u,
-  km: /\p{Script=Khmer}/u,
-  my: /\p{Script=Myanmar}/u,
-  ar: /\p{Script=Arabic}/u,
-  hi: /\p{Script=Devanagari}/u
-};
+const captionLanguageScripts = new Map<string, RegExp>(captionLanguageCatalog.map(({ code, scripts }) =>
+  [code, new RegExp(scripts.map((script) => `\\p{Script=${script}}`).join('|'), 'u')]
+));
 
 const enforceGeneratedPreferences = (
   result: GeneratedRealClipCaption,
@@ -475,11 +497,11 @@ const enforceGeneratedPreferences = (
       /\p{Script=Latin}/u.test(sourceSpelling) && /\p{Lu}/u.test(sourceSpelling)));
     if (requested) {
       const hasLetters = /\p{L}/u.test(text);
-      const expectedScript = captionLanguageScripts[requested] ?? /\p{Script=Latin}/u;
+      const expectedScript = captionLanguageScripts.get(requested);
       // Digits/punctuation do not identify a language. The grounding audit can
       // preserve meaning while changing e.g. "sixty" to "60".
       if (!hasLetters) return false;
-      if (!expectedScript.test(text) && !allowSourceLabel) return true;
+      if ((!expectedScript || !expectedScript.test(text)) && !allowSourceLabel) return true;
     }
     return !allowSourceLabel && ((language === 'en' && thai > latin) || (language === 'th' && !thai && latin > 4));
   })) {

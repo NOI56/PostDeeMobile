@@ -33,6 +33,7 @@ import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
 import 'caption_quota_strip.dart';
 import 'caption_localizations.dart';
+import 'caption_language_picker.dart';
 import 'channel_localizations.dart';
 import 'review_localizations.dart';
 import 'post_quota_strip.dart';
@@ -6580,6 +6581,13 @@ class _UploaderScreenState extends State<UploaderScreen>
   Widget _buildAiCaptionPanel() => _AiCaptionPanel(
         guidanceController: _aiGuidanceController,
         captionLanguage: _captionLanguage,
+        languageSelectionScope: (
+          owner: _captionStyleOwner,
+          draft: _draftLoadGeneration,
+          draftId: _activeDraftId,
+          clip: _localFilePathController.text,
+          captionGeneration: _captionGeneration,
+        ),
         onLanguageChanged: (value) {
           if (_formBusy ||
               _isGeneratingCaption ||
@@ -8521,6 +8529,7 @@ class _AiCaptionPanel extends StatelessWidget {
   const _AiCaptionPanel({
     required this.guidanceController,
     required this.captionLanguage,
+    required this.languageSelectionScope,
     required this.onLanguageChanged,
     required this.isChoosingCaption,
     required this.selectedVideoName,
@@ -8544,6 +8553,7 @@ class _AiCaptionPanel extends StatelessWidget {
 
   final TextEditingController guidanceController;
   final String captionLanguage;
+  final Object languageSelectionScope;
   final ValueChanged<String?> onLanguageChanged;
   final bool isChoosingCaption;
   final String? selectedVideoName;
@@ -8691,24 +8701,10 @@ class _AiCaptionPanel extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
+            CaptionLanguagePicker(
               key: const ValueKey('uploader-caption-language'),
-              initialValue: captionLanguage,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: localizeCaptionMessage(context, 'ภาษาแคปชั่น'),
-                helperText: localizeCaptionMessage(context,
-                    'เลือกภาษาที่ให้ AI เขียนได้ แม้เสียงในคลิปเป็นอีกภาษา'),
-                helperMaxLines: 3,
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: 'auto',
-                  child: CaptionText('อัตโนมัติ (ตามคลิป)'),
-                ),
-                for (final entry in captionOutputLanguages.entries)
-                  DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-              ],
+              value: captionLanguage,
+              selectionScope: languageSelectionScope,
               onChanged:
                   formBusy || isGenerating || isSavingStyle || isChoosingCaption
                       ? null

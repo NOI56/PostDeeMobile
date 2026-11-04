@@ -1,5 +1,31 @@
 # API.md
 
+## Expanded caption languages (2026-11-04, local candidate)
+
+`POST /captions/generate-from-clip` extends the existing optional
+`captionLanguage` choices to the 109 text-language entries in
+[`shared/caption-languages.json`](shared/caption-languages.json), plus `auto`.
+All previous 17 codes keep their meanings. Omission/`auto` keep the existing
+media-based selection. Request aliases `iw` (Hebrew), `tl` (Filipino/Tagalog)
+and `mni` (Manipuri in Meitei Mayek) canonicalize to `he`, `fil` and `mni-Mtei`.
+The `mni-Mtei` script tag is retained through writing and audit rather than
+discarded as a region suffix. Unknown/malformed choices still fail before
+media downloads, provider calls or credit reservation.
+
+The shared versioned catalog generates the API allowlist/script metadata and
+Mobile language data; CI checks that both generated files match. Explicit
+choices apply to shared/per-platform captions, alternatives, hooks, hashtags
+and search metadata. Original media evidence and detected speech stay separate.
+Script checks permit the catalog's legitimate writing systems and remain a
+sanity check; semantic language and factual fidelity still depend on the audit.
+
+The catalog snapshots Google's general-use **text** language list, not an
+exhaustive speech-language guarantee or measured quality on the configured
+`gemini-2.5-flash-lite`. No model/provider, quota, environment or schema change.
+**Roll out API before Mobile**: older APIs reject the new codes, while older
+clients continue sending their existing codes or Automatic. No migration.
+See the [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
+
 ## Clip duration guide (2026-11-04, Mobile-only candidate)
 
 The uploader's read-only TikTok capability lookup reuses the existing

@@ -1,5 +1,19 @@
 # PostDee
 
+## Searchable caption languages (2026-11-04, local candidate)
+
+AI caption output choices expand to all 109 text-language entries in Google's
+published general-use language list, plus Automatic. A searchable picker finds
+Thai/English names, native names, language codes and supported aliases. The
+output choice remains independent of the app's Thai/English interface and the
+clip's spoken language; saved drafts and existing 17-code requests stay compatible.
+
+A shared catalog generates both API and Mobile data. This supplies selectable
+output preferences; it does not certify audio recognition or actual caption
+accuracy for every language on the configured model. API must precede Mobile;
+no database migration or model/provider change. See the
+[work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
+
 ## AI caption output language (2026-11-04, local candidate)
 
 The create-post AI caption panel offers Automatic plus seventeen explicit

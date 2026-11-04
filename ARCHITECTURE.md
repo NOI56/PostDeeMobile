@@ -43,14 +43,22 @@ retrying. There is no automatic batch submission or cross-process batch
 transaction. Existing per-draft consent, final media verification, idempotency
 and quota accounting remain authoritative. No backend, schema, entitlement or
 environment change is required. This uploader utility does not restore retired
-AI editing. Full Mobile tests and analysis passed; guarded Staging APK 12104 is
-installed with its hash, original package UID and internal storage verified.
-Native range preview and a real 180-second source produced verified, decodable
-90-second H.264/AAC parts and a byte-identical full-length copy. Live native
-cancellation remains unverified after external user input interrupted the check;
-cancellation and owner-change safeguards have automated coverage. Physical
-devices, iOS, real publishing and final source-diff audit remain pending. No
-merge, push or hosted deployment was performed. See the
+AI editing. The initial APK 12104 candidate passed full Mobile tests and native
+range preview/splitting: a real 180-second source produced decodable 90-second
+H.264/AAC parts and a byte-identical full-length copy. The final implementation
+was rebased onto `main` `3b7da9d3` as `8b8ac033`, retaining the generated
+109-language catalog, and installed as guarded APK 12105 with the same UID and
+internal storage. Final analysis and catalog parity passed; the rebased complete
+suite passed 5,351 tests (10 optional skipped). After the owner authorized
+continuing the initially interrupted check, final APK 12105 started an actual
+native render and cancelled it safely: its session ended with cancellation code
+255, no native session or split cache remained and all five draft IDs survived.
+The six core split files are byte-identical between APK 12104's successful
+encoding implementation and the rebased final source. Final diff review found
+no unexpected deletion or API/schema/configuration/flag/dependency change.
+Physical devices, iOS, real publishing and live 109-language AI generation were
+not tested. No API deployment, database/bootstrap-configuration change, remote
+merge or push was performed. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Caption language preference (2026-11-04, local candidate)

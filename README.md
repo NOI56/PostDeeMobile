@@ -27,12 +27,17 @@ with new submission identities. The seller reviews each part's caption, cover,
 destinations and schedule through the existing posting flow; no bulk posting is
 added. Local splitting consumes no post units or AI credits. No API, schema,
 entitlement or environment change is required, and AI editing remains retired.
-The full Mobile suite passed 5,326 tests (10 skipped), analysis passed and guarded
-Staging APK 12104 is installed on Pixel_8 with its UID/storage retained. A real
-180-second local clip produced two verified 90-second Facebook files and one
-shared full-length draft without posting; the original and older draft remained.
-Live native cancellation, physical-device/iOS and real publishing checks remain
-unverified. No merge, push or hosted rollout was performed. See the
+The initial APK 12104 candidate passed 5,326 Mobile tests (10 skipped) and its
+native 180-second clip test preserved the original and older draft while
+producing verified parts without posting. The feature was then rebased onto
+`main` `3b7da9d3`, retaining the 109-language picker, as commit `8b8ac033`.
+Final Staging APK 12105 is installed with its UID/storage retained; analysis and
+catalog parity passed. Its full Mobile suite passed 5,351 tests (10 optional
+skipped); actual native cancellation stopped only its render, left no active
+native session or split cache and retained all five local drafts. Final diff
+review passed. Physical-device/iOS, real publishing and live AI generation in
+all 109 languages remain outside these checks. No remote merge, push or hosted
+rollout was performed. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## AI caption output language (2026-11-04, local candidate)

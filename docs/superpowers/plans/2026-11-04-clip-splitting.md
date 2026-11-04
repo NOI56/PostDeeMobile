@@ -1,9 +1,12 @@
 # Local clip splitting from the clip step — 2026-11-04
 
-Status: Staging APK 12104 is installed and the native success path is verified.
-The full Mobile suite and analysis passed. Live native cancellation, iOS,
-physical phones, real social publishing and final source-diff audit remain
-unverified as detailed below. No merge, push or hosted deployment was performed.
+Status: final Staging APK 12105 is installed from rebased feature commit
+`8b8ac033` on `main` `3b7da9d3`. Final analysis and 109-language catalog parity
+passed; the rebased complete suite passed 5,351 tests with 10 optional skips,
+actual native cancellation passed and the final diff audit passed. Initial APK
+12104 retains its separate complete-suite and successful-encoding evidence
+below. Physical phones, iOS, real publishing and live 109-language AI generation
+were not tested. No remote merge, push or hosted deployment was performed.
 
 ## Approved behavior and baseline
 
@@ -13,10 +16,19 @@ long for a destination, the card offers a split plan instead of silently cutting
 or posting it. The default splits only affected channels; another mode uses the
 same parts for every selected channel. The source is retained in both cases.
 
-The isolated managed worktree starts at freshly fetched `origin/main`
+The isolated managed worktree initially started at freshly fetched `origin/main`
 `927a302002841aab770aeba30cc6302f89783261` (`927a3020`) on branch
 `codex/clip-parts`. It was verified at zero ahead/behind before implementation.
 The older root checkout and its unrelated uncommitted work are preserved.
+
+During implementation, `main` advanced to `3b7da9d3` with PR #62's searchable
+109-language catalog. The feature was committed locally and rebased onto that
+verified baseline, preserving both the language work and splitting sections in
+the documentation conflicts. The final feature commit is
+`8b8ac033736d6fec4e5803842e3fd62846894444`. Runtime implementation code did not
+change after that commit; subsequent work records verification evidence.
+The 12104 checks below belong to the initial `927a3020` candidate, not a claimed
+complete-suite result for the rebased source.
 
 Existing capabilities to retain include the four-step composer, local draft
 ownership and recovery, AI captions and output-language selection, cover
@@ -142,13 +154,12 @@ and planner cases cover minimum/maximum duration, small tails, grouping,
 scoped cancellation and output validation. UI fixtures use controlled inputs;
 actual native evidence is separated below from those automated tests.
 
-### Complete Mobile checks
+### Initial candidate: APK 12104 on baseline `927a3020`
 
 - `flutter test --no-pub --concurrency=2`: **5,326 tests passed, 10 skipped**,
   completed in 11m47s.
-- `flutter analyze` for Mobile: **no issues found**, completed in 14s. The
-  primary agent is doing the final source audit/analysis pass separately; this
-  records the completed analysis run rather than predicting that later result.
+- `flutter analyze` for the initial Mobile candidate: **no issues found**,
+  completed in 14s.
 - Guarded `tool/postdee-staging.ps1` APK build: passed in 116.7s. Source is
   branch `codex/clip-parts`, baseline `927a3020` plus the task's working diff;
   this is not a claim that the unchanged baseline commit contains the feature.
@@ -157,7 +168,7 @@ actual native evidence is separated below from those automated tests.
   `b4fe4da62868e3b2adac57c75d45c5354376ebf0f00ee28e8fe01f8fbfe6c52e`.
   The installed hash matches the built APK.
 
-### Native emulator success path
+### Initial APK 12104: native emulator success path
 
 The guarded in-place update on **`emulator-5554` / Pixel_8** retained package
 UID **10197** and internal storage, increasing version code **12103 → 12104**.
@@ -191,19 +202,74 @@ Local evidence is in `D:\PostDeeMobile\output\clip-parts`:
 - `flutter-test.log`
 - `staging-build.log`
 
+### Final rebased candidate: APK 12105
+
+- Baseline: updated `main` **`3b7da9d3`**, preserving the searchable
+  **109-language** catalog from PR #62.
+- Feature/runtime source: **`8b8ac033736d6fec4e5803842e3fd62846894444`** on
+  `codex/clip-parts`; the runtime code was unchanged after this commit.
+- Final Mobile analysis: **no issues found**, completed in **12.9s**.
+- Generated caption-language catalog parity check: **passed**, retaining all
+  109 API/Mobile entries. This is catalog compatibility evidence, not new live
+  provider or per-language caption-quality validation.
+- Guarded Staging build: **passed**, completed in **36.0s**, version code
+  **12105**. Built APK SHA-256:
+  `4ab5741d6148e1265dcb6c19e31ee4c76a90cf86efda284349d9ee6211cac3c5`.
+- Guarded update on `emulator-5554` / Pixel_8: **12104 → 12105**, retaining
+  **UID 10197** and **internal storage**. Installed and built APK hashes match.
+- Final complete Mobile suite, `flutter test --no-pub --concurrency=4`:
+  **5,351 tests passed, 10 optional tests skipped**, completed in **6m51s**.
+  Evidence is `D:\PostDeeMobile\output\clip-parts\flutter-test-integrated.log`.
+  This is the result for the rebased source; the initial 5,326-test result above
+  remains attached only to the earlier candidate.
+- Final diff review against `main` `3b7da9d3`: **passed**. Only intended feature
+  and verification-document files were present, with no unexpected deletion or
+  API, schema, configuration, feature-flag or dependency change. The existing
+  109-language picker and generated catalog remain intact.
+- No API deployment, database migration, bootstrap configuration, entitlement
+  or environment change is introduced by splitting. No remote merge or push
+  was performed.
+
+### Final APK 12105: actual native cancellation
+
+The first cancellation attempt paused after external user input was detected
+twice. The owner then explicitly authorized continuing Emulator testing. On
+the final installed APK, the source and saved parts were reopened, an actual
+new native cut started, and Stop was pressed while progress was **0/3**. The
+progress dialog closed without creating new part drafts.
+
+Read-only inspection confirmed the relevant existing native render session:
+
+- Session **6**, generating **`part_0000.mp4`**, returned **255 (cancelled)**.
+- Started **2026-11-04 15:53:24.388 UTC** and ended
+  **15:53:33.761 UTC**, corresponding to **22:53:24.388–22:53:33.761** in
+  Asia/Bangkok on 4 November.
+- Active native sessions afterward: **0**.
+- All **five current-owner draft IDs** remained unchanged, including the older
+  user draft; no `postdee-clip-parts` temporary-cache directory remained.
+- The saved original and full-length copy retained source SHA-256
+  `eacbf06116ec259b2f6da526aef9831f2bbf1c6431aba7a97491bea452e32fab`.
+  All four test-media drafts (original, two parts and full-length copy) still
+  had no `uploadedMedia` receipt.
+
+The inspection helper only read the existing native/session and local-file
+state; it did not start a render, create a job, call a publishing API or execute
+another UI action. The actual render and Stop action came from the app flow.
+The six core native/planner/service UI files are byte-identical between the
+successful APK 12104 splitting implementation and final APK 12105 source. Thus
+the initial successful-file evidence and final cancellation evidence remain
+separate, with neither attributed to a run that did not happen.
+
 ### Remaining verification boundaries
 
-- **Live native cancellation was not completed.** External user input was
-  detected twice in the Emulator, so automation stopped and control was handed
-  back. Scoped cancellation and owner changes have automated native-service and
-  uploader coverage; that is not a passed live-device cancellation check.
 - iOS, physical phones and real-account social publishing were not tested.
+- Retaining all 109 output-language choices and passing generated-catalog parity
+  do not prove live provider acceptance or generation quality for every language;
+  those checks are outside this clip-splitting task.
 - Process-kill recovery still has the documented partial-local-draft limitation.
-- The primary agent's final diff audit against `927a3020`, including unchanged
-  API/schema/flags, remains in progress. No unexplained issue was reported at
-  the time of this record; this is not a completed-audit claim.
-- No merge, push, Production deployment, hosted configuration change or
+- No remote merge, push, Production deployment, hosted configuration change or
   real-account end-to-end publishing test was performed.
 
-The native success path and complete automated suite do not close these
-remaining checks or establish production publishing readiness.
+The completed automated suite, native success/cancellation evidence and source
+audit establish this local Staging implementation's checked behavior. They do
+not establish production publishing readiness or close the out-of-scope checks.

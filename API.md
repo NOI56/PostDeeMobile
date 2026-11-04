@@ -39,11 +39,17 @@ and explicit consent. Existing post creation charges one unit per destination;
 the split-plan estimate does not reserve quota. Identical intervals may share
 one draft with multiple destinations. Facebook remains `platform: 'facebook'`
 with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT`
-and optional `isAiGenerated`, with no Page-feed fallback. Staging APK 12104 was
-checked with actual local split files and draft copies; no upload receipt,
-post creation or quota-consuming publish request was produced. Native live
-cancellation and real-account publishing remain unverified. No server rollout,
-merge or push was performed. See the
+and optional `isAiGenerated`, with no Page-feed fallback. Initial APK 12104 was
+checked with actual local split files and draft copies without upload receipts,
+post creation or quota-consuming publish requests. Final APK 12105 comes from
+`8b8ac033` on updated `main` `3b7da9d3`, preserving the separate 109-language
+catalog work; splitting adds no API change relative to that baseline. Its final
+full Mobile suite passed 5,351 tests (10 optional skipped), actual native
+cancellation preserved local drafts with no upload receipts, and the final diff
+review found no API/schema/configuration change. No API deployment, database
+migration, bootstrap-configuration change, remote merge or push was performed.
+Real-account publishing and live AI generation in all 109 languages remain
+outside these checks. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Clip duration guide (2026-11-04, Mobile-only candidate)

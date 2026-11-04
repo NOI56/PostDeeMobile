@@ -27,8 +27,8 @@ The original stays available. This is a local uploader utility, not a return of
 the retired AI editor. No API, database, entitlement or environment changes are
 required.
 
-The full Mobile suite passed 5,326 tests (10 skipped) in 11m47s; analysis passed.
-The guarded helper built Staging APK 12104 from `codex/clip-parts` at baseline
+The initial Mobile candidate passed 5,326 tests (10 skipped) in 11m47s and
+analysis. The guarded helper built Staging APK 12104 from `codex/clip-parts` at baseline
 `927a3020` plus its working diff. Its installed SHA-256 matches
 `b4fe4da62868e3b2adac57c75d45c5354376ebf0f00ee28e8fe01f8fbfe6c52e`.
 The update on `emulator-5554` / Pixel_8 retained UID 10197 and internal storage
@@ -39,11 +39,32 @@ Facebook parts and one shared full-length TikTok/YouTube/Instagram draft
 was retained and the older user draft remained. Opening the second part passed.
 No upload or post was created.
 
-Live native cancellation was not completed: external user input was detected
-twice, so automation stopped and control was returned. Automated cancellation
-and owner-change checks passed, but do not establish that live-device result.
-iOS, physical phones, real publishing and the final source-diff audit remain
-unverified. No merge, push or hosted rollout was performed. See the
+The final feature commit is `8b8ac033736d6fec4e5803842e3fd62846894444`, rebased
+onto updated `main` `3b7da9d3` to retain its searchable 109-language picker.
+The guarded helper built final Staging APK **12105** in 36.0s; built and
+installed SHA-256 both equal
+`4ab5741d6148e1265dcb6c19e31ee4c76a90cf86efda284349d9ee6211cac3c5`.
+The guarded 12104 → 12105 update retained UID 10197 and internal storage.
+Runtime code was unchanged after that source commit. Final Mobile analysis
+passed in 12.9s with no issues, and the generated 109-language catalog parity
+check passed. The final complete suite on that rebased source passed **5,351
+tests, with 10 optional skips**, in **6m51s** using `--concurrency=4`;
+`flutter-test-integrated.log` contains that final result.
+
+The initial live native cancellation attempt stopped after external user input
+was detected twice. The owner subsequently authorized continuing Emulator
+testing. On final APK 12105, reopening the source and saved parts passed; an
+actual new native render was stopped at progress 0/3. Read-only inspection
+confirmed its session 6 returned cancellation code 255, no active native session
+or temporary split cache remained, and all five existing draft IDs survived.
+The original and full-length copy retained their source hash; all four
+test-media drafts still had no upload receipt. The six core split runtime files
+are byte-identical between the successful 12104 implementation and final source.
+Final diff review passed with no API/schema/configuration/flag/dependency change
+or unexpected deletion. iOS, physical phones, real publishing and live AI
+generation in all 109 languages were not tested. No API deployment, database
+migration, bootstrap-configuration change, remote merge, push or hosted rollout
+was performed. See the
 [work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Clip duration guide (2026-11-04, local candidate)

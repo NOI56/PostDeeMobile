@@ -73,6 +73,7 @@ class _MemoryPublishDraftStore implements PublishDraftStore {
       videoHeight: request.videoHeight,
       caption: request.caption,
       aiGuidance: request.aiGuidance,
+      captionLanguage: request.captionLanguage,
       watermarkEnabled: request.watermarkEnabled,
       platformApiValues: request.platformApiValues,
       platformSettings: request.platformSettings,

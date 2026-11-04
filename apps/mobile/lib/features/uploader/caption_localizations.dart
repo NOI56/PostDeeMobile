@@ -118,6 +118,10 @@ const _fallbackMessages = <String, String>{
 };
 
 const _englishMessages = <String, String>{
+  'ภาษาแคปชั่น': 'Caption language',
+  'อัตโนมัติ (ตามคลิป)': 'Auto (match clip)',
+  'เลือกภาษาที่ให้ AI เขียนได้ แม้เสียงในคลิปเป็นอีกภาษา':
+      'Choose the language AI writes in, even when the clip uses another language.',
   'เลือกแคปชั่นที่ชอบ': 'Choose a caption',
   'เลือกได้โดยไม่ใช้เครดิตเพิ่ม ข้อความเดิมจะอยู่จนกดใช้':
       'Choose without spending more credits. Your original text stays until you tap Use.',

@@ -38,6 +38,7 @@ void main() {
     File? coverSource,
     DateTime? updatedAt,
     String caption = 'แคปชันร่าง',
+    String captionLanguage = 'auto',
     bool captionNeedsReview = false,
     bool watermarkEnabled = true,
     Set<String> platformApiValues = const {
@@ -58,6 +59,7 @@ void main() {
       videoWidth: 1080,
       videoHeight: 1920,
       caption: caption,
+      captionLanguage: captionLanguage,
       captionNeedsReview: captionNeedsReview,
       aiGuidance: 'โทนสนุก เน้นโปรวันนี้',
       watermarkEnabled: watermarkEnabled,
@@ -128,6 +130,27 @@ void main() {
       platformSettings: active,
     ));
     expect((await store.loadDraft('draft-1'))!.platformSettings, active);
+  });
+
+  test('retains chosen caption output language and defaults old drafts to auto',
+      () async {
+    final video = await fixture('language-source.mp4', [1, 2, 3, 4]);
+    final store = storeFor('firebase-user-a');
+    await store.saveDraft(request(video: video, captionLanguage: 'en'));
+    expect((await store.loadDraft('draft-1'))!.captionLanguage, 'en');
+
+    final manifestFile =
+        File('${root.path}/store/firebase-user-a/draft-1/manifest.json');
+    final manifest =
+        jsonDecode(await manifestFile.readAsString()) as Map<String, dynamic>;
+    manifest.remove('captionLanguage');
+    await manifestFile.writeAsString(jsonEncode(manifest), flush: true);
+    expect((await store.loadDraft('draft-1'))!.captionLanguage, 'auto');
+
+    // A removed or future language must not make an otherwise valid draft vanish.
+    manifest['captionLanguage'] = 'future-language';
+    await manifestFile.writeAsString(jsonEncode(manifest), flush: true);
+    expect((await store.loadDraft('draft-1'))!.captionLanguage, 'auto');
   });
 
   test(

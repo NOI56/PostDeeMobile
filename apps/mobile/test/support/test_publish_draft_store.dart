@@ -30,6 +30,7 @@ class TestPublishDraftStore implements PublishDraftStore {
       caption: request.caption,
       captionNeedsReview: request.captionNeedsReview,
       aiGuidance: request.aiGuidance,
+      captionLanguage: request.captionLanguage,
       watermarkEnabled: request.watermarkEnabled,
       platformApiValues: request.platformApiValues,
       platformSettings: request.platformSettings,

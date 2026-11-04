@@ -503,6 +503,9 @@ void main() {
     await _show(tester, picker);
     await tester.tap(picker);
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('new-clip.mp4'), -150,
+        scrollable: uploaderMainScroll);
+    await tester.pumpAndSettle();
     expect(find.text('new-clip.mp4'), findsOneWidget);
 
     gate.complete(_aiResult());

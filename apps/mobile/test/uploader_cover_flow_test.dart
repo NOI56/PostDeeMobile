@@ -165,11 +165,15 @@ void main() {
 
     expect(editorRequest?.videoFile.path, pickedVideo.path);
     expect(editorRequest?.platforms.single.apiValue, 'INSTAGRAM_REELS');
-    expect(
-      find.byKey(const ValueKey('uploader-cover-preview-image')),
-      findsOneWidget,
-    );
     expect(find.byKey(const ValueKey('uploader-cover-time')), findsOneWidget);
+    // The longer clip step can dispose the offscreen preview. Reveal that
+    // separate list item before checking the saved image.
+    final preview = find.byKey(const ValueKey('uploader-video-preview-open'));
+    await tester.scrollUntilVisible(preview, -200, scrollable: uploaderMainScroll);
+    await tester.ensureVisible(preview);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-cover-preview-image')),
+        findsOneWidget);
   });
 
   for (final platform in const [

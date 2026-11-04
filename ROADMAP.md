@@ -13,6 +13,17 @@ Build roadmap for PostDee.
   migration. Real multilingual clip quality checks, merge and deployment remain
   outside this candidate. [Work record](docs/superpowers/plans/2026-11-04-caption-output-language.md).
 
+## Clip duration information (2026-11-04, local candidate)
+
+- Show seconds and measured-duration compatibility on the clip-selection step,
+  using the same Mobile rules as preflight.
+- Distinguish TikTok inbox transfer from account-limited Direct Post, with
+  loading, unknown and retry states and auth/connection-bound advisory reads.
+- Preserve final media checks, Direct consent, saved drafts, quotas and posting
+  behavior. No migration or environment change is needed. Native device checks,
+  public branch/PR publication and deployment are not included in this local
+  candidate.
+
 ## Edit scheduled captions (2026-11-03, local candidate)
 
 - Add a Thai/English caption editor from queued scheduled-post details, with

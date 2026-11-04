@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/network/postdee_api_client.dart';
 import '../platforms/social_platform.dart';
+import 'platform_publish_preflight.dart';
 
 export '../../core/network/postdee_api_client.dart'
     show TikTokCreatorInfo, TikTokPrivacyLevel;
@@ -243,10 +244,11 @@ class PlatformPublishSettings {
     }
     if (validateDuration) {
       final duration = tiktokVideoDurationSeconds;
-      final maximum = creatorInfo.maxVideoPostDurationSec < 600
-          ? creatorInfo.maxVideoPostDurationSec
-          : 600;
-      if (duration == null ||
+      final maximum = platformVideoDurationRule(SocialPlatform.tiktok,
+          tikTokMaxDurationSeconds: creatorInfo.maxVideoPostDurationSec)!
+          .maximumSeconds;
+      if (creatorInfo.maxVideoPostDurationSec <= 0 ||
+          duration == null ||
           !duration.isFinite ||
           duration <= 0 ||
           duration > maximum) {
@@ -290,7 +292,7 @@ class PlatformPublishSettings {
       if (duration == null ||
           !duration.isFinite ||
           duration <= 0 ||
-          duration > 600) {
+          duration > tikTokPostDeeMaxDurationSeconds) {
         throw StateError(
             'TikTok Direct Post requires verified video duration.');
       }

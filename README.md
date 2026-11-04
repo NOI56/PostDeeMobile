@@ -15,6 +15,17 @@ an output preference, not a guarantee of language accuracy. No live multilingual
 provider acceptance or rollout is included. API must precede Mobile; no database
 migration. See the [work record](docs/superpowers/plans/2026-11-04-caption-output-language.md).
 
+## Clip duration guide (2026-11-04, local candidate)
+
+The clip-selection step shows the current PostDee duration rules before a clip
+is chosen and checks its measured duration after selection. Facebook Page Reels
+uses 3–90 seconds, Instagram Reels 3–900 seconds, and YouTube Shorts up to 180
+seconds (square or vertical). TikTok distinguishes the 600-second inbox-draft
+transfer ceiling from Direct Post's account-specific maximum, capped at 600.
+Unknown Direct limits stay pending and can be retried. Mobile guidance and
+preflight share one duration policy. No merge, deployment, or device update is
+included; see [Mobile details](apps/mobile/README.md#clip-duration-guide-2026-11-04-local-candidate).
+
 ## Edit scheduled captions (2026-11-03, local candidate)
 
 Post details allow manual caption and YouTube-title edits for queued scheduled

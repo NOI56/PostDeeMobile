@@ -427,7 +427,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(fixture.firstVideo.name), findsOneWidget);
     for (final step in [1, 2, 3, 0]) {
-      await goToUploaderStep(tester, step);
+      if (step == 3) {
+        await tester.tap(find.byKey(const ValueKey('uploader-progress-3')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+        fixture.expectNoApiWrites();
+      } else {
+        await goToUploaderStep(tester, step);
+      }
     }
     await _openAi(tester);
     fixture.expectNoApiWrites();

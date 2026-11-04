@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
+import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,7 +25,7 @@ class _FailingDraftStore extends TestPublishDraftStore {
 }
 
 class _ExitFixture {
-  _ExitFixture({TestPublishDraftStore? store})
+  _ExitFixture({TestPublishDraftStore? store, this.connectInstagram = false})
       : store = store ?? TestPublishDraftStore() {
     final directory =
         Directory.systemTemp.createTempSync('postdee-wizard-exit-');
@@ -37,6 +38,7 @@ class _ExitFixture {
 
   late final File video;
   final TestPublishDraftStore store;
+  final bool connectInstagram;
   int apiWrites = 0;
 
   Widget app() => MaterialApp(
@@ -54,7 +56,12 @@ class _ExitFixture {
                           loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
                           fullScreen: true,
                           draftStore: store,
-                          loadSocialConnections: () async => const [],
+                          loadSocialConnections: () async => connectInstagram
+                              ? const [SocialConnectionResult(
+                                  platform: 'INSTAGRAM_REELS',
+                                  connected: true,
+                                  externalAccountId: 'exit-test-instagram')]
+                              : const [],
                           createUpload: (_) async {
                             apiWrites++;
                             throw StateError('Draft exit must never upload');
@@ -212,9 +219,16 @@ void main() {
   testWidgets(
       'system back moves to the previous step while preserving the caption',
       (tester) async {
-    final fixture = _ExitFixture();
+    final fixture = _ExitFixture(connectInstagram: true);
     await _open(tester, fixture);
     await _enterCaption(tester, 'เก็บข้อความตอนย้อนกลับ');
+    await goToUploaderStep(tester, 2);
+    final channel = find.byKey(
+        const ValueKey('uploader-platform-INSTAGRAM_REELS'));
+    await tester.ensureVisible(channel);
+    await tester.pumpAndSettle();
+    await tester.tap(channel);
+    await tester.pumpAndSettle();
     await goToUploaderStep(tester, 3);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();

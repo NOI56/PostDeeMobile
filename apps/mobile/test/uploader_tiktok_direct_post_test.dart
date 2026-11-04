@@ -215,6 +215,35 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> requestReview(WidgetTester tester) async {
+    final progress = find.byKey(const ValueKey('uploader-progress-3'));
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(progress);
+    await tester.tap(progress);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> expectFreshConsentRequired(WidgetTester tester) async {
+    await requestReview(tester);
+    expect(find.byKey(const ValueKey('uploader-platform-validation-TIKTOK')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+    final settings =
+        find.byKey(const ValueKey('uploader-platform-settings-TIKTOK'));
+    await tester.ensureVisible(settings);
+    await tester.pumpAndSettle();
+    await tester.tap(settings);
+    await tester.pumpAndSettle();
+    expect(settingChecked(tester, 'music-consent'), isFalse);
+    expect(
+        tester
+            .widget<FilledButton>(find.byKey(
+                const ValueKey('uploader-platform-settings-save')))
+            .onPressed,
+        isNull);
+  }
+
   testWidgets('Direct starts without privacy, interactions or consent selected',
       (tester) async {
     await tester.pumpWidget(app());
@@ -456,9 +485,16 @@ void main() {
       await saveSettings(tester);
       expect(optionLoads, 1,
           reason: 'choosing Direct reads creator info exactly once');
-      await submit(tester);
+      await requestReview(tester);
+      expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+      final captionField =
+          find.byKey(const ValueKey('uploader-caption-field'));
+      await tester.scrollUntilVisible(captionField, 260,
+          scrollable: uploaderMainScroll);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(captionField).controller!.text, caption);
       expect(optionLoads, 1,
-          reason: 'submission must not request creator info');
+          reason: 'blocked review must not request creator info');
       expect(events, isEmpty);
       expect(requests, isEmpty);
       expect(store.savedRequests, isEmpty);
@@ -627,7 +663,7 @@ void main() {
     final caption = find.byKey(const ValueKey('uploader-caption-field'));
     await tester.ensureVisible(caption);
     await tester.enterText(caption, 'A changed publishing intent');
-    await submit(tester);
+    await expectFreshConsentRequired(tester);
     expect(events, isEmpty);
     expect(requests, isEmpty);
   });
@@ -694,7 +730,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pumpWidget(app(initialDraftId: saved.id));
     await tester.pumpAndSettle();
-    await submit(tester);
+    await expectFreshConsentRequired(tester);
     expect(requests, hasLength(2), reason: 'restoring cannot restore consent');
     expect(store.drafts[saved.id]!.uploadedMedia!.videoDurationSeconds, 1.25);
     expect(

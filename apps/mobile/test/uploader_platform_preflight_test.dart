@@ -189,6 +189,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> attemptReview(WidgetTester tester) async {
+    final progress = find.byKey(const ValueKey('uploader-progress-3'));
+    await tester.ensureVisible(progress);
+    await tester.pumpAndSettle();
+    await tester.tap(progress);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('YouTube suggests title without accepting content declarations',
       (tester) async {
     await tester.pumpWidget(app());
@@ -219,7 +227,9 @@ void main() {
     await tester.pumpWidget(app());
     await openSettings(tester, caption: 'ก' * 1700);
     await finishSettings(tester);
-    await submit(tester);
+    await attemptReview(tester);
+    expect(find.byKey(const ValueKey('uploader-step-caption')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
     expect(posts, isEmpty);
     expect(effects, isEmpty);
     expect(find.textContaining('5,000'), findsWidgets);
@@ -234,9 +244,9 @@ void main() {
     expect(find.byKey(const ValueKey('uploader-caption-limits')), findsOneWidget);
     expect(find.textContaining('5,100 / 5,000 ไบต์'), findsOneWidget);
     expect(find.textContaining('คำอธิบาย YouTube ต้องไม่เกิน'), findsWidgets);
-    await goToUploaderStep(tester, 3);
-    expect(tester.widget<FilledButton>(
-        find.byKey(const ValueKey('publish-review-confirm'))).onPressed, isNull);
+    await attemptReview(tester);
+    expect(find.byKey(const ValueKey('uploader-step-caption')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
     expect(find.byKey(const ValueKey('publish-flow-posting')), findsNothing);
     expect(posts, isEmpty);
     expect(effects, isEmpty);
@@ -403,13 +413,9 @@ void main() {
     await finishSettings(tester);
     expect(
         find.textContaining('บัญชี YouTube Shorts เปลี่ยนแล้ว'), findsWidgets);
-    await goToUploaderStep(tester, 3);
-    expect(
-        tester
-            .widget<FilledButton>(
-                find.byKey(const ValueKey('publish-review-confirm')))
-            .onPressed,
-        isNull);
+    await attemptReview(tester);
+    expect(find.byKey(const ValueKey('uploader-step-platforms')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
     expect(effects, isEmpty);
   });
 

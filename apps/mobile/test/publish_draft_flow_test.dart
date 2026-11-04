@@ -238,6 +238,8 @@ Future<void> _completeYouTubeSettings(WidgetTester tester) async {
     find.byKey(const ValueKey('uploader-youtube-title')),
     'YouTube draft test',
   );
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
   for (final key in const [
     ValueKey('uploader-youtube-made-for-kids-no'),
     ValueKey('uploader-youtube-synthetic-no'),
@@ -539,8 +541,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('publish-draft-draft-past')));
     await tester.pumpAndSettle();
-    await goToUploaderStep(tester, 3);
     expect(find.textContaining('เวลาเดิมผ่านไปแล้ว'), findsOneWidget);
+    await _completeYouTubeSettings(tester);
+    await goToUploaderStep(tester, 3);
 
     final postButton =
         find.byKey(const ValueKey('uploader-sticky-post-button'));
@@ -784,10 +787,17 @@ void main() {
     await tester.ensureVisible(picker);
     await tester.tap(picker);
     await tester.pumpAndSettle();
-    await goToUploaderStep(tester, 3);
-    final confirm = find.byKey(const ValueKey('publish-review-confirm'));
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull,
+    final reviewProgress = find.byKey(const ValueKey('uploader-progress-3'));
+    await tester.ensureVisible(reviewProgress);
+    await tester.tap(reviewProgress);
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey(
+            'uploader-platform-validation-YOUTUBE_SHORTS')),
+        findsOneWidget,
         reason: 'A replacement clip needs fresh content declarations');
+    final confirm = find.byKey(const ValueKey('publish-review-confirm'));
+    expect(confirm, findsNothing);
     expect(requests, hasLength(1));
     await _completeYouTubeSettings(tester);
     await goToUploaderStep(tester, 3);

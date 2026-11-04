@@ -469,9 +469,14 @@ void main() {
     await tester.scrollUntilVisible(tiktok, -250,
         scrollable: uploaderMainScroll);
     await tester.enterText(tiktok, 'แก้ข้อความ TikTok ต้องยืนยันใหม่');
-    await goToUploaderStep(tester, 3);
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull,
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uploader-progress-3')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-platform-validation-TIKTOK')),
+        findsOneWidget,
         reason: 'Changing TikTok text requires fresh TikTok consent');
+    expect(confirm, findsNothing);
     expect(fixture.posts, isEmpty);
   });
 }

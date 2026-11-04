@@ -380,7 +380,9 @@ class _UploaderScreenState extends State<UploaderScreen>
   ClipGroupCaptionContext? _lastClipGroupCaptionContext;
   final _captionFocusNode = FocusNode();
   final _captionAnchorKey = GlobalKey();
-  final _aiCaptionActionAnchor = GlobalKey();
+  // Use the current panel element for scrolling. Reparenting a GlobalKey here
+  // during draft deletion leaves stale geometry in the modal semantics tree.
+  BuildContext? _aiCaptionActionContext;
   final _platformValidationAnchors = {
     for (final platform in SocialPlatform.values) platform: GlobalKey(),
   };
@@ -5064,6 +5066,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         _errorMessage = 'เวลาตั้งโพสต์ไม่ถูกต้อง กรุณาเลือกใหม่';
         _successMessage = null;
       });
+      _revealFormError();
       return;
     }
     final now = widget.now();
@@ -5072,6 +5075,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         _errorMessage = 'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลย';
         _successMessage = null;
       });
+      _revealFormError();
       return;
     }
 
@@ -7095,8 +7099,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                     onPressed: _formBusy || _isGeneratingCaption || _isChoosingCaption
                         ? null : () async {
                       FocusManager.instance.primaryFocus?.unfocus();
-                      final anchor = _aiCaptionActionAnchor.currentContext;
-                      if (anchor != null) {
+                      final anchor = _aiCaptionActionContext;
+                      if (anchor != null && anchor.mounted) {
                         await Scrollable.ensureVisible(anchor,
                           alignment: .7,
                           duration: _uploaderMotionAllowed(context, _appIsResumed)
@@ -7340,7 +7344,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Widget _buildAiCaptionPanel() => _AiCaptionPanel(
-        actionAnchorKey: _aiCaptionActionAnchor,
+        onActionBuilt: (context) => _aiCaptionActionContext = context,
         onReopenResult: _reusableCaptionResult == null ? null : _reopenCaptionResult,
         guidanceController: _aiGuidanceController,
         captionLanguage: _captionLanguage,
@@ -9308,7 +9312,7 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
 
 class _AiCaptionPanel extends StatelessWidget {
   const _AiCaptionPanel({
-    this.actionAnchorKey,
+    this.onActionBuilt,
     this.onReopenResult,
     required this.guidanceController,
     required this.captionLanguage,
@@ -9335,7 +9339,7 @@ class _AiCaptionPanel extends StatelessWidget {
   });
 
   final TextEditingController guidanceController;
-  final Key? actionAnchorKey;
+  final ValueChanged<BuildContext>? onActionBuilt;
   final VoidCallback? onReopenResult;
   final String captionLanguage;
   final Object languageSelectionScope;
@@ -9534,18 +9538,21 @@ class _AiCaptionPanel extends StatelessWidget {
             // The tap still re-checks the fresh plan, so a stale Basic quota
             // never blocks someone who has just upgraded.
             if (aiLocked)
-              KeyedSubtree(key: actionAnchorKey, child:
-              OutlinedButton.icon(
+              Builder(builder: (actionContext) {
+                onActionBuilt?.call(actionContext);
+                return OutlinedButton.icon(
                 key: const ValueKey('uploader-ai-generate-button'),
                 onPressed: formBusy || isGenerating || isSavingStyle
                     ? null
                     : onGenerate,
                 icon: const Icon(Icons.workspace_premium_outlined, size: 18),
                 label: const CaptionText('ดูแพ็กเกจเพื่อใช้ AI'),
-              ))
+                );
+              })
             else
-            KeyedSubtree(key: actionAnchorKey, child:
-            PostDeePressFeedback(
+            Builder(builder: (actionContext) {
+              onActionBuilt?.call(actionContext);
+              return PostDeePressFeedback(
               enabled: animate &&
                   !insufficientCredits &&
                   !formBusy &&
@@ -9572,7 +9579,8 @@ class _AiCaptionPanel extends StatelessWidget {
                     ? null
                     : onGenerate,
               ),
-            )),
+              );
+            }),
             if (!aiLocked) ...[
               const SizedBox(height: AppTheme.spaceSm),
               CaptionText('ใช้เครดิตเมื่อสร้างผลลัพธ์แล้ว เปิดดูหรือเลือกใช้ไม่หักเพิ่ม',

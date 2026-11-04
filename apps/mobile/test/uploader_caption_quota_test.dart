@@ -425,7 +425,8 @@ void main() {
     expect(find.byType(CaptionQuotaStrip), findsOneWidget);
     expect(strip(tester).plan, 'BASIC');
     expect(strip(tester).quota.usedThisMonth, 7);
-    expect(find.text('0 / 0 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ได้ทั้งหมด 0 เครดิต'), findsOneWidget);
+    expect(find.text('รายเดือน 0 / 0 เครดิต', findRichText: true), findsOneWidget);
     expect(find.text('ใช้ไป 7 เครดิต'), findsOneWidget);
     expect(find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
     expect(find.text('Starter/Pro'), findsNothing);
@@ -492,7 +493,8 @@ void main() {
     await _targets(tester, _platforms.take(2).toList());
     expect(find.byType(CaptionQuotaStrip), findsOneWidget);
     expect(strip(tester).plan, 'BASIC');
-    expect(find.text('0 / 0 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ได้ทั้งหมด 0 เครดิต'), findsOneWidget);
+    expect(find.text('รายเดือน 0 / 0 เครดิต', findRichText: true), findsOneWidget);
     expect(find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
     expect(find.textContaining('เครดิตเติม'), findsNothing);
     expect(find.textContaining('เครดิตไม่พอ'), findsNothing);

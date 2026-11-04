@@ -466,15 +466,46 @@ void main() {
             tiktokPublishMode: TikTokPublishMode.directPost));
     await tester.pumpWidget(uploader());
     await selectPlatform(tester, 'TIKTOK');
-    await goToUploaderStep(tester, 3);
-    expect(find.textContaining('ยังไม่พร้อมโพสต์ตรง'), findsWidgets);
-    expect(find.textContaining('ส่งเป็นร่างเข้า TikTok'), findsNothing);
+    await tapKey(tester, const ValueKey('uploader-progress-3'));
+    expect(find.byKey(const ValueKey('uploader-step-body-2')), findsOneWidget);
+    expect(find.text('ต้องตั้งค่าโพสต์ตรง'), findsOneWidget);
+    expect(find.text('ร่างใน TikTok'), findsNothing);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('uploader-platform-validation-TIKTOK')),
+        findsOneWidget);
+    await tapKey(tester,
+        const ValueKey('uploader-platform-validation-edit-TIKTOK'));
     expect(
         tester
-            .widget<FilledButton>(
-                find.byKey(const ValueKey('publish-review-confirm')))
-            .onPressed,
+            .widget<ChoiceChip>(
+                find.byKey(const ValueKey('uploader-tiktok-mode-direct')))
+            .selected,
+        isTrue);
+    expect(
+        tester
+            .widget<ChoiceChip>(
+                find.byKey(const ValueKey('uploader-tiktok-mode-inbox')))
+            .selected,
+        isFalse);
+    expect(
+        tester
+            .state<FormFieldState<TikTokPrivacyLevel>>(
+                find.byKey(const ValueKey('uploader-tiktok-privacy')))
+            .value,
         isNull);
+    expect(
+        tester
+            .widget<CheckboxListTile>(
+                find.byKey(const ValueKey('uploader-tiktok-music-consent')))
+            .value,
+        isFalse);
+    expect(tester.widget<FilledButton>(find.byKey(_saveKey)).onPressed, isNull);
+    await tapKey(tester, _cancelKey);
+    await tapKey(tester, const ValueKey('uploader-save-draft-button'));
+    final settings = drafts.savedRequests.single.platformSettings;
+    expect(settings.tiktokPublishMode, TikTokPublishMode.directPost);
+    expect(settings.canSubmit(SocialPlatform.tiktok), isFalse);
     expect(defaults.saves, isEmpty);
   });
 

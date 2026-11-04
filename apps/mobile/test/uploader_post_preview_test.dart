@@ -264,6 +264,34 @@ Future<PostVideoPreviewScreen> _openPreview(WidgetTester tester) async {
       .widget<PostVideoPreviewScreen>(find.byType(PostVideoPreviewScreen));
 }
 
+Future<void> _completeYouTubeSettings(WidgetTester tester) async {
+  await goToUploaderStep(tester, 2);
+  await _tap(tester, _key('uploader-platform-settings-YOUTUBE_SHORTS'));
+  for (final key in const [
+    'uploader-youtube-made-for-kids-no',
+    'uploader-youtube-synthetic-no',
+  ]) {
+    final control = _key(key);
+    await tester.ensureVisible(control);
+    await tester.pumpAndSettle();
+    await tester.tap(control);
+    await tester.pumpAndSettle();
+  }
+  final certification = _key('uploader-youtube-guidelines-certified');
+  expect(tester.widget<CheckboxListTile>(certification).value, isFalse,
+      reason: 'Restoring a draft does not restore media consent');
+  await tester.ensureVisible(certification);
+  await tester.pumpAndSettle();
+  await tester.tap(certification);
+  await tester.pumpAndSettle();
+  final save = _key('uploader-platform-settings-save');
+  expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+  await tester.ensureVisible(save);
+  await tester.pumpAndSettle();
+  await tester.tap(save);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _closePreview(WidgetTester tester) async {
   await tester.pageBack();
   await tester.pumpAndSettle();
@@ -292,19 +320,22 @@ void main() {
   });
 
   testWidgets(
-      'review without a clip disables preview and keeps channel editing',
+      'review without a clip returns to video selection without opening preview',
       (tester) async {
     final fixture = _Fixture();
     await _mount(tester, fixture.app());
-    await goToUploaderStep(tester, 3);
-    final summary =
-        tester.widget<PublishReviewSummary>(find.byType(PublishReviewSummary));
-    expect(summary.onPreview, isNull);
-    expect(_key('publish-review-preview'), findsOneWidget);
+    final review = _key('uploader-progress-3');
+    await tester.ensureVisible(review);
+    await tester.tap(review);
+    await tester.pumpAndSettle();
+    expect(_key('uploader-step-video'), findsOneWidget);
+    expect(find.text('เลือกวิดีโอจากเครื่องก่อน'), findsOneWidget);
+    expect(find.byType(PublishReviewSummary), findsNothing);
+    expect(_key('publish-review-preview'), findsNothing);
     expect(_key('publish-review-edit-video'), findsNothing);
     expect(_key('publish-review-edit-caption'), findsNothing);
-    expect(_key('publish-review-edit-platforms'), findsOneWidget);
-    await _tap(tester, _key('publish-review-preview'));
+    await goToUploaderStep(tester, 2);
+    expect(_key('uploader-platform-TIKTOK'), findsOneWidget);
     expect(find.byType(PostVideoPreviewScreen), findsNothing);
     expect(player.sources, isEmpty);
     fixture.expectNoSideEffects();
@@ -322,6 +353,17 @@ void main() {
     // Select in reverse order: preview order follows platform order, not taps.
     await _tap(tester, _key('uploader-platform-FACEBOOK_REELS'));
     await _tap(tester, _key('uploader-platform-TIKTOK'));
+    await _tap(tester, _key('uploader-platform-settings-FACEBOOK_REELS'));
+    final publish = _key('uploader-facebook-publish');
+    await tester.ensureVisible(publish);
+    await tester.pumpAndSettle();
+    await tester.tap(publish);
+    await tester.pumpAndSettle();
+    final save = _key('uploader-platform-settings-save');
+    await tester.ensureVisible(save);
+    await tester.pumpAndSettle();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
     final screen = await _openPreview(tester);
     final data = screen.postPreview!;
     expect(screen.videoFile!.path, fixture.video.path);
@@ -374,6 +416,7 @@ void main() {
     final fixture = _Fixture();
     final draft = await fixture.seed();
     await _mount(tester, fixture.app(draftId: draft.id));
+    await _completeYouTubeSettings(tester);
     final screen = await _openPreview(tester);
     final data = screen.postPreview!;
     expect(data.channels.map((channel) => channel.platform),
@@ -432,6 +475,7 @@ void main() {
       ),
     );
     await _mount(tester, fixture.app(draftId: draft.id));
+    await _completeYouTubeSettings(tester);
     final screen = await _openPreview(tester);
     final channel = screen.postPreview!.channels.single;
     expect(channel.platform, SocialPlatform.youtubeShorts);

@@ -95,6 +95,7 @@ Future<void> _pickVideoFromPreview(WidgetTester tester) async {
 Future<void> _enterUploadCaption(
   WidgetTester tester, {
   String caption = 'Real caption from seller',
+  bool openReview = true,
 }) async {
   await goToUploaderStep(tester, 2);
   final scrollable = uploaderMainScroll;
@@ -133,7 +134,7 @@ Future<void> _enterUploadCaption(
   await tester.pumpAndSettle();
   await tester.enterText(captionField, caption);
   await tester.pumpAndSettle();
-  await goToUploaderStep(tester, 3);
+  if (openReview) await goToUploaderStep(tester, 3);
 }
 
 Future<void> _completeYouTubeSettingsForTests(WidgetTester tester) async {
@@ -156,6 +157,9 @@ Future<void> _completeYouTubeSettingsForTests(WidgetTester tester) async {
     find.byKey(const ValueKey('uploader-youtube-title')),
     'YouTube test title',
   );
+  await tester.pumpAndSettle();
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
   for (final key in const [
     ValueKey('uploader-youtube-made-for-kids-no'),
     ValueKey('uploader-youtube-synthetic-no'),
@@ -164,6 +168,7 @@ Future<void> _completeYouTubeSettingsForTests(WidgetTester tester) async {
     final control = find.byKey(key);
     await tester.ensureVisible(control);
     await tester.pumpAndSettle();
+    expect(control.hitTestable(), findsOneWidget);
     await tester.tap(control);
     await tester.pumpAndSettle();
   }
@@ -351,6 +356,7 @@ void main() {
   for (final plan in ['STARTER', 'PRO']) {
     testWidgets('$plan limits the uploader date picker', (tester) async {
       final now = DateTime(2026, 10, 8, 12);
+      final video = _createPickedVideoFixture('date-picker-$plan.mp4');
       await tester.pumpWidget(MaterialApp(
           home: Scaffold(
               body: UploaderScreen(
@@ -360,9 +366,11 @@ void main() {
         now: () => now,
         loadSocialConnections: _loadConnectedSocialConnections,
         loadSubscription: () async => _scheduleSubscription(plan),
+        pickVideo: () async => video,
       ))));
       await tester.pumpAndSettle();
-      await goToUploaderStep(tester, 3);
+      await _pickVideoFromPreview(tester);
+      await _enterUploadCaption(tester);
       final schedule = find.byKey(const ValueKey('uploader-schedule-later'));
       await tester.scrollUntilVisible(schedule, 300,
           scrollable: uploaderScroll);
@@ -384,6 +392,7 @@ void main() {
   testWidgets('keeps scheduling closed until its entitlement is known',
       (tester) async {
     final pending = Completer<SubscriptionStatusResult>();
+    final video = _createPickedVideoFixture('pending-entitlement.mp4');
     var checks = 0;
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
@@ -392,6 +401,7 @@ void main() {
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       draftStore: TestPublishDraftStore(),
       loadSocialConnections: _loadConnectedSocialConnections,
+      pickVideo: () async => video,
       loadSubscription: () {
         checks++;
         return checks == 1
@@ -400,7 +410,8 @@ void main() {
       },
     ))));
     await tester.pumpAndSettle();
-    await goToUploaderStep(tester, 3);
+    await _pickVideoFromPreview(tester);
+    await _enterUploadCaption(tester);
     final schedule = find.byKey(const ValueKey('uploader-schedule-later'));
     await tester.scrollUntilVisible(schedule, 300, scrollable: uploaderScroll);
     await tester.ensureVisible(schedule);
@@ -520,11 +531,13 @@ void main() {
         findsNothing);
     expect(find.textContaining('ยังตรวจสอบช่องทางที่ฉบับร่างเลือกไว้ไม่ได้:'),
         findsOneWidget);
-    await goToUploaderStep(tester, 3);
-    final blockedConfirm = find.byKey(const ValueKey('publish-review-confirm'));
-    expect(tester.widget<FilledButton>(blockedConfirm).onPressed, isNull);
-    await tester.tap(blockedConfirm, warnIfMissed: false);
+    final review = find.byKey(const ValueKey('uploader-progress-3'));
+    await tester.ensureVisible(review);
     await tester.pumpAndSettle();
+    await tester.tap(review);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-step-platforms')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
     expect(readinessCalls, 0);
 
     await tester.tap(find.byKey(const ValueKey('uploader-save-draft-button')));
@@ -759,6 +772,9 @@ void main() {
       youtubeTitle,
       'รีวิวสินค้าใหม่',
     );
+    await tester.pumpAndSettle();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
     for (final key in const [
       ValueKey('uploader-youtube-made-for-kids-no'),
       ValueKey('uploader-youtube-synthetic-no'),
@@ -1134,7 +1150,35 @@ void main() {
       findsNothing,
     );
 
-    await goToUploaderStep(tester, 3);
+    // Review requires a real selected clip, caption and channel choices;
+    // an empty composer must not jump directly to the confirmation.
+    final review = find.byKey(const ValueKey('uploader-progress-3'));
+    await tester.ensureVisible(review);
+    await tester.pumpAndSettle();
+    await tester.tap(review);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-step-video')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+
+    final video = _createPickedVideoFixture('workflow-sections.mp4');
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: UploaderScreen(
+          key: const ValueKey('ready-workflow-composer'),
+          draftStore: TestPublishDraftStore(),
+          loadSocialConnections: _loadConnectedSocialConnections,
+          loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
+          probePublishMedia: probeValidPublishMedia,
+          initialVideoPath: video.path,
+          initialVideoName: video.name,
+          initialVideoSizeBytes: video.sizeBytes,
+          initialVideoWidth: video.width,
+          initialVideoHeight: video.height,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _enterUploadCaption(tester);
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('uploader-schedule-panel')),
       500,
@@ -1178,12 +1222,12 @@ void main() {
 
     await goToUploaderStep(tester, 3);
     await tester.scrollUntilVisible(
-      find.text('ยืนยันส่ง 0 ช่องทาง'),
+      find.text('ยืนยันส่ง 2 ช่องทาง'),
       500,
       scrollable: uploaderScroll,
     );
     await tester.pumpAndSettle();
-    expect(find.text('ยืนยันส่ง 0 ช่องทาง'), findsOneWidget);
+    expect(find.text('ยืนยันส่ง 2 ช่องทาง'), findsOneWidget);
   });
 
   testWidgets('hides the unfinished EP tool and its empty optional section',
@@ -1304,10 +1348,15 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    await _enterUploadCaption(tester);
-    await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
+    await _enterUploadCaption(tester, openReview: false);
+    final review = find.byKey(const ValueKey('uploader-progress-3'));
+    await tester.ensureVisible(review);
+    await tester.pumpAndSettle();
+    await tester.tap(review);
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('uploader-step-video')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
     expect(uploadRequests, isEmpty);
     expect(find.textContaining('เลือกวิดีโอ'), findsWidgets);
   });
@@ -1983,7 +2032,7 @@ void main() {
 
     await _pickVideoFromPreview(tester);
 
-    await goToUploaderStep(tester, 3);
+    await _enterUploadCaption(tester);
     final scheduleButton =
         find.byKey(const ValueKey('uploader-schedule-later'));
     await tester.scrollUntilVisible(
@@ -2072,7 +2121,7 @@ void main() {
 
     await _pickVideoFromPreview(tester);
 
-    await goToUploaderStep(tester, 3);
+    await _enterUploadCaption(tester);
     final scheduleButton =
         find.byKey(const ValueKey('uploader-schedule-later'));
     await tester.scrollUntilVisible(
@@ -2096,7 +2145,6 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('uploader-schedule-summary')),
         findsOneWidget);
-    await _enterUploadCaption(tester);
 
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
     await _settlePublishSubmission(tester);
@@ -2164,7 +2212,7 @@ void main() {
 
     await _pickVideoFromPreview(tester);
 
-    await goToUploaderStep(tester, 3);
+    await _enterUploadCaption(tester);
     final scheduleButton =
         find.byKey(const ValueKey('uploader-schedule-later'));
     await tester.scrollUntilVisible(
@@ -2175,7 +2223,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(scheduleButton);
     await tester.pumpAndSettle();
-    await _enterUploadCaption(tester);
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
     await _settlePublishSubmission(tester);
 
@@ -2232,7 +2279,7 @@ void main() {
 
     await _pickVideoFromPreview(tester);
 
-    await goToUploaderStep(tester, 3);
+    await _enterUploadCaption(tester);
     final scheduleButton =
         find.byKey(const ValueKey('uploader-schedule-later'));
     await tester.scrollUntilVisible(
@@ -2243,14 +2290,18 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(scheduleButton);
     await tester.pumpAndSettle();
-    await _enterUploadCaption(tester);
     currentTime = DateTime(2026, 8, 13, 10);
 
     await tester.tap(find.byKey(const ValueKey('uploader-sticky-post-button')));
     await tester.pumpAndSettle();
-
     expect(createPostCalls, 0);
-    expect(find.textContaining('เวลาเดิมผ่านไปแล้ว'), findsOneWidget);
+    final expiredNotice = find.text(
+        'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลย');
+    expect(expiredNotice, findsOneWidget);
+    expect(tester.getRect(expiredNotice).top, greaterThanOrEqualTo(0));
+    expect(tester.getRect(expiredNotice).bottom,
+        lessThan(tester.getRect(find.byKey(
+            const ValueKey('publish-review-confirm'))).top));
     expect(
       find.byKey(const ValueKey('publish-review-confirm')),
       findsOneWidget,
@@ -2628,18 +2679,18 @@ void main() {
     );
 
     await _pickVideoFromPreview(tester);
-    await _enterUploadCaption(tester);
-    final confirm = find.byKey(const ValueKey('publish-review-confirm'));
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-    await tester.tap(confirm, warnIfMissed: false);
+    await _enterUploadCaption(tester, openReview: false);
+    final review = find.byKey(const ValueKey('uploader-progress-3'));
+    await tester.ensureVisible(review);
+    await tester.pumpAndSettle();
+    await tester.tap(review);
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('uploader-step-platforms')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
     expect(readinessChecks, 0);
-    expect(find.textContaining('กรุณารีเฟรชหรือเชื่อมต่อใหม่'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('publish-review-unknown-outcome')),
-      findsOneWidget,
-    );
+    expect(find.textContaining('กรุณารีเฟรชช่องทางหรือเชื่อมต่อใหม่'),
+        findsOneWidget);
   });
 
   testWidgets('blocks an old API before watermark upload and queue creation',
@@ -3003,10 +3054,10 @@ void main() {
           await tester.pumpAndSettle();
         }
 
-        // No channel is connected here, so the posting checklist is the last
-        // item on the clip step.
+        // The duration guide is the final item below the clip's readiness
+        // notices, including when the text size increases.
         final finalItem = tester.getRect(
-          find.byKey(const ValueKey('uploader-posting-checklist')),
+          find.byKey(const ValueKey('video-duration-guide')),
         );
         final footer = tester.getRect(
           find.byKey(const ValueKey('uploader-sticky-action-bar')),

@@ -72,6 +72,8 @@ Future<void> _completeYouTubeSettings(WidgetTester tester) async {
     find.byKey(const ValueKey('uploader-youtube-title')),
     'YouTube watermark test',
   );
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
   for (final key in const [
     ValueKey('uploader-youtube-made-for-kids-no'),
     ValueKey('uploader-youtube-synthetic-no'),

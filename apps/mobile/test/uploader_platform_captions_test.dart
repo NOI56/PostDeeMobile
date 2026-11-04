@@ -263,7 +263,7 @@ void main() {
         find.descendant(of: panel, matching: target);
     expect(inside(find.text('ให้ AI ช่วยเขียน')), findsOneWidget);
     expect(inside(find.text('เลือกช่องทางให้ AI เขียน')),
-        findsOneWidget);
+        findsWidgets);
     expect(inside(find.text('สไตล์')), findsOneWidget);
     expect(inside(find.text('Starter/Pro')), findsNothing);
     expect(inside(find.byKey(const ValueKey('uploader-ai-style-summary'))),

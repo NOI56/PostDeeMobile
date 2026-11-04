@@ -23,6 +23,18 @@ remain evidence only for their named source. New regression tests precede the
 implementation. Final analysis, complete Mobile tests, exact-source Staging APK
 and native checks will be recorded after completion.
 
+Integration regression checks retained publishing/consent/recovery assertions
+while preparing valid clips, captions and platform settings before review.
+Invalid intents now assert the earlier blocked section rather than expecting
+an inaccessible review page. Settings helpers flush pending caret scrolling
+before explicit consent taps. The AI shortcut initially used a reparented
+GlobalKey; an existing draft-delete test reproduced a modal semantics assertion.
+The fix uses the currently mounted Builder context instead, retaining the
+shortcut without reparenting its render tree. AI reuse and draft deletion then
+passed together. Expired/invalid scheduling errors now reveal their notice.
+Resource-failed/aborted concurrent test attempts are not passing evidence;
+the final full run uses one Flutter command with scoped build/temp caches on E:.
+
 Status updated 2026-11-05: the owner selected **variant 2, shared caption first**
 for the real grouped flow. After splitting/reopening, the shared caption and
 existing AI panel open directly inline. Source `54b222638` builds on `cffe7191`

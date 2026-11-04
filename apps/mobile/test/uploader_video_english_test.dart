@@ -848,7 +848,7 @@ void main() {
       await tapVideoEnglishControl(tester, 'uploader-close');
       for (final text in [
         'Keep this post?',
-        'You have unsaved changes. You can continue editing from drafts.',
+        'Save a local draft to continue later. This does not send to social platforms or use post units.',
         'Keep editing',
         'Leave without saving',
         'Save and exit'

@@ -396,12 +396,11 @@ void main() {
     expect(_key('uploader-step-body-2'), findsOneWidget);
     expect(_key('uploader-step-body-3'), findsNothing);
     expect(find.textContaining('1 นาที 30 วินาที'), findsWidgets);
-    await goToUploaderStep(tester, 3);
-    expect(_key('uploader-selected-duration-error'), findsOneWidget);
-    expect(
-      tester.widget<FilledButton>(_key('publish-review-confirm')).onPressed,
-      isNull,
-    );
+    await _tap(tester, 'uploader-progress-3');
+    expect(_key('uploader-step-body-2'), findsOneWidget);
+    expect(_key('uploader-step-body-3'), findsNothing);
+    expect(find.textContaining('1 นาที 30 วินาที'), findsWidgets);
+    expect(_key('publish-review-confirm'), findsNothing);
     fixture.expectNoRemoteEffects();
   });
 

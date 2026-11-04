@@ -38,10 +38,14 @@ Build roadmap for PostDee.
   accounting. Preparation creates no posts and uses no quota. No API, database,
   environment, entitlement or hosted deployment change is required; retired AI
   editing stays retired.
-- Group-flow full-suite, exact-build and emulator verification are pending.
-  Earlier APK 12104/12105 test/native results are preserved as prior-version
-  evidence in the work record; they do not verify this new grouped flow. Physical
-  phones, iOS and real publishing remain separate checks. No merge/push/deploy.
+- Source `b6efa3e5` on freshly verified `main` `8a340638` passed final analysis;
+  guarded APK 12108 built/installed with retained UID/data. Emulator preparation,
+  one-row set saving, captions, preview, restart/reopen and save-only settings
+  passed without upload/post/AI. Zero quota and unavailable destinations kept
+  confirmation disabled. Native paid scheduling pickers, real publishing, iOS
+  and physical phones remain unverified; independent schedule behavior has
+  automated coverage. Full-suite details are in the work record, alongside
+  separately labeled historical APK 12104/12105 evidence. No merge/push/deploy.
   See the [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## AI caption output language (2026-11-04, local candidate)

@@ -64,10 +64,15 @@ report residual IDs. Source tag/untag writes preserve the latest source metadata
 Edited or accepted groups survive cleanup failure. Process termination can leave
 partial local drafts; inspect Drafts before retrying. No cross-process batch
 transaction, backend/schema/environment/entitlement change or retired AI-editor
-restoration is introduced. Current baseline is verified `main` `8a340638`;
-group-flow full-suite, exact-build and emulator checks are pending. APK 12104/
-12105 evidence remains explicitly historical in the work record. No API deploy,
-migration, bootstrap change, merge or push is included. See the
+restoration is introduced. Source `b6efa3e5` uses freshly verified `main`
+`8a340638`; final analysis and guarded Staging APK 12108 build/install passed.
+All 16 local JSON files retained identical checksums across that in-place update.
+Native review, preview, restart/reopen and save-only member settings passed with
+no upload/post/AI. The Basic test account correctly refused scheduling; native
+paid scheduling pickers remain unverified, with independent UTC schedules covered
+automatically. Current suite results and historical APK 12104/12105 evidence are
+separate in the work record. No API deploy, migration, bootstrap change, merge or
+push is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Caption language preference (2026-11-04, local candidate)

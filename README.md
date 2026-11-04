@@ -33,11 +33,15 @@ retains its own submission identity and accepted-post checkpoint.
 Local preparation and saves consume no post units or AI credits. Actual post
 creation retains fresh readiness, consent and per-channel quota checks. No API,
 schema, entitlement or environment change is required; AI editing remains retired.
-The grouped-review candidate is based on verified `main` `8a340638`; its full
-suite, exact-build and emulator verification are pending. APK 12104/12105 results
-belong to the earlier independent-draft implementation and remain historical
-evidence, not proof of the new group flow. No merge, push or hosted deployment
-is included. See the
+Source `b6efa3e5` is based on freshly verified `main` `8a340638`. Final analysis
+passed and guarded Staging APK 12108 built/installed with the same UID and app
+data. Emulator checks covered one saved three-clip set, shared/custom captions,
+preview, restart/reopen and save-only channel settings. Posting stayed blocked
+by the test account's zero quota/unavailable channels; no upload, post or AI
+request was made. Paid-account native date/time pickers, real publishing, iOS
+and physical phones remain unverified. The current full-suite result is recorded
+in the work record; APK 12104/12105 evidence there remains historical. No merge,
+push or hosted deployment is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## AI caption output language (2026-11-04, local candidate)

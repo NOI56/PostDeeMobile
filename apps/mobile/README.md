@@ -37,14 +37,20 @@ Process termination may leave partial local drafts; inspect Drafts before retryi
 The original and older drafts remain. This uploader utility does not restore the
 retired AI editor. No API, database, entitlement or environment change is required.
 
-The grouped-review candidate uses verified `main` `8a340638`, retaining the
-109-language picker and current connection-screen changes. Full-suite, exact
-Staging build/install and emulator group-flow checks are pending. Earlier APK
-12104/12105 suite, successful-split and cancellation results belong to the prior
-independent-draft implementation; detailed hashes and evidence remain in the
-work record. They do not verify the new review/submission flow. Physical phones,
-iOS, real publishing and live generation in all 109 languages remain separate
-checks. No API deploy, migration, bootstrap change, merge or push is included.
+Source `b6efa3e5` uses freshly verified `main` `8a340638`, retaining the
+109-language picker and connection-screen changes. Final analysis passed in
+19.3s. Guarded Staging APK 12108 built in 42.3s; installed SHA-256 matches
+`503bc8852b6726453df199d9394432ba2a88b2d357d7306a29c28a1ad5e41bf4`.
+The update on `emulator-5554` retained UID 10197/internal storage and all 16 local
+JSON checksums. Native preparation saved three clips as one set; caption edits,
+preview, restart/reopen and save-only member channel settings passed. Zero quota,
+unavailable channels and an unverified Basic account kept posting disabled; no
+upload, post or AI request was made. Basic scheduling refusal was expected;
+paid-account native date/time pickers remain unverified, while independent UTC
+times have automated coverage. Current suite details and prior APK 12104/12105
+evidence are separated in the work record. Physical phones, iOS, real publishing
+and live generation in all 109 languages remain separate checks. No API deploy,
+migration, bootstrap change, merge or push is included.
 See the
 [work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
 

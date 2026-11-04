@@ -3,11 +3,12 @@
 Status updated 2026-11-05: the owner approved implementing the grouped-review
 prototype in the real app. The active `codex/clip-group-review` worktree uses
 verified `main` `8a340638` and preserves the earlier splitting feature, searchable
-109-language picker and PR #63's connection-screen change. Current group-flow
-full-suite, exact-build/install, emulator smoke and final diff verification are
-pending. APK 12104/12105 evidence below belongs to the prior independent-draft
-version; it does not establish the new grouped flow. No merge, push or hosted
-deployment is included.
+109-language picker and PR #63's connection-screen change. Final app source is
+`b6efa3e5b22abca1892231bdefcba2e9db75001f`; final analysis, exact guarded Staging
+APK 12108 build/install, scoped native group checks and baseline diff review
+passed. The final complete-suite result is recorded in the current verification
+section below. APK 12104/12105 evidence remains prior-version history. No merge,
+push or hosted deployment is included.
 
 ## Approved behavior and baseline
 
@@ -163,8 +164,8 @@ Facebook Page Video limits for Page Reels.
   backward-compatible draft metadata plus a separate local group journal.
 - No route, DTO, Prisma model, migration, entitlement, price, environment variable
   or hosted-service configuration changes are required.
-- No server deployment order is introduced. Earlier guarded Staging builds are
-  recorded below; current grouped-flow verification remains pending.
+- No server deployment order is introduced. Current and earlier guarded Staging
+  build evidence is recorded separately below; no hosted service changed.
 - Existing and original drafts, scheduled posts, publishing records, purchased
   credits and all retired-feature boundaries remain in place.
 - The `AGENTS.md` retirement table is unchanged because this time-based uploader
@@ -172,13 +173,65 @@ Facebook Page Video limits for Page Reels.
 
 ## Current grouped-flow verification — 2026-11-05
 
-The primary agent will fill this record from completed commands and exact build
-evidence. Current status: **full Mobile suite pending; analysis pending; exact
-Staging build/install and emulator group-flow smoke pending; final baseline diff
-audit pending**. Component checks do not replace those gates. Physical phones,
-iOS, real publishing and live 109-language model quality remain separate checks.
+### Source and automated verification
+
+- Final app source: **`b6efa3e5b22abca1892231bdefcba2e9db75001f`**, following the
+  `f3b97910` implementation checkpoint and final copy correction. Freshly fetched
+  `main` remains **`8a340638`**; this source is 5 ahead / 0 behind.
+- Final complete Mobile suite on **`b6efa3e5`**:
+  `flutter test --no-pub --concurrency=4 --reporter expanded` passed **5,460 tests
+  with 10 optional skips** in **7m01s** (exit 0, final log: All tests passed).
+- Final Mobile analysis passed in **19.3s** with no issues.
+- Final baseline diff review and whitespace checks passed: no deleted files or
+  API/schema/environment/dependency/entitlement changes. Existing caption
+  languages, connection-screen changes, source IDs and compatibility remain.
+
+### Exact Staging APK and preserved data
+
+- Guarded helper built version **12108** in **42.3s** from the final source.
+  Package: **`com.postdee.postdee_mobile.staging`**. Built and installed APK
+  SHA-256: **`503bc8852b6726453df199d9394432ba2a88b2d357d7306a29c28a1ad5e41bf4`**.
+- Guarded in-place update on **`emulator-5554`** retained **UID 10197** and the
+  same internal volume. All **16 local JSON files** (15 draft manifests and one
+  group journal) retained identical checksums across the 12108 update. After
+  member editing, all original 11 draft manifests were still unchanged.
+- Staging API health returned **HTTP 200**. Firebase project is
+  **`project-798caf7e-85b8-45e3-af7`**, Firebase auth enabled, mock auth disabled,
+  with **Test Store** billing mode. No API deployment or environment change.
+- The first 12107 build stopped solely because C: had approximately 16 MB free.
+  Only this task's old generated build directory (2.94 GB) was moved to
+  `E:\PostDeeBuildArchive\clip-parts-20261105\build`; no user data was deleted.
+  Idle Gradle daemons were stopped to release a stale lock, and guarded APK
+  12107 then built in 240.3s before the final 12108 copy-fix build.
+
+### Native group-flow evidence and limits
+
+On APK 12107, an actual 180-second 360x640 source prepared two Facebook parts
+(0–90 and 90–180 seconds) and one full-length TikTok/YouTube/Instagram member:
+**three clips in one set, five estimated post units**. The source SHA-256 was
+**`eacbf06116ec259b2f6da526aef9831f2bbf1c6431aba7a97491bea452e32fab`**.
+Shared caption plus an individual override saved, and preview played at
+0:16 / 1:30. Drafts increased from 9 to 10 rows as one group. All original 11
+draft manifests survived installation unchanged.
+
+After the guarded 12108 update and restart, Home's **Review entire set** reopened
+all three parts and their captions. The last-part preview showed 0:00 / 1:30
+with the source's burned-in 1:30 marker. The member channel-settings editor
+opened in save-only mode and saved back to the group. The per-clip scheduling
+page was reachable; the Basic account correctly refused scheduling. Paid-account
+native date/time pickers were **not verified**; automated tests cover independent
+UTC schedules and remembered desired times.
+
+Confirmation stayed disabled for zero usable quota, unavailable channels and
+the unverified Basic account. Home retained dormant balances of 550 post units
+and 300 AI credits while usable post quota was zero. No upload, POST/publishing
+request or live AI generation occurred. Screenshots and supporting output are
+under `output/clip-group-review`.
+
+Physical phones, iOS, real publishing and live 109-language model quality remain
+separate checks. These local checks do not establish real-account delivery.
 No API deployment, database migration, environment/bootstrap change, merge or
-push is required or authorized by this implementation task.
+push was performed.
 
 ## Prior-version verification record — 2026-11-04
 

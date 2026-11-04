@@ -50,10 +50,13 @@ does not authorize a new POST. Facebook remains `platform: 'facebook'` with
 `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and
 optional `isAiGenerated`, with no Page-feed fallback.
 
-The candidate uses `main` `8a340638` without API/schema/environment changes or
-database migration. Group-flow full-suite/build/emulator verification is pending;
-APK 12104/12105 results in the work record describe the earlier version. No API
-deployment, bootstrap-configuration change, merge or push is included. See the
+Source `b6efa3e5` uses freshly verified `main` `8a340638` without API/schema/
+environment/dependency changes or migration. Final analysis and guarded APK
+12108 build/install passed. Staging health answered HTTP 200; native group save,
+preview and restart recovery made no upload, post or AI request. Quota/channel
+gates kept posting disabled, so this is not real-publishing proof. Current suite
+results and historical APK 12104/12105 evidence are separated in the work record.
+No API deployment, bootstrap change, merge or push is included. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Clip duration guide (2026-11-04, Mobile-only candidate)

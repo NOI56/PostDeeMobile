@@ -138,6 +138,23 @@ Mobile**: older APIs can ignore an unknown request field, so the new selector
 must not be released against an API that lacks this implementation. Old clients
 continue to omit the field. See the [work record](docs/superpowers/plans/2026-11-04-caption-output-language.md).
 
+## Package Test Store activation (2026-11-04, Staging)
+
+Owner-approved Staging overrides enable Business, add-ons and replacement tiers
+and set add-on verification to `SANDBOX`. The initial 02:37 Thai-time activation
+used API source `2893dabd` with the existing contracts and 30 migrations;
+code defaults remain off. Test Store products and the Business entitlement now
+exist. Native APK 12101 confirmed
+Business through `GET /billing/subscription`; top-ups passed exact receipt/grant
+confirmation and catalog balance readback through 360 post units / 200 AI credits.
+The later APK 12103 check against Staging API `927a3020` read 550/300 after a
+distinct additional Large purchase. Webhook evidence confirms delayed Business
+renewal and subsequent final expiry; Basic after expiry retains top-up credits.
+This is not raw database inspection, quota enforcement or refund proof.
+Production is unchanged.
+See the [delivery record](docs/STAGING.md#package-test-store-activation-2026-11-04).
+Earlier dated setup requirements describe their original state.
+
 ## Edit scheduled post caption (2026-11-03; Staging 2026-11-04)
 
 `PATCH /posts/:id/caption` edits an owned `QUEUED` post scheduled more than

@@ -1,5 +1,126 @@
 # PostDee Staging
 
+## Package Test Store activation (2026-11-04)
+
+- เจ้าของอนุมัติสร้างสินค้า RevenueCat Test Store เปิด Staging overrides ด้านล่าง
+  และซื้อแบบ sandbox ด้วยบัญชีเดิม งานเอกสารเริ่มจาก `origin/main` `16fe7742`;
+  runtime ในรอบเปิดใช้งานเวลา 02:37 น. เป็น `2893dabd` ไม่มี API/Mobile code,
+  schema, migration หรือ dependency เปลี่ยนในรอบนั้น คง legacy receipts, เครดิต,
+  entitlement, ธีมและ publishing เดิม เอกสารชุดนี้ย้ายขึ้นฐาน `origin/main`
+  `927a3020` ภายหลัง โดยคงระบบภาษาแคปชันและคำแนะนำความยาวคลิปจาก main ไว้ครบ
+- RevenueCat project `4685f495` / Test Store app `appb671aadef7` สร้างครบ:
+
+  | Product ID | RevenueCat ID | ประเภท / entitlement |
+  | --- | --- | --- |
+  | `postdee_business_monthly` | `prod94babf1663` | Monthly / `business` (`entl159a0a6c94`) |
+  | `postdee_post40_caption25` | `prod859b0b523a` | Consumable / ไม่ผูก entitlement |
+  | `postdee_post90_caption50` | `prodfecf128e43` | Consumable / ไม่ผูก entitlement |
+  | `postdee_post190_caption100` | `prod5717063537` | Consumable / ไม่ผูก entitlement |
+
+  ทุกตัวใช้ราคา Test Store **USD 0.99** สำหรับจำลองรายการ ไม่เปลี่ยนราคาไทยอ้างอิง
+  Business 399 บาท/เดือน และแพ็กเติม 49/99/199 บาท ไม่สร้างสินค้าใน Play/App Store
+  และไม่เปลี่ยน SKU เก่า `postdee_post100_caption50` หรือสิทธิ์ 100/50 ของรายการเดิม
+- บันทึกเฉพาะ Staging: `BILLING_BUSINESS_ENABLED=true`,
+  `BILLING_ADDONS_ENABLED=true`, `BILLING_ADDON_TIERS_ENABLED=true` และ
+  `REVENUECAT_ADDON_ENVIRONMENT=SANDBOX` ค่าเริ่มต้น sales flags ใน code ยังปิด และไม่เปลี่ยน
+  Production; อ่านกลับจาก Render UI หลัง Live ตรงทั้ง 4 ค่า ไม่บันทึก secret
+- Redeploy source เดิม `2893dabd` บน `postdee-api-staging`
+  (`srv-d9bb72ojs32c739osa5g`) ผ่าน
+  [deploy `dep-dbl3ess9v7es73fotpj0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbl3ess9v7es73fotpj0):
+  เริ่ม **02:35:15 น. ไทย วันที่ 4 พ.ย.** และ Live **02:37:17.874 น. ไทย**
+  (19:35:15 / 19:37:17.874 UTC วันที่ 3 พ.ย.) Startup 19:36:55 UTC พบ 30 migrations
+  และ “No pending migrations to apply”; 19:37:06 UTC activation guard ผ่านและ
+  backlog ว่าง ตรวจสด `/health` 200, `/ready` 200 พร้อม database/queue `ok`
+  และ `Cache-Control: no-store`, `/posts` ไม่ส่ง token ตอบ 401 ไม่พบ app error/warn
+  ตั้งแต่ startup ถึง 19:40 UTC
+- Regression ใหม่ใช้ billing source ที่ตรง `origin/main`: API 5 ไฟล์ **109 ผ่าน**
+  ด้วย Node 22.23.3; Mobile 6 ไฟล์ **224 ผ่าน / 2 optional screenshot fixtures ข้าม**
+  ด้วย workspace Flutter 3.44.1 / Dart 3.12.1, `--no-pub --concurrency=1` ไม่มี
+  source/config/helper เปลี่ยน ชุดนี้ไม่ใช่ full-suite รอบใหม่
+- Native ก่อนซื้อพบ system ANR เวลา 19:37:24 UTC แล้วแอปกลับ Home; cold boot AVD
+  เดิมด้วย `-no-snapshot-load -no-snapshot-save` โดยไม่ wipe ข้อมูล Basic และร่างเดิม
+  ยังอยู่ ระหว่างงานอีก chat ติดตั้ง APK **12101** จาก
+  `322c02c0f9d132f8a876a915b4d541ba49a1dcfc`; billing/config/core models ตรงกับ
+  baseline `16fe7742` งานนี้ไม่ติดตั้งหรือย้อนรุ่น APK SHA-256:
+  `4a1fae810ef52093c35fdf6def32c4017c93dedbabaa3e6128b95b21bce8c517`
+- Business แสดง Test Store SKU `postdee_business_monthly`, USD 0.99 / `P1M`;
+  cancel ครั้งแรกตอบ “Purchase was cancelled” โดยไม่เปิดสิทธิ์ แล้ว retry สำเร็จ
+  แสดง “สมัคร Business สำเร็จ” และ Business เป็นแพ็กเกจปัจจุบัน เส้นทางสำเร็จรอ
+  `GET /billing/subscription` ยืนยัน purchased plan/owner จึงเป็น server-confirmed
+  membership; ตัวเลข 400/220/50 บนการ์ดเป็นข้อความแพ็กเกจ ไม่พิสูจน์ quota enforcement
+- แพ็กเติมทั้งสามและการซื้อซ้ำผ่าน native Test Store พร้อม “เติมเครดิตสำเร็จ”:
+
+  | รายการ | เครดิตที่ได้ โพสต์/AI | ยอดคงเหลือจาก catalog โพสต์/AI |
+  | --- | ---: | ---: |
+  | Small | 40/25 | 40/25 |
+  | Medium | 90/50 | 130/75 |
+  | Large | 190/100 | 320/175 |
+  | Small ซ้ำ | 40/25 | 360/200 |
+
+  ก่อนแสดงสำเร็จ `POST /billing/addons/confirm` ต้องยืนยัน SKU, transaction ID/
+  namespace, จำนวนเครดิตและ non-expiring policy; ยอดคงเหลืออ่านกลับจาก
+  `GET /billing/addons` ไม่ได้บวกยอดใน UI แบบ optimistic ไม่มีการชำระเงินจริง
+- ภาพหลักฐานอยู่ใน
+  `C:/Users/stopp/.codex/visualizations/2026/11/03/01a1a2dc-afa6-7932-93e0-81f561903109/package-staging/`:
+  `native-business-success-12101.png`, `native-addon-offers-12101.png`,
+  `native-small-success-12101.png`, `native-medium-success-12101.png`,
+  `native-large-success-12101.png` และ `native-repeat-small-success-12101.png`
+- ตรวจซ้ำวันที่ **4 พ.ย. 21:24–21:26 น. ไทย (14:24–14:26 UTC)** บน Native APK
+  **12103** หลังเว้นจากรอบซื้อประมาณ 18 ชั่วโมง เปิด paywall ใหม่จากปุ่ม AI caption
+  ใน uploader โดยร่างยังอยู่ พบ Business USD 0.99 และแพ็กเติมครบ 3 ตัว ปุ่มซื้อ
+  แพ็กเติมถูกปิดสำหรับ Basic ตาม policy ยอดอ่านกลับจาก catalog เป็น **550 โพสต์ /
+  300 AI** จึงยืนยันการเปิด paywall ใหม่และเครดิตคงเหลือหลังสมาชิกหมดอายุได้แล้ว
+  APK 12103 มาจาก source **`249c9fbccd8240534284d9f3c1753d877335a00c`** บนฐาน
+  `927a3020` มีงาน UI เพิ่มเฉพาะเครื่องบน branch
+  `codex/remove-uploader-connect-button` ซึ่งยังไม่ push/merge/deploy จึงไม่ใช่ APK
+  จาก pure main; billing/config/network ไม่เปลี่ยนจากฐาน และ core-model diff
+  แก้เฉพาะข้อความ catalog UI
+- Build/install receipts อยู่ที่ `D:/PostDeeCaptionScratch/20261104-premium-label/`:
+  `verification-receipt.json`, `postinstall-verification.json` และ
+  `postdee-staging-12103-249c9fbc.metadata.json` ยืนยัน package
+  `com.postdee.postdee_mobile.staging`, versionCode 12103, SHA-256 ของ APK และ
+  APK ที่ติดตั้งตรงกัน:
+  `8ab827cede710c4aa353c841822ebbfc9e93ba8918b74865ce9dc8ca43b031c3`
+  ติดตั้งไว้โดยงานอื่น **4 พ.ย. 14:07:59 UTC** และตรวจ **14:13:53 UTC**
+  private-file differences เป็น 0; receipt ยืนยัน Staging API, Firebase auth
+  ผ่าน helper validation และ RevenueCat Test Store รอบตรวจแพ็กเกจนี้ไม่ได้ build,
+  ติดตั้งแอป หรือ deploy ใหม่ Receipt ระบุ ANR **14:09:12 UTC** แล้วกลับมาทำงานได้
+  จึงยังไม่ยืนยัน performance acceptance
+- ยอด 550/300 ต่างจากตารางรอบแรก 360/200 เพราะบัญชีทดสอบเดิมมีการซื้อ Large
+  `postdee_post190_caption100` เพิ่มอีกหนึ่งรายการ หลักฐาน provider แยกรายการเวลา
+  **3 พ.ย. 19:50:12.269 และ 19:53:49.336 UTC** ด้วย transaction คนละตัว
+  ส่วนต่างจึงตรงกับ **190/100** ของการซื้อใหม่ ไม่ใช่การให้ซ้ำจากรายการเดิม
+  ไม่มีการย้อนหรือแก้ยอดเพิ่มเติม และไม่บันทึก user/transaction identifiers
+- ตรวจเส้นทางต่ออายุจากหลักฐาน RevenueCat webhook: `RENEWAL` รอบแรกมี
+  purchase time **3 พ.ย. 19:51:39.181 UTC**, expiry **19:56:39.181 UTC**;
+  event สร้าง **19:53:18.701 UTC** แล้ว API ตอบ 200, `ignored=false`,
+  `plan=BUSINESS`, `status=ACTIVE`, `updatedAt=19:53:19.952 UTC` และ
+  `currentPeriodEnd=19:56:39.181 UTC` จึงยืนยันว่าต่อสิทธิ์สำเร็จหลังล่าช้าประมาณ
+  **100 วินาที** การเห็น Basic หลังช่วงแรก 5 นาทีสอดคล้องกับช่วงรอ renewal นี้
+  ไม่ใช่หลักฐานว่า mapping Business เสีย และไม่ได้เพิ่ม grace policy
+- `EXPIRATION` สุดท้ายสร้าง **3 พ.ย. 20:14:57.506 UTC** โดย last-period purchase
+  **20:06:39.181 UTC** และ expiry **20:11:39.181 UTC** หรือประมาณ 25 นาทีจาก
+  การสมัครรอบแรก ดังนั้น Basic ในการตรวจซ้ำหลังประมาณ 18 ชั่วโมงตรงกับสิทธิ์ที่
+  หมดอายุแล้ว เครดิตแพ็กเติมยังอยู่และไม่มีวันหมดอายุ; รอบนี้ไม่ได้รัน full-suite ใหม่
+- Staging ที่ตรวจซ้ำใช้ API **`927a3020`** ซึ่งอีกงาน deploy ไว้ก่อนกลับมาตรวจ ผ่าน
+  [deploy `dep-dblj1f3bc2fs73edlkb0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dblj1f3bc2fs73edlkb0)
+  และ Live **4 พ.ย. 20:20:20.965 น. ไทย (13:20:20.964819 UTC)** ไม่ใช่การ
+  redeploy ในรอบตรวจแพ็กเกจนี้ โค้ด billing/subscription ตรงกับฐาน `16fe7742`;
+  ไฟล์ใหม่ `caption_language.dart` ใน Mobile core models อยู่นอก billing ไม่มี
+  schema/migration เปลี่ยน
+- ตรวจ HTTP สด **4 พ.ย. 14:28 UTC**: `/health` และ `/ready` ตอบ 200,
+  database/queue `ok`, `Cache-Control: no-store`;
+  [CI ของ `927a3020`](https://github.com/NOI56/PostDeeMobile/actions/runs/41834793227)
+  และ [iOS CI](https://github.com/NOI56/PostDeeMobile/actions/runs/41834793562)
+  success แต่ไม่ได้ติดตั้งหรือทดสอบ iOS บนอุปกรณ์ในรอบนี้
+- ภาพตรวจซ้ำในโฟลเดอร์หลักฐานเดิม: `native-business-offer-12103.png` และ
+  `native-retained-credits-12103.png`
+- ยังไม่ยืนยัน raw database/ledger inspection, quota enforcement, refunds,
+  interrupted recovery, Play/App Store checkout หรือ proration; ความล่าช้าของ
+  sandbox renewal ยังเป็นข้อจำกัดที่พบจริง และ guard เดิมยังปฏิเสธ Starter/Pro-to-Business
+  upgrades ของ Test Store ไม่มี Production activation และ ANR ก่อนทดสอบยังไม่ถือว่า
+  ผ่าน performance acceptance
+
 ## แก้แคปชั่นโพสต์ที่ตั้งเวลาและชื่อ YouTube — 4 พฤศจิกายน 2026
 
 - เจ้าของสั่ง merge PR #58, deploy Staging และติดตั้งแอป พร้อมยืนยันใช้

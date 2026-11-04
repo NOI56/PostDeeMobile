@@ -117,6 +117,24 @@ Build roadmap for PostDee.
   public branch/PR publication and deployment are not included in this local
   candidate.
 
+## Package Test Store activation (2026-11-04, Staging)
+
+- Created Business and three consumables in RevenueCat Test Store, attached only
+  Business to its subscription entitlement, and applied owner-approved Staging
+  overrides. The initial 02:37 Thai-time activation used API `2893dabd`;
+  code defaults and Production stay unchanged.
+- API regression: 109 passed. Mobile: 224 passed / 2 optional previews skipped.
+  Native APK 12101 passed Business cancellation/retry, Small/Medium/Large and
+  repeat Small purchases; server-read credits reached 360/200. Refunds,
+  interrupted recovery, quota enforcement and real-store billing remain unverified.
+  Test Store Starter/Pro-to-Business upgrades remain unsupported by the guard.
+- Later APK 12103/Staging API `927a3020` paywall reopening passed, retaining the
+  uploader draft and 550/300 credits after a distinct additional Large purchase.
+  Delayed sandbox renewal was confirmed successful; current Basic followed final
+  expiry. No new full-suite run or grace policy change is claimed.
+- See the [delivery record](docs/STAGING.md#package-test-store-activation-2026-11-04);
+  older dated preparation and delivery records remain historical.
+
 ## Edit scheduled captions (2026-11-03, local candidate)
 
 - Add a Thai/English caption editor from queued scheduled-post details, with

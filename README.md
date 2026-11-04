@@ -121,6 +121,23 @@ Unknown Direct limits stay pending and can be retried. Mobile guidance and
 preflight share one duration policy. No merge, deployment, or device update is
 included; see [Mobile details](apps/mobile/README.md#clip-duration-guide-2026-11-04-local-candidate).
 
+## Package Test Store activation (2026-11-04, Staging)
+
+The owner authorized Business and the three replacement top-ups in RevenueCat
+Test Store, plus four Staging environment overrides. The initial 02:37 Thai-time
+activation used API source `2893dabd`; code defaults and Production remain
+unchanged. Test products cost USD 0.99 each, separately from the unchanged THB
+reference prices.
+Native APK 12101 passed Business cancellation/retry, all three top-up purchases
+and a repeat Small purchase; API-confirmed credits reached 360 post units / 200
+AI credits. Reopening on APK 12103 against Staging API `927a3020` read back
+550/300 after a distinct additional Large purchase. Business renewal succeeded
+after a sandbox webhook delay; Basic at the later check followed the final
+expiry, with credits retained. Refunds, interrupted recovery, quota enforcement,
+real-store billing and Production remain unverified. See the
+[delivery record](docs/STAGING.md#package-test-store-activation-2026-11-04).
+Older dated sections retain their original scope.
+
 ## Edit scheduled captions (2026-11-03, local candidate)
 
 Post details allow manual caption and YouTube-title edits for queued scheduled

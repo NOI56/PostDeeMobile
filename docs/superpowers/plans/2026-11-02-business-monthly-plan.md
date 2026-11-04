@@ -1,5 +1,22 @@
 # Additional monthly main subscription
 
+## Staging Test Store activation — 2026-11-04
+
+The owner separately authorized creating Test Store `postdee_business_monthly`,
+attaching entitlement `business`, enabling Staging offers and a sandbox purchase
+on the existing account. Its USD 0.99 test price does not change the THB 399/month
+reference. The initial 02:37 Thai-time activation used API `2893dabd`.
+Native APK 12101 canceled the first checkout without activation, then purchased
+successfully from Basic and displayed API-confirmed Business membership.
+The later APK 12103 check against Staging API `927a3020` confirmed the offer
+remains available. Webhook evidence established a successful delayed renewal
+and final expiry about 25 minutes from the initial Test Store purchase; Basic
+after roughly 18 hours is expected. No grace policy was added. The current guard
+still rejects Starter/Pro Test Store upgrades; quotas, refunds and real-store replacement
+remain unverified. Production, code defaults and original dated records remain
+unchanged. See the
+[delivery record](../../STAGING.md#package-test-store-activation-2026-11-04).
+
 ## Integration authorization — 2026-11-03
 
 The owner approved merging the pending UX and Business work into `main`, pushing

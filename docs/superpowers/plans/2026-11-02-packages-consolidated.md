@@ -1,5 +1,21 @@
 # Consolidated package categories and top-ups
 
+## Staging Test Store activation — 2026-11-04
+
+The owner separately authorized creating the three approved consumables in
+RevenueCat Test Store and enabling their Staging offers. All use USD 0.99 test
+prices without changing the THB references or historical 100/50 grants; no
+consumable is attached to a subscription entitlement. The initial 02:37 Thai-time
+activation used API `2893dabd` with the approved overrides.
+Native APK 12101 passed Small, Medium, Large and repeat Small purchases, with
+server-read balances 40/25, 130/75, 320/175 and 360/200 respectively. Reopening
+on APK 12103 against Staging API `927a3020` read 550/300 after a distinct
+additional Large purchase, preserving credits after Business expiry. Basic
+purchase buttons remained disabled by policy. Refunds and interrupted recovery
+remain unverified.
+See the [delivery record](../../STAGING.md#package-test-store-activation-2026-11-04).
+The original draft and rollout exclusions below remain historical.
+
 ## Approved scope and baseline
 
 The owner authorized one consolidated draft PR for package categories and the

@@ -159,6 +159,24 @@ not invalidate account capabilities. The actual Direct Post flow still loads
 and validates fresh provider options independently before sending. No database,
 API contract, environment or server-side probing changes are introduced.
 
+## Package Test Store activation (2026-11-04, Staging)
+
+The initial activation configured RevenueCat Test Store and four Staging
+overrides only; its 02:37 Thai-time API source was `2893dabd`, without schema or
+migration changes (30 migrations). The APK tested in that round was 12101
+(`322c02c0`), with billing/config/model code identical to the documentation
+baseline `16fe7742`; this task did not reinstall.
+Business uses its subscription entitlement; consumables use immutable receipt
+grants and do not unlock membership. Closing sales must preserve receipt
+recovery, Business-aware readers and grant snapshots. Production and code
+defaults are unchanged. Native Business and all three top-ups, including repeat
+Small, passed server-confirmed sandbox acceptance; refunds, interrupted recovery
+and real-store replacement remain unverified. A later APK 12103 readback against
+Staging API `927a3020` confirmed 550/300 retained credits after an additional
+Large purchase and final subscription expiry. A delayed sandbox renewal webhook
+had successfully extended Business earlier; no grace policy was added.
+See the [delivery record](docs/STAGING.md#package-test-store-activation-2026-11-04).
+
 ## Scheduled-caption mutation and publish snapshot (2026-11-03, local candidate)
 
 The additive caption route uses the same owner-operation and per-post mutation

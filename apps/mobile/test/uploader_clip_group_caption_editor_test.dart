@@ -37,6 +37,7 @@ class _Fixture extends CaptionEnglishFixture {
   ClipGroupCaptionContext? initialContext = _context;
   ValueChanged<bool>? onBusy;
   bool contextValid = true;
+  Future<bool> Function()? validationHook;
   int validations = 0;
   bool nestedGroupRoute = false;
   late String originalPath;
@@ -81,7 +82,9 @@ class _Fixture extends CaptionEnglishFixture {
         onClipGroupCaptionContextChanged: contexts.add,
         validateClipGroupCaptionContext: () async {
           validations++;
-          return contextValid;
+          return validationHook == null
+              ? contextValid
+              : await validationHook!();
         },
         initialDraftId: _originalId,
         draftStore: store,
@@ -267,6 +270,39 @@ void main() {
         'Backup source caption must stay separate');
     expect(fixture.apiWrites, 0);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'editing text during final async validation keeps it until explicit Apply',
+      (tester) async {
+    final gate = Completer<bool>();
+    var pauseFinalValidation = false;
+    var reachedFinalValidation = false;
+    final fixture = _Fixture();
+    fixture.validationHook = () async {
+      if (!pauseFinalValidation) return true;
+      reachedFinalValidation = true;
+      return gate.future;
+    };
+    await _mount(tester, fixture);
+    await _tap(tester, 'uploader-ai-generate-button');
+    expect(_key('uploader-shared-ai-preview'), findsOneWidget);
+    pauseFinalValidation = true;
+    await _tap(tester, 'uploader-shared-ai-apply');
+    expect(reachedFinalValidation, isTrue);
+    fixture.shared.text = 'Seller typed during the final local check';
+    await tester.pumpAndSettle();
+    gate.complete(true);
+    await tester.pumpAndSettle();
+    expect(fixture.shared.text, 'Seller typed during the final local check');
+    expect(_key('uploader-shared-ai-undo'), findsNothing);
+    pauseFinalValidation = false;
+    await _tap(tester, 'uploader-ai-reopen-result');
+    await _tap(tester, 'uploader-shared-ai-apply');
+    await _tap(tester, 'uploader-shared-ai-undo');
+    expect(fixture.shared.text, 'Seller typed during the final local check');
+    expect(fixture.requests, hasLength(1));
+    expect(fixture.uploadRequests, hasLength(1));
   });
 
   testWidgets(

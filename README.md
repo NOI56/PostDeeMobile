@@ -1,5 +1,17 @@
 # PostDee
 
+## Posting clarity follow-up (2026-11-05, local candidate)
+
+Keep the approved split → shared caption → individual schedules → confirmation
+flow. This Mobile-only follow-up makes AI cost/results, local versus platform
+drafts, episode names, scheduling access and accepted-versus-published outcomes
+clearer. Review shortcuts use the existing prerequisite checks. Group draft
+previews read current journal captions without rewriting retained originals.
+Successful AI choices can be reopened in the same valid editing context without
+another provider request; dismissing a preview does not refund generation usage.
+No API, schema, entitlement or publishing-policy change. Verification is recorded
+in the [clip flow work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Searchable caption languages (2026-11-04, local candidate)
 
 AI caption output choices expand to all 109 text-language entries in Google's

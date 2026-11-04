@@ -9,6 +9,7 @@ PublishDraft _draft(String id,
         {String owner = 'owner',
         String? group,
         bool source = false,
+        String caption = '',
         int updated = 1}) =>
     PublishDraft(
       version: publishDraftManifestVersion,
@@ -20,7 +21,7 @@ PublishDraft _draft(String id,
       videoPath: '/$id.mp4',
       videoName: '$id.mp4',
       videoSizeBytes: 10,
-      caption: '',
+      caption: caption,
       aiGuidance: '',
       watermarkEnabled: false,
       platformApiValues:
@@ -58,6 +59,61 @@ ClipGroupDraft _group({
     );
 
 void main() {
+  test('display uses current shared caption without changing source or members',
+      () {
+    final original = _draft('original',
+        group: 'group', source: true, caption: 'Source backup caption');
+    final part = _draft('part', group: 'group', caption: 'Custom member text');
+    final group = _group().copyWith(sharedCaption: 'Current shared caption');
+    final entry = clipGroupDraftList([original, part], groups: [group]).single;
+    expect(entry.displayTitle, 'Current shared caption');
+    expect(entry.primaryDraft, same(original));
+    expect(entry.members.last, same(part));
+    expect(original.caption, 'Source backup caption');
+    expect(part.caption, 'Custom member text');
+    expect(original.submissionRequestId, 'request-original');
+    expect(original.videoPath, '/original.mp4');
+  });
+
+  test('empty shared caption uses group title instead of stale source text',
+      () {
+    final original = _draft('original',
+        group: 'group', source: true, caption: 'Old source caption');
+    final entry = clipGroupDraftList([original], groups: [_group()]).single;
+    expect(entry.displayTitle, 'Clip group');
+    expect(original.caption, 'Old source caption');
+  });
+
+  test('display journal binding is owner and membership scoped', () {
+    final original = _draft('original',
+        group: 'group', source: true, caption: 'Backup caption');
+    final otherOwner = _group(owner: 'another-owner')
+        .copyWith(sharedCaption: 'Private other-owner caption');
+    final wrongSource = _group(source: 'unrelated')
+        .copyWith(sharedCaption: 'Unrelated source caption');
+    for (final group in [otherOwner, wrongSource, _group(parts: [])]) {
+      final entry = clipGroupDraftList([original], groups: [group]).single;
+      expect(entry.displayTitle, 'Backup caption');
+    }
+    final duplicate = _group().copyWith(sharedCaption: 'Conflicting caption');
+    final conflicted =
+        clipGroupDraftList([original], groups: [_group(), duplicate]).single;
+    expect(conflicted.displayTitle, 'Backup caption');
+  });
+
+  test('latest group journal edit orders the preview without changing source',
+      () {
+    final original = _draft('original', group: 'group', source: true);
+    final other = _draft('other', updated: 2);
+    final group = _group().copyWith(
+        sharedCaption: 'Latest group', updatedAt: DateTime.utc(2026, 1, 3));
+    final entries = clipGroupDraftList([other, original], groups: [group]);
+    expect(entries.first.displayTitle, 'Latest group');
+    expect(entries.first.updatedAt, group.updatedAt);
+    expect(original.updatedAt, DateTime.utc(2026, 1, 1));
+    expect(entries.last.displayTitle, 'other.mp4');
+  });
+
   test('a source and its parts form one entry without hiding another draft',
       () {
     final original = _draft('original', group: 'group', source: true);

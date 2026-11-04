@@ -75,7 +75,9 @@ List<PublishDraft> projectClipGroupDrafts(
 /// A group and all its local media have one entry in every draft list.
 /// The source stays reachable even after accepted members have been removed.
 class ClipGroupDraftListEntry {
-  ClipGroupDraftListEntry(List<PublishDraft> drafts)
+  ClipGroupDraftListEntry(List<PublishDraft> drafts) : this._(drafts, null);
+
+  ClipGroupDraftListEntry._(List<PublishDraft> drafts, this._group)
       : members = List.unmodifiable(
           drafts.toList()
             ..sort((a, b) {
@@ -88,14 +90,34 @@ class ClipGroupDraftListEntry {
         );
 
   final List<PublishDraft> members;
+  final ClipGroupDraft? _group;
   PublishDraft get primaryDraft => members.first;
+
+  /// Current journal text is display metadata, never a rewritten source draft.
+  String get displayTitle {
+    final group = _group;
+    if (group != null) {
+      return group.sharedCaption.trim().isEmpty
+          ? group.title.trim()
+          : group.sharedCaption.trim();
+    }
+    return primaryDraft.caption.trim().isEmpty
+        ? primaryDraft.videoName
+        : primaryDraft.caption.trim();
+  }
+
   String? get groupId => primaryDraft.clipGroupId;
   bool get isGroup => groupId != null;
   int get clipCount =>
       members.where((draft) => !draft.isClipGroupSource).length;
-  DateTime get updatedAt => members
-      .map((draft) => draft.updatedAt)
-      .reduce((a, b) => a.isAfter(b) ? a : b);
+  DateTime get updatedAt {
+    final latest = members
+        .map((draft) => draft.updatedAt)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    final groupTime = _group?.updatedAt;
+    return groupTime != null && groupTime.isAfter(latest) ? groupTime : latest;
+  }
+
   Set<String> get platformApiValues {
     final clips = members.where((draft) => !draft.isClipGroupSource).toList();
     return {
@@ -105,11 +127,28 @@ class ClipGroupDraftListEntry {
   }
 }
 
-List<ClipGroupDraftListEntry> clipGroupDraftList(
-    Iterable<PublishDraft> drafts) {
+List<ClipGroupDraftListEntry> clipGroupDraftList(Iterable<PublishDraft> drafts,
+    {Iterable<ClipGroupDraft> groups = const []}) {
+  final allDrafts = drafts.toList();
+  final manifests = groups.toList();
+  final displayGroups = <(String, String), ClipGroupDraft>{};
+  for (final group in manifests) {
+    try {
+      validateClipGroupDraft(group);
+      displayGroups[(group.ownerUserId, group.id)] = group;
+    } on FormatException {
+      // Invalid or conflicting metadata cannot replace an ordinary preview.
+    }
+  }
+  final projected = {
+    for (final draft in manifests.isEmpty
+        ? const <PublishDraft>[]
+        : projectClipGroupDrafts(allDrafts, manifests))
+      (draft.ownerUserId, draft.id): draft,
+  };
   final grouped = <(String, String), List<PublishDraft>>{};
   final entries = <ClipGroupDraftListEntry>[];
-  for (final draft in drafts) {
+  for (final draft in allDrafts) {
     final group = draft.clipGroupId;
     if (group == null) {
       entries.add(ClipGroupDraftListEntry([draft]));
@@ -118,7 +157,15 @@ List<ClipGroupDraftListEntry> clipGroupDraftList(
           (draft.ownerUserId, group), () => <PublishDraft>[]).add(draft);
     }
   }
-  entries.addAll(grouped.values.map(ClipGroupDraftListEntry.new));
+  for (final entry in grouped.entries) {
+    final candidate = displayGroups[entry.key];
+    final usable = candidate != null &&
+        entry.value.every((draft) =>
+            projected[(draft.ownerUserId, draft.id)]?.clipGroupId ==
+            candidate.id);
+    entries
+        .add(ClipGroupDraftListEntry._(entry.value, usable ? candidate : null));
+  }
   entries.sort((a, b) {
     final updated = b.updatedAt.compareTo(a.updatedAt);
     return updated != 0

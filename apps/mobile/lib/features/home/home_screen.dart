@@ -47,6 +47,7 @@ class HomeScreen extends StatefulWidget {
     this.onOpenProfile,
     this.onOpenLinkInBio,
     this.loadDrafts,
+    this.loadClipGroups,
     this.loadConnections,
     this.loadScheduledPosts,
     this.loadLinkProfile,
@@ -73,6 +74,7 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback? onOpenProfile;
   final VoidCallback? onOpenLinkInBio;
   final Future<List<PublishDraft>> Function()? loadDrafts;
+  final HomeClipGroupsLoader? loadClipGroups;
   final Future<List<SocialConnectionResult>> Function()? loadConnections;
   final HomeRecentPostsLoader? loadScheduledPosts;
   final HomeLinkProfileLoader? loadLinkProfile;
@@ -539,6 +541,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ? null
                           : _recentPosts.isNotEmpty,
                       loadDrafts: widget.loadDrafts,
+                      loadClipGroups: widget.loadClipGroups,
                       loadConnections: widget.loadConnections,
                       loadScheduledPosts: widget.loadScheduledPosts,
                       onCreatePost: _createPost,

@@ -374,8 +374,8 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
       return widget.tikTokDirectPost
           ? clipSplitText(context, 'โพสต์ตรง · สูงสุด $maximum นาที',
               'Direct post · Up to $maximum min')
-          : clipSplitText(context, 'ส่งเป็นร่าง · สูงสุด $maximum นาที',
-              'Send to drafts · Up to $maximum min');
+          : clipSplitText(context, 'ส่งไปร่างใน TikTok · สูงสุด $maximum นาที',
+              'Send to TikTok drafts · Up to $maximum min');
     }
     return clipSplitText(context, 'สูงสุด $maximum นาที', 'Up to $maximum min');
   }

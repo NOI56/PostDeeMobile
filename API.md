@@ -1,5 +1,16 @@
 # API.md
 
+## Mobile posting clarity follow-up (2026-11-05, local candidate)
+
+No route, payload, database, quota or entitlement change. Reopening valid cached
+AI choices is a local presentation action; fresh generation retains the existing
+request cost, reservation/refund and usage response. Closing a successful preview
+does not undo its generation charge. Local draft preparation/saves consume no
+post units. Accepted group receipts are not proof of platform publication; actual
+status and TikTok follow-up use the existing post-detail contract. Recovery keeps
+the original per-item request identities and never treats an unresolved receipt
+as permission to charge/create a replacement post.
+
 ## Expanded caption languages (2026-11-04, local candidate)
 
 `POST /captions/generate-from-clip` extends the existing optional

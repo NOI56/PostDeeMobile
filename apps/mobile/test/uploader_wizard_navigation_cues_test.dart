@@ -98,7 +98,13 @@ Future<_SubmissionCalls> _openWizard(
 }
 
 Future<void> _pickVideo(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('uploader-video-preview-picker')));
+  final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
+  if (picker.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(picker, 180,
+        scrollable: uploaderMainScroll);
+  }
+  await tester.ensureVisible(picker);
+  await tester.tap(picker);
   await tester.pumpAndSettle();
 }
 
@@ -117,6 +123,31 @@ Future<void> _selectTikTok(WidgetTester tester) async {
   await tester.ensureVisible(channel);
   await tester.pumpAndSettle();
   await tester.tap(channel);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _prepareReview(WidgetTester tester) async {
+  await goToUploaderStep(tester, 0);
+  await _pickVideo(tester);
+  await goToUploaderStep(tester, 1);
+  final field = find.byKey(const ValueKey('uploader-caption-field'));
+  if (field.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(field, 180, scrollable: uploaderMainScroll);
+  }
+  await tester.ensureVisible(field);
+  await tester.enterText(field, 'แคปชันสำหรับตรวจทาน');
+  await goToUploaderStep(tester, 2);
+  await _selectTikTok(tester);
+}
+
+Future<void> _requestReview(WidgetTester tester) async {
+  await tester.pump();
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pump();
+  final progress = find.byKey(const ValueKey('uploader-progress-3'));
+  await tester.ensureVisible(progress);
+  await tester.pump();
+  await tester.tap(progress);
   await tester.pumpAndSettle();
 }
 
@@ -172,6 +203,7 @@ void main() {
         final calls =
             await _openWizard(tester, textScale: configuration.textScale);
         for (var step = 0; step < 4; step += 1) {
+          if (step == 3) await _prepareReview(tester);
           await goToUploaderStep(tester, step);
           final circles = [
             for (var index = 0; index < 4; index += 1)
@@ -198,7 +230,8 @@ void main() {
                     of: connector, matching: find.byType(ExcludeSemantics)),
                 findsWidgets);
           }
-          _expectProgressSemantics(tester, currentStep: step, completed: {});
+          _expectProgressSemantics(tester,
+              currentStep: step, completed: step == 3 ? {0, 1, 2} : {});
           expect(tester.takeException(), isNull);
         }
         calls.expectNoSubmission();
@@ -212,6 +245,7 @@ void main() {
       (tester) async {
     final calls = await _openWizard(tester);
     for (var index = 0; index < 4; index += 1) {
+      if (index == 3) await _prepareReview(tester);
       await goToUploaderStep(tester, index);
       expect(find.text(_stepLabel(index)), findsOneWidget);
       if (index < 3) {
@@ -235,14 +269,18 @@ void main() {
   });
 
   testWidgets(
-      'skipping to review leaves empty stages incomplete and announces selection',
+      'skipping to review returns to the missing clip and keeps stages incomplete',
       (tester) async {
     final semantics = tester.ensureSemantics();
     try {
       final calls = await _openWizard(tester);
-      await goToUploaderStep(tester, 3);
+      await _requestReview(tester);
+      expect(find.byKey(const ValueKey('uploader-step-video')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+      expect(find.text('เลือกวิดีโอจากเครื่องก่อน'), findsOneWidget);
       _expectCompleted({});
-      _expectProgressSemantics(tester, currentStep: 3, completed: {});
+      _expectProgressSemantics(tester, currentStep: 0, completed: {});
       calls.expectNoSubmission();
     } finally {
       semantics.dispose();
@@ -312,8 +350,32 @@ void main() {
       find.byKey(const ValueKey('uploader-caption-field')),
       '  \n  ',
     );
-    await goToUploaderStep(tester, 3);
-    _expectCompleted({0, 2});
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const ValueKey('uploader-caption-field')))
+            .controller!
+            .text
+            .trim(),
+        isEmpty);
+    await _requestReview(tester);
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const ValueKey('uploader-caption-field')))
+            .focusNode!
+            .hasFocus,
+        isTrue);
+    expect(find.byKey(const ValueKey('uploader-caption-required-notice')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+    _expectCompleted({0});
+    await goToUploaderStep(tester, 2);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('uploader-platform-TIKTOK')),
+            matching: find.byIcon(Icons.check_circle_rounded)),
+        findsOneWidget);
     calls.expectNoSubmission();
   });
 
@@ -329,16 +391,13 @@ void main() {
     );
     await goToUploaderStep(tester, 2);
     await _selectTikTok(tester);
-    await goToUploaderStep(tester, 3);
+    await _requestReview(tester);
     _expectCompleted({0, 1});
     expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey('publish-review-confirm')),
-          )
-          .onPressed,
-      isNull,
-    );
+        find.byKey(const ValueKey('uploader-step-platforms')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+    expect(find.textContaining('ยังยืนยันบัญชีหรือเพจปลายทางไม่ได้'),
+        findsOneWidget);
     calls.expectNoSubmission();
   });
 
@@ -351,6 +410,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final calls = await _openWizard(tester, textScale: 2);
     for (var index = 0; index < 4; index += 1) {
+      if (index == 3) await _prepareReview(tester);
       await goToUploaderStep(tester, index);
       expect(tester.takeException(), isNull);
       final header = find.byKey(ValueKey(_stepKeys[index]));

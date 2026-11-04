@@ -118,6 +118,14 @@ const _fallbackMessages = <String, String>{
 };
 
 const _englishMessages = <String, String>{
+  'เปิดตัวช่วย AI': 'Open AI caption helper',
+  'ใช้แคปชั่นแยกตามช่องทาง': 'Use separate captions by channel',
+  'ตอนนี้ใช้แคปชั่นเดียวกันทุกช่องทาง':
+      'One shared caption is currently used for all channels.',
+  'ใช้เครดิตเมื่อสร้างผลลัพธ์แล้ว เปิดดูหรือเลือกใช้ไม่หักเพิ่ม':
+      'Credits are used when results are generated. Viewing or applying them does not use more credits.',
+  'ดูผล AI ที่สร้างไว้ · ไม่ใช้เครดิตเพิ่ม':
+      'View saved AI results · No extra credits',
   'เลือกภาษาแคปชั่น': 'Choose caption language',
   'ค้นหาชื่อภาษาหรือรหัสภาษา': 'Search languages or codes',
   'ล้างการค้นหา': 'Clear search',

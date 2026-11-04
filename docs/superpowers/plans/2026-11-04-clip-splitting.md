@@ -1,5 +1,28 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Posting usability follow-up — 2026-11-05
+
+The owner authorized implementing the posting-flow audit. Baseline: branch
+`codex/clip-group-review`, HEAD `22f1fcfe`, source `54b222638`, freshly fetched
+`origin/main` `8a340638` (merge base identical, ahead 8 / behind 0).
+Existing generated Windows changes and untracked output are preserved.
+
+Scope: explicit AI costs and same-context result reuse; usable balance display;
+clear caption modes; conditional split advice and per-platform part names;
+local/platform draft distinction; current journal caption previews; review
+prerequisites; scheduling access; YouTube visibility; clip context during TikTok
+consent; group activity and links to existing actual post status. Preserve the
+approved caption-first sequence, originals, manual edits/overrides, individual
+dates, account binding, recovery identities, Reels settings and quota accounting.
+No API/schema/provider/environment/entitlement change; no migration, push, merge,
+hosted deployment, real publishing or paid AI request is authorized by this UI
+follow-up. Emulator updates use the guarded Staging updater and preserve data.
+
+Verification for this follow-up is pending; the older APK/suite receipts below
+remain evidence only for their named source. New regression tests precede the
+implementation. Final analysis, complete Mobile tests, exact-source Staging APK
+and native checks will be recorded after completion.
+
 Status updated 2026-11-05: the owner selected **variant 2, shared caption first**
 for the real grouped flow. After splitting/reopening, the shared caption and
 existing AI panel open directly inline. Source `54b222638` builds on `cffe7191`

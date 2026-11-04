@@ -126,6 +126,19 @@ Future<void> _tap(WidgetTester tester, String key) async {
 }
 
 void main() {
+  testWidgets('split advice is conditional until posting channels are selected',
+      (tester) async {
+    final fixture = _Fixture(locale: const Locale('en'));
+    addTearDown(fixture.dispose);
+    fixture.initialVideo = fixture.makeVideo('long.mp4', duration: 270);
+    await fixture.mount(tester);
+    await revealVideoEnglishControl(tester, _key('uploader-clip-split-prompt'));
+    expect(find.text('These channels need shorter parts if you choose them'),
+        findsOneWidget);
+    expect(fixture.segmentCalls, 0);
+    expect(fixture.store.savedRequests, isEmpty);
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     final sessions = PostDeeAuthSessionStore.instance;

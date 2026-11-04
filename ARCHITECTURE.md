@@ -2,6 +2,19 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Posting usability follow-up (2026-11-05, local candidate)
+
+The Mobile composer reuses existing validation when opening review. AI result
+reuse is ephemeral and bound to the current owner/media/writing context; reopening
+valid choices does not call upload/generation or change quota rules. It requires
+explicit Apply and retains manual-edit/undo/session protections.
+
+Group list display metadata comes from validated owner-bound journals while
+retaining the original `PublishDraft` payload for resume and recovery. Submission
+activity is presentation-only. Accepted receipts stay separate from actual
+delivery outcomes; per-item status opens the existing post-detail loader and its
+platform-specific next steps. No persisted manifest, API or database migration.
+
 ## Shared caption language catalog (2026-11-04, local candidate)
 
 `shared/caption-languages.json` snapshots the 109 documented general-use text

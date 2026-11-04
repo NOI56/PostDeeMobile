@@ -397,7 +397,6 @@ void main() {
       return draft;
     });
     expect(sections, isEmpty);
-    await tap(tester, 'clip-group-edit-yt1');
     await tap(tester, 'clip-group-ai-yt1');
     expect(sections, [ClipGroupEditSection.caption]);
     expect(submitted, 0);
@@ -408,7 +407,7 @@ void main() {
       (tester) async {
     await mount(tester);
     expect(find.byKey(const ValueKey('clip-group-review')), findsOneWidget);
-    expect(find.text('ใช้ 3 หน่วยโพสต์'), findsOneWidget);
+    expect(find.text('ส่งใหม่ใช้ 3 หน่วยโพสต์'), findsOneWidget);
     expect(submitted, 0);
     await tap(tester, 'clip-group-next');
     expect(submitted, 0);

@@ -29,11 +29,13 @@ class TikTokPublishingSettingsSheet extends StatefulWidget {
       {super.key,
       required this.initialSettings,
       this.connectionDisplayName,
+      this.clipContextLabel,
       this.memoryMessage,
       required this.loadOptions,
       required this.isCurrent});
   final PlatformPublishSettings initialSettings;
   final String? connectionDisplayName;
+  final String? clipContextLabel;
   final String? memoryMessage;
   final Future<TikTokPublishingOptionsResult> Function() loadOptions;
   final bool Function() isCurrent;
@@ -210,6 +212,12 @@ class _TikTokSettingsState extends State<TikTokPublishingSettingsSheet> {
               ? _error ?? validation
               : null,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (widget.clipContextLabel case final label?) ...[
+          Text(label,
+              key: const ValueKey('tiktok-clip-context'),
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 12),
+        ],
         const ChannelText('วิธีส่งวิดีโอ',
             style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),

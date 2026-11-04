@@ -2,6 +2,19 @@
 
 Build roadmap for PostDee.
 
+## Posting usability follow-up (2026-11-05, local candidate)
+
+- Preserve caption-first split sets and independently selected clip times.
+- Explain AI credits before generation, retain the latest valid result for
+  explicit reuse, and show usable monthly plus add-on balances truthfully.
+- Distinguish local draft saves, platform draft transfers and publishing;
+  identify per-platform episodes and open actual post status after acceptance.
+- Surface preparation requirements, scheduling access and YouTube visibility;
+  prevent review shortcuts from bypassing existing checks.
+- Project current group captions into Home/Drafts without modifying backups or
+  saved submission identities. No API/schema/entitlement/deployment change.
+- See [verification and limits](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Full documented caption language list (2026-11-04, local candidate)
 
 - Expand output choices from 17 to the 109 languages named in Google's general-use

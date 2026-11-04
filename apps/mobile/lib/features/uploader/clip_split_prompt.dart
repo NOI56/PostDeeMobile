@@ -12,11 +12,13 @@ class ClipSplitPrompt extends StatelessWidget {
     required this.exceededPlatforms,
     required this.onOpen,
     this.needsSubmissionRecovery = false,
+    this.hasSelectedChannels = true,
   });
 
   final List<SocialPlatform> exceededPlatforms;
   final VoidCallback? onOpen;
   final bool needsSubmissionRecovery;
+  final bool hasSelectedChannels;
 
   @override
   Widget build(BuildContext context) => PostDeeCard(
@@ -32,8 +34,12 @@ class ClipSplitPrompt extends StatelessWidget {
                 child: Text(
                   uploaderText(
                       context,
-                      'คลิปยาวเกิน ${exceededPlatforms.length} ช่องทาง',
-                      'Too long for ${exceededPlatforms.length} ${exceededPlatforms.length == 1 ? 'channel' : 'channels'}'),
+                      hasSelectedChannels
+                          ? 'คลิปยาวเกิน ${exceededPlatforms.length} ช่องทาง'
+                          : 'หากโพสต์ไปช่องทางเหล่านี้ ต้องแบ่งคลิป',
+                      hasSelectedChannels
+                          ? 'Too long for ${exceededPlatforms.length} ${exceededPlatforms.length == 1 ? 'channel' : 'channels'}'
+                          : 'These channels need shorter parts if you choose them'),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
               ),
@@ -47,8 +53,8 @@ class ClipSplitPrompt extends StatelessWidget {
             const SizedBox(height: AppTheme.spaceSm),
             Text(uploaderText(
                 context,
-                'แบ่งเป็นตอนให้พอดีกับแต่ละช่องทางไหม? ช่องทางที่ลงเต็มได้จะใช้คลิปเดิม',
-                'Split into parts for each channel? Channels that accept the full video can keep it.')),
+                'เลือกแบ่งเฉพาะช่องทางที่จะลงได้ ช่องทางที่รับความยาวนี้ได้ยังใช้คลิปเต็ม',
+                'Choose only the channels you want to post to. Channels that accept this duration can keep the full video.')),
             const SizedBox(height: AppTheme.spaceMd),
             FilledButton.icon(
               key: const ValueKey('uploader-clip-split-open'),

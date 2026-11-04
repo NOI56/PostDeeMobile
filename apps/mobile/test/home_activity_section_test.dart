@@ -12,6 +12,7 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/home/home_activity_section.dart';
 import 'package:postdee_mobile/features/home/home_draft_thumbnail.dart';
 import 'package:postdee_mobile/features/shared/postdee_skeleton.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_draft.dart';
 import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:video_player/video_player.dart';
@@ -104,6 +105,7 @@ HomeActivitySection _section({
   int refreshToken = 0,
   bool? hasPosts,
   HomeDraftsLoader? loadDrafts,
+  Future<List<ClipGroupDraft>> Function()? loadClipGroups,
   HomeConnectionsLoader? loadConnections,
   HomeUpcomingPostsLoader? loadScheduledPosts,
   Future<void> Function()? onCreatePost,
@@ -117,6 +119,7 @@ HomeActivitySection _section({
       refreshToken: refreshToken,
       hasPosts: hasPosts,
       loadDrafts: loadDrafts ?? () async => [],
+      loadClipGroups: loadClipGroups,
       loadConnections: loadConnections ?? () async => [],
       loadScheduledPosts: loadScheduledPosts ?? () async => [],
       onCreatePost: onCreatePost ?? () async {},
@@ -189,6 +192,84 @@ void main() {
     _signIn('seller');
   });
   tearDown(() => PostDeeAuthSessionStore.instance.clear());
+
+  ClipGroupDraft savedGroup(String caption, {String owner = 'seller'}) =>
+      ClipGroupDraft(
+        id: 'set',
+        ownerUserId: owner,
+        sourceDraftId: 'original',
+        title: 'Original clip',
+        sharedCaption: caption,
+        deliveryMode: ClipGroupDeliveryMode.immediate,
+        createdAt: _now.subtract(const Duration(days: 1)),
+        updatedAt: _now,
+        revision: 1,
+        items: [
+          ClipGroupItem(
+              draftId: 'part',
+              index: 0,
+              sourceStartSeconds: 0,
+              sourceEndSeconds: 90,
+              platformApiValues: const {'TIKTOK'}),
+        ],
+      );
+
+  testWidgets('group preview shows shared text and resumes untouched source',
+      (tester) async {
+    final original = _draft('original',
+        caption: 'Retained backup caption',
+        clipGroupId: 'set',
+        isClipGroupSource: true);
+    final part = _draft('part', caption: 'Part override', clipGroupId: 'set');
+    PublishDraft? resumed;
+    await tester.pumpWidget(_app(_section(
+        loadDrafts: () async => [original, part],
+        loadClipGroups: () async => [savedGroup('Current group caption')],
+        onResumeDraft: (draft) async => resumed = draft)));
+    await tester.pumpAndSettle();
+    expect(find.text('Current group caption'), findsOneWidget);
+    expect(find.text('Retained backup caption'), findsNothing);
+    await _tap(tester, 'home-resume-draft');
+    await tester.pumpAndSettle();
+    expect(resumed, same(original));
+    expect(resumed!.caption, 'Retained backup caption');
+    expect(original.videoPath, '/drafts/original.mp4');
+  });
+
+  testWidgets('group-only caption refresh replaces the Home preview',
+      (tester) async {
+    final key = GlobalKey<HomeActivitySectionState>();
+    final original = _draft('original', caption: 'Unchanged source');
+    var group = savedGroup('Shared before refresh');
+    await tester.pumpWidget(_app(_section(
+        key: key,
+        loadDrafts: () async => [original],
+        loadClipGroups: () async => [group])));
+    await tester.pumpAndSettle();
+    expect(find.text('Shared before refresh'), findsOneWidget);
+    group = group.copyWith(sharedCaption: 'Shared after refresh', revision: 2);
+    await key.currentState!.refresh();
+    await tester.pumpAndSettle();
+    expect(find.text('Shared after refresh'), findsOneWidget);
+    expect(find.text('Shared before refresh'), findsNothing);
+    expect(original.caption, 'Unchanged source');
+    expect(original.clipGroupId, isNull);
+  });
+
+  testWidgets('a late group display read cannot leak into a switched owner',
+      (tester) async {
+    final pending = Completer<List<ClipGroupDraft>>();
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [_draft('original')],
+      loadClipGroups: () => pending.future,
+    )));
+    await tester.pump();
+    _signIn('buyer');
+    pending.complete([savedGroup('Private seller group caption')]);
+    await tester.pumpAndSettle();
+    expect(find.text('Private seller group caption'), findsNothing);
+    expect(find.text('แคปชัน original'), findsNothing);
+  });
 
   for (final mode in ['inactive', 'reduced', 'ticker', 'background']) {
     testWidgets('motion audit $mode stops a live hero fade without replay',

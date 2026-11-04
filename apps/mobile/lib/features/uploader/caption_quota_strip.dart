@@ -31,6 +31,8 @@ class CaptionQuotaStrip extends StatelessWidget {
     final remainingFraction = quota.limit > 0
         ? (quota.remainingThisMonth / quota.limit).clamp(0.0, 1.0)
         : 0.0;
+    final available = CaptionQuotaResult(plan: plan.toUpperCase(), quota: quota)
+        .availableCount;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -47,9 +49,13 @@ class CaptionQuotaStrip extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: CaptionText(
-                    'แคปชั่น AI คงเหลือ',
-                    style: secondaryStyle?.copyWith(fontSize: 12),
+                  child: Text(
+                    captionText(context, 'ใช้ได้ทั้งหมด $available เครดิต',
+                        '$available AI ${available == 1 ? 'credit' : 'credits'} available'),
+                    style: secondaryStyle?.copyWith(
+                        fontSize: 16,
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w600),
                   ),
                 ),
                 const SizedBox(width: AppTheme.spaceSm),
@@ -83,10 +89,12 @@ class CaptionQuotaStrip extends StatelessWidget {
                   TextSpan(
                     children: [
                       TextSpan(
+                          text: captionText(context, 'รายเดือน ', 'Monthly ')),
+                      TextSpan(
                         text: '${quota.remainingThisMonth}',
                         style: secondaryStyle?.copyWith(
                           color: AppTheme.textPrimary,
-                          fontSize: 20,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -114,8 +122,8 @@ class CaptionQuotaStrip extends StatelessWidget {
                 color: AppTheme.accentCyanInk,
                 semanticsLabel: captionText(
                     context,
-                    'แคปชั่น AI เหลือ ${quota.remainingThisMonth} จาก ${quota.limit} เครดิต',
-                    '${quota.remainingThisMonth} of ${quota.limit} AI caption credits remaining'),
+                    'แคปชั่น AI ใช้ได้ทั้งหมด $available เครดิต · รายเดือนเหลือ ${quota.remainingThisMonth} จาก ${quota.limit} เครดิต',
+                    '$available AI caption credits available · Monthly credits remaining: ${quota.remainingThisMonth} of ${quota.limit}'),
               ),
             ),
             if ((plan.toUpperCase() == 'STARTER' ||

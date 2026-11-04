@@ -9,8 +9,10 @@ import '../../core/network/postdee_api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/postdee_card.dart';
+import '../shared/postdee_notice.dart';
 import '../shared/postdee_time_picker.dart';
 import '../platforms/social_platform.dart';
+import '../posts/posts_screen.dart';
 import 'clip_group_draft.dart';
 import 'clip_group_localizations.dart';
 import 'clip_group_submission.dart';
@@ -56,6 +58,7 @@ class ClipGroupReviewScreen extends StatefulWidget {
     this.previewClip,
     this.connectionDisplayNames = const {},
     this.sharedCaptionEditorBuilder,
+    this.onOpenPost,
   });
   final ClipGroupDraft initialGroup;
   final Map<String, PublishDraft> draftsById;
@@ -75,6 +78,7 @@ class ClipGroupReviewScreen extends StatefulWidget {
   final Future<void> Function(PublishDraft)? previewClip;
   final Map<SocialPlatform, String> connectionDisplayNames;
   final ClipGroupSharedCaptionEditorBuilder? sharedCaptionEditorBuilder;
+  final ValueChanged<String>? onOpenPost;
   @override
   State<ClipGroupReviewScreen> createState() => _ClipGroupReviewScreenState();
 }
@@ -121,8 +125,6 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
       !item.isAccepted &&
       _drafts[item.draftId] != null &&
       !_hasReceipt(item);
-  int get _pendingUnits =>
-      _pending.fold(0, (sum, item) => sum + item.platformApiValues.length);
   int get _freshUnits => _pending
       .where((item) => !_hasReceipt(item))
       .fold(0, (sum, item) => sum + item.platformApiValues.length);
@@ -138,6 +140,33 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
               true))
       .length;
   bool get _missing => _pending.any((item) => _drafts[item.draftId] == null);
+
+  String? get _earlyReadinessNotice {
+    if (_freshUnits == 0 || _result) return null;
+    final quota = _quota;
+    if (_quotaFailed) {
+      return _text(
+          'ยังตรวจหน่วยโพสต์ไม่ได้ เก็บร่างและตรวจคลิปต่อได้ จะตรวจอีกครั้งก่อนส่ง',
+          'Post units could not be checked yet. You can prepare and save drafts; they will be checked again before sending.');
+    }
+    if (quota == null) return null;
+    if (quota.requiresPhoneVerification) {
+      return _text(
+          'ยืนยันเบอร์โทรก่อนส่งจริง เก็บร่างและตรวจคลิปต่อได้โดยยังไม่ใช้หน่วยโพสต์',
+          'Verify your phone before sending. You can prepare and save drafts without using post units.');
+    }
+    if ((_available(quota) ?? 0) < _freshUnits) {
+      return _text(
+          'หน่วยโพสต์ยังไม่พอสำหรับการส่งใหม่ เก็บร่างและตรวจคลิปต่อได้โดยยังไม่ใช้หน่วยโพสต์',
+          'There are not enough units for new submissions yet. You can prepare and save drafts without using post units.');
+    }
+    if (!quota.canSchedule) {
+      return _text(
+          'แพ็กเกจนี้ยังตั้งเวลาไม่ได้ เลือกส่งทันทีหรือเก็บร่างไว้ก่อนได้',
+          'Scheduling is not available on this plan. You can send now or save drafts.');
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -793,6 +822,14 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                       _notice(_text(
                           'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดชุดคลิปใหม่',
                           'Your account changed. Reopen this set.')),
+                    if (_earlyReadinessNotice case final message?) ...[
+                      PostDeeNotice(
+                        key: const ValueKey('clip-group-readiness-notice'),
+                        message: message,
+                        icon: Icons.info_outline,
+                      ),
+                      const SizedBox(height: AppTheme.spaceMd),
+                    ],
                     if (_result)
                       ..._resultWidgets()
                     else if (_stage == 0) ...[
@@ -834,13 +871,6 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                       const SizedBox(height: AppTheme.spaceMd),
                       Text(_message!,
                           style: TextStyle(color: AppTheme.successInk))
-                    ],
-                    if (_progress != null && _busy) ...[
-                      const SizedBox(height: AppTheme.spaceLg),
-                      const LinearProgressIndicator(),
-                      Text(_text(
-                          'รับรายการแล้ว ${_progress!.completed}/${_progress!.total}',
-                          '${_progress!.completed}/${_progress!.total} items accepted'))
                     ],
                   ])),
           bottomNavigationBar: _footer(confirmation),
@@ -902,7 +932,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
       ]));
 
   String _label(ClipGroupItem item) =>
-      _text('คลิป ${item.index + 1}', 'Clip ${item.index + 1}');
+      clipGroupPartLabel(context, _group, item);
   Widget _clipRow(ClipGroupItem item) {
     final draft = _drafts[item.draftId];
     final editable = _editable(item);
@@ -918,11 +948,6 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
             onSelected: (section) => _edit(item, section),
             itemBuilder: (_) => [
                   PopupMenuItem(
-                      key: ValueKey('clip-group-ai-${item.draftId}'),
-                      value: ClipGroupEditSection.caption,
-                      child: Text(_text(
-                          'ให้ AI ช่วยคลิปนี้', 'Write this clip with AI'))),
-                  PopupMenuItem(
                       value: ClipGroupEditSection.cover,
                       child: Text(_text('หน้าปก', 'Cover'))),
                   PopupMenuItem(
@@ -935,8 +960,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
           style: TextStyle(color: AppTheme.textSecondary)),
       const SizedBox(height: AppTheme.spaceSm),
       if (item.isAccepted)
-        Text(_text('รับรายการแล้ว · ${item.acceptedPostStatus ?? ''}',
-            'Accepted · ${item.acceptedPostStatus ?? ''}'))
+        Text(clipGroupReceiptStatusText(context, item))
       else if (draft == null)
         _notice(_text('ไม่พบคลิปในเครื่อง', 'Local clip unavailable'))
       else if (_hasReceipt(item))
@@ -960,7 +984,14 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
         TextButton(
             key: ValueKey('clip-group-caption-${item.draftId}'),
             onPressed: editable ? () => _editCaption(item) : null,
-            child: Text(_text('แก้แคปชั่น', 'Edit caption'))),
+            child: Text(_text('แก้ข้อความ', 'Edit text'))),
+        TextButton.icon(
+            key: ValueKey('clip-group-ai-${item.draftId}'),
+            onPressed: editable
+                ? () => _edit(item, ClipGroupEditSection.caption)
+                : null,
+            icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+            label: Text(_text('แคปชั่น / AI', 'Caption / AI'))),
         if (!item.usesSharedCaption &&
             !item.isAccepted &&
             !_hasReceipt(item) &&
@@ -1095,6 +1126,12 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
             key: const ValueKey('clip-group-result'),
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: AppTheme.spaceMd),
+        Text(
+            _text(
+                'นี่คือผลที่บันทึกเมื่อรับรายการ ยังไม่ใช่การยืนยันว่าผู้ชมเห็นคลิปครบทุกช่องทาง ดูสถานะล่าสุดและขั้นตอนต่อไปในรายละเอียดโพสต์',
+                'These are saved submission receipts, not confirmation that every video is public. Open post details for the latest status and next steps.'),
+            style: TextStyle(color: AppTheme.textSecondary)),
+        const SizedBox(height: AppTheme.spaceMd),
         for (final item in _group.items) ...[
           ListTile(
               contentPadding: EdgeInsets.zero,
@@ -1103,13 +1140,70 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                   : Icons.pending_outlined),
               title: Text(
                   '${_label(item)} · ${_platforms(item).map((p) => p.label).join(' · ')}'),
-              subtitle: Text(item.isAccepted
-                  ? _text('รับรายการแล้ว · ${item.acceptedPostStatus ?? ''}',
-                      'Accepted · ${item.acceptedPostStatus ?? ''}')
-                  : _text('ยังไม่รับรายการ · ตรวจผลเดิมก่อนลองใหม่',
+              subtitle: item.isAccepted
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                          Text(clipGroupReceiptStatusText(context, item)),
+                          if (item.acceptedScheduledAt != null)
+                            Text(_acceptedTime(item)),
+                          if (item.platformApiValues.contains('TIKTOK'))
+                            Text(_text(
+                                'หากส่งเป็นร่างใน TikTok ให้ดูวิธีเผยแพร่ต่อในรายละเอียดโพสต์',
+                                'If sent as a TikTok draft, open post details to continue publishing.')),
+                          TextButton(
+                            key: ValueKey(
+                                'clip-group-view-post-${item.draftId}'),
+                            onPressed: !_owned || _actionBusy
+                                ? null
+                                : () => _openAcceptedPost(item),
+                            child: Text(_text('ดูสถานะและขั้นตอนต่อไป',
+                                'View status and next steps')),
+                          ),
+                        ])
+                  : Text(_text('ยังไม่รับรายการ · ตรวจผลเดิมก่อนลองใหม่',
                       'Not accepted yet · Check existing submissions before retrying'))),
         ],
       ];
+
+  void _openAcceptedPost(ClipGroupItem item) {
+    final id = item.acceptedPostId;
+    if (!_owned || _actionBusy || id == null || id.trim().isEmpty) return;
+    final open = widget.onOpenPost;
+    if (open != null) {
+      open(id);
+    } else {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => PostDetailLoaderScreen(postId: id)));
+    }
+  }
+
+  Widget _submissionProgress(ClipGroupSubmissionProgress progress) {
+    final item = _group.items
+        .where((item) => item.draftId == progress.itemDraftId)
+        .firstOrNull;
+    final activity = clipGroupActivityText(context, progress);
+    final fraction = progress.fraction;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(item == null ? activity : '$activity · ${_label(item)}',
+          key: const ValueKey('clip-group-progress-label')),
+      const SizedBox(height: AppTheme.spaceXs),
+      LinearProgressIndicator(
+          key: const ValueKey('clip-group-stage-progress'),
+          value: fraction != null && fraction.isFinite
+              ? fraction.clamp(0.0, 1.0)
+              : null),
+      const SizedBox(height: AppTheme.spaceXs),
+      Text(_text('รับรายการแล้ว ${progress.completed}/${progress.total}',
+          '${progress.completed}/${progress.total} items accepted')),
+      Text(
+          _text('เปิดหน้านี้ไว้ระหว่างเตรียมและส่งข้อมูล',
+              'Keep this screen open while clips are prepared and submitted.'),
+          style: TextStyle(color: AppTheme.textSecondary)),
+      const SizedBox(height: AppTheme.spaceSm),
+    ]);
+  }
+
   Widget _footer(String? confirmation) => DecoratedBox(
       decoration: BoxDecoration(
           color: AppTheme.glass,
@@ -1122,24 +1216,33 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_progress != null && _busy)
+                      _submissionProgress(_progress!),
                     if (_stage == 0 && !_result)
                       Text(
                           _text(
                               'เขียนแคปชั่นแล้ว $_captionCount / ${_group.items.length} คลิป',
                               '$_captionCount / ${_group.items.length} clips have captions'),
                           style: TextStyle(color: AppTheme.textSecondary)),
-                    Text(
-                        _text('ใช้ $_pendingUnits หน่วยโพสต์',
-                            '$_pendingUnits post units'),
-                        style: Theme.of(context).textTheme.titleMedium),
-                    if (_checking)
+                    if (_pending.isNotEmpty)
+                      Text(
+                          _text('ส่งใหม่ใช้ $_freshUnits หน่วยโพสต์',
+                              'New submissions use $_freshUnits post units'),
+                          style: Theme.of(context).textTheme.titleMedium),
+                    if (_hasUnresolved)
+                      Text(
+                          _text(
+                              'รายการเดิมที่รับแล้วไม่หักซ้ำ หากยังไม่รับอาจใช้หน่วยเมื่อส่งใหม่',
+                              'Existing accepted requests are not charged again; retries may use post units if not accepted yet.'),
+                          style: TextStyle(color: AppTheme.textSecondary)),
+                    if (_checking && _pending.isNotEmpty)
                       Text(_text('กำลังตรวจโควตา...', 'Checking post units...'))
-                    else if (_quota != null)
+                    else if (_quota != null && _pending.isNotEmpty)
                       Text(
                           _text('คงเหลือ ${_available(_quota!)} หน่วย',
                               '${_available(_quota!)} units available'),
                           style: TextStyle(color: AppTheme.textSecondary))
-                    else if (_quotaFailed)
+                    else if (_quotaFailed && _pending.isNotEmpty)
                       TextButton(
                           onPressed: _actionBusy ? null : _loadQuota,
                           child: Text(
@@ -1147,13 +1250,19 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                     const SizedBox(height: AppTheme.spaceSm),
                     if (_result)
                       FilledButton(
-                          onPressed: _actionBusy || !_owned || _pending.isEmpty
+                          key: const ValueKey('clip-group-result-next'),
+                          onPressed: _actionBusy || !_owned
                               ? null
-                              : () {
-                                  setState(() => _result = false);
-                                },
-                          child: Text(_text(
-                              'ตรวจรายการที่เหลือ', 'Review remaining items')))
+                              : _pending.isEmpty
+                                  ? _back
+                                  : () {
+                                      setState(() => _result = false);
+                                    },
+                          child: Text(_pending.isEmpty
+                              ? _text(
+                                  'กลับไปเลือกคลิป', 'Back to video selection')
+                              : _text('ตรวจรายการที่เหลือ',
+                                  'Review remaining items')))
                     else if (_stage < 2)
                       FilledButton(
                           key: const ValueKey('clip-group-next'),
@@ -1204,8 +1313,8 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
                               ? null
                               : () => _save(feedback: true),
                           child: Text(
-                              _text('บันทึกทั้งชุดเป็นฉบับร่าง',
-                                  'Save entire set as a draft'),
+                              _text('เก็บชุดคลิปไว้ในเครื่อง',
+                                  'Save this set on this device'),
                               textAlign: TextAlign.center)),
                   ]))));
   Widget _notice(String message) => Text(message,

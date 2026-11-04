@@ -28,14 +28,16 @@ void main() {
     ));
 
     expect(find.text('Starter'), findsOneWidget);
-    expect(find.text('แคปชั่น AI คงเหลือ'), findsOneWidget);
-    expect(find.text('38 / 50 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ได้ทั้งหมด 38 เครดิต'), findsOneWidget);
+    expect(find.text('รายเดือน 38 / 50 เครดิต', findRichText: true),
+        findsOneWidget);
     expect(find.text('ใช้ไป 12 เครดิต'), findsOneWidget);
     final progress = tester.widget<LinearProgressIndicator>(
       find.byType(LinearProgressIndicator),
     );
     expect(progress.value, closeTo(0.76, 0.0001));
-    expect(progress.semanticsLabel, 'แคปชั่น AI เหลือ 38 จาก 50 เครดิต');
+    expect(progress.semanticsLabel,
+        'แคปชั่น AI ใช้ได้ทั้งหมด 38 เครดิต · รายเดือนเหลือ 38 จาก 50 เครดิต');
     expect(
       tester
           .getSize(find.byKey(
@@ -59,7 +61,8 @@ void main() {
     ));
 
     expect(find.text('Pro'), findsOneWidget);
-    expect(find.text('117 / 120 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('รายเดือน 117 / 120 เครดิต', findRichText: true),
+        findsOneWidget);
     expect(find.text('ใช้ไป 3 เครดิต'), findsOneWidget);
     expect(
       tester
@@ -82,7 +85,8 @@ void main() {
       ),
     ));
 
-    expect(find.text('0 / 50 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('รายเดือน 0 / 50 เครดิต', findRichText: true),
+        findsOneWidget);
     expect(find.text('ใช้ไป 63 เครดิต'), findsOneWidget);
     expect(
       tester
@@ -107,8 +111,16 @@ void main() {
         availableGenerations: 8,
       ),
     ));
-    expect(find.text('0 / 50 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('รายเดือน 0 / 50 เครดิต', findRichText: true),
+        findsOneWidget);
     expect(find.text('+ เครดิตเติม 8 เครดิต'), findsOneWidget);
+    expect(find.text('ใช้ได้ทั้งหมด 8 เครดิต'), findsOneWidget);
+    expect(
+        tester
+            .widget<LinearProgressIndicator>(
+                find.byType(LinearProgressIndicator))
+            .semanticsLabel,
+        'แคปชั่น AI ใช้ได้ทั้งหมด 8 เครดิต · รายเดือนเหลือ 0 จาก 50 เครดิต');
     expect(tester.takeException(), isNull);
   });
 
@@ -124,7 +136,8 @@ void main() {
             addonRemaining: 8,
             availableGenerations: 8)));
     expect(find.text('Business'), findsOneWidget);
-    expect(find.text('0 / 220 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('รายเดือน 0 / 220 เครดิต', findRichText: true),
+        findsOneWidget);
     expect(find.text('+ เครดิตเติม 8 เครดิต'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -163,7 +176,9 @@ void main() {
           availableGenerations: 0),
     ));
     expect(find.text('Basic'), findsOneWidget);
-    expect(find.text('0 / 0 เครดิต', findRichText: true), findsOneWidget);
+    expect(
+        find.text('รายเดือน 0 / 0 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('ใช้ได้ทั้งหมด 0 เครดิต'), findsOneWidget);
     expect(find.text('ใช้ไป 7 เครดิต'), findsOneWidget);
     expect(find.text('AI แคปชั่นใช้ได้ใน Starter หรือ Pro'), findsOneWidget);
     expect(find.textContaining('เครดิตเติม'), findsNothing);
@@ -186,7 +201,8 @@ void main() {
       ));
 
       expect(find.text('Starter'), findsOneWidget);
-      expect(find.text('38 / 50 เครดิต', findRichText: true), findsOneWidget);
+      expect(find.text('รายเดือน 38 / 50 เครดิต', findRichText: true),
+          findsOneWidget);
       expect(find.text('ใช้ไป 12 เครดิต'), findsOneWidget);
       expect(
         tester

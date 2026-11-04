@@ -91,6 +91,21 @@ void _readable(WidgetTester tester, String text) {
 }
 
 void main() {
+  testWidgets('clip context distinguishes repeated per-part consent sheets',
+      (tester) async {
+    await tester.pumpWidget(_app(_launcher((_) =>
+        TikTokPublishingSettingsSheet(
+          initialSettings: const PlatformPublishSettings(),
+          clipContextLabel: 'TikTok part 2/3 · 1:30–3:00',
+          loadOptions: () async => _options(),
+          isCurrent: () => true,
+        )), dark: true, scale: 1.7));
+    await _tap(tester, find.text('Open settings'));
+    expect(find.byKey(const ValueKey('tiktok-clip-context')), findsOneWidget);
+    _readable(tester, 'TikTok part 2/3 · 1:30–3:00');
+    expect(tester.takeException(), isNull);
+  });
+
   setUpAll(() async {
     final fonts = FontLoader('Anuphan');
     for (final weight in ['Regular', 'Medium', 'SemiBold', 'Bold']) {

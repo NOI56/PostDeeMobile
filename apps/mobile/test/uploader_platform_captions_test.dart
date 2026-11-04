@@ -262,7 +262,8 @@ void main() {
     Finder inside(Finder target) =>
         find.descendant(of: panel, matching: target);
     expect(inside(find.text('ให้ AI ช่วยเขียน')), findsOneWidget);
-    expect(inside(find.text('เลือกช่องทางที่ต้องการ')), findsOneWidget);
+    expect(inside(find.text('เลือกช่องทางให้ AI เขียน')),
+        findsOneWidget);
     expect(inside(find.text('สไตล์')), findsOneWidget);
     expect(inside(find.text('Starter/Pro')), findsNothing);
     expect(inside(find.byKey(const ValueKey('uploader-ai-style-summary'))),
@@ -557,7 +558,8 @@ void main() {
         findsNothing);
   });
 
-  testWidgets('changing later selections preserves the in-flight credit snapshot',
+  testWidgets(
+      'mode stays locked through generation and preview with the quoted cost',
       (tester) async {
     final fixture = _Fixture()..gate = Completer<RealClipCaptionResult>();
     await _start(tester, fixture);
@@ -565,19 +567,25 @@ void main() {
     await _toggle(tester);
     await _generate(tester, pending: true);
     await _show(tester, find.byKey(_mode));
-    await tester.tap(find.byKey(_mode));
-    await tester.pump();
-    await _toggle(tester);
+    expect(tester.widget<SwitchListTile>(find.byKey(_mode)).onChanged, isNull);
+    expect(fixture.requests.single.toJson()['expectedCredits'], 4);
+    fixture.gate!.complete(_result());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('uploader-platform-ai-preview')),
+        findsOneWidget);
+    expect(tester.widget<SwitchListTile>(find.byKey(_mode)).onChanged, isNull);
+    await tester.tap(find.byTooltip('กลับไปเขียนเอง'));
+    await tester.pumpAndSettle();
     await _selectTargets(tester, ['INSTAGRAM_REELS', 'FACEBOOK_REELS']);
     expect(
-        tester.widget<PostDeeGradientButton>(find.byKey(
-            const ValueKey('uploader-ai-generate-button'))).label,
+        tester
+            .widget<PostDeeGradientButton>(
+                find.byKey(const ValueKey('uploader-ai-generate-button')))
+            .label,
         'สร้างแคปชั่น · 2 เครดิต');
     expect(fixture.requests.single.toJson()['expectedCredits'], 4);
     expect(fixture.requests.single.toJson()['platforms'], _platforms);
     await _toggle(tester);
-    fixture.gate!.complete(_result());
-    await tester.pumpAndSettle();
     expect(_text(tester, find.byKey(_main)), 'หลัก');
     expect(find.byKey(const ValueKey('uploader-platform-ai-preview')),
         findsNothing);

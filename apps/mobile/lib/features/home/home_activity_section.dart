@@ -11,6 +11,7 @@ import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/postdee_press_feedback.dart';
 import '../shared/postdee_skeleton.dart';
+import '../uploader/clip_group_draft.dart';
 import '../uploader/clip_group_draft_list.dart';
 import '../uploader/clip_group_draft_store.dart';
 import '../uploader/publish_draft.dart';
@@ -18,6 +19,7 @@ import '../uploader/publish_draft_store_factory.dart';
 import 'home_draft_thumbnail.dart';
 
 typedef HomeDraftsLoader = Future<List<PublishDraft>> Function();
+typedef HomeClipGroupsLoader = Future<List<ClipGroupDraft>> Function();
 typedef HomeConnectionsLoader = Future<List<SocialConnectionResult>> Function();
 typedef HomeUpcomingPostsLoader = Future<List<PostSummaryResult>> Function();
 
@@ -30,6 +32,7 @@ class HomeActivitySection extends StatefulWidget {
     this.refreshToken = 0,
     this.hasPosts,
     this.loadDrafts,
+    this.loadClipGroups,
     this.loadConnections,
     this.loadScheduledPosts,
     required this.onCreatePost,
@@ -44,6 +47,7 @@ class HomeActivitySection extends StatefulWidget {
   final int refreshToken;
   final bool? hasPosts;
   final HomeDraftsLoader? loadDrafts;
+  final HomeClipGroupsLoader? loadClipGroups;
   final HomeConnectionsLoader? loadConnections;
   final HomeUpcomingPostsLoader? loadScheduledPosts;
   final Future<void> Function() onCreatePost;
@@ -77,6 +81,7 @@ class HomeActivitySectionState extends State<HomeActivitySection>
   bool _hasLoadedUpcoming = false;
   Future<bool>? _activeRefresh;
   PublishDraft? _latestDraft;
+  String? _latestDraftTitle;
   String? _draftCoverPath;
   List<SocialPlatform> _connectedPlatforms = const [];
   List<PostSummaryResult> _scheduledPosts = const [];
@@ -109,6 +114,7 @@ class HomeActivitySectionState extends State<HomeActivitySection>
         (!oldWidget.isActive ||
             widget.refreshToken != oldWidget.refreshToken ||
             widget.loadDrafts != oldWidget.loadDrafts ||
+            widget.loadClipGroups != oldWidget.loadClipGroups ||
             widget.loadConnections != oldWidget.loadConnections ||
             widget.loadScheduledPosts != oldWidget.loadScheduledPosts)) {
       _refresh();
@@ -132,6 +138,7 @@ class HomeActivitySectionState extends State<HomeActivitySection>
     setState(() {
       _ownerUserId = owner;
       _latestDraft = null;
+      _latestDraftTitle = null;
       _draftCoverPath = null;
       _connectedPlatforms = const [];
       _scheduledPosts = const [];
@@ -205,15 +212,26 @@ class HomeActivitySectionState extends State<HomeActivitySection>
       _draftError = false;
       if (!preserveContent) {
         _latestDraft = null;
+        _latestDraftTitle = null;
         _draftCoverPath = null;
         _hasLoadedDrafts = false;
       }
     });
     try {
       final loader = widget.loadDrafts;
-      final List<PublishDraft> drafts;
+      List<PublishDraft> drafts;
+      List<ClipGroupDraft> groups = const [];
       if (loader != null) {
         drafts = await loader();
+        if (!_stillOwned(owner, ownerGeneration) ||
+            generation != _draftGeneration) {
+          return false;
+        }
+        final groupLoader = widget.loadClipGroups;
+        if (groupLoader != null) {
+          groups = await groupLoader();
+          drafts = projectClipGroupDrafts(drafts, groups);
+        }
       } else {
         final store = await createPublishDraftStoreForSession();
         if (!_stillOwned(owner, ownerGeneration) ||
@@ -228,17 +246,20 @@ class HomeActivitySectionState extends State<HomeActivitySection>
             generation != _draftGeneration) {
           return false;
         }
-        drafts = store is ClipGroupDraftStore
-            ? projectClipGroupDrafts(localDrafts,
-                await (store as ClipGroupDraftStore).listClipGroups())
-            : localDrafts;
+        if (store is ClipGroupDraftStore) {
+          groups = await (store as ClipGroupDraftStore).listClipGroups();
+          drafts = projectClipGroupDrafts(localDrafts, groups);
+        } else {
+          drafts = localDrafts;
+        }
       }
       if (!_stillOwned(owner, ownerGeneration) ||
           generation != _draftGeneration) {
         return false;
       }
       final entries = clipGroupDraftList(
-          drafts.where((draft) => draft.ownerUserId == owner));
+          drafts.where((draft) => draft.ownerUserId == owner),
+          groups: groups);
       final latest = entries.firstOrNull?.primaryDraft;
       final coverPath = await _readableCoverPath(latest);
       if (!_stillOwned(owner, ownerGeneration) ||
@@ -247,6 +268,7 @@ class HomeActivitySectionState extends State<HomeActivitySection>
       }
       setState(() {
         _latestDraft = latest;
+        _latestDraftTitle = entries.firstOrNull?.displayTitle;
         _draftCoverPath = coverPath;
         _loadingDrafts = false;
         _hasLoadedDrafts = true;
@@ -581,9 +603,10 @@ class HomeActivitySectionState extends State<HomeActivitySection>
           ),
           const SizedBox(height: 12),
           Text(
-            draft.caption.trim().isEmpty
-                ? draft.videoName
-                : draft.caption.trim(),
+            _latestDraftTitle ??
+                (draft.caption.trim().isEmpty
+                    ? draft.videoName
+                    : draft.caption.trim()),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

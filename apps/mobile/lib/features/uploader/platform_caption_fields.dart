@@ -172,19 +172,24 @@ class _PlatformCaptionFieldsState extends State<PlatformCaptionFields> {
     final error = _validationMessage(context, platform);
     final largeText = MediaQuery.textScalerOf(context).scale(14) > 21;
     final wrapError = !captionUsesThai(context) || largeText;
-    final label = localizeCaptionMessage(context,
+    final label = localizeCaptionMessage(
+        context,
         platform == SocialPlatform.youtubeShorts
             ? 'คำอธิบาย YouTube'
             : 'แคปชั่น ${platform.shortLabel}');
     return InputDecoration(
       labelText: largeText ? null : label,
       label: largeText ? Text(label, softWrap: true) : null,
-      hintText: localizeCaptionMessage(context, 'เขียนแคปชั่นสำหรับช่องทางนี้...'),
+      hintText:
+          localizeCaptionMessage(context, 'เขียนแคปชั่นสำหรับช่องทางนี้...'),
       errorText: wrapError ? null : error,
       error: wrapError && error != null
-          ? Text(error, softWrap: true,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.error))
+          ? Text(error,
+              softWrap: true,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.error))
           : null,
     );
   }
@@ -238,28 +243,43 @@ class _PlatformCaptionFieldsState extends State<PlatformCaptionFields> {
       );
 }
 
+String _generatedCaptionCredits(BuildContext context, int credits) => captionText(
+    context,
+    credits > 0
+        ? 'ใช้ไป $credits เครดิตตอนสร้างผลแล้ว · เปิดดูและเลือกใช้ไม่หักเพิ่ม'
+        : 'ผลนี้ไม่หักเครดิต · เปิดดูและเลือกใช้ไม่หักเพิ่ม',
+    credits > 0
+        ? '$credits ${credits == 1 ? 'credit was' : 'credits were'} used to generate these results. Viewing or applying them costs no more.'
+        : 'No credits were used for these results. Viewing or applying them costs no more.');
+
 class CaptionOptionsPreviewSheet extends StatefulWidget {
-  const CaptionOptionsPreviewSheet({super.key, required this.captions});
+  const CaptionOptionsPreviewSheet(
+      {super.key, required this.captions, this.creditsUsed});
 
   final List<String> captions;
+  final int? creditsUsed;
 
   @override
-  State<CaptionOptionsPreviewSheet> createState() => _CaptionOptionsPreviewSheetState();
+  State<CaptionOptionsPreviewSheet> createState() =>
+      _CaptionOptionsPreviewSheetState();
 }
 
-class _CaptionOptionsPreviewSheetState extends State<CaptionOptionsPreviewSheet> {
+class _CaptionOptionsPreviewSheetState
+    extends State<CaptionOptionsPreviewSheet> {
   int _selected = 0;
 
   @override
   Widget build(BuildContext context) => SizedBox(
         key: const ValueKey('uploader-shared-ai-preview'),
         height: MediaQuery.sizeOf(context).height * .85,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
             child: Row(children: [
-              Expanded(child: CaptionText('เลือกแคปชั่นที่ชอบ',
-                  style: Theme.of(context).textTheme.titleMedium)),
+              Expanded(
+                  child: CaptionText('เลือกแคปชั่นที่ชอบ',
+                      style: Theme.of(context).textTheme.titleMedium)),
               IconButton(
                 key: const ValueKey('uploader-shared-ai-close'),
                 tooltip: localizeCaptionMessage(context, 'กลับไปเขียนเอง'),
@@ -270,41 +290,71 @@ class _CaptionOptionsPreviewSheetState extends State<CaptionOptionsPreviewSheet>
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: CaptionText('เลือกได้โดยไม่ใช้เครดิตเพิ่ม ข้อความเดิมจะอยู่จนกดใช้',
+            child: CaptionText(
+                'เลือกได้โดยไม่ใช้เครดิตเพิ่ม ข้อความเดิมจะอยู่จนกดใช้',
                 style: TextStyle(color: AppTheme.textSecondary)),
           ),
-          Expanded(child: SingleChildScrollView(
+          Expanded(
+              child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: PostDeeCard(
-              padding: EdgeInsets.zero,
-              child: Column(children: [
-                for (var index = 0; index < widget.captions.length; index++) ...[
-                  if (index > 0) const Divider(height: 1),
-                  Semantics(
-                    selected: _selected == index,
-                    button: true,
-                    child: InkWell(
-                      key: ValueKey('uploader-shared-ai-option-$index'),
-                      onTap: () => setState(() => _selected = index),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Icon(_selected == index ? Icons.radio_button_checked : Icons.radio_button_off,
-                              color: _selected == index ? AppTheme.accent : AppTheme.textMuted),
-                          const SizedBox(width: 12),
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(captionText(context, 'แบบที่ ${index + 1}', 'Option ${index + 1}'),
-                                style: Theme.of(context).textTheme.labelLarge),
-                            const SizedBox(height: 8),
-                            Text(widget.captions[index]),
-                          ])),
-                        ]),
-                      ),
-                    ),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (widget.creditsUsed case final credits?)
+                    Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(_generatedCaptionCredits(context, credits),
+                            style: TextStyle(color: AppTheme.textSecondary))),
+                  PostDeeCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(children: [
+                      for (var index = 0;
+                          index < widget.captions.length;
+                          index++) ...[
+                        if (index > 0) const Divider(height: 1),
+                        Semantics(
+                          selected: _selected == index,
+                          button: true,
+                          child: InkWell(
+                            key: ValueKey('uploader-shared-ai-option-$index'),
+                            onTap: () => setState(() => _selected = index),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                        _selected == index
+                                            ? Icons.radio_button_checked
+                                            : Icons.radio_button_off,
+                                        color: _selected == index
+                                            ? AppTheme.accent
+                                            : AppTheme.textMuted),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                        child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                          Text(
+                                              captionText(
+                                                  context,
+                                                  'แบบที่ ${index + 1}',
+                                                  'Option ${index + 1}'),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .labelLarge),
+                                          const SizedBox(height: 8),
+                                          Text(widget.captions[index]),
+                                        ])),
+                                  ]),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ]),
                   ),
-                ],
-              ]),
-            ),
+                ]),
           )),
           SafeArea(
             top: false,
@@ -312,7 +362,8 @@ class _CaptionOptionsPreviewSheetState extends State<CaptionOptionsPreviewSheet>
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
               child: FilledButton.icon(
                 key: const ValueKey('uploader-shared-ai-apply'),
-                onPressed: widget.captions.isEmpty ? null
+                onPressed: widget.captions.isEmpty
+                    ? null
                     : () => Navigator.pop(context, widget.captions[_selected]),
                 icon: const Icon(Icons.check),
                 label: const CaptionText('ใช้แคปชั่นนี้'),
@@ -329,11 +380,13 @@ class PlatformCaptionPreviewSheet extends StatelessWidget {
     required this.captions,
     required this.isFallback,
     required this.charged,
+    this.creditsUsed,
   });
 
   final Map<SocialPlatform, String> captions;
   final bool isFallback;
   final bool charged;
+  final int? creditsUsed;
 
   @override
   Widget build(BuildContext context) {
@@ -374,28 +427,37 @@ class PlatformCaptionPreviewSheet extends StatelessWidget {
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(children: [
-                for (final platform in platforms)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: PostDeeCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(children: [
-                            SocialPlatformLogo(platform: platform, size: 24),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(platform.label),
-                            ),
-                          ]),
-                          const SizedBox(height: 10),
-                          Text(captions[platform]!),
-                        ],
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (creditsUsed case final credits?)
+                      Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                              _generatedCaptionCredits(context, credits),
+                              style: TextStyle(color: AppTheme.textSecondary))),
+                    for (final platform in platforms)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: PostDeeCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(children: [
+                                SocialPlatformLogo(
+                                    platform: platform, size: 24),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(platform.label),
+                                ),
+                              ]),
+                              const SizedBox(height: 10),
+                              Text(captions[platform]!),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-              ]),
+                  ]),
             ),
           ),
           SafeArea(

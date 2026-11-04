@@ -3,13 +3,88 @@ import 'package:flutter/material.dart';
 import '../../core/auth/auth_session.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
+import '../platforms/social_platform.dart';
+import 'clip_group_draft.dart';
 import 'clip_group_draft_store.dart';
 import 'clip_group_submission.dart';
+import 'clip_split_localizations.dart';
 import 'publish_draft.dart';
 import 'uploader_localizations.dart';
 
 String clipGroupText(BuildContext context, String thai, String english) =>
     uploaderText(context, thai, english);
+
+String clipGroupPartLabel(
+    BuildContext context, ClipGroupDraft group, ClipGroupItem item,
+    {String? platformApiValue}) {
+  final labels = <String, String>{};
+  for (final platform in platformApiValue == null
+      ? item.platformApiValues
+      : [platformApiValue]) {
+    final parts = group.items
+        .where((part) => part.platformApiValues.contains(platform))
+        .toList()
+      ..sort((a, b) {
+        final start = a.sourceStartSeconds.compareTo(b.sourceStartSeconds);
+        return start != 0
+            ? start
+            : a.sourceEndSeconds.compareTo(b.sourceEndSeconds);
+      });
+    final index = parts.indexWhere((part) => part.draftId == item.draftId);
+    labels[platform] = parts.length <= 1
+        ? clipGroupText(context, 'คลิปเต็ม', 'Full clip')
+        : clipGroupText(context, 'ตอน ${index + 1}/${parts.length}',
+            'Part ${index + 1}/${parts.length}');
+  }
+  if (labels.values.toSet().length == 1) return labels.values.first;
+  return labels.entries.map((entry) {
+    final platform = SocialPlatform.values
+        .where((platform) => platform.apiValue == entry.key)
+        .firstOrNull;
+    return '${platform?.label ?? entry.key} · ${entry.value}';
+  }).join(' · ');
+}
+
+String clipGroupConsentLabel(BuildContext context, ClipGroupDraft group,
+        ClipGroupItem item, String platformApiValue) =>
+    '${clipGroupPartLabel(context, group, item, platformApiValue: platformApiValue)} · '
+    '${formatClipSplitTime(item.sourceStartSeconds)}–${formatClipSplitTime(item.sourceEndSeconds)}';
+
+String clipGroupReceiptStatusText(BuildContext context, ClipGroupItem item) =>
+    switch (item.acceptedPostStatus?.toUpperCase()) {
+      'QUEUED' => clipGroupText(context, 'เข้าคิวแล้ว', 'Queued'),
+      'PUBLISHING' =>
+        clipGroupText(context, 'กำลังส่ง', 'Delivery in progress'),
+      'PUBLISHED' =>
+        clipGroupText(context, 'ส่งงานสำเร็จแล้ว', 'Delivery completed'),
+      'PARTIAL_PUBLISHED' =>
+        clipGroupText(context, 'ส่งสำเร็จบางช่องทาง', 'Partially delivered'),
+      'FAILED' => clipGroupText(context, 'ส่งไม่สำเร็จ', 'Delivery failed'),
+      _ => clipGroupText(
+          context, 'รับรายการแล้ว · รอตรวจผล', 'Accepted · Check delivery'),
+    };
+
+String clipGroupActivityText(
+        BuildContext context, ClipGroupSubmissionProgress progress) =>
+    switch (progress.activity) {
+      ClipGroupSubmissionActivity.confirmingSettings =>
+        clipGroupText(context, 'กำลังยืนยันการตั้งค่า', 'Confirming settings'),
+      ClipGroupSubmissionActivity.recovering => clipGroupText(
+          context, 'กำลังตรวจรายการเดิม', 'Checking the existing request'),
+      ClipGroupSubmissionActivity.preparingMedia =>
+        clipGroupText(context, 'กำลังเตรียมคลิป', 'Preparing video'),
+      ClipGroupSubmissionActivity.uploadingVideo =>
+        clipGroupText(context, 'กำลังอัปโหลดคลิป', 'Uploading video'),
+      ClipGroupSubmissionActivity.uploadingCover =>
+        clipGroupText(context, 'กำลังอัปโหลดหน้าปก', 'Uploading cover'),
+      ClipGroupSubmissionActivity.creatingPost => clipGroupText(
+          context, 'กำลังสร้างคิวโพสต์', 'Creating the post request'),
+      ClipGroupSubmissionActivity.finalizing => clipGroupText(
+          context, 'กำลังยืนยันผลรับรายการ', 'Saving the accepted result'),
+      _ => progress.stage == ClipGroupSubmissionStage.accepted
+          ? clipGroupText(context, 'รับรายการแล้ว', 'Request accepted')
+          : clipGroupText(context, 'กำลังตรวจความพร้อม', 'Checking readiness'),
+    };
 
 /// Only recognized app-owned reasons are displayed. Unknown errors never expose
 /// exception names, provider responses, or untranslated technical details.

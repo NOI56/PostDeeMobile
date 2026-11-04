@@ -305,9 +305,9 @@ void main() {
     final fixture = CaptionEnglishFixture();
     addTearDown(fixture.dispose);
     await fixture.mount(tester);
-    expect(find.text('Advanced settings'), findsOneWidget);
-    expect(
-        find.text('Write separate captions for each channel'), findsOneWidget);
+    expect(find.text('Use separate captions by channel'), findsOneWidget);
+    expect(find.text('One shared caption is currently used for all channels.'),
+        findsOneWidget);
     await revealCaptionEnglishControl(
         tester, find.byKey(const ValueKey('uploader-caption-field')));
     expect(find.text('Caption'), findsWidgets);
@@ -349,7 +349,7 @@ void main() {
     await revealCaptionEnglishControl(
         tester, find.byKey(const ValueKey('uploader-ai-caption-panel')));
     expect(find.text('AI captions from your video'), findsOneWidget);
-    expect(find.text('Let AI write'), findsOneWidget);
+    expect(find.text('Generate captions · 1 credit'), findsOneWidget);
     expect(find.textContaining('คลิปแคปชัน.mp4'), findsWidgets);
     expect(fixture.requests, isEmpty);
     expect(fixture.uploadRequests, isEmpty);
@@ -393,8 +393,7 @@ void main() {
         'คำแนะนำตั้งค่าขั้นสูง');
     await revealCaptionEnglishControl(
         tester, find.byKey(const ValueKey('uploader-ai-style-summary')));
-    expect(
-        find.text('Style: Friendly · Short and concise · No emoji'),
+    expect(find.text('Style: Friendly · Short and concise · No emoji'),
         findsOneWidget);
     expect(fixture.styles.profile, same(profile));
     expect(profile.style.summary, 'เป็นกันเอง · สั้น กระชับ · ไม่ใช้อีโมจิ');
@@ -488,7 +487,7 @@ void main() {
     expect(fixture.captionQuotaReads, 1);
     fixture.aiQuotaGate = null;
     await tapCaptionEnglishControl(tester, 'uploader-ai-quota-retry');
-    expect(find.text('AI caption credits remaining'), findsOneWidget);
+    expect(find.text('120 AI credits available'), findsOneWidget);
     expect(fixture.captionQuotaReads, 2);
     expect(fixture.requests, isEmpty);
     expect(tester.takeException(), isNull);
@@ -538,7 +537,9 @@ void main() {
     await fixture.mount(tester);
     await revealCaptionEnglishControl(
         tester, find.byKey(const ValueKey('uploader-ai-generate-button')));
-    expect(find.text('No AI credits remaining'), findsOneWidget);
+    expect(find.text('Generate captions · 1 credit'), findsOneWidget);
+    expect(find.text('Not enough credits. Add credits to let AI write.'),
+        findsOneWidget);
     expect(
         tester
             .widget<PostDeeGradientButton>(
@@ -641,8 +642,8 @@ void main() {
       await fixture.mount(tester);
       expect(tester.takeException(), isNull);
       for (final text in [
-        'Advanced settings',
-        'Write separate captions for each channel'
+        'Use separate captions by channel',
+        'One shared caption is currently used for all channels.'
       ]) {
         await revealCaptionEnglishControl(tester, find.text(text));
         expectCaptionEnglishReadable(tester, find.text(text));
@@ -653,7 +654,10 @@ void main() {
           tester, find.descendant(of: field, matching: find.text('Caption')));
       await typeCaptionEnglishWithKeyboard(
           tester, 'uploader-caption-field', 'ข้อความลูกค้า 😊');
-      for (final text in ['AI captions from your video', 'Let AI write']) {
+      for (final text in [
+        'AI captions from your video',
+        'Generate captions · 1 credit'
+      ]) {
         await revealCaptionEnglishControl(tester, find.text(text));
         expectCaptionEnglishReadable(tester, find.text(text));
         expect(tester.takeException(), isNull);

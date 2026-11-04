@@ -16,6 +16,17 @@ typedef ClipGroupSubmitOne = Future<QueuedPostResult?> Function(
 
 enum ClipGroupSubmissionStage { checking, submitting, accepted, stopped, done }
 
+enum ClipGroupSubmissionActivity {
+  checking,
+  confirmingSettings,
+  recovering,
+  preparingMedia,
+  uploadingVideo,
+  uploadingCover,
+  creatingPost,
+  finalizing,
+}
+
 class ClipGroupSubmissionProgress {
   const ClipGroupSubmissionProgress({
     required this.itemIndex,
@@ -23,12 +34,16 @@ class ClipGroupSubmissionProgress {
     required this.total,
     required this.stage,
     required this.itemDraftId,
+    this.activity,
+    this.fraction,
   });
   final int itemIndex;
   final int completed;
   final int total;
   final ClipGroupSubmissionStage stage;
   final String? itemDraftId;
+  final ClipGroupSubmissionActivity? activity;
+  final double? fraction;
 }
 
 class ClipGroupSubmissionResult {

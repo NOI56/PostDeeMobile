@@ -141,6 +141,8 @@ const _recoveryStatuses = <String, String>{
 };
 
 const _englishMessages = <String, String>{
+  'เก็บร่างไว้ในเครื่องเพื่อกลับมาแก้ต่อ ยังไม่ส่งไปโซเชียลและไม่ใช้หน่วยโพสต์':
+      'Save a local draft to continue later. This does not send to social platforms or use post units.',
   'ลงชื่อเข้าใช้ก่อนเก็บตอนที่แบ่งเป็นร่าง':
       'Sign in before saving split parts as drafts.',
   'เปิดพื้นที่เก็บร่างไม่ได้ กรุณาลองอีกครั้ง':

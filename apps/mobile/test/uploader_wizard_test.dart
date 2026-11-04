@@ -2,42 +2,103 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/features/uploader/uploader_screen.dart';
 import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
+import 'support/uploader_wizard_test_navigation.dart' show uploaderMainScroll;
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  Future<void> open(WidgetTester tester, {TestPublishDraftStore? store}) async {
+  Future<void> open(WidgetTester tester,
+      {TestPublishDraftStore? store,
+      bool fullScreen = true,
+      double textScale = 1,
+      VoidCallback? onUpload,
+      VoidCallback? onPost}) async {
     final directory = Directory.systemTemp.createTempSync('postdee-wizard-');
     addTearDown(() => directory.deleteSync(recursive: true));
     final video = File('${directory.path}/clip.mp4')
       ..writeAsBytesSync([1, 2, 3]);
     await tester.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!),
         home: Scaffold(
             body: UploaderScreen(
-      probePublishMedia: probeValidPublishMedia,
-      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
-      fullScreen: true,
-      draftStore: store ?? TestPublishDraftStore(),
-      loadSocialConnections: () async => const [],
-      pickVideo: () async => PickedVideoFile(
-          name: 'clip.mp4',
-          path: video.path,
-          sizeBytes: 3,
-          width: 1080,
-          height: 1920),
-    ))));
+          probePublishMedia: probeValidPublishMedia,
+          loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
+          fullScreen: fullScreen,
+          draftStore: store ?? TestPublishDraftStore(),
+          loadSocialConnections: () async => const [
+            SocialConnectionResult(
+                platform: 'TIKTOK',
+                connected: true,
+                externalAccountId: 'wizard-tiktok')
+          ],
+          pickVideo: () async => PickedVideoFile(
+              name: 'clip.mp4',
+              path: video.path,
+              sizeBytes: 3,
+              width: 1080,
+              height: 1920),
+          createUpload: (_) async {
+            onUpload?.call();
+            throw StateError('Navigation must not upload');
+          },
+          createPost: (_) async {
+            onPost?.call();
+            throw StateError('Navigation must not publish');
+          },
+        ))));
     await tester.pumpAndSettle();
   }
 
   Future<void> step(WidgetTester tester, int index) async {
-    await tester.tap(find.byKey(ValueKey('uploader-progress-$index')));
+    await tester.pump();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    final progress = find.byKey(ValueKey('uploader-progress-$index'));
+    await tester.ensureVisible(progress);
+    await tester.tap(progress);
     await tester.pumpAndSettle();
+  }
+
+  Future<void> prepareReview(WidgetTester tester, String caption) async {
+    await step(tester, 0);
+    final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
+    if (picker.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(picker, 180,
+          scrollable: uploaderMainScroll);
+    }
+    await tester.ensureVisible(picker);
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+    await step(tester, 1);
+    final field = find.byKey(const ValueKey('uploader-caption-field'));
+    if (field.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(field, 180,
+          scrollable: uploaderMainScroll);
+    }
+    await tester.ensureVisible(field);
+    await tester.enterText(field, caption);
+    await step(tester, 2);
+    final channel = find.byKey(const ValueKey('uploader-platform-TIKTOK'));
+    await tester.scrollUntilVisible(channel, 180,
+        scrollable: uploaderMainScroll);
+    await tester.ensureVisible(channel);
+    await tester.pumpAndSettle();
+    await tester.tap(channel);
+    await tester.pumpAndSettle();
+    expect(
+        find.descendant(
+            of: channel, matching: find.byIcon(Icons.check_circle_rounded)),
+        findsOneWidget);
   }
 
   testWidgets('only one stage is visible and next requires a local clip',
@@ -66,26 +127,9 @@ void main() {
       (tester) async {
     var uploads = 0;
     var posts = 0;
-    await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-            body: UploaderScreen(
-      probePublishMedia: probeValidPublishMedia,
-      loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
-      draftStore: TestPublishDraftStore(),
-      loadSocialConnections: () async => const [],
-      createUpload: (_) async {
-        uploads++;
-        throw StateError('must not upload');
-      },
-      createPost: (_) async {
-        posts++;
-        throw StateError('must not post');
-      },
-    ))));
-    await tester.pumpAndSettle();
-    await step(tester, 1);
-    await tester.enterText(
-        find.byKey(const ValueKey('uploader-caption-field')), 'แคปชันเดิม');
+    await open(tester,
+        fullScreen: false, onUpload: () => uploads++, onPost: () => posts++);
+    await prepareReview(tester, 'แคปชันเดิม');
     await step(tester, 3);
     expect(
         find.byKey(const ValueKey('publish-review-confirm')), findsOneWidget);
@@ -136,21 +180,15 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(MaterialApp(
-        builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: const TextScaler.linear(2)),
-            child: child!),
-        home: Scaffold(
-            body: UploaderScreen(
-                probePublishMedia: probeValidPublishMedia,
-                loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
-                draftStore: TestPublishDraftStore(),
-                loadSocialConnections: () async => const []))));
-    await tester.pumpAndSettle();
+    await open(tester, fullScreen: false, textScale: 2);
+    await prepareReview(tester, 'ข้อความตรวจทานบนหน้าจอเล็ก');
     for (var index = 0; index < 4; index++) {
       await step(tester, index);
       expect(tester.takeException(), isNull);
+      if (index == 3) {
+        expect(find.byKey(const ValueKey('publish-review-confirm')),
+            findsOneWidget);
+      }
       expect(find.byKey(const ValueKey('uploader-sticky-post-button')),
           findsOneWidget);
     }

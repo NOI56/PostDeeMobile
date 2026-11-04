@@ -227,12 +227,15 @@ extension _UploaderClipGroups on _UploaderScreenState {
         _guardClipGroup(session, owner);
       }
 
-      await navigator.push<void>(MaterialPageRoute(
+      final reviewRoute = MaterialPageRoute<void>(
         builder: (_) => ClipGroupReviewScreen(
           initialGroup: working!,
           draftsById: drafts,
           ownerSession: session,
           connectionDisplayNames: Map.of(_reviewIdentities),
+          onOpenPost: (postId) {
+            if (mounted && session.isCurrent) _openOriginalPost(postId);
+          },
           now: widget.now,
           loadSubscription: _loadSubscription,
           loadPostQuota: widget.loadPostQuota ??
@@ -321,8 +324,10 @@ extension _UploaderClipGroups on _UploaderScreenState {
             return result;
           },
         ),
-      ));
+      );
+      await navigator.push<void>(reviewRoute);
       if (mounted && session.isCurrent) {
+        FocusManager.instance.primaryFocus?.unfocus();
         final cover = _clearActiveDraftFormState();
         if (cover != null) await cover.cleanupTemporaryFiles();
         _updateClipGroupState(() {
@@ -338,6 +343,17 @@ extension _UploaderClipGroups on _UploaderScreenState {
                   'The clip set is saved. Continue from Drafts.');
         });
         await _loadDrafts();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted &&
+              session.isCurrent &&
+              _currentStep == 0 &&
+              _activeDraftId == null &&
+              _localFilePathController.text.isEmpty &&
+              _formScrollController.hasClients) {
+            _formScrollController.jumpTo(0);
+          }
+        });
+        WidgetsBinding.instance.ensureVisualUpdate();
       }
     } catch (error) {
       if (mounted && session.isCurrent) {
@@ -433,6 +449,26 @@ extension _UploaderClipGroups on _UploaderScreenState {
     }
 
     final runtimeReviews = <String, _ClipGroupRuntimeReview>{};
+    var completed = group.items.where((item) => item.isAccepted).length;
+    void report(ClipGroupSubmissionProgress progress) {
+      guard();
+      completed = progress.completed;
+      onProgress(progress);
+      guard();
+    }
+
+    void activity(ClipGroupItem item, ClipGroupSubmissionActivity value,
+        {double? fraction}) {
+      report(ClipGroupSubmissionProgress(
+          itemIndex: item.index,
+          completed: completed,
+          total: group.items.length,
+          stage: ClipGroupSubmissionStage.submitting,
+          itemDraftId: item.draftId,
+          activity: value,
+          fraction: fraction));
+    }
+
     try {
       guard();
       await _loadConnections();
@@ -485,14 +521,16 @@ extension _UploaderClipGroups on _UploaderScreenState {
                 postScheduleLimitMessage(subscription.plan));
           }
         }
-        onProgress(ClipGroupSubmissionProgress(
+        report(ClipGroupSubmissionProgress(
             itemIndex: item.index,
             completed: group.items.where((item) => item.isAccepted).length,
             total: group.items.length,
             stage: ClipGroupSubmissionStage.checking,
-            itemDraftId: item.draftId));
-        runtimeReviews[draft.id] =
-            await _reviewClipGroupMember(draft, item, guard);
+            itemDraftId: item.draftId,
+            activity: ClipGroupSubmissionActivity.checking));
+        runtimeReviews[draft.id] = await _reviewClipGroupMember(
+            draft, item, group, guard,
+            onActivity: (value) => activity(item, value));
       }
       guard();
       return await ClipGroupSubmission(
@@ -502,6 +540,7 @@ extension _UploaderClipGroups on _UploaderScreenState {
         submitOne: (draft, item, checkpoint) async {
           guard();
           if (draft.uploadedMedia != null) {
+            activity(item, ClipGroupSubmissionActivity.recovering);
             final recovered = await _recoverClipGroupMember(draft);
             guard();
             if (recovered != null) {
@@ -530,8 +569,9 @@ extension _UploaderClipGroups on _UploaderScreenState {
             }
             // An explicit Not Found may retry the exact stable request ID and
             // existing upload. Network/recovery errors never enter this path.
-            runtimeReviews[draft.id] =
-                await _reviewClipGroupMember(draft, item, guard);
+            runtimeReviews[draft.id] = await _reviewClipGroupMember(
+                draft, item, group, guard,
+                onActivity: (value) => activity(item, value));
           }
           await _restoreDraft(draft);
           await _readSelectedVideoDuration();
@@ -560,7 +600,26 @@ extension _UploaderClipGroups on _UploaderScreenState {
           guard();
           _clipGroupAcceptedCheckpoint = checkpoint;
           try {
-            final post = await _createPost();
+            final post = await _createPost((progress) {
+              final value = switch (progress.stage) {
+                PublishFlowStage.preparing ||
+                PublishFlowStage.applyingWatermark =>
+                  ClipGroupSubmissionActivity.preparingMedia,
+                PublishFlowStage.checkingAvailability ||
+                PublishFlowStage.checkingPlan =>
+                  ClipGroupSubmissionActivity.checking,
+                PublishFlowStage.uploadingVideo ||
+                PublishFlowStage.retryingUpload =>
+                  ClipGroupSubmissionActivity.uploadingVideo,
+                PublishFlowStage.uploadingCover =>
+                  ClipGroupSubmissionActivity.uploadingCover,
+                PublishFlowStage.creatingPost =>
+                  ClipGroupSubmissionActivity.creatingPost,
+                PublishFlowStage.finalizing =>
+                  ClipGroupSubmissionActivity.finalizing,
+              };
+              activity(item, value, fraction: progress.fraction);
+            });
             guard();
             if (post == null) {
               throw ClipGroupDraftException(_errorMessage ??
@@ -573,7 +632,7 @@ extension _UploaderClipGroups on _UploaderScreenState {
             _clipGroupAcceptedCheckpoint = null;
           }
         },
-      )(group, session: session, onProgress: onProgress);
+      )(group, session: session, onProgress: report);
     } catch (error) {
       final completed = group.items.where((item) => item.isAccepted).length;
       return ClipGroupSubmissionResult(
@@ -585,9 +644,14 @@ extension _UploaderClipGroups on _UploaderScreenState {
     }
   }
 
-  Future<_ClipGroupRuntimeReview> _reviewClipGroupMember(
-      PublishDraft draft, ClipGroupItem item, void Function() guard) async {
+  Future<_ClipGroupRuntimeReview> _reviewClipGroupMember(PublishDraft draft,
+      ClipGroupItem item, ClipGroupDraft group, void Function() guard,
+      {ValueChanged<ClipGroupSubmissionActivity>? onActivity}) async {
     guard();
+    final clipLabels = {
+      for (final platform in item.platformApiValues)
+        platform: clipGroupConsentLabel(context, group, item, platform),
+    };
     if (!File(draft.videoPath).existsSync() ||
         File(draft.videoPath).lengthSync() <= 0) {
       throw const ClipGroupDraftException('ไม่พบไฟล์วิดีโอของคลิปนี้ในเครื่อง');
@@ -606,7 +670,10 @@ extension _UploaderClipGroups on _UploaderScreenState {
       final direct = platform == SocialPlatform.tiktok &&
           _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost;
       if (direct || !_resolvedPlatformSettings.canSubmit(platform)) {
-        await _openPlatformSettings(platform);
+        onActivity?.call(ClipGroupSubmissionActivity.confirmingSettings);
+        guard();
+        await _openPlatformSettings(platform,
+            clipContextLabel: clipLabels[platform.apiValue]);
         guard();
         if (!_resolvedPlatformSettings.canSubmit(platform) ||
             (direct && _tikTokConsentedIntent != _tikTokConsentIntent)) {

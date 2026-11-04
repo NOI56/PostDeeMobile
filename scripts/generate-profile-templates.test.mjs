@@ -108,7 +108,7 @@ test('cartoon layouts stay inside their category and every cartoon design names 
 
 test('the premium release adds twenty original designs on five premium layouts', () => {
   const premium = source.templates.filter((template) => template.category === 'premium');
-  assert.equal(source.categories.at(-1).name, 'หรูหรา / พรีเมียม');
+  assert.equal(source.categories.at(-1).name, 'พรีเมียม');
   assert.deepEqual(premium.map((template) => template.id), [
     'premium-gold-leaf', 'premium-white-marble', 'premium-thai-gold', 'premium-art-deco', 'premium-emerald-facet',
     'premium-pearl-strand', 'premium-velvet-wine', 'premium-champagne', 'premium-guilloche', 'premium-rose-gold',

@@ -47,7 +47,7 @@ const profileTemplateCategories = <String, String>{
   'creative': 'สดใส / ครีเอทีฟ',
   'dimensional': '3D',
   'cartoon': 'การ์ตูน',
-  'premium': 'หรูหรา / พรีเมียม',
+  'premium': 'พรีเมียม',
 };
 
 const profileTemplates = <ProfileTemplate>[

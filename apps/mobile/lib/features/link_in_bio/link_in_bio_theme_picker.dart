@@ -6,6 +6,7 @@ import 'link_in_bio_color_picker.dart' show BioOwnedModalScope;
 
 import '../../core/models/link_in_bio_appearance.dart';
 import '../../core/models/profile_template_catalog.generated.dart';
+import '../../core/theme/app_theme.dart';
 import 'link_in_bio_draft_store.dart';
 import 'link_in_bio_localizations.dart';
 import 'link_in_bio_preview.dart';
@@ -235,6 +236,8 @@ class _BioThemePickerState extends State<BioThemePicker> {
         for (final category in _categories)
           ChoiceChip(
               key: ValueKey('link-in-bio-category-$category'),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spaceXs, vertical: AppTheme.spaceSm),
               avatar: category != 'minimal' && !_hasAccess
                   ? const Icon(Icons.lock_outline, size: 16) : null,
               label: Text(localizeLinkInBioMessage(

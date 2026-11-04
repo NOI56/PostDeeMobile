@@ -179,8 +179,9 @@ Flutter mobile app scaffold for PostDee.
 
 ## Premium storefront category (2026-11-04, API on Staging / APK installed)
 
-The template picker shows a fourth category chip, หรูหรา / พรีเมียม (Luxury /
-Premium), with twenty new `premium-*` designs. They render through
+The template picker shows a fourth category chip, พรีเมียม (Premium), with
+twenty new `premium-*` designs. Category chips use compact horizontal padding
+to share one row at normal phone widths and wrap for larger text. They render through
 `BioPremiumHeader`, `bioPremiumLinkDecoration`, `bioPremiumLink`,
 `bioPremiumPanelDecoration` and `bioPremiumFrame` in
 `lib/features/link_in_bio/link_in_bio_premium_scenes.dart`, matching the public

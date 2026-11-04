@@ -60,7 +60,7 @@ void main() {
       'pinboard'
     });
     final premium = profileTemplates.where((item) => item.category == 'premium');
-    expect(profileTemplateCategories['premium'], 'หรูหรา / พรีเมียม');
+    expect(profileTemplateCategories['premium'], 'พรีเมียม');
     expect(premium, hasLength(20));
     expect(premium.map((item) => item.name).toSet(), hasLength(20));
     expect(premium.map((item) => item.layout.composition).toSet(),

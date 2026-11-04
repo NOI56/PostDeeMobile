@@ -136,8 +136,8 @@ migration or live rollout is included. See the
 
 ## Premium storefront category (2026-11-03, local candidate)
 
-The store-link picker shows Simple, 3D, Cartoon and **หรูหรา / พรีเมียม (Luxury /
-Premium)**, twenty designs each. Premium is a new catalog category, `premium`,
+The store-link picker shows Simple, 3D, Cartoon and **พรีเมียม (Premium)**,
+twenty designs each. Premium is a new catalog category, `premium`,
 with twenty original drawn pictures (gold leaf, marble, Thai gold pattern, Art
 Deco, cut emerald, pearls, velvet and more) on five premium layouts with gilded,
 plated, stitched and cut-corner links. The classic `luxury-*` designs stay in

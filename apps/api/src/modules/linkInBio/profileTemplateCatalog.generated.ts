@@ -55,7 +55,7 @@ export const profileTemplateCategories: readonly { id: ProfileTemplateCategoryId
   },
   {
     "id": "premium",
-    "name": "หรูหรา / พรีเมียม"
+    "name": "พรีเมียม"
   }
 ];
 

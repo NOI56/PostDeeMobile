@@ -19,8 +19,10 @@ API delivered to Staging on 2026-11-04; device delivery is recorded below.
 Add a new category, `premium`, with twenty new `premium-*` designs drawn and
 laid out like the 3D and Cartoon releases, instead of restyling the classic
 `luxury` entries. The classic entries stay byte-identical so saved pages and
-older apps keep working; the picker shows the new set under the same label,
-**หรูหรา / พรีเมียม (Luxury / Premium)**, and no longer lists the classic one.
+older apps keep working; the picker shows the new set under the label
+**พรีเมียม (Premium)** (shortened at the owner's request on 2026-11-04), and
+no longer lists the classic one. Compact horizontal chip padding keeps the
+four categories together at normal phone widths; larger text may wrap safely.
 A store that saved a classic luxury design keeps it; the picker opens on Simple
 for it, as it already does for the hidden Cute, Nature and Creative designs.
 

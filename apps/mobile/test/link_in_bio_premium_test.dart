@@ -274,7 +274,7 @@ void main() {
                           LinkInBioAppearance.forTemplate('premium-art-deco'),
                       onChanged: (_) {})))));
       await tester.pumpAndSettle();
-      expect(find.text('Luxury / Premium · 20 templates'), findsOneWidget);
+      expect(find.text('Premium · 20 templates'), findsOneWidget);
       for (final name in _english.values) {
         expect(find.text(name), findsWidgets, reason: name);
       }

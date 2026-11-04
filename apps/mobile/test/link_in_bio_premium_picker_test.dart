@@ -69,8 +69,8 @@ void main() {
         await _tap(tester, 'link-in-bio-category-premium');
         expect(
             find.text(language == 'th'
-                ? 'หรูหรา / พรีเมียม · 20 แบบ'
-                : 'Luxury / Premium · 20 templates'),
+                ? 'พรีเมียม · 20 แบบ'
+                : 'Premium · 20 templates'),
             findsOneWidget);
         final templates = profileTemplates
             .where((item) => item.category == 'premium')

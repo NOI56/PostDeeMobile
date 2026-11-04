@@ -339,6 +339,7 @@ const _englishMessages = <String, String>{
   'น่ารัก / พาสเทล': 'Cute / Pastel',
   'ธรรมชาติ / อบอุ่น': 'Nature / Warm',
   'หรูหรา / พรีเมียม': 'Luxury / Premium',
+  'พรีเมียม': 'Premium',
   'สดใส / ครีเอทีฟ': 'Bright / Creative',
   'ร้านค้า': 'Shop',
   'พาสเทล': 'Pastel',

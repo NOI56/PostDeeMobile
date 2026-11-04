@@ -1797,6 +1797,7 @@ class GenerateRealClipCaptionRequest {
     this.audioS3Key,
     this.videoS3Key,
     this.guidance,
+    this.captionLanguage = 'auto',
     this.selectedFrameKeys = const [],
     this.deleteAfterUse = false,
     this.writingStyle,
@@ -1811,6 +1812,9 @@ class GenerateRealClipCaptionRequest {
   final String? audioS3Key;
   final String? videoS3Key;
   final String? guidance;
+
+  /// Requested caption output language; auto follows the clip's language.
+  final String captionLanguage;
   final List<String> selectedFrameKeys;
   final bool deleteAfterUse;
   final CaptionWritingStyle? writingStyle;
@@ -1822,6 +1826,7 @@ class GenerateRealClipCaptionRequest {
         if (videoS3Key != null) 'videoS3Key': videoS3Key,
         if (guidance != null && guidance!.trim().isNotEmpty)
           'guidance': guidance,
+        if (captionLanguage != 'auto') 'captionLanguage': captionLanguage,
         if (selectedFrameKeys.isNotEmpty)
           'selectedFrameKeys': selectedFrameKeys,
         if (deleteAfterUse) 'deleteAfterUse': true,

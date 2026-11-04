@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/models/caption_language.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
 import 'platform_publish_preflight.dart';
@@ -281,6 +282,7 @@ class FilePublishDraftStore implements PublishDraftStore {
       'caption': request.caption,
       'captionNeedsReview': request.captionNeedsReview,
       'aiGuidance': request.aiGuidance,
+      'captionLanguage': request.captionLanguage,
       'watermarkEnabled': request.watermarkEnabled,
       'platformApiValues': platforms,
       'platformSettings': request.platformSettings.toDraftJson(),
@@ -435,6 +437,7 @@ class FilePublishDraftStore implements PublishDraftStore {
         videoWidth: _optionalPositiveInt(manifest['videoWidth']),
         videoHeight: _optionalPositiveInt(manifest['videoHeight']),
         caption: _requiredString(manifest, 'caption', allowEmpty: true),
+        captionLanguage: readCaptionOutputLanguage(manifest['captionLanguage']),
         captionNeedsReview: manifest.containsKey('captionNeedsReview')
             ? _requiredBool(manifest, 'captionNeedsReview')
             : false,

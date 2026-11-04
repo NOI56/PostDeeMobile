@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/auth/auth_session.dart';
 import '../../core/config/app_config.dart';
+import '../../core/models/caption_language.dart';
 import '../../core/models/caption_writing_style.dart';
 import '../../core/network/api_error_message.dart';
 import '../../core/network/postdee_api_client.dart';
@@ -414,6 +415,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   CoverEditorResult? _videoPoster;
   int _posterGeneration = 0;
   int _captionGeneration = 0;
+  String _captionLanguage = 'auto';
+  bool _isChoosingCaption = false;
   CaptionWritingStyleProfile _captionWritingProfile =
       const CaptionWritingStyleProfile();
   String? _captionStyleOwner;
@@ -797,6 +800,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       Navigator.of(previewContext).pop();
     }
     _isGeneratingCaption = false;
+    _isChoosingCaption = false;
     _clearCaptionLearningBaseline();
     _clearCaptionValidation();
     _clearDraftSavedFeedback();
@@ -997,6 +1001,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         _captionController.text,
         _captionNeedsReview,
         _aiGuidanceController.text,
+        _captionLanguage,
         _scheduledAtController.text,
         ({..._selectedPlatforms, ..._draftUnavailablePlatforms}
             .map((p) => p.apiValue)
@@ -1555,6 +1560,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (!mounted) return;
     setState(() {
       _captionWritingProfile = const CaptionWritingStyleProfile();
+      _captionLanguage = 'auto';
       _captionStyleLoaded = false;
       _isSavingCaptionStyle = false;
       _captionStyleError = null;
@@ -1736,6 +1742,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _captionController.clear();
       _captionNeedsReview = false;
       _aiGuidanceController.clear();
+      _captionLanguage = 'auto';
       _fileNameController.clear();
       _localFilePathController.clear();
       _sizeBytesController.clear();
@@ -3025,10 +3032,12 @@ class _UploaderScreenState extends State<UploaderScreen>
     final sourcePath = _localFilePathController.text;
     final originalCaption = _captionController.text;
     final originalGuidance = _aiGuidanceController.text;
+    final originalLanguage = _captionLanguage;
     final originalTargets = _aiCaptionTargetSnapshot();
     bool textUnchanged() =>
         _captionController.text == originalCaption &&
         _aiGuidanceController.text == originalGuidance &&
+        _captionLanguage == originalLanguage &&
         advanced == _platformSettings.usePlatformCaptions &&
         (!advanced || originalTargets == _aiCaptionTargetSnapshot());
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
@@ -3123,6 +3132,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           audioS3Key: clipMedia.isAudio ? clipMedia.s3Key : null,
           videoS3Key: clipMedia.isAudio ? null : clipMedia.s3Key,
           guidance: guidance.isEmpty ? null : guidance,
+          captionLanguage: originalLanguage,
           selectedFrameKeys: selectedFrameKeys,
           deleteAfterUse: true,
           writingStyle: writingStyle,
@@ -3169,7 +3179,10 @@ class _UploaderScreenState extends State<UploaderScreen>
               _formatCaptionParts(generated.caption, generated.hashtags);
         }
         if (!mounted) return;
-        setState(() => _isGeneratingCaption = false);
+        setState(() {
+          _isGeneratingCaption = false;
+          _isChoosingCaption = true;
+        });
         final accepted = await showModalBottomSheet<bool>(
           context: context,
           isScrollControlled: true,
@@ -3183,6 +3196,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           },
         );
         _platformCaptionPreviewContext = null;
+        if (mounted) setState(() => _isChoosingCaption = false);
         if (accepted != true || !stillCurrent() || !textUnchanged()) {
           return;
         }
@@ -3220,7 +3234,10 @@ class _UploaderScreenState extends State<UploaderScreen>
         // The modal protects input while the snapshots also guard changes
         // caused by a new owner, clip or text behind the sheet.
         if (!mounted) return;
-        setState(() => _isGeneratingCaption = false);
+        setState(() {
+          _isGeneratingCaption = false;
+          _isChoosingCaption = true;
+        });
         final selected = await showModalBottomSheet<String>(
           context: context,
           isScrollControlled: true,
@@ -3231,6 +3248,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           },
         );
         _platformCaptionPreviewContext = null;
+        if (mounted) setState(() => _isChoosingCaption = false);
         if (selected == null || !stillCurrent() || !textUnchanged()) return;
         selectedCaption = selected;
       }
@@ -3302,6 +3320,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       if (mounted && generation == _captionGeneration) {
         setState(() {
           _isGeneratingCaption = false;
+          _isChoosingCaption = false;
         });
       }
       if (mounted && !quotaUpdated) unawaited(_loadCaptionQuota());
@@ -3673,6 +3692,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           caption: _captionController.text,
           captionNeedsReview: _captionNeedsReview,
           aiGuidance: _aiGuidanceController.text,
+          captionLanguage: _captionLanguage,
           watermarkEnabled: watermarkEnabled,
           platformApiValues:
               desiredPlatforms.map((platform) => platform.apiValue).toSet(),
@@ -3817,6 +3837,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     _captionController.clear();
     _captionNeedsReview = false;
     _aiGuidanceController.clear();
+    _captionLanguage = 'auto';
     _fileNameController.clear();
     _localFilePathController.clear();
     _sizeBytesController.clear();
@@ -3881,6 +3902,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _captionController.text = draft.caption;
       _captionNeedsReview = draft.captionNeedsReview;
       _aiGuidanceController.text = draft.aiGuidance;
+      _captionLanguage = readCaptionOutputLanguage(draft.captionLanguage);
       _selectedPlatforms
         ..clear()
         ..addAll(desiredPlatforms.where(_connectedPlatforms.contains));
@@ -6425,6 +6447,23 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Widget _buildAiCaptionPanel() => _AiCaptionPanel(
         guidanceController: _aiGuidanceController,
+        captionLanguage: _captionLanguage,
+        onLanguageChanged: (value) {
+          if (_formBusy ||
+              _isGeneratingCaption ||
+              _isSavingCaptionStyle ||
+              _isChoosingCaption ||
+              value == null ||
+              value == _captionLanguage) {
+            return;
+          }
+          setState(() {
+            _captionLanguage = readCaptionOutputLanguage(value);
+            _clearDraftSavedFeedback();
+            _aiCaptionErrorMessage = null;
+          });
+        },
+        isChoosingCaption: _isChoosingCaption,
         selectedVideoName: _selectedVideoName,
         isGenerating: _isGeneratingCaption,
         captionReady: _aiCaptionReady,
@@ -8349,6 +8388,9 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
 class _AiCaptionPanel extends StatelessWidget {
   const _AiCaptionPanel({
     required this.guidanceController,
+    required this.captionLanguage,
+    required this.onLanguageChanged,
+    required this.isChoosingCaption,
     required this.selectedVideoName,
     required this.isGenerating,
     required this.captionReady,
@@ -8369,6 +8411,9 @@ class _AiCaptionPanel extends StatelessWidget {
   });
 
   final TextEditingController guidanceController;
+  final String captionLanguage;
+  final ValueChanged<String?> onLanguageChanged;
+  final bool isChoosingCaption;
   final String? selectedVideoName;
   final bool isGenerating;
   final bool captionReady;
@@ -8514,6 +8559,30 @@ class _AiCaptionPanel extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              key: const ValueKey('uploader-caption-language'),
+              initialValue: captionLanguage,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: localizeCaptionMessage(context, 'ภาษาแคปชั่น'),
+                helperText: localizeCaptionMessage(context,
+                    'เลือกภาษาที่ให้ AI เขียนได้ แม้เสียงในคลิปเป็นอีกภาษา'),
+                helperMaxLines: 3,
+              ),
+              items: [
+                DropdownMenuItem(
+                  value: 'auto',
+                  child: CaptionText('อัตโนมัติ (ตามคลิป)'),
+                ),
+                for (final entry in captionOutputLanguages.entries)
+                  DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+              ],
+              onChanged:
+                  formBusy || isGenerating || isSavingStyle || isChoosingCaption
+                      ? null
+                      : onLanguageChanged,
+            ),
+            const SizedBox(height: AppTheme.spaceMd),
             if (platformTargets != null) ...[
               platformTargets!,
               const SizedBox(height: 12),

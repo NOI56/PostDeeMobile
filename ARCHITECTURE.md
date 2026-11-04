@@ -2,6 +2,21 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Caption language preference (2026-11-04, local candidate)
+
+Caption requests add an optional validated output-language code. The media
+evidence pass continues to transcribe/detect the source independently; the
+caption-writing and grounding-audit passes share the resolved output preference.
+Explicit translation does not replace the source transcript or weaken factual
+grounding. Omitted/automatic requests retain the existing speech-first behavior.
+The response context separates detected speech from selected output language.
+
+Mobile keeps the choice in the uploader state and local draft, sends it for both
+shared and per-platform generations, and protects pending results when inputs
+change. Credit accounting, user scope, cleanup and existing fallback behavior
+are retained. No persisted server model or migration is added; API precedes
+Mobile. See the [work record](docs/superpowers/plans/2026-11-04-caption-output-language.md).
+
 ## Scheduled-caption mutation and publish snapshot (2026-11-03, local candidate)
 
 The additive caption route uses the same owner-operation and per-post mutation

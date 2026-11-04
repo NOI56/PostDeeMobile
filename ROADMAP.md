@@ -2,6 +2,17 @@
 
 Build roadmap for PostDee.
 
+## AI caption output language (2026-11-04, local candidate)
+
+- Add Automatic and explicit output-language choices to the existing AI caption
+  panel, retaining the choice in local drafts and keeping app UI language separate.
+- Validate and pass the preference through writing, response context and audit
+  for shared/per-channel captions and their metadata; retain source evidence,
+  platform validation, quota refunds and cleanup.
+- Keep existing clients compatible. Deliver API before Mobile; no database
+  migration. Real multilingual clip quality checks, merge and deployment remain
+  outside this candidate. [Work record](docs/superpowers/plans/2026-11-04-caption-output-language.md).
+
 ## Edit scheduled captions (2026-11-03, local candidate)
 
 - Add a Thai/English caption editor from queued scheduled-post details, with

@@ -2,6 +2,31 @@
 
 PostDee backend API reference.
 
+## Caption output language (2026-11-04, local candidate)
+
+`POST /captions/generate-from-clip` accepts optional `captionLanguage`:
+`auto`, `th`, `en`, `zh`, `ja`, `ko`, `vi`, `id`, `ms`, `lo`, `km`, `my`,
+`es`, `fr`, `de`, `pt`, `ar`, or `hi`. Omission and `auto` retain the existing
+speech-first language choice. These are product output choices, not a certified
+list of audio input languages. Invalid values fail request validation before
+media download, provider calls or credit reservation.
+
+An explicit choice applies to the caption, alternatives, hooks, search title,
+SEO keywords, hashtags and every requested platform caption. Evidence remains
+in its original language; `context.detectedSpokenLanguage` still describes the
+clip, while `context.selectedCaptionLanguage` describes the requested output.
+The generation and audit passes receive the same output preference. Translated
+captions must preserve the clip's facts, negation and uncertainty.
+
+Existing evidence checks, platform validation, credit/refund rules and media
+cleanup remain in place. Local fallbacks do not claim successful translation;
+Mobile retains the seller's existing text on a fallback.
+
+No database migration or new environment variable. **Deploy API first, then
+Mobile**: older APIs can ignore an unknown request field, so the new selector
+must not be released against an API that lacks this implementation. Old clients
+continue to omit the field. See the [work record](docs/superpowers/plans/2026-11-04-caption-output-language.md).
+
 ## Edit scheduled post caption (2026-11-03; Staging 2026-11-04)
 
 `PATCH /posts/:id/caption` edits an owned `QUEUED` post scheduled more than

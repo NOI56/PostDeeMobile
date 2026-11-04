@@ -1,5 +1,20 @@
 # PostDee
 
+## AI caption output language (2026-11-04, local candidate)
+
+The create-post AI caption panel offers Automatic plus seventeen explicit
+output languages. Automatic retains the existing choice from the clip;
+an explicit choice can differ from its spoken language and applies to shared
+and per-channel captions, including hashtags and search metadata. The choice
+is kept with the local draft and is independent of the app's Thai/English UI.
+
+The configured caption model is `gemini-2.5-flash-lite`. Google documents audio
+input and text output, but does not provide a fixed supported spoken-language
+count for this `generateContent` audio-understanding pipeline. The picker is
+an output preference, not a guarantee of language accuracy. No live multilingual
+provider acceptance or rollout is included. API must precede Mobile; no database
+migration. See the [work record](docs/superpowers/plans/2026-11-04-caption-output-language.md).
+
 ## Edit scheduled captions (2026-11-03, local candidate)
 
 Post details allow manual caption and YouTube-title edits for queued scheduled

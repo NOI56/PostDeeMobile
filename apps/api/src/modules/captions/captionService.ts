@@ -69,6 +69,13 @@ export const generateLocalAffiliateCaption = (keywords: string[]): GeneratedCapt
 
 export type RealClipCaptionMode = 'AUDIO_ONLY' | 'AUDIO_WITH_FRAMES';
 
+// Product output choices, not a claim about supported spoken/audio languages.
+export const realClipCaptionLanguages = [
+  'auto', 'th', 'en', 'zh', 'ja', 'ko', 'vi', 'id', 'ms', 'lo', 'km', 'my',
+  'es', 'fr', 'de', 'pt', 'ar', 'hi'
+] as const;
+export type RealClipCaptionLanguage = typeof realClipCaptionLanguages[number];
+
 export type RealClipCaptionWritingStyle = {
   tone: 'auto' | 'friendly' | 'playful' | 'direct_review' | 'soft_sell';
   length: 'auto' | 'short' | 'medium';
@@ -82,6 +89,8 @@ export type RealClipCaptionRequest = {
   mediaKind?: 'audio' | 'video';
   platforms?: Platform[];
   guidance?: string;
+  /** Requested text output language; omitted/auto keeps media-based selection. */
+  captionLanguage?: RealClipCaptionLanguage;
   writingStyle?: RealClipCaptionWritingStyle;
   selectedFrameKeys: string[];
   deleteAfterUse: boolean;
@@ -244,6 +253,12 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
   const writingStyle = validateWritingStyle(payload.writingStyle);
   if (!writingStyle.ok) return writingStyle;
 
+  const captionLanguage = payload.captionLanguage;
+  if (captionLanguage !== undefined && (typeof captionLanguage !== 'string' ||
+    !realClipCaptionLanguages.includes(captionLanguage as RealClipCaptionLanguage))) {
+    return { ok: false as const, message: 'captionLanguage must be auto or a supported caption output language' };
+  }
+
   const platforms = payload.platforms;
   if (platforms !== undefined && (!Array.isArray(platforms) || platforms.length < 1 || platforms.length > 4 ||
     platforms.some((platform) => typeof platform !== 'string' || !captionPlatforms.includes(platform as Platform)) ||
@@ -267,6 +282,7 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
       ...(audioS3Key ? { mediaKind: 'audio' as const } : {}),
       ...(platforms !== undefined ? { platforms: platforms as Platform[] } : {}),
       guidance: readOptionalString(payload.guidance),
+      ...(captionLanguage !== undefined ? { captionLanguage: captionLanguage as RealClipCaptionLanguage } : {}),
       ...(writingStyle.style ? { writingStyle: writingStyle.style } : {}),
       selectedFrameKeys,
       deleteAfterUse: readBoolean(payload.deleteAfterUse)

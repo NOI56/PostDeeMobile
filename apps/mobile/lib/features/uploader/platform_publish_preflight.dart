@@ -122,7 +122,49 @@ class PublishPreflightProblem {
   final SocialPlatform? platform;
 }
 
-/// Shared duration rules for early channel hints and verified final media.
+class PlatformVideoDurationRule {
+  const PlatformVideoDurationRule({
+    this.minimumSeconds,
+    required this.maximumSeconds,
+  });
+
+  final int? minimumSeconds;
+  final int maximumSeconds;
+}
+
+const tikTokPostDeeMaxDurationSeconds = 600;
+
+/// PostDee limits shared by channel guidance and publish preflight.
+/// A TikTok account can impose a smaller limit; an unknown or invalid account
+/// limit retains PostDee's ceiling until the account is checked.
+PlatformVideoDurationRule? platformVideoDurationRule(
+  SocialPlatform platform, {
+  int? tikTokMaxDurationSeconds,
+}) {
+  switch (platform) {
+    case SocialPlatform.tiktok:
+      return PlatformVideoDurationRule(
+        maximumSeconds: tikTokMaxDurationSeconds != null &&
+                tikTokMaxDurationSeconds > 0 &&
+                tikTokMaxDurationSeconds < tikTokPostDeeMaxDurationSeconds
+            ? tikTokMaxDurationSeconds
+            : tikTokPostDeeMaxDurationSeconds,
+      );
+    case SocialPlatform.youtubeShorts:
+      return const PlatformVideoDurationRule(maximumSeconds: 180);
+    case SocialPlatform.instagramReels:
+      return const PlatformVideoDurationRule(
+          minimumSeconds: 3, maximumSeconds: 900);
+    case SocialPlatform.facebookReels:
+      return const PlatformVideoDurationRule(
+          minimumSeconds: 3, maximumSeconds: 90);
+    case SocialPlatform.shopeeVideo:
+    case SocialPlatform.lazadaVideo:
+      return null;
+  }
+}
+
+/// Shared duration validation for early channel hints and verified final media.
 /// Missing or invalid measurements stay unknown; required-media checks below
 /// still reject them before upload.
 PublishPreflightProblem? validatePlatformVideoDuration({
@@ -135,29 +177,31 @@ PublishPreflightProblem? validatePlatformVideoDuration({
       durationSeconds <= 0) {
     return null;
   }
+  final rule = platformVideoDurationRule(platform,
+      tikTokMaxDurationSeconds: tikTokMaxDurationSeconds);
+  if (rule == null ||
+      (durationSeconds <= rule.maximumSeconds &&
+          (rule.minimumSeconds == null ||
+              durationSeconds >= rule.minimumSeconds!))) {
+    return null;
+  }
   PublishPreflightProblem problem(String code, String message) =>
       PublishPreflightProblem(code: code, message: message, platform: platform);
 
-  if (platform == SocialPlatform.youtubeShorts && durationSeconds > 180) {
+  if (platform == SocialPlatform.youtubeShorts) {
     return problem('YOUTUBE_SHORTS_DURATION_INVALID',
         'YouTube Shorts ต้องใช้คลิปยาวไม่เกิน 3 นาที');
   }
-  if (platform == SocialPlatform.instagramReels &&
-      (durationSeconds < 3 || durationSeconds > 900)) {
+  if (platform == SocialPlatform.instagramReels) {
     return problem('INSTAGRAM_DURATION_INVALID',
         'Instagram Reels ต้องใช้คลิปยาวตั้งแต่ 3 วินาทีถึง 15 นาที');
   }
-  if (platform == SocialPlatform.facebookReels &&
-      (durationSeconds < 3 || durationSeconds > 90)) {
+  if (platform == SocialPlatform.facebookReels) {
     return problem('FACEBOOK_DURATION_INVALID',
         'Facebook Reels ต้องใช้คลิปยาวตั้งแต่ 3 วินาทีถึง 1 นาที 30 วินาที');
   }
   if (platform == SocialPlatform.tiktok) {
-    final maximumSeconds = tikTokMaxDurationSeconds != null &&
-            tikTokMaxDurationSeconds > 0 &&
-            tikTokMaxDurationSeconds < 600
-        ? tikTokMaxDurationSeconds
-        : 600;
+    final maximumSeconds = rule.maximumSeconds;
     if (durationSeconds > maximumSeconds) {
       final minutes = maximumSeconds ~/ 60;
       final seconds = maximumSeconds % 60;
@@ -165,8 +209,8 @@ PublishPreflightProblem? validatePlatformVideoDuration({
         if (minutes > 0) '$minutes นาที',
         if (seconds > 0) '$seconds วินาที',
       ].join(' ');
-      return problem('TIKTOK_DURATION_INVALID',
-          'TikTok ต้องใช้คลิปยาวไม่เกิน $limit');
+      return problem(
+          'TIKTOK_DURATION_INVALID', 'TikTok ต้องใช้คลิปยาวไม่เกิน $limit');
     }
   }
   return null;

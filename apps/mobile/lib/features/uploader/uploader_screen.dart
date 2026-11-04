@@ -56,6 +56,7 @@ import 'tiktok_video_preparer.dart';
 import 'tiktok_publishing_settings_sheet.dart';
 import 'uploader_localizations.dart';
 import 'video_picker_service.dart';
+import 'video_duration_guide.dart';
 import 'watermark_video_processor.dart';
 
 export '../shared/post_schedule_policy.dart';
@@ -202,6 +203,7 @@ class UploaderScreen extends StatefulWidget {
     this.probePublishMedia,
     this.readVideoMetadata,
     this.loadTikTokPublishingOptions,
+    this.loadTikTokDurationOptions,
     this.onScheduledPostCreated,
     this.onPublishFinished,
     this.onViewPost,
@@ -251,6 +253,8 @@ class UploaderScreen extends StatefulWidget {
   final PublishMediaProbe? probePublishMedia;
   final VideoMetadataReader? readVideoMetadata;
   final UploaderTikTokOptionsLoader? loadTikTokPublishingOptions;
+  // Read-only capability lookup, separate from the Direct Post consent flow.
+  final UploaderTikTokOptionsLoader? loadTikTokDurationOptions;
   final UploaderScheduledPostCreated? onScheduledPostCreated;
   final VoidCallback? onPublishFinished;
   final ValueChanged<String>? onViewPost;
@@ -342,6 +346,12 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _isLoadingPlatformDefaults = false;
   int _platformDefaultsLoadGeneration = 0;
   TikTokPublishingOptionsResult? _tikTokPublishingOptions;
+  int? _tikTokDurationLimitSeconds;
+  AuthSessionBinding? _tikTokDurationSession;
+  String? _tikTokDurationBinding;
+  int _tikTokDurationRequest = 0;
+  bool _isLoadingTikTokDuration = false;
+  bool _tikTokDurationFailed = false;
   int _tikTokIntentGeneration = 0;
   String? _tikTokTextSnapshot;
   String? _tikTokConsentedIntent;
@@ -557,7 +567,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         durationSeconds: _videoDurationSeconds,
         tikTokMaxDurationSeconds:
             _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost
-                ? _tikTokPublishingOptions?.creatorInfo.maxVideoPostDurationSec
+                ? _tikTokGuideMaximum
                 : null,
       );
 
@@ -903,12 +913,106 @@ class _UploaderScreenState extends State<UploaderScreen>
         tiktokVideoDurationSeconds: null);
   }
 
+  bool get _tikTokDurationConnected =>
+      PostDeeAuthSessionStore.instance.session.isSignedIn &&
+      !_isLoadingConnections &&
+      _connectionsErrorMessage == null &&
+      _connectionsOwnerUserId ==
+          PostDeeAuthSessionStore.instance.session.stableUserId &&
+      _connectedPlatforms.contains(SocialPlatform.tiktok);
+
+  int? get _tikTokGuideMaximum {
+    if (!_tikTokDurationConnected) return null;
+    if (_tikTokDurationSession?.isCurrent != true ||
+        _tikTokDurationBinding != _tikTokConnectionBinding()) {
+      return null;
+    }
+    return _tikTokDurationLimitSeconds;
+  }
+
+  void _recordTikTokDurationLimit(TikTokPublishingOptionsResult options,
+      AuthSessionBinding session, String binding) {
+    _tikTokDurationRequest++;
+    _tikTokDurationLimitSeconds = options.creatorInfo.maxVideoPostDurationSec > 0
+        ? options.creatorInfo.maxVideoPostDurationSec : null;
+    _tikTokDurationSession = session;
+    _tikTokDurationBinding = binding;
+    _isLoadingTikTokDuration = false;
+    _tikTokDurationFailed = _tikTokDurationLimitSeconds == null;
+  }
+
+  void _clearTikTokDurationLimit() {
+    _tikTokDurationRequest++;
+    _tikTokDurationLimitSeconds = null;
+    _tikTokDurationSession = null;
+    _tikTokDurationBinding = null;
+    _isLoadingTikTokDuration = false;
+    _tikTokDurationFailed = false;
+  }
+
+  Future<void> _loadTikTokDurationLimit() async {
+    if (!_tikTokDurationConnected) return;
+    final session = PostDeeAuthSessionStore.instance.captureSession();
+    final binding = _tikTokConnectionBinding();
+    final connectionGeneration = _connectionLoadGeneration;
+    final connection = _connectionDetails[SocialPlatform.tiktok];
+    final request = ++_tikTokDurationRequest;
+    bool isCurrent() => mounted && session.isCurrent &&
+        request == _tikTokDurationRequest &&
+        connectionGeneration == _connectionLoadGeneration &&
+        _tikTokDurationConnected && binding == _tikTokConnectionBinding();
+    setState(() {
+      _tikTokDurationLimitSeconds = null;
+      _tikTokDurationSession = null;
+      _tikTokDurationBinding = null;
+      _isLoadingTikTokDuration = true;
+      _tikTokDurationFailed = false;
+    });
+    try {
+      if (connection?.connectionId?.trim().isNotEmpty != true ||
+          connection?.connectionRevision?.trim().isNotEmpty != true) {
+        throw _tikTokOptionsChanged();
+      }
+      final loader = widget.loadTikTokDurationOptions ??
+          PostDeeApiClient(authHeaders:
+              PostDeeApiAuthHeaders(sessionBinding: session))
+              .loadTikTokPublishingOptions;
+      final options = await loader().timeout(const Duration(seconds: 10));
+      if (!isCurrent()) return;
+      if (options.connectionId != connection!.connectionId ||
+          options.creatorInfoRevision != connection.connectionRevision ||
+          options.creatorInfo.maxVideoPostDurationSec <= 0) {
+        throw _tikTokOptionsChanged();
+      }
+      setState(() {
+        _recordTikTokDurationLimit(options, session, binding);
+      });
+    } catch (_) {
+      if (!isCurrent()) return;
+      setState(() {
+        _isLoadingTikTokDuration = false;
+        _tikTokDurationFailed = true;
+      });
+    }
+  }
+
+  Future<void> _retryTikTokDurationLimit() async {
+    final connection = _connectionDetails[SocialPlatform.tiktok];
+    if (connection?.connectionId?.trim().isNotEmpty != true ||
+        connection?.connectionRevision?.trim().isNotEmpty != true) {
+      await _loadConnections();
+    } else {
+      await _loadTikTokDurationLimit();
+    }
+  }
+
   ApiException _tikTokOptionsChanged() => const ApiException(
       'บัญชีหรือตัวเลือก TikTok เปลี่ยนแล้ว กรุณาเปิดการตั้งค่า TikTok และยืนยันใหม่',
       statusCode: 409,
       code: 'TIKTOK_PUBLISHING_OPTIONS_CHANGED');
 
   Future<TikTokPublishingOptionsResult> _loadBoundTikTokOptions() async {
+    final session = PostDeeAuthSessionStore.instance.captureSession();
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     final binding = _tikTokConnectionBinding();
     final generation = _tikTokIntentGeneration;
@@ -917,6 +1021,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         _apiClient.loadTikTokPublishingOptions)();
     final connection = _connectionDetails[SocialPlatform.tiktok];
     if (!mounted ||
+        !session.isCurrent ||
         owner != PostDeeAuthSessionStore.instance.session.stableUserId ||
         generation != _tikTokIntentGeneration ||
         connectionGeneration != _connectionLoadGeneration ||
@@ -925,6 +1030,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         connection?.connectionRevision != options.creatorInfoRevision) {
       throw _tikTokOptionsChanged();
     }
+    setState(() => _recordTikTokDurationLimit(options, session, binding));
     return options;
   }
 
@@ -1411,6 +1517,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       if (resumed) {
         unawaited(_loadCaptionQuota());
         unawaited(_loadPostQuota());
+        unawaited(_loadTikTokDurationLimit());
       }
     }
   }
@@ -1516,10 +1623,15 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   void _handleCaptionQuotaSessionChanged() {
     if (_captionQuotaSession.isCurrent) return;
+    final previousOwner = _captionQuotaSession.userId;
     _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
     _captionQuotaRequestId++;
     _postQuotaRequestId++;
     setState(() {
+      _clearTikTokDurationLimit();
+      _clearTikTokFreshness();
+      _connectionLoadGeneration++;
+      _connectionsOwnerUserId = null;
       _captionQuota = null;
       _isLoadingCaptionQuota = false;
       _captionQuotaLoadFailed = false;
@@ -1530,6 +1642,12 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (PostDeeAuthSessionStore.instance.session.isSignedIn) {
       unawaited(_loadCaptionQuota());
       unawaited(_loadPostQuota());
+      // The regular draft owner listener reloads other owners in production.
+      // Injected stores and a new sign-in lifecycle for the same UID need an
+      // explicit connection refresh too.
+      if (widget.draftStore != null || previousOwner == _captionQuotaSession.userId) {
+        unawaited(_loadConnections());
+      }
     }
   }
 
@@ -1880,14 +1998,17 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _loadConnections() async {
+    final session = PostDeeAuthSessionStore.instance.captureSession();
     final generation = ++_connectionLoadGeneration;
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     bool isCurrent() =>
         mounted &&
+        session.isCurrent &&
         generation == _connectionLoadGeneration &&
         owner == PostDeeAuthSessionStore.instance.session.stableUserId;
     if (mounted) {
       setState(() {
+        _clearTikTokDurationLimit();
         _isLoadingConnections = true;
         _connectionsErrorMessage = null;
         _channelReadinessError = null;
@@ -1987,6 +2108,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     } finally {
       if (isCurrent()) {
         setState(() => _isLoadingConnections = false);
+        unawaited(_loadTikTokDurationLimit());
       }
     }
   }
@@ -4799,10 +4921,10 @@ class _UploaderScreenState extends State<UploaderScreen>
                 (isTikTokDirect &&
                     (submittedTikTokGeneration != _tikTokIntentGeneration ||
                         submittedTikTokBinding != _tikTokConnectionBinding())),
-            maxDurationSeconds: isTikTokDirect
-                ? directOptions!.creatorInfo.maxVideoPostDurationSec
-                    .clamp(1, 600)
-                : 600,
+            maxDurationSeconds: platformVideoDurationRule(SocialPlatform.tiktok,
+                tikTokMaxDurationSeconds: isTikTokDirect
+                    ? directOptions!.creatorInfo.maxVideoPostDurationSec : null)!
+                    .maximumSeconds,
           ));
           generatedTikTokVideo = prepared;
           preparedDurationSeconds = prepared.durationSeconds;
@@ -5819,6 +5941,16 @@ class _UploaderScreenState extends State<UploaderScreen>
                               ],
                               const SizedBox(height: 12),
                               _buildPostQuota(),
+                              VideoDurationGuide(
+                                durationSeconds: _videoDurationSeconds,
+                                tikTokMaxDurationSeconds: _tikTokGuideMaximum,
+                                tikTokPublishMode: _platformSettings.tiktokPublishMode,
+                                tikTokConnected: _tikTokDurationConnected,
+                                isLoadingTikTokLimit: _isLoadingTikTokDuration,
+                                tikTokLimitFailed: _tikTokDurationFailed,
+                                onRetryTikTokLimit: _retryTikTokDurationLimit,
+                              ),
+                              const SizedBox(height: 16),
                               _buildPostingChecklist(),
                             ],
                             if (_currentStep == 1) ...[

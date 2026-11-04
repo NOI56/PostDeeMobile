@@ -166,6 +166,12 @@ void main() {
       await tester.tap(picker);
       await tester.pumpAndSettle();
 
+      // Inspect the preview badge before scrolling it outside ListView's
+      // cache to read the inline warning and the duration guide below it.
+      expect(find.byKey(const ValueKey('uploader-video-ratio-warning')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('uploader-video-ratio-ok')),
+          findsNothing);
       final warning = find.byKey(const ValueKey('uploader-aspect-warning'));
       await show(tester, warning);
       expect(
@@ -173,11 +179,6 @@ void main() {
               of: warning,
               matching: find.textContaining('ไม่ใช่แนวตั้ง 9:16')),
           findsOneWidget);
-      expect(find.byKey(const ValueKey('uploader-video-ratio-warning')),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey('uploader-video-ratio-ok')),
-          findsNothing);
-
       // AI captions accept any ratio, so the seller can still continue.
       await goToUploaderStep(tester, 1);
       expect(tester.takeException(), isNull);

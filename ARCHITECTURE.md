@@ -17,6 +17,23 @@ change. Credit accounting, user scope, cleanup and existing fallback behavior
 are retained. No persisted server model or migration is added; API precedes
 Mobile. See the [work record](docs/superpowers/plans/2026-11-04-caption-output-language.md).
 
+## Clip duration guidance (2026-11-04, local candidate)
+
+`platformVideoDurationRule` supplies both the uploader guide and Mobile duration
+validation. Missing measurements remain unknown; final outgoing-media preflight
+and TikTok preparation/Direct revalidation retain their existing checks.
+TikTok inbox transfers use the PostDee 600-second ceiling. Direct Post uses the
+smaller of the creator maximum and that ceiling; advisory reads never provide
+privacy choices or posting consent.
+
+A separate read-only creator-limit cache is scoped to the auth lifecycle,
+connection identity/revision and request generation. Connection refresh and
+session changes clear it; late responses cannot populate another account.
+Resume refreshes the advisory limit, failures offer retry, and content edits do
+not invalidate account capabilities. The actual Direct Post flow still loads
+and validates fresh provider options independently before sending. No database,
+API contract, environment or server-side probing changes are introduced.
+
 ## Scheduled-caption mutation and publish snapshot (2026-11-03, local candidate)
 
 The additive caption route uses the same owner-operation and per-post mutation

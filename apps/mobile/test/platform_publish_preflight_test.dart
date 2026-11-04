@@ -32,41 +32,157 @@ PublishMediaMetadata _media({
     );
 
 void main() {
+  test('public duration rules match the supported destination limits', () {
+    const expectedRules = <SocialPlatform, PlatformVideoDurationRule>{
+      SocialPlatform.tiktok: PlatformVideoDurationRule(maximumSeconds: 600),
+      SocialPlatform.youtubeShorts:
+          PlatformVideoDurationRule(maximumSeconds: 180),
+      SocialPlatform.instagramReels:
+          PlatformVideoDurationRule(minimumSeconds: 3, maximumSeconds: 900),
+      SocialPlatform.facebookReels:
+          PlatformVideoDurationRule(minimumSeconds: 3, maximumSeconds: 90),
+    };
+    expect(tikTokPostDeeMaxDurationSeconds, 600);
+    for (final platform in SocialPlatform.values) {
+      final expected = expectedRules[platform];
+      final actual = platformVideoDurationRule(platform);
+      if (expected == null) {
+        expect(actual, isNull, reason: '$platform has no supported rule');
+        expect(
+          validatePlatformVideoDuration(
+            platform: platform,
+            durationSeconds: 1000,
+          ),
+          isNull,
+        );
+      } else {
+        expect(actual?.minimumSeconds, expected.minimumSeconds);
+        expect(actual?.maximumSeconds, expected.maximumSeconds);
+      }
+    }
+  });
+
+  test('duration validator agrees with inclusive public rule boundaries', () {
+    for (final platform in [
+      SocialPlatform.tiktok,
+      SocialPlatform.youtubeShorts,
+      SocialPlatform.instagramReels,
+      SocialPlatform.facebookReels,
+    ]) {
+      final rule =
+          platformVideoDurationRule(platform, tikTokMaxDurationSeconds: 90)!;
+      final minimum = rule.minimumSeconds?.toDouble() ?? 0.001;
+      expect(
+        validatePlatformVideoDuration(
+          platform: platform,
+          durationSeconds: minimum,
+          tikTokMaxDurationSeconds: 90,
+        ),
+        isNull,
+        reason: '$platform accepts its minimum',
+      );
+      expect(
+        validatePlatformVideoDuration(
+          platform: platform,
+          durationSeconds: rule.maximumSeconds.toDouble(),
+          tikTokMaxDurationSeconds: 90,
+        ),
+        isNull,
+        reason: '$platform accepts its maximum',
+      );
+      expect(
+        validatePlatformVideoDuration(
+          platform: platform,
+          durationSeconds: rule.maximumSeconds + 0.001,
+          tikTokMaxDurationSeconds: 90,
+        )?.platform,
+        platform,
+        reason: '$platform does not round down an overlong clip',
+      );
+      if (rule.minimumSeconds != null) {
+        expect(
+          validatePlatformVideoDuration(
+            platform: platform,
+            durationSeconds: rule.minimumSeconds! - 0.001,
+          )?.platform,
+          platform,
+          reason: '$platform does not round up a short clip',
+        );
+      }
+    }
+  });
+
+  test('TikTok public rule caps valid account limits and ignores invalid ones',
+      () {
+    for (final accountLimit in <int?>[null, 0, -1, 600, 601, 3600]) {
+      final rule = platformVideoDurationRule(SocialPlatform.tiktok,
+          tikTokMaxDurationSeconds: accountLimit)!;
+      expect(rule.minimumSeconds, isNull);
+      expect(rule.maximumSeconds, 600);
+    }
+    for (final accountLimit in [1, 59, 90, 300, 599]) {
+      expect(
+        platformVideoDurationRule(SocialPlatform.tiktok,
+                tikTokMaxDurationSeconds: accountLimit)
+            ?.maximumSeconds,
+        accountLimit,
+      );
+    }
+    expect(
+      platformVideoDurationRule(SocialPlatform.instagramReels,
+              tikTokMaxDurationSeconds: 1)
+          ?.maximumSeconds,
+      900,
+      reason: 'A TikTok account limit does not restrict other destinations',
+    );
+  });
+
   test('validates destination text instead of an unused shared caption', () {
-    expect(validatePlatformPublishPreflight(
-      selectedPlatforms: {SocialPlatform.youtubeShorts, SocialPlatform.instagramReels},
-      caption: '<unused shared caption>',
-      platformCaptions: const {
-        SocialPlatform.youtubeShorts: 'YouTube description',
-        SocialPlatform.instagramReels: 'Instagram caption',
-      },
-      media: _media(),
-      requireMedia: true,
-    ), isNull);
-    expect(validatePlatformPublishPreflight(
-      selectedPlatforms: {SocialPlatform.youtubeShorts},
-      caption: 'shared caption',
-      platformCaptions: const {SocialPlatform.youtubeShorts: '<invalid>'},
-    )?.code, 'YOUTUBE_DESCRIPTION_INVALID');
+    expect(
+        validatePlatformPublishPreflight(
+          selectedPlatforms: {
+            SocialPlatform.youtubeShorts,
+            SocialPlatform.instagramReels
+          },
+          caption: '<unused shared caption>',
+          platformCaptions: const {
+            SocialPlatform.youtubeShorts: 'YouTube description',
+            SocialPlatform.instagramReels: 'Instagram caption',
+          },
+          media: _media(),
+          requireMedia: true,
+        ),
+        isNull);
+    expect(
+        validatePlatformPublishPreflight(
+          selectedPlatforms: {SocialPlatform.youtubeShorts},
+          caption: 'shared caption',
+          platformCaptions: const {SocialPlatform.youtubeShorts: '<invalid>'},
+        )?.code,
+        'YOUTUBE_DESCRIPTION_INVALID');
   });
 
   test('unselected captions do not block media or selected descriptions', () {
-    expect(validatePlatformPublishPreflight(
-      selectedPlatforms: {SocialPlatform.youtubeShorts},
-      caption: 'shared',
-      platformCaptions: {
-        SocialPlatform.youtubeShorts: '',
-        SocialPlatform.instagramReels: 'x' * 2201,
-      },
-      media: _media(),
-      requireMedia: true,
-    ), isNull);
-    expect(validatePlatformPublishPreflight(
-      selectedPlatforms: {SocialPlatform.youtubeShorts},
-      caption: 'shared',
-      platformCaptions: const {SocialPlatform.youtubeShorts: ''},
-      requireMedia: true,
-    )?.code, 'PUBLISH_MEDIA_UNVERIFIED');
+    expect(
+        validatePlatformPublishPreflight(
+          selectedPlatforms: {SocialPlatform.youtubeShorts},
+          caption: 'shared',
+          platformCaptions: {
+            SocialPlatform.youtubeShorts: '',
+            SocialPlatform.instagramReels: 'x' * 2201,
+          },
+          media: _media(),
+          requireMedia: true,
+        ),
+        isNull);
+    expect(
+        validatePlatformPublishPreflight(
+          selectedPlatforms: {SocialPlatform.youtubeShorts},
+          caption: 'shared',
+          platformCaptions: const {SocialPlatform.youtubeShorts: ''},
+          requireMedia: true,
+        )?.code,
+        'PUBLISH_MEDIA_UNVERIFIED');
   });
 
   PublishPreflightProblem? check(SocialPlatform platform,
@@ -342,7 +458,9 @@ void main() {
 
   test('Facebook Reels allows 3 to 90 seconds without rounding', () {
     for (final duration in [3.0, 90.0]) {
-      expect(check(SocialPlatform.facebookReels, media: _media(duration: duration)),
+      expect(
+          check(SocialPlatform.facebookReels,
+              media: _media(duration: duration)),
           isNull);
     }
     for (final duration in [2.999, 90.001]) {
@@ -356,7 +474,8 @@ void main() {
 
   test('Facebook Reels does not reuse Facebook Feed Video width ceilings', () {
     // Passing local preflight does not guarantee provider acceptance.
-    expect(check(SocialPlatform.facebookReels, media: _media(width: 4001)), isNull);
+    expect(check(SocialPlatform.facebookReels, media: _media(width: 4001)),
+        isNull);
     expect(
         check(SocialPlatform.facebookReels,
             media: _media(width: 1079, fps: 25)),
@@ -396,16 +515,20 @@ void main() {
         isNull);
   });
 
-  test('required Instagram container validation keeps its existing priority', () {
+  test('required Instagram container validation keeps its existing priority',
+      () {
     expect(
       check(SocialPlatform.instagramReels,
-          media: _media(container: null, duration: 900.001))?.code,
+              media: _media(container: null, duration: 900.001))
+          ?.code,
       'INSTAGRAM_CONTAINER_INVALID',
     );
   });
 
-  test('full TikTok preflight keeps duration checks in its preparation flow', () {
-    expect(check(SocialPlatform.tiktok, media: _media(duration: 600.001)), isNull);
+  test('full TikTok preflight keeps duration checks in its preparation flow',
+      () {
+    expect(
+        check(SocialPlatform.tiktok, media: _media(duration: 600.001)), isNull);
   });
 
   test('an overlong Reel only blocks when Facebook is selected', () {

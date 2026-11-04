@@ -1,5 +1,15 @@
 # API.md
 
+## Clip duration guide (2026-11-04, Mobile-only candidate)
+
+The uploader's read-only TikTok capability lookup reuses the existing
+`GET /social-connections/TIKTOK/publishing-options` endpoint and its connection
+ID/revision checks. It adds no API fields or endpoints and grants no Direct Post
+consent. Facebook/Instagram/Shorts duration guidance is enforced by the Mobile
+create-post preflight, not a new server media probe. TikTok Direct Post retains
+its existing fresh creator-limit validation on the server. See the Mobile README
+for the separate inbox-transfer and Direct Post limits.
+
 PostDee backend API reference.
 
 ## Caption output language (2026-11-04, local candidate)

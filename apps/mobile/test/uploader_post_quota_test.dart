@@ -102,8 +102,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> show(WidgetTester tester, Finder finder) async {
-    await tester.scrollUntilVisible(finder, 100,
+  Future<void> show(WidgetTester tester, Finder finder,
+      {double delta = 100}) async {
+    await tester.scrollUntilVisible(finder, delta,
         scrollable: uploaderMainScroll);
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
@@ -125,7 +126,8 @@ void main() {
     expect(find.byKey(const ValueKey('uploader-video-preview-open')),
         findsNothing);
     await show(
-        tester, find.byKey(const ValueKey('uploader-video-preview-picker')));
+        tester, find.byKey(const ValueKey('uploader-video-preview-picker')),
+        delta: -100);
     await tester
         .tap(find.byKey(const ValueKey('uploader-video-preview-picker')));
     await tester.pumpAndSettle();
@@ -175,7 +177,7 @@ void main() {
     expect(reads, 2);
     expect(find.text('105 / 120 หน่วย'), findsOneWidget);
     final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
-    await show(tester, picker);
+    await show(tester, picker, delta: -100);
     await tester.tap(picker);
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);

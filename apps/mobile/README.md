@@ -1,5 +1,39 @@
 # PostDee Mobile
 
+## Clip duration guide (2026-11-04, local candidate)
+
+The clip-selection step lists all four supported destinations below the clip's
+existing post quota, then shows measured duration-only compatibility after
+selection:
+
+| Destination | Current PostDee rule |
+| --- | --- |
+| Facebook Page Reels | 3–90 seconds |
+| Instagram Reels | 3–900 seconds |
+| YouTube Shorts | Up to 180 seconds; square or vertical |
+| TikTok inbox draft | Transfer up to 600 seconds; finish posting in TikTok under the account's rules |
+| TikTok Direct Post | Minimum of the connected creator's maximum and PostDee's 600-second ceiling |
+
+These are the rules for sending through PostDee, not universal consumer-app
+maximums. The guide reads the connected TikTok account automatically, shows
+unknown/loading/failure with retry, and never substitutes 600 for a verified
+Direct account maximum. The read-only cache is separate from posting consent,
+bound to the auth lifecycle and connection revision, cleared on connection
+refresh and refreshed on resume. Direct settings and final sending still require
+their own fresh options and explicit confirmations. Missing connection identity
+or a failed lookup does not prevent the existing inbox-draft flow.
+
+`platform_publish_preflight.dart` defines the shared duration rules used by the
+guide and Mobile validation. Existing final outgoing-media checks and TikTok
+preparation remain in place; passing the guide only confirms duration, not other
+file properties or publishing success. No API/schema/environment changes or
+hosted/device rollout are included.
+
+Provider references checked 2026-11-04: [TikTok](https://www.postpeer.dev/docs/platforms/tiktok),
+[Facebook](https://developers.facebook.com/documentation/video-api/guides/reels-publishing),
+[Instagram](https://www.postpeer.dev/docs/platforms/instagram),
+[YouTube](https://support.google.com/youtube/answer/15424877?hl=en).
+
 ## Scheduled caption editor (2026-11-03, local candidate)
 
 Queued future-post details open a dedicated manual editor for shared or existing

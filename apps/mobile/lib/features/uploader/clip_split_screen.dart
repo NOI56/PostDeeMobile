@@ -262,10 +262,10 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
                             clipSplitText(
                                 context,
                                 _reviewing
-                                    ? 'ยืนยันแบ่งคลิป · เตรียมร่าง'
+                                    ? 'ยืนยันแบ่งคลิป · เตรียมทั้งชุด'
                                     : 'ใช้แผนนี้ · ตรวจรายการ',
                                 _reviewing
-                                    ? 'Confirm split · Prepare drafts'
+                                    ? 'Confirm split · Prepare set'
                                     : 'Use this plan · Review'),
                             textAlign: TextAlign.center),
                       ),
@@ -595,14 +595,14 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
         const SizedBox(height: AppTheme.spaceLg),
         Text(clipSplitText(
             context,
-            'เตรียม ${plan.groupedParts.length} ร่างในเครื่อง แต่ละร่างมีแคปชั่น หน้าปก และเวลาส่งของตัวเอง',
-            'Prepare ${plan.groupedParts.length} drafts on this device. Each draft has its own caption, cover and posting time.')),
+            'เตรียม ${plan.groupedParts.length} คลิปเป็นชุดเดียวและเก็บไว้ในเครื่อง',
+            'Prepare ${plan.groupedParts.length} ${plan.groupedParts.length == 1 ? 'clip' : 'clips'} as one set and save them on this device.')),
         const SizedBox(height: AppTheme.spaceSm),
         Text(
             clipSplitText(
                 context,
-                'ตรวจทานและส่งแต่ละร่างจากขั้นตอนโพสต์เดิม ไม่มีการส่งโพสต์อัตโนมัติ',
-                'Review and submit each draft using the existing posting flow. Nothing is posted automatically.'),
+                'ตรวจแคปชั่น หน้าปก และเวลาส่งแยกแต่ละคลิป แล้วค่อยยืนยันส่งทั้งชุด ไม่มีการโพสต์อัตโนมัติ',
+                'Review each clip’s caption, cover and posting time, then confirm the entire set before posting. Nothing is posted automatically.'),
             style: TextStyle(color: AppTheme.textSecondary)),
       ];
 

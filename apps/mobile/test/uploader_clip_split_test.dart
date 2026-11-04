@@ -224,6 +224,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     expect(fixture.segmentCalls, 1);
+    expect(find.text('กำลังเตรียมชุดคลิป'), findsOneWidget);
+    expect(
+        find.text(
+            'ต้นฉบับเก็บเป็นร่างแล้ว · ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา'),
+        findsOneWidget);
     await tester.tap(_key('uploader-clip-split-cancel'));
     await tester.pump();
     expect(fixture.lastRequest!.isCancelled!(), isTrue);

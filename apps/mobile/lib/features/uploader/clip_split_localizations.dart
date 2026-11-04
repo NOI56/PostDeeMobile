@@ -35,8 +35,8 @@ String clipSplitProblemText(
           'The video is shorter than a selected channel allows.'),
       ClipSplitPlanProblem.tooManyParts => clipSplitText(
           context,
-          'แบ่งได้สูงสุด $maxClipSplitParts ร่างต่อครั้ง กรุณาเลือกคลิปที่สั้นลงหรือลดช่องทาง',
-          'Up to $maxClipSplitParts drafts per batch. Choose a shorter video or fewer channels.'),
+          'แบ่งได้สูงสุด $maxClipSplitParts คลิปต่อชุด กรุณาเลือกคลิปที่สั้นลงหรือลดช่องทาง',
+          'Up to $maxClipSplitParts clips per set. Choose a shorter video or fewer channels.'),
       ClipSplitPlanProblem.invalidBoundary => clipSplitText(
           context,
           'จุดแบ่งนี้ทำให้บางตอนสั้นหรือยาวเกินไป กรุณาปรับใหม่',

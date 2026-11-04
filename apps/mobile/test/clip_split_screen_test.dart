@@ -8,6 +8,7 @@ import 'package:postdee_mobile/core/auth/auth_session.dart';
 import 'package:postdee_mobile/core/localization/postdee_localizations.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/platforms/social_platform.dart';
+import 'package:postdee_mobile/features/uploader/clip_split_localizations.dart';
 import 'package:postdee_mobile/features/uploader/clip_split_plan.dart';
 import 'package:postdee_mobile/features/uploader/clip_split_screen.dart';
 // Reuses video_player's existing platform fake; no native player is started.
@@ -59,6 +60,7 @@ void main() {
       bool dark = false,
       double scale = 1,
       bool direct = false,
+      Set<SocialPlatform> platforms = _platforms,
       File? videoFile,
       Future<void> Function(ClipSplitSegment)? preview,
       ValueChanged<ClipSplitPlan?>? onResult}) async {
@@ -87,7 +89,7 @@ void main() {
                           builder: (_) => ClipSplitScreen(
                                 sourceDurationSeconds: 270,
                                 videoName: 'คลิปสินค้าของฉัน.mp4',
-                                initialPlatforms: _platforms,
+                                initialPlatforms: platforms,
                                 videoFile: videoFile,
                                 tikTokDirectPost: direct,
                                 previewSegment: preview,
@@ -134,6 +136,43 @@ void main() {
     expect(confirmed?.groupedParts.length, 6);
     expect(find.text('open'), findsOneWidget);
   });
+
+  for (final english in [false, true]) {
+    testWidgets(
+        'split confirmation describes one clip set (${english ? 'en' : 'th'})',
+        (tester) async {
+      await mount(tester, english: english, platforms: const {
+        SocialPlatform.youtubeShorts,
+        SocialPlatform.instagramReels,
+      });
+      await tap(tester, 'clip-split-review');
+      expect(
+          find.text(english
+              ? 'Confirm split · Prepare set'
+              : 'ยืนยันแบ่งคลิป · เตรียมทั้งชุด'),
+          findsOneWidget);
+      final storage = english
+          ? 'Prepare 3 clips as one set and save them on this device.'
+          : 'เตรียม 3 คลิปเป็นชุดเดียวและเก็บไว้ในเครื่อง';
+      final next = english
+          ? 'Review each clip’s caption, cover and posting time, then confirm the entire set before posting. Nothing is posted automatically.'
+          : 'ตรวจแคปชั่น หน้าปก และเวลาส่งแยกแต่ละคลิป แล้วค่อยยืนยันส่งทั้งชุด ไม่มีการโพสต์อัตโนมัติ';
+      final scroll = find.descendant(
+          of: find.byKey(const ValueKey('clip-split-scroll')),
+          matching: find.byType(Scrollable));
+      await tester.scrollUntilVisible(find.text(storage), 150,
+          scrollable: scroll);
+      expect(find.text(storage), findsOneWidget);
+      await tester.scrollUntilVisible(find.text(next), 100, scrollable: scroll);
+      expect(find.text(next), findsOneWidget);
+      final context = tester.element(find.byType(ClipSplitScreen));
+      expect(
+          clipSplitProblemText(context, ClipSplitPlanProblem.tooManyParts),
+          english
+              ? 'Up to $maxClipSplitParts clips per set. Choose a shorter video or fewer channels.'
+              : 'แบ่งได้สูงสุด $maxClipSplitParts คลิปต่อชุด กรุณาเลือกคลิปที่สั้นลงหรือลดช่องทาง');
+    });
+  }
 
   testWidgets('mode and selected intervals update before confirmation',
       (tester) async {

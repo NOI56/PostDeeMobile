@@ -1523,8 +1523,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           child: AlertDialog(
             key: const ValueKey('uploader-clip-split-progress'),
             scrollable: true,
-            title: Text(uploaderText(dialogContext, 'กำลังเตรียมคลิปและบันทึกร่าง',
-                'Preparing clips and saving drafts')),
+            title: Text(uploaderText(dialogContext, 'กำลังเตรียมชุดคลิป',
+                'Preparing clip set')),
             content: ValueListenableBuilder(
               valueListenable: notifier,
               builder: (_, value, __) => Column(

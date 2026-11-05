@@ -47,8 +47,8 @@ the linked work records. A source integration is not an app-store release.
   followed by per-clip posting times and final confirmation.
 - Keep the existing group journal, owner/busy/receipt guards, quotas and
   publishing pipeline. The normal uploader's step order is unchanged.
-- No API/schema/entitlement/environment/migration change. Verification and
-  delivery remain pending in the
+- No API/schema/entitlement/environment/migration change. Mobile checks and
+  emulator acceptance pass on Staging APK 12116; source remains local. See the
   [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Select source ranges per split part (2026-11-05)

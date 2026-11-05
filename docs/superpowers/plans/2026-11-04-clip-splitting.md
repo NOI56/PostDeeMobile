@@ -25,10 +25,55 @@ caption, recovery, consent, owner, scheduling and real-editor route tests remain
 in force. Large-text platform labels wrap within narrow screens. Four real-font
 visual layouts pass after exercising the new sheet-to-manager path.
 
-Final full-suite, Staging artifact and native acceptance evidence will be
-recorded below before this candidate is handed off. No API/schema/dependency,
-environment, entitlement or database migration is required. No main merge,
-push, hosted deploy or Production change is authorized by this UI request.
+Runtime source **`afe68e4f`** passes the full Mobile suite: **5,578 tests /
+13 optional skips**, exit 0, in 10m20.5s wall time (three workers, one run,
+without OOM/retry). The three additional skips are the opt-in design preview.
+Full analysis reports no issues (12.6s); real-font visual tests pass 4/4 in
+Thai/English, light/dark and narrow/large-text layouts. Targeted shared-editor,
+owner, recovery, scheduling, TikTok and actual Material-route checks pass.
+
+The validated Staging helper build takes 205.2s and produces x86_64 debug APK
+**12116** (175,949,050 bytes), archived at
+`E:/PostDeeBuildArchive/clip-main-caption-12116/app-x86_64-12116.apk`.
+SHA-256: `56192c6813e2caab7628a939507b3d4fd8436e9f40b142ec8fddcc3ffaaf9050`.
+It retains the prior signing certificate, Staging API/Firebase, mock-off and
+RevenueCat Test Store configuration. The guarded updater verifies the only
+device `emulator-5554`, package `com.postdee.postdee_mobile.staging`, UID 10197
+and internal volume, then updates 12115→12116. Installed APK hash matches.
+All **162 private files are byte-identical before/after installation**, with
+zero added/missing/changed files, before first launch.
+
+The first install stops for insufficient storage, preserving 12115. OS-managed
+cache trim/dex cleanup recovers only 2.4 MB. The owner explicitly authorizes
+archiving ten identified old QA videos after backup and SHA-256 verification.
+Their 383.1 MiB copies remain under
+`E:/PostDeeBuildArchive/emulator-qa-archive-20261105-2141/`, with manifest and
+archive receipt; only those ten public-gallery copies are removed. No app data,
+drafts, installed app or volume is deleted/moved. Free space rises to ~1.2 GB
+and the same-volume guarded update succeeds at 14:45:53 UTC. No uninstaller,
+data wipe, alternate-volume retry or signing change is used.
+
+Native acceptance restores the existing Basic account, 550 post / 300 AI top-up
+balances and 18 saved entries. It selects the existing 180s vertical fixture,
+Facebook only, and actually prepares two local clips. Preparation opens the new
+main-style caption page; the sheet displays `0:00–1:30` and `1:30–3:00`.
+An explicit manual test caption survives Next to member/time review and Back.
+The test text is cleared and the newly created QA set is explicitly saved
+empty for the owner to try. The 52 pre-existing draft/group JSON manifests
+remain byte-identical after native testing. The current process log contains
+zero fatal, Flutter, unhandled or layout-overflow errors. No AI generation,
+upload or publish is triggered by this acceptance test; no post/AI quota is
+spent. The new local QA set contains only the existing test source and its two
+parts; existing saved entries are retained.
+
+Evidence and screenshots are under `E:/PostDeeTaskScratch/clip-main-caption/`;
+the full-suite log is `E:/PostDeeTaskScratch/clip-main-caption-full.log`.
+The Android cold-launch wait initially times out, then the app is observed
+running normally with its restored account. Physical devices, iOS, native
+English/dark mode and a new real social publish are not retested. No
+API/schema/dependency/environment/entitlement/database migration is required.
+The source remains local: no new main merge, push, hosted deploy or Production
+change is made for this UI request.
 
 ## Main-caption design example — 2026-11-05 (preview only)
 

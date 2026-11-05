@@ -11,8 +11,10 @@ steps. The group still selects each clip's posting time before final explicit
 confirmation; it retains the same journal, recovery and publishing pipeline.
 The normal Clip → Caption → Channels → Review wizard is unchanged. Existing
 AI/style/language, owner/busy/receipt guards and quota rules remain; no API,
-schema, entitlement, environment or migration change is required. Verification,
-build/install and delivery are pending in the
+schema, entitlement, environment or migration change is required. The complete
+Mobile suite (5,578 pass / 13 optional skips), analysis, validated Staging build
+12116 and native split→caption→review→Back acceptance pass. The source remains
+local; see exact artifact and storage/archive evidence in the
 [work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Shared caption first after splitting (2026-11-05, Staging APK 12109 checked)

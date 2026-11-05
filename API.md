@@ -15,7 +15,8 @@ pipeline. Keeping the actual shared editor alive across sheet/Next/Back does not
 change any route, request/response field, schema, entitlement, quota, environment
 variable or migration. AI generation remains explicit; opening this UI does not
 generate captions, upload or publish. Existing API contracts remain unchanged.
-Verification and delivery are pending in the
+Mobile verification passed on Staging APK 12116; this does not deploy any API
+change. Exact source, artifact and limits are recorded in the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Manual split source ranges (2026-11-05)

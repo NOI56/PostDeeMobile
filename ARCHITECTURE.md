@@ -19,7 +19,8 @@ channel and inheritance actions remain reachable through the explicit manager
 and later review steps. Per-clip times still precede final confirmation.
 Owner/busy/receipt/context validation and the journal/publishing pipeline remain
 in place. The normal uploader order is unchanged. No API, schema, entitlement,
-environment or migration change; verification/delivery are pending in the
+environment or migration change. Mobile checks and emulator acceptance pass on
+Staging APK 12116; source remains local. Exact evidence is in the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Explicit source ranges for split parts (2026-11-05)

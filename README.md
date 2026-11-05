@@ -33,7 +33,8 @@ The editor stays alive through the sheet and Next/Back. Per-clip posting times
 still precede final confirmation, using the same persisted group and pipeline.
 The normal uploader's Clip → Caption → Channels → Review order is unchanged.
 No API, schema, entitlement, environment or migration change is required.
-Verification and delivery are pending; see the
+Mobile checks and emulator acceptance pass on Staging APK 12116. The source
+remains local, without a new main merge, push or hosted deployment; see the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Choose each split part's source range (2026-11-05, Staging APK 12112)

@@ -19,6 +19,10 @@ records exact hosted deployments and device evidence. Source integration does
 not itself update an installed app. Retired features are listed in
 [AGENTS.md](AGENTS.md).
 
+Latest Staging delivery (2026-11-05): source `66dd84d0` is on main and hosted
+Staging, with matching emulator APK 12113. Full CI and hosted regression passed;
+see [delivery evidence and limits](docs/STAGING.md). Production remains suspended.
+
 ## Choose each split part's source range (2026-11-05, Staging APK 12112)
 
 Each split part offers an explicit start/end time editor and preview, including

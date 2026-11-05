@@ -1,5 +1,66 @@
 # PostDee Staging
 
+## รวมงานแบ่งคลิป หมวดพรีเมียม และเอกสารหลายประเทศ — 5 พฤศจิกายน 2026
+
+- เจ้าของสั่ง `main push Deploy` จึงรวมงานบนฐานสด `c5a418ae` เป็น
+  `66dd84d06119db3c90ec35d72c6073e7e2a20740` แล้ว fast-forward/push main
+  โดยคง `[skip render]`: แบ่งคลิปในเครื่อง, ตรวจเป็นชุด, แคปชั่นร่วม,
+  ตั้งเวลาแยกและเลือกช่วงต้นฉบับแต่ละส่วน, ชื่อหมวดพรีเมียม/ระยะปุ่ม,
+  เอกสารหลายประเทศและหลักฐานแพ็กเกจ/PR #64 ไม่มี endpoint, schema,
+  migration, dependency, environment หรือ feature flag เปลี่ยน
+  งานภาษา/ราคา/เว็บร้านของ PR #64 และระบบเดิมอยู่ครบ ไม่พบไฟล์ลบจาก baseline
+- ตรวจโลโก้ซ้ำพบว่า main มีครอป/ลาก/ซูมและไทย–อังกฤษอยู่แล้ว จึงไม่ port
+  ไฟล์ค้างจากสาขาเก่าทับระบบใหม่ Tests โลโก้เดิมผ่าน 32/32;
+  ไฟล์ที่ผู้ใช้แก้ค้างใน worktrees ต้นทางยังอยู่ครบ
+- [CI 42021275487](https://github.com/NOI56/PostDeeMobile/actions/runs/42021275487)
+  ของ SHA นี้ผ่านก่อน push main/deploy: API **4,040 ผ่าน / 80 opt-in ข้าม**,
+  Mobile **5,561 ผ่าน / 10 optional ข้าม**, analyze, typecheck, build,
+  Prisma, catalog/artwork guards และ audit gate ผ่าน การรันนี้เป็น manual CI
+  บนสาขารวมที่ SHA เดียวกับ main ไม่ได้สร้าง APK ใน CI
+- Local: Mobile targeted 200/200 และ analyze ผ่าน; API เต็มชุดบน Node
+  **22.23.3** ผ่าน 4,040/80 ข้าม พร้อม typecheck/build/Prisma/helpers;
+  catalog และ artwork 152/152 ผ่าน ไม่รัน opt-in database suites เพราะไม่มี
+  SQL/schema เปลี่ยน รอบ API แรกบน PATH Node 24 ถูกหยุดหลังพบ test failure
+  จึงใช้ผลเต็มชุด Node 22 ที่กำหนดและ CI ของ SHA นี้เป็นหลัก
+- Staging `postdee-api-staging` ใน My Workspace ยืนยัน branch main/manual-off
+  ก่อน trigger แทน `c5a418ae` / `dep-dbm6eedg1s2s73c8q6vg` ด้วย
+  [deploy `dep-dbm6vn88v5cc73dooom0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbm6vn88v5cc73dooom0)
+  เริ่ม **19:00:30 น. ไทย / 12:00:30 UTC** และ Live
+  **19:02:16 น. ไทย / 12:02:16 UTC** ตรง SHA `66dd84d0`
+- Startup instance `zbv5r` พบ 30 migrations และ `No pending migrations to apply`;
+  publishing activation/backlog guard ผ่าน ฟัง port 10000 ด้วย memory scheduler
+  ตรวจ application error/warn logs ช่วง 12:00:30–12:02:34 UTC ว่าง (`hasMore: false`)
+  หลัง Live `/health` 200, `/ready` 200 พร้อม database/queue `ok` และ `no-store`,
+  unauthenticated `/posts` 401
+- Hosted GET ก่อน/หลัง deploy ผ่าน **12/12**: TH/EN regional/base priority,
+  q/order, wildcard/q=0, absent/unsupported และ invalid slug 404 สองภาษา;
+  `html lang`, footer, `Vary`, `no-store`, CSP/nonce ผ่าน ค่าแฮชเนื้อหาร้าน
+  ลิงก์/URL หมวด ธีม รูป และ HTML ที่ตัด nonce ออกตรงกับ baseline ทุกกรณี
+  ทั้งหมดเป็น GET ไม่แก้ข้อมูลร้านค้า
+- สร้าง APK จาก SHA เดียวกันผ่าน helper Staging ด้วย `--no-pub`,
+  `--target-platform=android-x64 --split-per-abi --build-number=8113` ได้
+  package `com.postdee.postdee_mobile.staging`, versionCode **12113**,
+  `0.1.0-staging`, minSdk 24 / targetSdk 36, 175,936,234 bytes;
+  helper ตรวจ Staging API/Firebase auth/mock-off/RevenueCat Test Store ผ่าน
+  ลายเซ็นตรงกับแอปเดิม APK SHA-256
+  `2bc7a6fc7f21251a19f46f779a77ffbfa348fd0a2a413ce30c8fbee9bb3ffdc5`
+- Guarded updater บน `emulator-5554`: **12112 → 12113** โดย UID **10197**
+  และ internal volume เดิม ไม่ uninstall/clear data; ตรวจ **18:59:16 น. ไทย**
+  ก่อนเปิดแอป installed APK hash ตรงตัวสร้าง และข้อมูล **144/144 ไฟล์ hash ตรง**
+  เปิด native พบ STAGING บัญชี Basic เดิม เครดิตเติม 550/300 และร่าง 16 รายการ;
+  เปิดชุดร่างเดิม 3 คลิปใน shared-caption editor แล้วกลับได้ ร่างยังครบ 16
+  ไม่เรียก AI/ซื้อ/ส่งโพสต์ ตรวจ app-PID logcat ล่าสุด 2,500 บรรทัดไม่พบ
+  fatal/unhandled/Flutter exception/overflow ไม่ถือว่าเป็น performance acceptance
+- หลักฐานอยู่ใน `E:/PostDeeTaskScratch/pending-20261105/` และ APK ที่
+  `E:/PostDeeBuildArchive/pending-main-12113/app-x86_64-12113.apk`;
+  receipts: `guarded-update-receipt.json`, `hosted-before-deploy.json`,
+  `hosted-after-deploy.json`, ภาพ native และ test/build logs
+- Production ตรวจอ่านอย่างเดียว ยัง user-suspended ที่ `a43ce6aa` /
+  `dep-d9g4dl58nd3s73enhf60` ไม่ deploy/resume หรือเปลี่ยนค่า ไม่มี migration ใหม่
+  ยังไม่ทดสอบ real-account publishing, live AI, real-store purchase,
+  physical-device/iOS หรือ release readiness; ต้องรักษาร่าง/ไฟล์ชุดคลิปเดิมไว้
+  บันทึกหลังส่งมอบนี้เปลี่ยนเอกสารเท่านั้น ไม่ต้อง deploy runtime ซ้ำ
+
 ## รองรับหลายประเทศและลำดับภาษาเว็บร้านค้า — 5 พฤศจิกายน 2026
 
 - เจ้าของอนุมัติ merge [PR #64](https://github.com/NOI56/PostDeeMobile/pull/64)

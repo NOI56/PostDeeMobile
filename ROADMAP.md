@@ -11,17 +11,21 @@ the linked work records. A source integration is not an app-store release.
 
 - Product direction: serve many countries, starting with Thailand. See
   "Multi-Country Direction" in `AGENTS.md` and "Global Readiness Plan" below.
-- Verified integration baseline: `origin/main` `c5a418ae` (PR #64). Its hosted
-  Staging deploy is `dep-dbm6eedg1s2s73c8q6vg`, Live 2026-11-05 18:25 Thai time.
+- Delivered runtime source: `66dd84d0`, integrated from verified `origin/main`
+  `c5a418ae` (PR #64). Staging deploy `dep-dbm6vn88v5cc73dooom0` went Live
+  2026-11-05 19:02:16 Thai time; exact-source CI passed before delivery.
   This includes scheduled-caption edits (#58), premium storefront (#59),
   caption output choice (#60), clip-duration guidance (#61), 109 searchable
   caption languages (#62), duplicate connect-button removal (#63), and saved
   UI language/localized storefront/store-price copy (#64), plus earlier themes,
   membership, packages, support and publishing systems.
-- The pending-work integration is based on that baseline and adds local clip
+- The delivered integration is based on that baseline and adds local clip
   splitting, grouped review, shared captions, individual schedules, source-range
-  editing and the premium category label/padding adjustment. Existing APK 12112
-  evidence covers the earlier clip source, not the combined integration build.
+  editing and the premium category label/padding adjustment. Emulator APK 12113
+  matches the combined `66dd84d0` source; guarded update retained all 144 private
+  files unchanged before launch, and the 16 drafts/shared-caption flow opened.
+  Earlier APK 12112 evidence remains historical. Full CI passed 5,561 Mobile
+  and 4,040 API tests; hosted storefront regression passed 12/12 after deploy.
   No API endpoint, schema, migration, entitlement or environment change is added.
   Local preparation consumes no post units/AI credits; actual generation and
   submission retain the existing checks. AI video editing stays retired.

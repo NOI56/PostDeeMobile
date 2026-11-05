@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -893,6 +894,14 @@ class _ClipSplitRangeDialog extends StatefulWidget {
 }
 
 class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
+  static const _ticksPerSecond = 1000000;
+  static int _ticks(double seconds) => (seconds * _ticksPerSecond).round();
+
+  // Displaying whole seconds must not rewrite an untouched measured boundary.
+  late double? _startSeconds =
+      _ticks(widget.segment.startSeconds) / _ticksPerSecond;
+  late double? _endSeconds =
+      _ticks(widget.segment.endSeconds) / _ticksPerSecond;
   late final _start = TextEditingController(
       text: formatClipSplitTime(widget.segment.startSeconds));
   late final _end = TextEditingController(
@@ -934,8 +943,8 @@ class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
   }
 
   ClipSplitSegment? get _segment {
-    final start = _parse(_start.text);
-    final end = _parse(_end.text);
+    final start = _startSeconds;
+    final end = _endSeconds;
     return start == null || end == null
         ? null
         : ClipSplitSegment(startSeconds: start, endSeconds: end);
@@ -961,11 +970,55 @@ class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
     }
   }
 
-  void _changed(String _) => setState(() {
+  void _changed(String input, {required bool start}) => setState(() {
+        if (start) {
+          _startSeconds = _parse(input);
+        } else {
+          _endSeconds = _parse(input);
+        }
         _problem = null;
         _invalidFormat = false;
         _previewError = null;
       });
+
+  double _snapSecond(double candidate,
+      {required int lower, required int upper, required double fallback}) {
+    final firstSecond = (lower / _ticksPerSecond).ceil();
+    final lastSecond = upper ~/ _ticksPerSecond;
+    // A narrow legal range can contain only a fractional boundary. Keep it.
+    if (lower > upper || firstSecond > lastSecond) return fallback;
+    return candidate.round().clamp(firstSecond, lastSecond).toDouble();
+  }
+
+  void _sliderChanged(RangeValues values, RangeValues previous) {
+    var start = previous.start;
+    var end = previous.end;
+    final minimum = math.max(1, _ticks(widget.minimumDuration));
+    final maximum = _ticks(widget.maximumDuration);
+    final availableStart = math.max(0, _ticks(widget.availableStart));
+    final availableEnd =
+        math.min(_ticks(widget.sourceDuration), _ticks(widget.availableEnd));
+    if (_ticks(values.start) != _ticks(previous.start)) {
+      start = _snapSecond(values.start,
+          lower: math.max(availableStart, _ticks(end) - maximum),
+          upper: math.min(availableEnd, _ticks(end) - minimum),
+          fallback: start);
+    } else if (_ticks(values.end) != _ticks(previous.end)) {
+      end = _snapSecond(values.end,
+          lower: math.max(availableStart, _ticks(start) + minimum),
+          upper: math.min(availableEnd, _ticks(start) + maximum),
+          fallback: end);
+    }
+    setState(() {
+      _startSeconds = start;
+      _endSeconds = end;
+      _start.text = formatClipSplitTime(start);
+      _end.text = formatClipSplitTime(end);
+      _problem = null;
+      _invalidFormat = false;
+      _previewError = null;
+    });
+  }
 
   Future<void> _preview() async {
     if (!widget.owner.isCurrent || _previewing || _validated() == null) return;
@@ -997,6 +1050,9 @@ class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
         segment.startSeconds >= 0 &&
         segment.endSeconds > segment.startSeconds &&
         segment.endSeconds <= widget.sourceDuration;
+    final sliderValues = sliderValid
+        ? RangeValues(segment.startSeconds, segment.endSeconds)
+        : RangeValues(widget.segment.startSeconds, widget.segment.endSeconds);
     return PopScope(
       canPop: !_previewing,
       child: AlertDialog(
@@ -1045,7 +1101,7 @@ class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
                       key: const ValueKey('clip-split-range-start'),
                       controller: _start,
                       enabled: enabled,
-                      onChanged: _changed,
+                      onChanged: (value) => _changed(value, start: true),
                       textInputAction: TextInputAction.next,
                       decoration: InputDecoration(
                           labelText: clipSplitText(context,
@@ -1057,7 +1113,7 @@ class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
                       key: const ValueKey('clip-split-range-end'),
                       controller: _end,
                       enabled: enabled,
-                      onChanged: _changed,
+                      onChanged: (value) => _changed(value, start: false),
                       textInputAction: TextInputAction.done,
                       decoration: InputDecoration(
                           labelText: clipSplitText(
@@ -1068,11 +1124,7 @@ class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
                       key: const ValueKey('clip-split-range-slider'),
                       min: 0,
                       max: widget.sourceDuration,
-                      values: sliderValid
-                          ? RangeValues(
-                              segment.startSeconds, segment.endSeconds)
-                          : RangeValues(widget.segment.startSeconds,
-                              widget.segment.endSeconds),
+                      values: sliderValues,
                       labels: RangeLabels(
                           formatClipSplitTime(sliderValid
                               ? segment.startSeconds
@@ -1082,12 +1134,7 @@ class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
                               : widget.segment.endSeconds)),
                       onChanged: !enabled
                           ? null
-                          : (values) => setState(() {
-                                _start.text = formatClipSplitTime(values.start);
-                                _end.text = formatClipSplitTime(values.end);
-                                _problem = null;
-                                _invalidFormat = false;
-                              })),
+                          : (values) => _sliderChanged(values, sliderValues)),
                   if (segment != null && segment.durationSeconds > 0)
                     Text(clipSplitText(
                         context,
@@ -1107,8 +1154,8 @@ class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
                                 : _invalidFormat
                                     ? clipSplitText(
                                         context,
-                                        'ใส่เวลาเป็น นาที:วินาที เช่น 1:30 หรือ 1:30.125',
-                                        'Enter M:SS, for example 1:30 or 1:30.125.')
+                                        'ใส่เวลาเป็น นาที:วินาที เช่น 1:30',
+                                        'Enter M:SS, for example 1:30.')
                                     : clipSplitProblemText(context, _problem!),
                             key: const ValueKey('clip-split-range-error'),
                             style: TextStyle(

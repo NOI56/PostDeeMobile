@@ -1,5 +1,35 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Main-caption integration — 2026-11-05 (local candidate)
+
+The owner approved implementing the clickable design example. Work begins from
+clean `870db5b4` on the existing UI branch, with freshly fetched `origin/main`
+`e4004355` as merge base (ahead 6 / behind 0). The normal single-post wizard
+order is unchanged; this change concerns the prepared split-set route.
+
+The existing group review State/controller, source draft and journal remain
+authoritative. Its caption stage now uses familiar create-post header/progress
+and a compact summary from actual group membership. A read-only parts sheet
+shows exact M:SS ranges; its Manage action opens the existing member controls.
+Member caption/AI, cover, channel settings, inheritance, owner and receipt locks
+remain intact in an explicit expandable manager and in the following review
+stage. Per-clip posting times still precede final confirmation. Source caption
+editor State is retained across scrolling, sheet visits and Next/Back, with
+hidden focus/semantics/tickers excluded. Explicit Next/Back/Save retain their
+existing checkpoints. No automatic AI, upload, publish or quota use is added.
+
+Regression tests were red before implementation. Tests cover main chrome in
+Thai/English, read-only range-sheet behavior, stable editor State/controller,
+lazy manager access and an account change while the sheet is open. Existing
+caption, recovery, consent, owner, scheduling and real-editor route tests remain
+in force. Large-text platform labels wrap within narrow screens. Four real-font
+visual layouts pass after exercising the new sheet-to-manager path.
+
+Final full-suite, Staging artifact and native acceptance evidence will be
+recorded below before this candidate is handed off. No API/schema/dependency,
+environment, entitlement or database migration is required. No main merge,
+push, hosted deploy or Production change is authorized by this UI request.
+
 ## Main-caption design example — 2026-11-05 (preview only)
 
 The owner requested a visual example of returning to the familiar main caption

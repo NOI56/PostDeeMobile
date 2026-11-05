@@ -23,6 +23,19 @@ Latest Staging delivery (2026-11-05): source `66dd84d0` is on main and hosted
 Staging, with matching emulator APK 12113. Full CI and hosted regression passed;
 see [delivery evidence and limits](docs/STAGING.md). Production remains suspended.
 
+## Familiar caption page after splitting (2026-11-05, local candidate)
+
+After a split set is prepared or reopened, the candidate uses familiar
+create-post caption chrome around the existing shared-caption editor. A compact
+summary opens a read-only source-range sheet; an explicit per-clip manager and
+the later review steps retain caption/AI, cover, channel and inheritance controls.
+The editor stays alive through the sheet and Next/Back. Per-clip posting times
+still precede final confirmation, using the same persisted group and pipeline.
+The normal uploader's Clip → Caption → Channels → Review order is unchanged.
+No API, schema, entitlement, environment or migration change is required.
+Verification and delivery are pending; see the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Choose each split part's source range (2026-11-05, Staging APK 12112)
 
 Each split part offers an explicit start/end time editor and preview, including

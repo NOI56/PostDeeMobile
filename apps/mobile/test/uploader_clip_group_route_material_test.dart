@@ -112,12 +112,20 @@ void main() {
       final action = find.byKey(ValueKey(captionRoute
           ? 'clip-group-ai-material-part'
           : 'clip-group-edit-material-part'));
-      await tester.scrollUntilVisible(action, 240,
-          scrollable: find
-              .descendant(
-                  of: find.byKey(const ValueKey('clip-group-scroll')),
-                  matching: find.byType(Scrollable))
-              .first);
+      final groupScroll = find
+          .descendant(
+              of: find.byKey(const ValueKey('clip-group-scroll')),
+              matching: find.byType(Scrollable))
+          .first;
+      final manager = find.byKey(const ValueKey('clip-group-manage-parts'));
+      await tester.scrollUntilVisible(manager, 180, scrollable: groupScroll);
+      await tester.ensureVisible(manager);
+      await tester.pumpAndSettle();
+      await tester.tap(manager);
+      await tester.pumpAndSettle();
+      expect(fixture.apiWrites, 0);
+      expect(fixture.store.drafts['material-source'], same(source));
+      await tester.scrollUntilVisible(action, 240, scrollable: groupScroll);
       await tester.ensureVisible(action);
       await tester.pumpAndSettle();
       await tester.tap(action);

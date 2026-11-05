@@ -6,6 +6,18 @@ ISO-8601 (stored in UTC), preserve provider-neutral plan ids (`BASIC`, `STARTER`
 record their original scope; see "Current status snapshot" in `ROADMAP.md`
 and exact delivery evidence in `docs/STAGING.md`.
 
+## Mobile main-caption page for split groups (2026-11-05, local candidate)
+
+The Mobile follow-up changes prepared-group caption chrome and exposes a compact
+read-only ranges sheet. Shared/per-clip edits, individual posting times and
+final confirmation still use the existing group journal and per-item publishing
+pipeline. Keeping the actual shared editor alive across sheet/Next/Back does not
+change any route, request/response field, schema, entitlement, quota, environment
+variable or migration. AI generation remains explicit; opening this UI does not
+generate captions, upload or publish. Existing API contracts remain unchanged.
+Verification and delivery are pending in the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Manual split source ranges (2026-11-05)
 
 Per-part start/end choices are local planning inputs, not posting dates or

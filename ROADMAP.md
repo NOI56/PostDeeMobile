@@ -37,6 +37,20 @@ the linked work records. A source integration is not an app-store release.
   Broader publishing E2E, physical-device/iOS, country-specific stores and legal
   readiness retain their release gates. Production remains outside this delivery.
 
+## Main caption page for prepared sets (2026-11-05, local candidate)
+
+- Replace the prepared group's separate caption-page chrome with the familiar
+  create-post header/progress and a compact split summary. Reuse the actual
+  shared-caption editor and retain it through the range sheet and Next/Back.
+- Keep the read-only ranges sheet compact. Preserve explicit access to each
+  clip's caption/AI, cover, channel settings and shared-caption restoration,
+  followed by per-clip posting times and final confirmation.
+- Keep the existing group journal, owner/busy/receipt guards, quotas and
+  publishing pipeline. The normal uploader's step order is unchanged.
+- No API/schema/entitlement/environment/migration change. Verification and
+  delivery remain pending in the
+  [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Select source ranges per split part (2026-11-05)
 
 - Offer start/end editing and preview for every split part, including exact

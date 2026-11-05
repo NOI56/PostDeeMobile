@@ -7,6 +7,21 @@ below. Dated headings record their original scope. "Current status snapshot"
 in `ROADMAP.md` and the exact delivery records in `docs/STAGING.md` reconcile
 source integration, hosted API state, and installed Mobile artifacts.
 
+## Main caption chrome for split groups (2026-11-05, local candidate)
+
+`ClipGroupReviewScreen` remains the owner of group state, the shared controller,
+saving, navigation and submission. Familiar create-post chrome and a compact
+split summary wrap the existing `UploaderScreen` shared-caption editor; this
+does not turn a group into a standalone single-post form. Keep the same editor
+alive through the read-only range sheet and Next/Back, including its manual
+AI, style/language context and current input. Per-member caption/AI, cover,
+channel and inheritance actions remain reachable through the explicit manager
+and later review steps. Per-clip times still precede final confirmation.
+Owner/busy/receipt/context validation and the journal/publishing pipeline remain
+in place. The normal uploader order is unchanged. No API, schema, entitlement,
+environment or migration change; verification/delivery are pending in the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Explicit source ranges for split parts (2026-11-05)
 
 `ClipSplitPlan.create(segmentOverrides: ...)` accepts optional per-channel

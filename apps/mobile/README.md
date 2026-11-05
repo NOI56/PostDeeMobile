@@ -1,5 +1,20 @@
 # PostDee Mobile
 
+## Main caption page after splitting (2026-11-05, local candidate)
+
+Prepared and reopened clip sets use familiar create-post caption chrome around
+the actual shared `UploaderScreen` editor, with a compact source/set summary and
+a read-only range sheet. The editor remains alive through the sheet and
+Next/Back. Caption/AI, cover, channel settings and shared-caption restoration
+remain available per member through an explicit manager and the later review
+steps. The group still selects each clip's posting time before final explicit
+confirmation; it retains the same journal, recovery and publishing pipeline.
+The normal Clip → Caption → Channels → Review wizard is unchanged. Existing
+AI/style/language, owner/busy/receipt guards and quota rules remain; no API,
+schema, entitlement, environment or migration change is required. Verification,
+build/install and delivery are pending in the
+[work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Shared caption first after splitting (2026-11-05, Staging APK 12109 checked)
 
 The owner approved the first design: a card in the existing clip-selection

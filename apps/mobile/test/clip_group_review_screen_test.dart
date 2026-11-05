@@ -257,15 +257,275 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> openMemberManager(WidgetTester tester) async {
+    await tap(tester, 'clip-group-manage-parts');
+    expect(find.byKey(const ValueKey('clip-group-clips')), findsOneWidget);
+    expect(saved, 0, reason: 'Expanding local details must not save the set');
+    expect(submitted, 0);
+  }
+
+  for (final english in [false, true]) {
+    testWidgets(
+        'main caption chrome keeps split details out of the writing page '
+        '(${english ? 'en' : 'th'})', (tester) async {
+      await mount(tester, english: english);
+      expect(find.byKey(const ValueKey('clip-group-caption-page')),
+          findsOneWidget);
+      expect(find.text(english ? 'Create post' : 'สร้างโพสต์'), findsOneWidget);
+      final summary = find.byKey(const ValueKey('clip-group-split-summary'));
+      expect(summary, findsOneWidget);
+      expect(find.descendant(of: summary, matching: find.textContaining('3')),
+          findsWidgets);
+      expect(
+          find.byKey(const ValueKey('clip-group-show-parts')), findsOneWidget);
+      expect(find.byKey(const ValueKey('clip-group-shared-caption')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('clip-group-clips')), findsNothing,
+          reason: 'Per-part controls belong to an explicit details view');
+      expect(saved, 0);
+      expect(submitted, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+      'opening split details shows real membership and ranges without '
+      'saving or changing the current caption editor', (tester) async {
+    var generations = 0;
+    var edits = 0;
+    await mount(tester,
+        sharedEditor:
+            (context, controller, onBusy, enabled, onContextChanged) =>
+                _SharedEditor(
+                    controller: controller,
+                    onBusyChanged: onBusy,
+                    enabled: enabled,
+                    onGenerate: () => generations++),
+        edit: (draft, section) async {
+          edits++;
+          return draft;
+        });
+    final editor = find.byType(_SharedEditor);
+    final originalState = tester.state<_SharedEditorState>(editor);
+    final controller = tester.widget<_SharedEditor>(editor).controller;
+    await tester.enterText(find.byKey(const ValueKey('shared-editor-input')),
+        'ข้อความที่กำลังเขียนและยังไม่ได้บันทึก');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('clip-group-show-parts')), findsOneWidget);
+    await tap(tester, 'clip-group-show-parts');
+    final sheet = find.byKey(const ValueKey('clip-group-parts-sheet'));
+    expect(sheet, findsOneWidget);
+    final partsScroll = find
+        .descendant(
+            of: find.byKey(const ValueKey('clip-group-parts-scroll')),
+            matching: find.byType(Scrollable))
+        .first;
+    for (final range in ['0:00–3:00', '3:00–6:00', '0:00–6:00']) {
+      final row = find.descendant(of: sheet, matching: find.text(range));
+      await tester.scrollUntilVisible(row, 120, scrollable: partsScroll);
+      expect(row, findsOneWidget);
+    }
+    for (final key in [
+      'clip-group-caption-yt1',
+      'clip-group-edit-yt1',
+      'clip-group-ai-yt1'
+    ]) {
+      expect(find.descendant(of: sheet, matching: find.byKey(ValueKey(key))),
+          findsNothing,
+          reason:
+              'The ranges sheet only previews the split; editing is explicit');
+    }
+    final mountedEditor = find.byType(_SharedEditor, skipOffstage: false);
+    expect(mountedEditor, findsOneWidget);
+    expect(
+        tester.state<_SharedEditorState>(mountedEditor), same(originalState));
+    expect(tester.widget<_SharedEditor>(mountedEditor).controller,
+        same(controller));
+    expect(saved, 0);
+    expect(submitted, 0);
+    expect(generations, 0);
+    expect(edits, 0);
+    await tester.tap(find.byKey(const ValueKey('clip-group-parts-close')));
+    await tester.pumpAndSettle();
+    expect(sheet, findsNothing);
+    expect(tester.state<_SharedEditorState>(editor), same(originalState));
+    expect(tester.widget<_SharedEditor>(editor).controller, same(controller));
+    expect(controller.text, 'ข้อความที่กำลังเขียนและยังไม่ได้บันทึก');
+    expect(persisted.sharedCaption, 'แคปชั่นหลัก');
+    expect(saved, 0);
+    expect(submitted, 0);
+    expect(generations, 0);
+    expect(edits, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'parts sheet Manage opens individual editing without saving or '
+      'replacing the caption editor', (tester) async {
+    var generations = 0;
+    await mount(tester,
+        sharedEditor:
+            (context, controller, onBusy, enabled, onContextChanged) => Padding(
+                  // A real AI caption panel can place the manager below the
+                  // initial viewport. Opening it must not depend on eager layout.
+                  padding: const EdgeInsets.only(bottom: 650),
+                  child: _SharedEditor(
+                      controller: controller,
+                      onBusyChanged: onBusy,
+                      enabled: enabled,
+                      onGenerate: () => generations++),
+                ));
+    await reveal(tester, 'shared-editor-input');
+    final editor = find.byType(_SharedEditor);
+    final originalState = tester.state<_SharedEditorState>(editor);
+    final controller = tester.widget<_SharedEditor>(editor).controller;
+    await tap(tester, 'clip-group-show-parts');
+    expect(saved, 0);
+    expect(generations, 0);
+    expect(submitted, 0);
+    await tester.tap(find.byKey(const ValueKey('clip-group-parts-manage')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('clip-group-parts-sheet')), findsNothing);
+    expect(tester.takeException(), isNull);
+    final captionAction = find.byKey(const ValueKey('clip-group-caption-yt1'));
+    final groupScroll = find
+        .descendant(
+            of: find.byKey(const ValueKey('clip-group-scroll')),
+            matching: find.byType(Scrollable))
+        .first;
+    await tester.scrollUntilVisible(captionAction, 180,
+        scrollable: groupScroll);
+    await tester.ensureVisible(captionAction);
+    await tester.pumpAndSettle();
+    expect(captionAction, findsOneWidget);
+    expect(tester.widget<TextButton>(captionAction).onPressed, isNotNull);
+    final mountedEditor = find.byType(_SharedEditor, skipOffstage: false);
+    expect(mountedEditor, findsOneWidget);
+    expect(
+        tester.state<_SharedEditorState>(mountedEditor), same(originalState));
+    expect(tester.widget<_SharedEditor>(mountedEditor).controller,
+        same(controller));
+    expect(saved, 0);
+    expect(generations, 0);
+    expect(submitted, 0);
+    await tester.tap(captionAction);
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('clip-group-caption-input')), findsOneWidget);
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const ValueKey('clip-group-caption-input')))
+            .controller!
+            .text,
+        'แคปชั่นหลัก');
+    await tester.tap(find.text('ยกเลิก'));
+    await tester.pumpAndSettle();
+    expect(saved, 1,
+        reason: 'Opening the existing member editor explicitly checkpoints '
+            'the group; cancelling its dialog adds no further save');
+    expect(generations, 0);
+    expect(submitted, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('parts sheet drops the previous owner details immediately',
+      (tester) async {
+    await mount(tester);
+    await tap(tester, 'clip-group-show-parts');
+    final sheet = find.byKey(const ValueKey('clip-group-parts-sheet'));
+    expect(find.descendant(of: sheet, matching: find.text(persisted.title)),
+        findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.text('0:00–3:00')),
+        findsOneWidget);
+    PostDeeAuthSessionStore.instance.signIn(AuthSession.authenticated(
+        userId: 'different-parts-owner', idToken: 'different-parts-token'));
+    await tester.pump();
+    expect(sheet, findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.text(persisted.title)),
+        findsNothing);
+    for (final range in ['0:00–3:00', '3:00–6:00', '0:00–6:00']) {
+      expect(
+          find.descendant(of: sheet, matching: find.text(range)), findsNothing);
+    }
+    final manage = find.byKey(const ValueKey('clip-group-parts-manage'));
+    if (manage.evaluate().isNotEmpty) {
+      expect(tester.widget<FilledButton>(manage).onPressed, isNull);
+    }
+    expect(
+        find.descendant(
+            of: sheet,
+            matching:
+                find.text('บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดชุดคลิปใหม่')),
+        findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('clip-group-parts-close')));
+    await tester.pumpAndSettle();
+    expect(sheet, findsNothing);
+    expect(saved, 0);
+    expect(submitted, 0);
+    expect(
+        tester
+            .widget<FilledButton>(find.byKey(const ValueKey('clip-group-next')))
+            .onPressed,
+        isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'caption editor state and controller stay mounted through Next and Back',
+      (tester) async {
+    var generations = 0;
+    await mount(tester,
+        sharedEditor:
+            (context, controller, onBusy, enabled, onContextChanged) =>
+                _SharedEditor(
+                    controller: controller,
+                    onBusyChanged: onBusy,
+                    enabled: enabled,
+                    onGenerate: () => generations++));
+    final editor = find.byType(_SharedEditor);
+    final originalState = tester.state<_SharedEditorState>(editor);
+    final controller = tester.widget<_SharedEditor>(editor).controller;
+    await tester.enterText(find.byKey(const ValueKey('shared-editor-input')),
+        'ข้อความหลักที่ต้องอยู่ครบเมื่อย้อนกลับ');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    expect(saved, 0);
+    await tap(tester, 'clip-group-next');
+    final mountedEditor = find.byType(_SharedEditor, skipOffstage: false);
+    expect(mountedEditor, findsOneWidget);
+    expect(
+        tester.state<_SharedEditorState>(mountedEditor), same(originalState));
+    expect(tester.widget<_SharedEditor>(mountedEditor).controller,
+        same(controller));
+    expect(saved, 1,
+        reason: 'Next explicitly checkpoints the reviewed caption');
+    expect(submitted, 0);
+    expect(generations, 0);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(
+        find.byKey(const ValueKey('clip-group-caption-page')), findsOneWidget);
+    expect(tester.state<_SharedEditorState>(editor), same(originalState));
+    expect(tester.widget<_SharedEditor>(editor).controller, same(controller));
+    expect(controller.text, 'ข้อความหลักที่ต้องอยู่ครบเมื่อย้อนกลับ');
+    expect(saved, 1);
+    expect(submitted, 0);
+    expect(generations, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('caption page opens the shared editor immediately',
       (tester) async {
     await mount(tester);
-    expect(find.text('เขียนแคปชั่นทั้งชุด'), findsOneWidget);
+    expect(find.text('สร้างโพสต์'), findsOneWidget);
     expect(find.byKey(const ValueKey('clip-group-shared-caption')),
         findsOneWidget);
     expect(find.byKey(const ValueKey('clip-group-shared-caption-toggle')),
         findsNothing);
-    expect(find.byKey(const ValueKey('clip-group-clips')), findsOneWidget);
+    expect(find.byKey(const ValueKey('clip-group-clips')), findsNothing);
+    expect(find.byKey(const ValueKey('clip-group-show-parts')), findsOneWidget);
     expect(saved, 0);
     expect(submitted, 0);
   });
@@ -289,6 +549,8 @@ void main() {
                     onGenerate: () => generations++));
     expect(generations, 0);
     expect(saved, 0);
+    await openMemberManager(tester);
+    await reveal(tester, 'shared-editor-input');
     await tester.enterText(find.byKey(const ValueKey('shared-editor-input')),
         'ข้อความที่กำลังพิมพ์');
     await tester.pumpAndSettle();
@@ -375,6 +637,7 @@ void main() {
       ...persisted.items.skip(1),
     ]);
     await mount(tester);
+    await openMemberManager(tester);
     await tap(tester, 'clip-group-inherit-yt1');
     await tap(tester, 'clip-group-inherit-cancel');
     expect(persisted.items[0].usesSharedCaption, isFalse);
@@ -397,6 +660,7 @@ void main() {
       return draft;
     });
     expect(sections, isEmpty);
+    await openMemberManager(tester);
     await tap(tester, 'clip-group-ai-yt1');
     expect(sections, [ClipGroupEditSection.caption]);
     expect(submitted, 0);
@@ -448,6 +712,7 @@ void main() {
       'custom caption does not get overwritten by a shared caption update',
       (tester) async {
     await mount(tester);
+    await openMemberManager(tester);
     await tap(tester, 'clip-group-caption-yt1');
     await tester.enterText(
         find.byKey(const ValueKey('clip-group-caption-input')),
@@ -508,6 +773,7 @@ void main() {
       persisted.items[2]
     ]);
     await mount(tester);
+    await openMemberManager(tester);
     await reveal(tester, 'clip-group-edit-yt1');
     final first = find.byKey(const ValueKey('clip-group-edit-yt1'));
     expect(tester.widget<PopupMenuButton<ClipGroupEditSection>>(first).enabled,
@@ -534,6 +800,7 @@ void main() {
     await mount(tester);
     drafts['yt1'] = _draft('yt1', receipt: true);
     await tap(tester, 'clip-group-save');
+    await tap(tester, 'clip-group-manage-parts');
     await reveal(tester, 'clip-group-edit-yt1');
     expect(
         tester
@@ -653,6 +920,7 @@ void main() {
       persisted = persisted.copyWith(revision: persisted.revision + 1);
       throw StateError('member save failed after group metadata');
     });
+    await openMemberManager(tester);
     await tap(tester, 'clip-group-edit-yt1');
     await tester.tap(find.text('ตั้งค่าช่องทาง'));
     await tester.pumpAndSettle();

@@ -14,6 +14,7 @@ import '../shared/postdee_time_picker.dart';
 import '../platforms/social_platform.dart';
 import '../posts/posts_screen.dart';
 import 'clip_group_draft.dart';
+import 'clip_group_caption_chrome.dart';
 import 'clip_group_localizations.dart';
 import 'clip_group_submission.dart';
 import 'clip_split_localizations.dart';
@@ -88,6 +89,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   late final Map<String, PublishDraft> _drafts;
   late final TextEditingController _sharedCaption;
   final _scroll = ScrollController();
+  final _partsExpansion = ExpansibleController();
   final _dates = <String, DateTime>{};
   final _times = <String, TimeOfDay>{};
   SubscriptionStatusResult? _subscription;
@@ -103,6 +105,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   bool _quotaFailed = false;
   bool _result = false;
   bool _ownerChanged = false;
+  bool _showingParts = false;
   String? _error;
   String? _message;
   ClipGroupSubmissionProgress? _progress;
@@ -241,6 +244,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
     PostDeeAuthSessionStore.instance.removeListener(_sessionChanged);
     _sharedCaption.dispose();
     _scroll.dispose();
+    _partsExpansion.dispose();
     super.dispose();
   }
 
@@ -613,6 +617,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
 
   Future<void> _next() async {
     if (!_owned || _actionBusy || _navigating) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _navigating = true);
     try {
       if (_stage == 1 &&
@@ -797,91 +802,287 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
         },
         child: Scaffold(
           key: const ValueKey('clip-group-review'),
-          appBar: AppBar(
-              title: Text(_result
-                  ? _text('ผลการส่งทั้งชุด', 'Set submission results')
-                  : titles[_stage]),
-              leading: BackButton(
-                  onPressed: _actionBusy || _navigating ? null : _back)),
+          appBar: !_result
+              ? null
+              : AppBar(
+                  title: Text(_result
+                      ? _text('ผลการส่งทั้งชุด', 'Set submission results')
+                      : titles[_stage]),
+                  leading: BackButton(
+                      onPressed: _actionBusy || _navigating ? null : _back)),
           body: SafeArea(
               bottom: false,
-              child: ListView(
-                  key: const ValueKey('clip-group-scroll'),
-                  controller: _scroll,
-                  padding: AppTheme.screenPadding,
-                  children: [
-                    Text(_group.title,
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: AppTheme.spaceXs),
-                    Text(
-                        _text('${_group.items.length} คลิปอยู่ในชุดเดียว',
-                            '${_group.items.length} clips in one set'),
-                        style: TextStyle(color: AppTheme.textSecondary)),
-                    const SizedBox(height: AppTheme.spaceLg),
-                    if (!_owned)
-                      _notice(_text(
-                          'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดชุดคลิปใหม่',
-                          'Your account changed. Reopen this set.')),
-                    if (_earlyReadinessNotice case final message?) ...[
-                      PostDeeNotice(
-                        key: const ValueKey('clip-group-readiness-notice'),
-                        message: message,
-                        icon: Icons.info_outline,
-                      ),
-                      const SizedBox(height: AppTheme.spaceMd),
-                    ],
-                    if (_result)
-                      ..._resultWidgets()
-                    else if (_stage == 0) ...[
-                      _KeepSharedCaptionEditorAlive(
-                          key: const ValueKey('clip-group-source-editor'),
-                          child: _sharedEditor()),
-                      const SizedBox(height: AppTheme.spaceLg),
-                      _clipsCard(),
-                    ] else if (_stage == 1) ...[
-                      _deliveryChoices(),
-                      const SizedBox(height: AppTheme.spaceLg),
-                      for (final item in _group.items) ...[
-                        _scheduleCard(item),
-                        const SizedBox(height: AppTheme.spaceMd)
-                      ],
-                      Text(
-                          _text(
-                              'เวลาในเครื่อง · แต่ละคลิปเปลี่ยนวันและเวลาได้แยกกัน',
-                              'Device local time · Each clip has its own date and time'),
-                          style: TextStyle(color: AppTheme.textSecondary)),
-                    ] else ...[
-                      for (final item in _group.items) ...[
-                        _confirmCard(item),
-                        const SizedBox(height: AppTheme.spaceMd)
-                      ],
-                      Text(_text(
-                          'การยืนยันนี้ครอบคลุมแคปชั่นทุกคลิปที่แสดง และยังต้องผ่านการตรวจปลายทางและสิทธิ์ของแต่ละคลิป',
-                          'This confirms the captions shown for every clip. Each item still passes its destination and permission checks.')),
-                      if (confirmation != null) ...[
-                        const SizedBox(height: AppTheme.spaceMd),
-                        _notice(confirmation)
-                      ],
-                    ],
-                    if (_error != null) ...[
-                      const SizedBox(height: AppTheme.spaceMd),
-                      _notice(_error!)
-                    ],
-                    if (_message != null) ...[
-                      const SizedBox(height: AppTheme.spaceMd),
-                      Text(_message!,
-                          style: TextStyle(color: AppTheme.successInk))
-                    ],
-                  ])),
+              child: LayoutBuilder(
+                  builder: (context, constraints) => Column(
+                        children: [
+                          if (!_result)
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                  maxHeight: constraints.maxHeight * .35),
+                              child: SingleChildScrollView(
+                                child: ClipGroupCaptionHeader(
+                                  key: ValueKey(_stage == 0
+                                      ? 'clip-group-caption-page'
+                                      : 'clip-group-review-page'),
+                                  stage: _stage,
+                                  onBack:
+                                      _actionBusy || _navigating ? null : _back,
+                                  onSave: _actionBusy || _navigating || !_owned
+                                      ? null
+                                      : () => _save(feedback: true),
+                                ),
+                              ),
+                            ),
+                          Expanded(
+                              key: const ValueKey('clip-group-page-body'),
+                              child: ListView(
+                                  key: const ValueKey('clip-group-scroll'),
+                                  controller: _scroll,
+                                  padding: AppTheme.screenPadding,
+                                  children: [
+                                    if (_stage == 0 && !_result)
+                                      ClipGroupSplitSummary(
+                                        key: const ValueKey(
+                                            'clip-group-split-summary'),
+                                        group: _group,
+                                        onShowParts: !_owned ||
+                                                _actionBusy ||
+                                                _navigating ||
+                                                _showingParts
+                                            ? null
+                                            : _showParts,
+                                      )
+                                    else ...[
+                                      if (!_result)
+                                        Text(titles[_stage],
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleLarge),
+                                      Text(_group.title,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium),
+                                      const SizedBox(height: AppTheme.spaceXs),
+                                      Text(
+                                          _text(
+                                              '${_group.items.length} คลิปอยู่ในชุดเดียว',
+                                              '${_group.items.length} clips in one set'),
+                                          style: TextStyle(
+                                              color: AppTheme.textSecondary)),
+                                      const SizedBox(height: AppTheme.spaceLg),
+                                    ],
+                                    if (!_owned)
+                                      _notice(_text(
+                                          'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดชุดคลิปใหม่',
+                                          'Your account changed. Reopen this set.')),
+                                    if (_earlyReadinessNotice
+                                        case final message?) ...[
+                                      PostDeeNotice(
+                                        key: const ValueKey(
+                                            'clip-group-readiness-notice'),
+                                        message: message,
+                                        icon: Icons.info_outline,
+                                      ),
+                                      const SizedBox(height: AppTheme.spaceMd),
+                                    ],
+                                    _KeepSharedCaptionEditorAlive(
+                                      key: const ValueKey(
+                                          'clip-group-source-editor'),
+                                      child: Offstage(
+                                        offstage: _stage != 0 || _result,
+                                        child: ExcludeFocus(
+                                          excluding: _stage != 0 || _result,
+                                          child: TickerMode(
+                                            enabled: _stage == 0 && !_result,
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                  top: AppTheme.spaceLg),
+                                              child: _sharedEditor(),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    if (_result)
+                                      ..._resultWidgets()
+                                    else if (_stage == 0) ...[
+                                      const SizedBox(height: AppTheme.spaceLg),
+                                      ExpansionTile(
+                                        key: const ValueKey(
+                                            'clip-group-manage-parts'),
+                                        controller: _partsExpansion,
+                                        title: Text(_text('จัดการแต่ละคลิป',
+                                            'Manage individual clips')),
+                                        subtitle: Text(_text(
+                                            'แก้แคปชัน หน้าปก และตั้งค่าช่องทาง',
+                                            'Edit captions, covers and channel settings')),
+                                        children: [_clipsCard()],
+                                      ),
+                                    ] else if (_stage == 1) ...[
+                                      Text(
+                                          _text('ตรวจแต่ละคลิป',
+                                              'Review each clip'),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium),
+                                      const SizedBox(height: AppTheme.spaceMd),
+                                      _clipsCard(),
+                                      const SizedBox(height: AppTheme.spaceLg),
+                                      _deliveryChoices(),
+                                      const SizedBox(height: AppTheme.spaceLg),
+                                      for (final item in _group.items) ...[
+                                        _scheduleCard(item),
+                                        const SizedBox(height: AppTheme.spaceMd)
+                                      ],
+                                      Text(
+                                          _text(
+                                              'เวลาในเครื่อง · แต่ละคลิปเปลี่ยนวันและเวลาได้แยกกัน',
+                                              'Device local time · Each clip has its own date and time'),
+                                          style: TextStyle(
+                                              color: AppTheme.textSecondary)),
+                                    ] else ...[
+                                      for (final item in _group.items) ...[
+                                        _confirmCard(item),
+                                        const SizedBox(height: AppTheme.spaceMd)
+                                      ],
+                                      Text(_text(
+                                          'การยืนยันนี้ครอบคลุมแคปชั่นทุกคลิปที่แสดง และยังต้องผ่านการตรวจปลายทางและสิทธิ์ของแต่ละคลิป',
+                                          'This confirms the captions shown for every clip. Each item still passes its destination and permission checks.')),
+                                      if (confirmation != null) ...[
+                                        const SizedBox(
+                                            height: AppTheme.spaceMd),
+                                        _notice(confirmation)
+                                      ],
+                                    ],
+                                    if (_error != null) ...[
+                                      const SizedBox(height: AppTheme.spaceMd),
+                                      _notice(_error!)
+                                    ],
+                                    if (_message != null) ...[
+                                      const SizedBox(height: AppTheme.spaceMd),
+                                      Text(_message!,
+                                          style: TextStyle(
+                                              color: AppTheme.successInk))
+                                    ],
+                                  ])),
+                        ],
+                      ))),
           bottomNavigationBar: _footer(confirmation),
         ));
   }
 
-  Widget _sharedEditor() => PostDeeCard(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(_text('แคปชั่นหลักของชุดนี้', 'Shared caption'),
-            style: Theme.of(context).textTheme.titleSmall),
+  Future<void> _showParts() async {
+    if (!_owned || _actionBusy || _navigating || _showingParts) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _showingParts = true);
+    bool? manage;
+    try {
+      manage = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (sheetContext) => ListenableBuilder(
+          listenable: PostDeeAuthSessionStore.instance,
+          builder: (context, _) => SizedBox(
+            height: MediaQuery.sizeOf(context).height * .65,
+            child: Padding(
+              key: const ValueKey('clip-group-parts-sheet'),
+              padding: AppTheme.screenPadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Expanded(
+                        child: Text(_text('ตอนที่แบ่งไว้', 'Your split parts'),
+                            style: Theme.of(context).textTheme.titleLarge)),
+                    IconButton(
+                      key: const ValueKey('clip-group-parts-close'),
+                      tooltip: _text('ปิด', 'Close'),
+                      onPressed: () => Navigator.pop(sheetContext),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ]),
+                  if (!_owned)
+                    Expanded(
+                        child: Center(
+                            child: Text(_text(
+                                'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดชุดคลิปใหม่',
+                                'Your account changed. Reopen this set.'))))
+                  else ...[
+                    Text(_group.title,
+                        style: TextStyle(color: AppTheme.textSecondary)),
+                    const SizedBox(height: AppTheme.spaceMd),
+                    Expanded(
+                        child: ListView.separated(
+                      key: const ValueKey('clip-group-parts-scroll'),
+                      itemCount: _group.items.length,
+                      separatorBuilder: (_, __) => const Divider(),
+                      itemBuilder: (context, index) {
+                        final item = _group.items[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: AppTheme.spaceMd),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(_label(item),
+                                    style:
+                                        Theme.of(context).textTheme.titleSmall),
+                                Text(
+                                    '${formatClipSplitTime(item.sourceStartSeconds)}–${formatClipSplitTime(item.sourceEndSeconds)}'),
+                                Text(_platforms(item)
+                                    .map((platform) => platform.label)
+                                    .join(' · ')),
+                                Text(
+                                    item.usesSharedCaption
+                                        ? _text('ใช้แคปชั่นหลัก',
+                                            'Uses the shared caption')
+                                        : _text('แคปชั่นเฉพาะคลิป',
+                                            'Custom caption'),
+                                    style: TextStyle(
+                                        color: AppTheme.textSecondary)),
+                              ]),
+                        );
+                      },
+                    )),
+                    FilledButton(
+                      key: const ValueKey('clip-group-parts-manage'),
+                      onPressed: _actionBusy || _navigating
+                          ? null
+                          : () => Navigator.pop(sheetContext, true),
+                      child: Text(
+                          _text('จัดการแต่ละคลิป', 'Manage individual clips')),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _showingParts = false);
+    }
+    if (!mounted || !_owned || _actionBusy || _navigating || manage != true) {
+      return;
+    }
+    _partsExpansion.expand();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _owned && _scroll.hasClients) {
+        _scroll.animateTo(_scroll.position.maxScrollExtent,
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic);
+      }
+    });
+  }
+
+  Widget _sharedEditor() =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(_text('เขียนแคปชัน', 'Write a caption'),
+            style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: AppTheme.spaceSm),
         Text(
             _text('ใช้กับคลิปที่ไม่ได้แก้แยก · ข้อความที่แก้แยกจะยังอยู่',
@@ -910,7 +1111,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
               'มีรายการที่เคยเริ่มส่งแล้ว ตรวจผลเดิมก่อนเปลี่ยนแคปชั่นหลัก',
               'Some items already started submitting. Check their results before changing the shared caption.')),
         ],
-      ]));
+      ]);
 
   Widget _clipsCard() => PostDeeCard(
       key: const ValueKey('clip-group-clips'),

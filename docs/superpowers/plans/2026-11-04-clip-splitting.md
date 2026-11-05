@@ -1,5 +1,62 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Compact range clocks — 2026-11-05 (local candidate)
+
+The owner reported long fractional clocks after dragging a range, such as
+`0:55.153966` and `2:35.067414`. Starting from the clean, verified-main-based
+UI candidate `1c0f606c` (baseline `origin/main` `e4004355`, no missing main
+commits), runtime source `77bb42ab` changes only
+`clip_split_localizations.dart`, `clip_split_screen.dart` and their tests.
+Display clocks now use M:SS throughout the split/group UI. The dialog keeps
+canonical microsecond values separately, so opening/saving or editing one
+endpoint does not truncate an untouched measured endpoint. Manual fractional
+input remains compatible. A dragged thumb chooses a legal whole second within
+source/neighbor/minimum/maximum bounds; a narrow interval containing no whole
+second retains its exact original boundary. The existing final validator,
+preview, owner guards, channel choices, soft motion, planner, encoding,
+saved-group data, quota and caption behavior remain intact. No dependency,
+API, schema, migration, entitlement, provider or environment change is needed.
+
+Regression tests were red before the patch. Final focused formatter/screen
+tests pass 26/26, planner/motion coverage remains passing, and real-font visual
+tests pass 4/4 in Thai/English, light/dark and small/large-text layouts.
+Final analysis reports no issues (14.8s). The complete frozen-source Mobile
+suite passes **5,572 tests / 10 optional skips**, exit 0, in 8m00.6s wall time
+using four workers. The final diff contains no deleted files or unrelated changes.
+
+Validated Staging helper build (172.1s) produced x86_64 debug APK **12115**:
+`E:/PostDeeBuildArchive/clip-split-clock-12115/app-x86_64-12115.apk`, SHA-256
+`deb9af0191b4062e238b2a221f4e756b9bff6ec0425df5f0e78cc319d190487c`.
+It retains the prior signing certificate and Staging API/Firebase/mock-off/
+RevenueCat Test Store configuration. The guarded updater on the only connected
+device, `emulator-5554`, preserves package
+`com.postdee.postdee_mobile.staging`, UID 10197 and internal volume while
+updating 12114 to 12115. The installed APK hash matches the archive.
+
+The initial strict private-data check stopped because MainActivity started
+concurrently during post-install hashing. Audit confirmed all **153/153 paths**
+remain, with zero added/missing files; **148 non-SDK files are byte-identical**.
+The five changed stores are Firebase app-id, Crashlytics, measurement
+preferences, measurement DB and datatransport DB, consistent with SDK startup.
+Do not describe this as all 153 files being byte-identical. Preserved Firebase
+user/token keys, identical APK Firebase resources and matching device/host UTC
+were verified without printing credential values. An initial login gate cleared
+after one controlled restart following the full suite: the existing account,
+550 post / 300 AI top-up balances and all **17 drafts** returned. Existing
+one-shot session restoration has a five-second timeout; its exact initial
+failure cause is unproven and auth behavior is unchanged by this patch.
+
+Native QA selected the existing 180s fixture, dragged Facebook part 2's start
+toward the preceding part (it stayed at 1:30), then dragged its end to **2:35**.
+Both fields, duration and saved row use short clocks; Save produces
+`1:30–2:35`, length `1:05`, without overlap. This remains an in-memory test plan;
+no prepared group, AI generation, publish or quota consumption was triggered.
+The current native process log has no fatal/Flutter/unhandled/overflow errors.
+Evidence/logs are under `E:/PostDeeTaskScratch/clip-split-soft-motion/` with the
+`fraction-` prefix. Physical devices, iOS and a new real publish are unverified.
+The candidate remains local; no new main merge, push, API deploy or Production
+change was made for this follow-up.
+
 ## Softer split-plan presentation — 2026-11-05 (local candidate)
 
 The owner found the split-planning screen stiff and requested small playful

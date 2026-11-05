@@ -1,7 +1,7 @@
 import '../../core/network/postdee_api_client.dart';
 
 const schedulePaidPlanMessage =
-    'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจ Starter 199 หรือ Pro 299';
+    'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจแบบชำระเงิน (Starter ขึ้นไป)';
 const scheduleSubscriptionUnavailableMessage =
     'ตรวจสอบแพ็กเกจไม่สำเร็จ กรุณาลองใหม่ก่อนตั้งเวลา';
 const schedulePlanSummary = 'Starter ตั้งเวลาล่วงหน้าได้ 14 วัน · Pro 30 วัน';
@@ -9,7 +9,7 @@ const schedulePlanSummary = 'Starter ตั้งเวลาล่วงหน�
 String getSchedulePaidPlanMessage({String languageCode = 'th'}) =>
     languageCode == 'th'
         ? schedulePaidPlanMessage
-        : 'Scheduling requires Starter (199 THB) or Pro (299 THB).';
+        : 'Scheduling requires a paid plan (Starter or higher).';
 
 String getScheduleSubscriptionUnavailableMessage(
         {String languageCode = 'th'}) =>

@@ -18,7 +18,7 @@ describe('profile themes and optional motion', () => {
     const profile = (await store.getPublishedBySlug('new-theme'))!;
     expect(profile.appearance).toMatchObject({ themeId, effects });
     expect(profile.links).toEqual(links);
-    const html = renderLinkInBioPage(profile, 'safe-nonce');
+    const html = renderLinkInBioPage(profile, 'safe-nonce', 'th');
     expect(html).toContain(`data-theme="${themeId}"`);
     expect(html).toContain('prefers-reduced-motion');
     expect(html).not.toContain('หยุดการเคลื่อนไหว');

@@ -1119,7 +1119,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
         const SizedBox(height: 8),
         const _PaywallText('โพสต์เพิ่ม 100 หน่วย + AI แคปชั่น 50 เครดิต', style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
-        _PaywallText('ราคาไทย 49 บาท · ชำระตามราคาที่ร้านค้าแสดง', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        _PaywallText('ชำระตามราคาที่ร้านค้าแสดง', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         const SizedBox(height: 8),
         _PaywallText(message, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         if (catalog != null && (catalog.addonPostUnits > 0 || catalog.addonAiCaptions > 0)) ...[
@@ -1481,8 +1481,7 @@ const _englishPaywallMessages = <String, String>{
   'แพ็กเติม ซื้อครั้งเดียว': 'One-time credit pack',
   'โพสต์เพิ่ม 100 หน่วย + AI แคปชั่น 50 เครดิต':
       '100 post units + 50 AI caption credits',
-  'ราคาไทย 49 บาท · ชำระตามราคาที่ร้านค้าแสดง':
-      'Thailand price: THB 49 · Pay the price shown by your store',
+  'ชำระตามราคาที่ร้านค้าแสดง': 'You pay the price shown by your store',
   'กำลังตรวจสอบแพ็กเติม...': 'Loading credit pack...',
   'ตรวจสอบแพ็กเติมไม่สำเร็จ กรุณาลองใหม่':
       'Could not load credit pack. Please try again.',

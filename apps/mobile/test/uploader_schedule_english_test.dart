@@ -476,7 +476,7 @@ void main() {
     await _later(tester);
     expect(
         find.byKey(const ValueKey('uploader-schedule-summary')), findsNothing);
-    expect(find.text('Scheduling requires Starter (199 THB) or Pro (299 THB).'),
+    expect(find.text('Scheduling requires a paid plan (Starter or higher).'),
         findsOneWidget);
     expect(fixture.posts, isEmpty);
     expect(fixture.uploads, 0);

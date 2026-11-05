@@ -1999,7 +1999,7 @@ void main() {
         find.byKey(const ValueKey('uploader-schedule-summary')), findsNothing);
     expect(subscriptionChecks, 1);
     expect(
-      find.text('การตั้งเวลาโพสต์ต้องใช้แพ็กเกจ Starter 199 หรือ Pro 299'),
+      find.text('การตั้งเวลาโพสต์ต้องใช้แพ็กเกจแบบชำระเงิน (Starter ขึ้นไป)'),
       findsOneWidget,
     );
     expect(find.text('กำลังโพสต์...'), findsNothing);

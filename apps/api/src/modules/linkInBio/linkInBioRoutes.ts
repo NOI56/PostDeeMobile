@@ -9,6 +9,7 @@ import type { SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
 import { LinkInBioError, type LinkInBioLink, type LinkInBioProfile, type LinkInBioStore } from './linkInBioStore.js';
 import { linkInBioFonts, linkInBioIcons, normalizeStoredLinkInBioAppearance, readLinkInBioAppearance, readLinkInBioColor, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
 import { renderLinkInBioPage } from './linkInBioRenderer.js';
+import { linkInBioLocalizations, type LinkInBioLanguage } from './linkInBioLocalizations.js';
 import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
 import { readLinkInBioUrl } from './linkInBioDestinations.js';
 import { getProfileTemplate, profileTemplateCatalogVersion, profileTemplates } from './profileTemplateCatalog.generated.js';
@@ -23,6 +24,17 @@ export type LinkInBioRouteOptions = {
 };
 
 const slugPattern = /^(?=.{3,40}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const readPublicPageLanguage = (request: Request): LinkInBioLanguage => {
+  // Rank ranges before folding regional tags: a lower-q exact tag must not
+  // override a higher-q regional preference for the same supported language.
+  for (const preference of request.acceptsLanguages()) {
+    const language = preference.toLowerCase().split('-')[0];
+    if (language === 'en' || language === 'th') return language;
+    // Keep the existing wildcard fallback, including explicit q=0 exclusions.
+    if (preference === '*') return request.acceptsLanguages('en', 'th') === 'th' ? 'th' : 'en';
+  }
+  return 'en';
+};
 const readText = (value: unknown, maximum: number) => {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
@@ -239,12 +251,15 @@ export const registerLinkInBioRoutes = (
   });
   router.get('/p/:slug', async (request, response) => {
     response.set('Cache-Control', 'no-store');
+    response.vary('Accept-Language');
+    const language = readPublicPageLanguage(request);
+    const text = linkInBioLocalizations[language];
     const slug = request.params.slug;
-    if (typeof slug !== 'string' || !slugPattern.test(slug)) { response.status(404).type('text').send('ไม่พบหน้าเว็บร้านค้า'); return; }
+    if (typeof slug !== 'string' || !slugPattern.test(slug)) { response.status(404).type('text').send(text.notFound); return; }
     try {
       const snapshot = store.getPublishedWithOwnerBySlug ? await store.getPublishedWithOwnerBySlug(slug) : undefined;
       const profile = store.getPublishedWithOwnerBySlug ? snapshot?.profile ?? null : await store.getPublishedBySlug(slug);
-      if (!profile) { response.status(404).type('text').send('ไม่พบหน้าเว็บร้านค้า'); return; }
+      if (!profile) { response.status(404).type('text').send(text.notFound); return; }
       let rendered = profile;
       if (profileThemeRequiresMembership(profile.appearance)) {
         const purchasedPlan = snapshot?.userId ? await readPurchasedProfileThemePlan(options.subscriptionStore,
@@ -256,7 +271,7 @@ export const registerLinkInBioRoutes = (
       }
       const nonce = randomBytes(18).toString('base64');
       response.set('Content-Security-Policy', `default-src 'none'; script-src 'none'; style-src 'nonce-${nonce}'; img-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`);
-      response.type('html').send(renderLinkInBioPage(rendered, nonce));
+      response.type('html').send(renderLinkInBioPage(rendered, nonce, language));
     } catch (error) { respondError(response, error); }
   });
 };

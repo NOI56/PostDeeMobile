@@ -93,8 +93,8 @@ void main() {
     expect(localizeReviewMessage(context, raw), raw);
     expect(
         localizeReviewMessage(
-            context, 'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจ Starter 199 หรือ Pro 299'),
-        'Scheduling requires Starter (199 THB) or Pro (299 THB).');
+            context, 'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจแบบชำระเงิน (Starter ขึ้นไป)'),
+        'Scheduling requires a paid plan (Starter or higher).');
     expect(
         localizeReviewMessage(
             context, 'ตรวจสอบแพ็กเกจไม่สำเร็จ กรุณาลองใหม่ก่อนตั้งเวลา'),

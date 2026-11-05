@@ -4,9 +4,24 @@ import 'package:postdee_mobile/features/shared/post_schedule_policy.dart';
 import 'package:postdee_mobile/features/shared/publishing_availability.dart';
 
 void main() {
-  test('English scheduling copy keeps package prices and limits unchanged', () {
+  for (final languageCode in ['th', 'en']) {
+    test(
+        '$languageCode scheduling paid-plan message has no country-specific price text',
+        () {
+      final message = getSchedulePaidPlanMessage(languageCode: languageCode);
+      expect(message, contains('Starter'));
+      for (final priceText in ['THB', 'บาท', '199', '299', '49']) {
+        expect(message, isNot(contains(priceText)));
+      }
+      expect(message, isNot(contains('Business')));
+    });
+  }
+
+  test(
+      'English scheduling copy keeps paid-plan requirement and limits unchanged',
+      () {
     expect(getSchedulePaidPlanMessage(languageCode: 'en'),
-        'Scheduling requires Starter (199 THB) or Pro (299 THB).');
+        'Scheduling requires a paid plan (Starter or higher).');
     expect(getScheduleSubscriptionUnavailableMessage(languageCode: 'en'),
         'Could not verify your plan. Try again before scheduling.');
     expect(getSchedulePlanSummary(languageCode: 'en'),
@@ -131,7 +146,7 @@ void main() {
     expect(
         postScheduleApiErrorMessage(const ApiException('paid plan',
             statusCode: 402, code: 'PAID_PLAN_REQUIRED')),
-        'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจ Starter 199 หรือ Pro 299');
+        'การตั้งเวลาโพสต์ต้องใช้แพ็กเกจแบบชำระเงิน (Starter ขึ้นไป)');
     expect(
         postScheduleApiErrorMessage(const ApiException('unrelated')), isNull);
   });

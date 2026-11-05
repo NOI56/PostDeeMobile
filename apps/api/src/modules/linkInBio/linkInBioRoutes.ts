@@ -9,7 +9,7 @@ import type { SubscriptionPlan } from '../subscriptions/subscriptionStore.js';
 import { LinkInBioError, type LinkInBioLink, type LinkInBioProfile, type LinkInBioStore } from './linkInBioStore.js';
 import { linkInBioFonts, linkInBioIcons, normalizeStoredLinkInBioAppearance, readLinkInBioAppearance, readLinkInBioColor, type LinkInBioAppearance, type LinkInBioFont, type LinkInBioIcon } from './linkInBioAppearance.js';
 import { renderLinkInBioPage } from './linkInBioRenderer.js';
-import { linkInBioLocalizations } from './linkInBioLocalizations.js';
+import { linkInBioLocalizations, type LinkInBioLanguage } from './linkInBioLocalizations.js';
 import { linkInBioPlatformLogoFiles } from './linkInBioPlatformLogos.js';
 import { readLinkInBioUrl } from './linkInBioDestinations.js';
 import { getProfileTemplate, profileTemplateCatalogVersion, profileTemplates } from './profileTemplateCatalog.generated.js';
@@ -24,6 +24,17 @@ export type LinkInBioRouteOptions = {
 };
 
 const slugPattern = /^(?=.{3,40}$)[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const readPublicPageLanguage = (request: Request): LinkInBioLanguage => {
+  // Rank ranges before folding regional tags: a lower-q exact tag must not
+  // override a higher-q regional preference for the same supported language.
+  for (const preference of request.acceptsLanguages()) {
+    const language = preference.toLowerCase().split('-')[0];
+    if (language === 'en' || language === 'th') return language;
+    // Keep the existing wildcard fallback, including explicit q=0 exclusions.
+    if (preference === '*') return request.acceptsLanguages('en', 'th') === 'th' ? 'th' : 'en';
+  }
+  return 'en';
+};
 const readText = (value: unknown, maximum: number) => {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
@@ -241,7 +252,7 @@ export const registerLinkInBioRoutes = (
   router.get('/p/:slug', async (request, response) => {
     response.set('Cache-Control', 'no-store');
     response.vary('Accept-Language');
-    const language = request.acceptsLanguages('en', 'th') === 'th' ? 'th' : 'en';
+    const language = readPublicPageLanguage(request);
     const text = linkInBioLocalizations[language];
     const slug = request.params.slug;
     if (typeof slug !== 'string' || !slugPattern.test(slug)) { response.status(404).type('text').send(text.notFound); return; }

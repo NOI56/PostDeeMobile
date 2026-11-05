@@ -1,5 +1,48 @@
 # Multi-country app gaps (2026-11-05, local review candidate)
 
+## Claude review follow-up: storefront language priority (2026-11-05)
+
+- Continued from local commit `858eea0d750dc4bf7803f2eb66b215972f7c15f3`
+  on the same clean branch/worktree. A read-only GitHub branch lookup confirmed
+  remote `main` still equals the exact base `8a340638630fcb960490ee23e95c271870b42a82`;
+  no fetch, rebase or checkout was needed.
+- Fixed the P3 review finding: candidate-based language negotiation preferred a
+  lower-priority exact language over a higher-priority regional variant. For
+  example, `en-US,th;q=0.9,en;q=0.8` incorrectly selected Thai; the inverse Thai
+  example incorrectly selected English. Published pages and localized 404s now
+  select the intended language.
+- Reuse Express's existing parser to obtain positive language ranges in quality
+  and header order, then fold regional tags to `en`/`th`. The first supported
+  range wins. At the first relevant wildcard, retain the previous candidate
+  negotiation so wildcard defaults and explicit exclusions remain compatible;
+  missing/unsupported/all-rejected preferences still fall back to English.
+- Added 18 integration cases covering both reported page/404 failures, reversed
+  range order, equal priorities, case/region normalization, zero/invalid quality,
+  wildcard precedence and fallback. Existing assertions also check localized
+  copy, `Vary`, `no-store` and the matching CSP nonce.
+- Before the fix: **34 pass / 9 fail** in the expanded localization suite.
+  After the fix: **43 pass / 0 fail**. Full API suite: **4,040 pass / 80 skipped**
+  (4,120 total), **207 suites pass / 15 skipped**, completed in 104.43 seconds.
+  Existing opt-in PostgreSQL suites remain skipped; no database fixture was
+  started and no hosted database was accessed.
+- With pinned Node `22.23.3`, API build, typecheck and Prisma schema validation
+  all pass. Compiled API smoke passes **14 local HTTP requests**: eight published
+  page requests plus six missing/unpublished/invalid-page 404 requests. Owner
+  content, `Vary`, `no-store` and CSP/nonce are preserved.
+- Flutter analyze was rerun on the final sources: **no issues**, 15.6 seconds.
+  This closes the review's older-analyze-log evidence gap. The full Mobile suite
+  was not rerun for this API-only follow-up; Mobile files are unchanged and the
+  original completed results below remain the prior evidence.
+- Follow-up logs are in `D:\codex\2026-11-05\task\storefront-language-*.log`,
+  including red/green/full API runs, build, typecheck, Prisma validation,
+  compiled smoke and Flutter analyze. A separate read-only diff review found no
+  actionable defect. The follow-up changes only the route, its localization
+  integration tests and this record.
+- No schema, migration, dependency, configuration, feature flag or Mobile source
+  changes. Root docs and the pending docs branch remain untouched. Work remains
+  local only: no push, PR, merge, deploy or installation. CI, real-device and
+  hosted storefront checks are still not performed.
+
 ## Baseline and scope
 
 - Fresh `git fetch origin`; canonical integration branch: `origin/main`.
@@ -52,10 +95,12 @@
 
 ### Public store page
 
-- `GET /p/:slug` negotiates Thai/English using Express's existing
-  `acceptsLanguages('en', 'th')`, respecting q-values, regional tags and excluded
-  (`q=0`) languages. Missing/unsupported headers and an unconstrained wildcard
-  default to English; equal explicit preferences follow header order.
+- `GET /p/:slug` uses Express's ordered `acceptsLanguages()` ranges, then folds
+  regional tags to Thai/English. This preserves q-value/header priority when a
+  language appears in both regional and base forms. Wildcard fallback retains
+  the existing candidate negotiation and exclusions. Missing/unsupported headers
+  and an unconstrained wildcard default to English; equal explicit preferences
+  follow header order.
 - `renderLinkInBioPage(profile, nonce, language = 'en')` keeps existing callers
   source-compatible and localizes only HTML `lang`, the default description,
   footer, link CTA and cover/logo alt text. Both invalid and missing/unpublished
@@ -78,7 +123,7 @@
 - Monthly quota windows, phone examples, legal docs, additional UI languages,
   admin console and all retired features are outside scope and unchanged.
 
-## Verification
+## Initial implementation verification
 
 - Runtime: Node `22.23.3` / npm `10.9.9`; workspace Flutter `3.44.1` / Dart `3.12.1`.
   Dependencies installed from existing lockfiles, with no lockfile changes. The

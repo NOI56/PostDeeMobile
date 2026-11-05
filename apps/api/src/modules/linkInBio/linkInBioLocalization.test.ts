@@ -57,7 +57,15 @@ describe('public store page language', () => {
     ['th', 'th'], ['en', 'en'], ['TH-th,en;q=0.8', 'th'], ['en-GB,th;q=0.8', 'en'],
     ['th;q=0.3,en;q=0.9', 'en'], ['en;q=0.2,th;q=0.9', 'th'],
     ['ja;q=1,th;q=0.8,en;q=0.4', 'th'], ['th;q=0,en;q=0.5', 'en'],
-    ['en;q=0,th;q=0.5', 'th'], ['th,en', 'th'], ['en,th', 'en'], ['*', 'en']
+    ['en;q=0,th;q=0.5', 'th'], ['th,en', 'th'], ['en,th', 'en'], ['*', 'en'],
+    ['en-US,th;q=0.9,en;q=0.8', 'en'], ['th-TH,en;q=0.9,th;q=0.8', 'th'],
+    ['en;q=0.8,th;q=0.9,en-US', 'en'], ['th;q=0.8,en;q=0.9,th-TH', 'th'],
+    ['en-US,th;q=1,en;q=0.8', 'en'], ['th-TH,en;q=1,th;q=0.8', 'th'],
+    ['EN-us,th;q=0.9,EN;q=0.8', 'en'],
+    ['en-US;q=0,th;q=0.6', 'th'], ['th-TH;q=0,en;q=0.6', 'en'],
+    ['th;q=0,en;q=0', 'en'], ['th;q=invalid,en;q=0.5', 'en'],
+    ['*;q=1,th;q=0.5', 'en'], ['en;q=0,*;q=1', 'th'], ['th;q=0,*;q=1', 'en'],
+    ['ja-JP,*;q=0.9,th;q=0.5', 'en'], ['th-TH,*;q=0.5', 'th']
   ] as const)('negotiates Accept-Language %s as %s', async (header, language) => {
     const { app } = await fixture();
     const visit = request(app).get('/p/tea-shop');
@@ -90,7 +98,9 @@ describe('public store page language', () => {
   it.each([
     ['th', 'ไม่พบหน้าเว็บร้านค้า'], ['en', 'Store page not found'],
     [undefined, 'Store page not found'], ['ja-JP', 'Store page not found'],
-    ['th;q=0.2,en;q=0.8', 'Store page not found']
+    ['th;q=0.2,en;q=0.8', 'Store page not found'],
+    ['en-US,th;q=0.9,en;q=0.8', 'Store page not found'],
+    ['th-TH,en;q=0.9,th;q=0.8', 'ไม่พบหน้าเว็บร้านค้า']
   ] as const)('localizes absent, hidden and invalid pages for %s', async (header, message) => {
     const { app, store } = await fixture();
     await store.unpublish('owner');

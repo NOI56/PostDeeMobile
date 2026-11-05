@@ -20,8 +20,8 @@ class ClipSplitTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final motion =
-        !MediaQuery.disableAnimationsOf(context) && TickerMode.of(context);
+    final motion = !MediaQuery.disableAnimationsOf(context) &&
+        TickerMode.valuesOf(context).enabled;
     final rangeKey = Object.hashAll(segments
         .expand((segment) => [segment.startSeconds, segment.endSeconds]));
     return ExcludeSemantics(

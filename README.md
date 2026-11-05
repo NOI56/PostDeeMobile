@@ -1,5 +1,14 @@
 # PostDee
 
+## Clip member editor rendering fix (2026-11-05, Staging APK 12111)
+
+Opening an individual clip's Caption / AI or channel editor now supplies its
+own Material/Scaffold screen shell. APK 12110 omitted that shell on the pushed
+route, causing missing-Material errors and debug text styling. The embedded
+shared-caption editor keeps its existing parent Scaffold. No AI request or
+credit charge occurs merely from opening an editor. Regression and native
+verification are recorded in the [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Posting clarity follow-up (2026-11-05, Staging APK 12110 checked)
 
 Keep the approved split → shared caption → individual schedules → confirmation

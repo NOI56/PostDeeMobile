@@ -1,5 +1,67 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Member route Material hotfix — 2026-11-05
+
+The owner reported missing-Material error widgets and oversized red/yellow
+debug typography after opening a split clip's Caption / AI editor in APK 12110.
+The earlier 5,518-test run did pass, but its coverage did not navigate into this
+standalone editor. The earlier native member check read UI semantics without
+visually validating that route; that evidence was insufficient to claim correct
+member rendering. The owner's screenshot and native logcat reproduced the defect.
+
+Baseline: `afa61453`, runtime `3e52737a`, verified `origin/main` / merge base
+`8a340638` (ahead 11 / behind 0), branch `codex/clip-group-review`. Existing
+generated Windows changes and scratch output are preserved. Runtime fix source:
+`8f3b25c7d71972cfb8242a0179ad9f81d9a57d99`.
+
+`uploader_clip_group.dart` now wraps the pushed member route in the same themed
+DecoratedBox → Scaffold → SafeArea boundary used by the main composer. Both
+caption/AI and channel routes use it. The shared inline factory remains body
+content beneath the group Scaffold, with no nested Scaffold. No provider, quota,
+subscription, API, database, submission identity or environment change.
+
+`test/uploader_clip_group_route_material_test.dart` opens the real saved group
+and presses the actual member AI/channel actions. Both tests reproduced
+`No Material widget found` before the fix and pass afterward. They check the
+route's Material/Scaffold ancestors, normal inherited typography, usable caption
+input, unchanged source draft, no automatic API writes, and no Scaffold nested
+inside the shared inline editor. Related group/owner/caption/submission tests:
+31 passed. Final regression rerun: 2 passed. Analysis: No issues, 14.4 seconds.
+Final complete Mobile run for the frozen source:
+`flutter test --no-pub --concurrency=4 --reporter expanded` passed **5,520 tests,
+10 optional skips**, exit 0, **8m12s**. Log:
+`output/caption-material-fix/full-mobile.log`. The final diff adds one route-shell
+fix and its regression file; no unexpected deleted files, imports, assets,
+routes, configuration or feature-flag changes.
+
+Guarded Staging x86_64 APK 12111: base build number 8111 plus Flutter's x86_64
+split offset, actual manifest version verified before install. Build 71.6s;
+APK SHA-256 `4f84cf1323179923315031e2343c7dfc0ddad5a97ae85cd2c61c5d8092158a43`.
+Permanent artifact: `E:\PostDeeBuildArchive\clip-group-review-12111\app-x86_64-12111.apk`.
+Installed hash matches on emulator-5554, package
+`com.postdee.postdee_mobile.staging`, unchanged UID 10197 and internal volume.
+All 69 draft/media files matched byte-for-byte immediately before/after update.
+The signed-in Basic account and Staging Firebase/API/Test Store settings remain.
+After native navigation all 69 files still existed; only the opened group
+journal changed through its normal save/reload path. The other 68 files,
+including the originals, member manifests and media, stayed identical.
+
+Native verification opened both real member routes, visually inspected normal
+header/body/footer text, confirmed the caption keyboard opens with Save above
+the keyboard, and found zero missing-Material/Flutter layout errors for the new
+process (PID 5104). No AI generation, credit spending or post submission was
+performed. A temporary mode-toggle test was discarded; no caption was typed or
+saved on the device. Screenshots: `output/caption-material-fix/member-fixed.png`,
+`member-keyboard.png` and `channels-fixed.png`. No push, merge or hosted deploy.
+
+Remaining usability observations from the owner's requested read-only follow-up
+(not changes in this rendering fix): clarify whether AI reads the whole original
+or this particular part; distinguish the two caption-edit actions; provide an
+actual package link where the schedule notice says to view packages; identify
+the channel needing repair and link to the existing connection screen while
+preserving the prepared group. These are source/UI observations, not measured
+customer usability results.
+
 ## Posting usability follow-up — 2026-11-05
 
 The owner authorized implementing the posting-flow audit. Baseline: branch
@@ -44,7 +106,7 @@ implementation; existing invalid-flow tests now exercise the earlier guard.
   UID **10197**, original internal volume, actual version **12110**. Built and
   installed APK SHA-256 both:
   `364386b1a49ec88cb55912421cb3a51a615093f8f86b0503e3536d3e77dab1f9`.
-  Artifact: `E:\PostDeeBuildArchive\clip-group-review-12110\app\outputs\flutter-apk\app-x86_64-debug.apk`.
+  Preserved artifact: `E:\PostDeeBuildArchive\clip-group-review-12110\app-x86_64-12110.apk`.
   Universal artifact is retained separately as `app-debug-universal-12110.apk`.
 - Helper validated Staging API `https://postdee-api-staging.onrender.com`,
   Firebase enabled, mock auth disabled, Staging Firebase project

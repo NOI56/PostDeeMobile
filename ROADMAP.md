@@ -2,6 +2,15 @@
 
 Build roadmap for PostDee.
 
+## Clip member editor rendering fix (2026-11-05, Staging APK 12111)
+
+- Fix the missing Material/Scaffold boundary on separately opened caption/AI
+  and channel editors; retain the embedded shared-caption layout.
+- Reproduce through real group navigation in Thai/light and English/dark tests,
+  including usable text input and no automatic provider calls. Keep existing
+  source, override, session, consent and recovery protections.
+- See the [hotfix verification](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Posting usability follow-up (2026-11-05, Staging APK 12110 checked)
 
 - Preserve caption-first split sets and independently selected clip times.

@@ -2,6 +2,15 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Clip editor route boundary (2026-11-05)
+
+`UploaderScreen` is body content, including when `fullScreen` enables its exit
+handling. The shell and separately pushed clip-member routes must supply their
+own themed `Scaffold` and `SafeArea`. The shared-caption editor is embedded in
+`ClipGroupReviewScreen` and inherits its Material surface; do not wrap that
+embedded instance in another Scaffold. The 12111 fix adds the shell only at
+the member route boundary. No data or publishing contract changes.
+
 ## Posting usability follow-up (2026-11-05, Staging APK 12110 checked)
 
 The Mobile composer reuses existing validation when opening review. AI result

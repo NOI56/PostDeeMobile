@@ -1,5 +1,12 @@
 # API.md
 
+## Clip editor rendering fix (2026-11-05, Staging APK 12111)
+
+This Mobile-only route-shell fix adds no API request, schema, entitlement or
+credit-rule change. Opening Caption / AI continues to load the local draft and
+read current access; generation/upload still requires its separate explicit
+action. No API deploy or database migration is required.
+
 ## Mobile posting clarity follow-up (2026-11-05, Staging APK 12110 checked)
 
 No route, payload, database, quota or entitlement change. Reopening valid cached

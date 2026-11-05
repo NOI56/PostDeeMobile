@@ -9,8 +9,10 @@ import '../../core/theme/app_theme.dart';
 import '../platforms/social_platform.dart';
 import '../platforms/social_platform_logo.dart';
 import '../shared/postdee_card.dart';
+import '../shared/postdee_press_feedback.dart';
 import 'clip_split_localizations.dart';
 import 'clip_split_plan.dart';
+import 'clip_split_timeline.dart';
 import 'platform_publish_preflight.dart';
 
 /// Chooses and reviews a local plan. Confirmation returns it to the uploader;
@@ -373,34 +375,37 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
                 ],
                 SizedBox(
                     width: double.infinity,
-                    child: FilledButton(
-                      key: ValueKey(_reviewing
-                          ? 'clip-split-confirm'
-                          : 'clip-split-review'),
-                      onPressed: plan == null || _ownerChanged || _previewing
-                          ? null
-                          : _reviewing
-                              ? () {
-                                  if (_owner.isCurrent) {
-                                    Navigator.of(context).pop(plan);
-                                  }
-                                }
-                              : _showReview,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: AppTheme.spaceMd),
-                        child: Text(
-                            clipSplitText(
-                                context,
-                                _reviewing
-                                    ? 'ยืนยันแบ่งคลิป · เตรียมทั้งชุด'
-                                    : 'ใช้แผนนี้ · ตรวจรายการ',
-                                _reviewing
-                                    ? 'Confirm split · Prepare set'
-                                    : 'Use this plan · Review'),
-                            textAlign: TextAlign.center),
-                      ),
-                    )),
+                    child: PostDeePressFeedback(
+                        enabled: plan != null && !_ownerChanged && !_previewing,
+                        child: FilledButton(
+                          key: ValueKey(_reviewing
+                              ? 'clip-split-confirm'
+                              : 'clip-split-review'),
+                          onPressed:
+                              plan == null || _ownerChanged || _previewing
+                                  ? null
+                                  : _reviewing
+                                      ? () {
+                                          if (_owner.isCurrent) {
+                                            Navigator.of(context).pop(plan);
+                                          }
+                                        }
+                                      : _showReview,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: AppTheme.spaceMd),
+                            child: Text(
+                                clipSplitText(
+                                    context,
+                                    _reviewing
+                                        ? 'ยืนยันแบ่งคลิป · เตรียมทั้งชุด'
+                                        : 'ใช้แผนนี้ · ตรวจรายการ',
+                                    _reviewing
+                                        ? 'Confirm split · Prepare set'
+                                        : 'Use this plan · Review'),
+                                textAlign: TextAlign.center),
+                          ),
+                        ))),
               ]),
             ),
           ),
@@ -414,12 +419,12 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           DecoratedBox(
             decoration: BoxDecoration(
-                color: AppTheme.glassDeep,
-                borderRadius: BorderRadius.circular(AppTheme.tileRadius)),
+                color: AppTheme.mint,
+                borderRadius: BorderRadius.circular(AppTheme.cardRadius)),
             child: Padding(
                 padding: const EdgeInsets.all(AppTheme.spaceLg),
-                child:
-                    Icon(Icons.movie_outlined, color: AppTheme.accentCyanInk)),
+                child: Icon(Icons.content_cut_rounded,
+                    color: AppTheme.accentCyanInk)),
           ),
           const SizedBox(width: AppTheme.spaceMd),
           Expanded(
@@ -459,31 +464,52 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
           const SizedBox(height: AppTheme.spaceSm),
           for (final platform in _available) ...[
             if (platform != _available.first)
-              Divider(height: 1, color: AppTheme.borderSoft),
-            CheckboxListTile(
-              key: ValueKey('clip-split-channel-${platform.apiValue}'),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: _selected.contains(platform),
-              title: Text(platform.label),
-              subtitle: Text(_channelLimit(platform)),
-              onChanged: !_canSelect(platform) || _ownerChanged || _previewing
-                  ? null
-                  : (checked) {
-                      setState(() {
-                        checked == true
-                            ? _selected.add(platform)
-                            : _selected.remove(platform);
-                        _retainCompatibleRanges();
-                        if (!_selected.contains(_active)) {
-                          _active =
-                              _available.where(_selected.contains).firstOrNull;
-                        }
-                      });
-                    },
-            ),
+              const SizedBox(height: AppTheme.spaceXs),
+            _selectionSurface(
+                selected: _selected.contains(platform),
+                child: CheckboxListTile(
+                  key: ValueKey('clip-split-channel-${platform.apiValue}'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: AppTheme.spaceSm),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  checkboxShape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppTheme.spaceXs)),
+                  secondary: ExcludeSemantics(
+                      child: SocialPlatformLogo(platform: platform, size: 24)),
+                  value: _selected.contains(platform),
+                  title: Text(platform.label),
+                  subtitle: Text(_channelLimit(platform)),
+                  onChanged:
+                      !_canSelect(platform) || _ownerChanged || _previewing
+                          ? null
+                          : (checked) {
+                              setState(() {
+                                checked == true
+                                    ? _selected.add(platform)
+                                    : _selected.remove(platform);
+                                _retainCompatibleRanges();
+                                if (!_selected.contains(_active)) {
+                                  _active = _available
+                                      .where(_selected.contains)
+                                      .firstOrNull;
+                                }
+                              });
+                            },
+                )),
           ],
         ]),
+      );
+
+  Widget _selectionSurface({required bool selected, required Widget child}) =>
+      Material(
+        animationDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 180),
+        animateColor: true,
+        color: selected ? AppTheme.mint : AppTheme.glass.withValues(alpha: 0),
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+        clipBehavior: Clip.antiAlias,
+        child: child,
       );
 
   String _channelLimit(SocialPlatform platform) {
@@ -522,29 +548,35 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
             });
           },
           child: Column(children: [
-            RadioListTile<ClipSplitMode>(
-              key: const ValueKey('clip-split-mode-affected'),
-              contentPadding: EdgeInsets.zero,
-              value: ClipSplitMode.affectedChannels,
-              title: Text(clipSplitText(context, 'แบ่งเฉพาะช่องทางที่ยาวเกิน',
-                  'Split only where needed')),
-              subtitle: Text(clipSplitText(
-                  context,
-                  'แนะนำ · ช่องทางที่ลงเต็มได้ ใช้คลิปเดิม',
-                  'Recommended · Keep the full video where it fits')),
-            ),
-            Divider(height: 1, color: AppTheme.borderSoft),
-            RadioListTile<ClipSplitMode>(
-              key: const ValueKey('clip-split-mode-all'),
-              contentPadding: EdgeInsets.zero,
-              value: ClipSplitMode.sameParts,
-              title: Text(clipSplitText(context, 'ใช้ตอนเดียวกันทุกช่องทาง',
-                  'Use the same parts everywhere')),
-              subtitle: Text(clipSplitText(
-                  context,
-                  'จุดตัดและจำนวนตอนตรงกันทุกช่องทาง',
-                  'Keep the cuts and part counts the same')),
-            ),
+            _selectionSurface(
+                selected: _mode == ClipSplitMode.affectedChannels,
+                child: RadioListTile<ClipSplitMode>(
+                  key: const ValueKey('clip-split-mode-affected'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: AppTheme.spaceSm),
+                  value: ClipSplitMode.affectedChannels,
+                  title: Text(clipSplitText(context,
+                      'แบ่งเฉพาะช่องทางที่ยาวเกิน', 'Split only where needed')),
+                  subtitle: Text(clipSplitText(
+                      context,
+                      'แนะนำ · ช่องทางที่ลงเต็มได้ ใช้คลิปเดิม',
+                      'Recommended · Keep the full video where it fits')),
+                )),
+            const SizedBox(height: AppTheme.spaceSm),
+            _selectionSurface(
+                selected: _mode == ClipSplitMode.sameParts,
+                child: RadioListTile<ClipSplitMode>(
+                  key: const ValueKey('clip-split-mode-all'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: AppTheme.spaceSm),
+                  value: ClipSplitMode.sameParts,
+                  title: Text(clipSplitText(context, 'ใช้ตอนเดียวกันทุกช่องทาง',
+                      'Use the same parts everywhere')),
+                  subtitle: Text(clipSplitText(
+                      context,
+                      'จุดตัดและจำนวนตอนตรงกันทุกช่องทาง',
+                      'Keep the cuts and part counts the same')),
+                )),
           ]),
         ),
       );
@@ -565,47 +597,49 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
                   width: width,
                   child: Semantics(
                     selected: _active == platform,
-                    child: OutlinedButton(
-                      key: ValueKey('clip-split-tab-${platform.apiValue}'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.all(AppTheme.spaceMd),
-                        backgroundColor: _active == platform
-                            ? AppTheme.mint
-                            : AppTheme.glass,
-                        foregroundColor: _active == platform
-                            ? AppTheme.accentCyanInk
-                            : AppTheme.textPrimary,
-                        side: BorderSide(
-                            color: _active == platform
+                    child: PostDeePressFeedback(
+                        enabled: !_ownerChanged && !_previewing,
+                        child: OutlinedButton(
+                          key: ValueKey('clip-split-tab-${platform.apiValue}'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.all(AppTheme.spaceMd),
+                            backgroundColor: _active == platform
+                                ? AppTheme.mint
+                                : AppTheme.glass,
+                            foregroundColor: _active == platform
                                 ? AppTheme.accentCyanInk
-                                : AppTheme.border),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(AppTheme.tileRadius)),
-                      ),
-                      onPressed: _ownerChanged || _previewing
-                          ? null
-                          : () => setState(() => _active = platform),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(platform.label, textAlign: TextAlign.center),
-                          const SizedBox(height: AppTheme.spaceXs),
-                          Text(
-                            _isFullVideo(plan.channelPlanFor(platform))
-                                ? clipSplitText(
-                                    context, 'คลิปเต็ม', 'Full video')
-                                : clipSplitPartsText(
-                                    context,
-                                    plan
-                                        .channelPlanFor(platform)
-                                        .segments
-                                        .length),
-                            textAlign: TextAlign.center,
+                                : AppTheme.textPrimary,
+                            side: BorderSide(
+                                color: _active == platform
+                                    ? AppTheme.accentCyanInk
+                                    : AppTheme.border),
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(AppTheme.tileRadius)),
                           ),
-                        ],
-                      ),
-                    ),
+                          onPressed: _ownerChanged || _previewing
+                              ? null
+                              : () => setState(() => _active = platform),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(platform.label, textAlign: TextAlign.center),
+                              const SizedBox(height: AppTheme.spaceXs),
+                              Text(
+                                _isFullVideo(plan.channelPlanFor(platform))
+                                    ? clipSplitText(
+                                        context, 'คลิปเต็ม', 'Full video')
+                                    : clipSplitPartsText(
+                                        context,
+                                        plan
+                                            .channelPlanFor(platform)
+                                            .segments
+                                            .length),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        )),
                   ),
                 ),
             ],
@@ -623,53 +657,103 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
                     style: Theme.of(context).textTheme.titleSmall)),
           ]),
           const SizedBox(height: AppTheme.spaceMd),
+          ClipSplitTimeline(
+            key: const ValueKey('clip-split-timeline'),
+            sourceDurationSeconds: widget.sourceDurationSeconds,
+            segments: channel.segments,
+          ),
+          const SizedBox(height: AppTheme.spaceSm),
           for (var index = 0; index < channel.segments.length; index++) ...[
             if (index > 0) Divider(height: 1, color: AppTheme.borderSoft),
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppTheme.spaceSm),
-              child: Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: AppTheme.spaceSm,
-                runSpacing: AppTheme.spaceXs,
-                children: [
-                  Text(_isFullVideo(channel)
-                      ? clipSplitText(context, 'คลิปเต็ม', 'Full video')
-                      : clipSplitText(
-                          context, 'ตอน ${index + 1}', 'Part ${index + 1}')),
-                  Text(
-                      '${formatClipSplitTime(channel.segments[index].startSeconds)}–${formatClipSplitTime(channel.segments[index].endSeconds)}',
-                      style: TextStyle(color: AppTheme.textSecondary)),
-                  Text(
-                      clipSplitText(
-                          context,
-                          'ยาว ${formatClipSplitTime(channel.segments[index].durationSeconds)} นาที',
-                          'Length ${formatClipSplitTime(channel.segments[index].durationSeconds)} min'),
-                      style: Theme.of(context).textTheme.bodySmall),
-                  if (channel.segments.length > 1)
-                    TextButton.icon(
-                      key: ValueKey('clip-split-range-$index'),
-                      onPressed: _previewing || _ownerChanged
-                          ? null
-                          : () => _editRange(channel, index),
-                      icon: const Icon(Icons.tune, size: 18),
-                      label: Text(clipSplitText(
-                          context, 'ปรับช่วงเวลา', 'Edit time range')),
+              padding: const EdgeInsets.symmetric(vertical: AppTheme.spaceMd),
+              child: Column(children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  ExcludeSemantics(
+                    child: Container(
+                      width: AppTheme.spaceXl + AppTheme.spaceLg,
+                      height: AppTheme.spaceXl + AppTheme.spaceLg,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppTheme.mint,
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.tileRadius),
+                      ),
+                      child: _isFullVideo(channel)
+                          ? Icon(Icons.movie_outlined,
+                              color: AppTheme.accentCyanInk, size: 20)
+                          : Text('${index + 1}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(color: AppTheme.accentCyanInk)),
                     ),
-                  IconButton(
-                    key: ValueKey('clip-split-preview-$index'),
-                    tooltip: clipSplitText(
-                        context, 'ดูตัวอย่างตอนนี้', 'Preview this part'),
-                    onPressed: _previewing ||
-                            _ownerChanged ||
-                            (widget.videoFile == null &&
-                                widget.previewSegment == null)
-                        ? null
-                        : () => _preview(channel.segments[index]),
-                    icon: const Icon(Icons.play_circle_outline),
                   ),
-                ],
-              ),
+                  const SizedBox(width: AppTheme.spaceMd),
+                  Expanded(
+                      child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                          _isFullVideo(channel)
+                              ? clipSplitText(context, 'คลิปเต็ม', 'Full video')
+                              : clipSplitText(context, 'ตอน ${index + 1}',
+                                  'Part ${index + 1}'),
+                          style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(height: AppTheme.spaceXs),
+                      Text(
+                          '${formatClipSplitTime(channel.segments[index].startSeconds)}–${formatClipSplitTime(channel.segments[index].endSeconds)}',
+                          style: TextStyle(color: AppTheme.textSecondary)),
+                      Text(
+                          clipSplitText(
+                              context,
+                              'ยาว ${formatClipSplitTime(channel.segments[index].durationSeconds)} นาที',
+                              'Length ${formatClipSplitTime(channel.segments[index].durationSeconds)} min'),
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  )),
+                ]),
+                const SizedBox(height: AppTheme.spaceXs),
+                Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: AppTheme.spaceSm,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (channel.segments.length > 1)
+                        PostDeePressFeedback(
+                            enabled: !_previewing && !_ownerChanged,
+                            child: TextButton.icon(
+                              key: ValueKey('clip-split-range-$index'),
+                              onPressed: _previewing || _ownerChanged
+                                  ? null
+                                  : () => _editRange(channel, index),
+                              icon: const Icon(Icons.tune, size: 18),
+                              label: Text(clipSplitText(
+                                  context, 'ปรับช่วงเวลา', 'Edit time range')),
+                            )),
+                      PostDeePressFeedback(
+                          enabled: !_previewing &&
+                              !_ownerChanged &&
+                              (widget.videoFile != null ||
+                                  widget.previewSegment != null),
+                          child: IconButton(
+                            key: ValueKey('clip-split-preview-$index'),
+                            tooltip: clipSplitText(context, 'ดูตัวอย่างตอนนี้',
+                                'Preview this part'),
+                            onPressed: _previewing ||
+                                    _ownerChanged ||
+                                    (widget.videoFile == null &&
+                                        widget.previewSegment == null)
+                                ? null
+                                : () => _preview(channel.segments[index]),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.glassDeep,
+                              foregroundColor: AppTheme.accentCyanInk,
+                            ),
+                            icon: const Icon(Icons.play_arrow_rounded),
+                          )),
+                    ]),
+              ]),
             ),
           ],
           if (_hasGaps(channel)) ...[

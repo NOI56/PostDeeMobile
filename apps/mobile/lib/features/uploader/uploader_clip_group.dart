@@ -303,9 +303,19 @@ extension _UploaderClipGroups on _UploaderScreenState {
                 throw const ClipGroupDraftException('บันทึกหน้าปกไม่สำเร็จ');
               }
             } else {
+              // The same editor is also embedded inline; this pushed route
+              // supplies its own Material surface and default text style.
               await navigator.push<PublishDraft>(MaterialPageRoute(
-                builder: (_) => _clipGroupMemberEditor(
-                    latest, section, store, session, beforeMemberSave),
+                builder: (_) => DecoratedBox(
+                  decoration: AppTheme.screenBackground,
+                  child: Scaffold(
+                    backgroundColor: Colors.transparent,
+                    body: SafeArea(
+                      child: _clipGroupMemberEditor(
+                          latest, section, store, session, beforeMemberSave),
+                    ),
+                  ),
+                ),
               ));
               _guardClipGroup(session, owner);
             }

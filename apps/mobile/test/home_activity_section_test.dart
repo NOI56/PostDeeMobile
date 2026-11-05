@@ -12,6 +12,7 @@ import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/features/home/home_activity_section.dart';
 import 'package:postdee_mobile/features/home/home_draft_thumbnail.dart';
 import 'package:postdee_mobile/features/shared/postdee_skeleton.dart';
+import 'package:postdee_mobile/features/uploader/clip_group_draft.dart';
 import 'package:postdee_mobile/features/uploader/cover_image_processor.dart';
 import 'package:postdee_mobile/features/uploader/publish_draft.dart';
 import 'package:video_player/video_player.dart';
@@ -26,6 +27,8 @@ PublishDraft _draft(
   bool needsReview = false,
   Set<String>? platforms,
   PublishDraftCover? cover,
+  String? clipGroupId,
+  bool isClipGroupSource = false,
 }) =>
     PublishDraft(
       version: publishDraftManifestVersion,
@@ -43,6 +46,8 @@ PublishDraft _draft(
       watermarkEnabled: true,
       platformApiValues: platforms ?? const {'TIKTOK'},
       cover: cover,
+      clipGroupId: clipGroupId,
+      isClipGroupSource: isClipGroupSource,
     );
 
 PostSummaryResult _post(String id, int minutes,
@@ -65,9 +70,10 @@ Widget _app(HomeActivitySection child,
         {double textScale = 1,
         double width = 390,
         bool reducedMotion = true,
-        bool tickerEnabled = true}) =>
+        bool tickerEnabled = true,
+        Locale locale = const Locale('th')}) =>
     MaterialApp(
-      locale: const Locale('th'),
+      locale: locale,
       supportedLocales: PostDeeLocalizations.supportedLocales,
       localizationsDelegates: const [
         PostDeeLocalizations.delegate,
@@ -99,6 +105,7 @@ HomeActivitySection _section({
   int refreshToken = 0,
   bool? hasPosts,
   HomeDraftsLoader? loadDrafts,
+  Future<List<ClipGroupDraft>> Function()? loadClipGroups,
   HomeConnectionsLoader? loadConnections,
   HomeUpcomingPostsLoader? loadScheduledPosts,
   Future<void> Function()? onCreatePost,
@@ -112,6 +119,7 @@ HomeActivitySection _section({
       refreshToken: refreshToken,
       hasPosts: hasPosts,
       loadDrafts: loadDrafts ?? () async => [],
+      loadClipGroups: loadClipGroups,
       loadConnections: loadConnections ?? () async => [],
       loadScheduledPosts: loadScheduledPosts ?? () async => [],
       onCreatePost: onCreatePost ?? () async {},
@@ -184,6 +192,84 @@ void main() {
     _signIn('seller');
   });
   tearDown(() => PostDeeAuthSessionStore.instance.clear());
+
+  ClipGroupDraft savedGroup(String caption, {String owner = 'seller'}) =>
+      ClipGroupDraft(
+        id: 'set',
+        ownerUserId: owner,
+        sourceDraftId: 'original',
+        title: 'Original clip',
+        sharedCaption: caption,
+        deliveryMode: ClipGroupDeliveryMode.immediate,
+        createdAt: _now.subtract(const Duration(days: 1)),
+        updatedAt: _now,
+        revision: 1,
+        items: [
+          ClipGroupItem(
+              draftId: 'part',
+              index: 0,
+              sourceStartSeconds: 0,
+              sourceEndSeconds: 90,
+              platformApiValues: const {'TIKTOK'}),
+        ],
+      );
+
+  testWidgets('group preview shows shared text and resumes untouched source',
+      (tester) async {
+    final original = _draft('original',
+        caption: 'Retained backup caption',
+        clipGroupId: 'set',
+        isClipGroupSource: true);
+    final part = _draft('part', caption: 'Part override', clipGroupId: 'set');
+    PublishDraft? resumed;
+    await tester.pumpWidget(_app(_section(
+        loadDrafts: () async => [original, part],
+        loadClipGroups: () async => [savedGroup('Current group caption')],
+        onResumeDraft: (draft) async => resumed = draft)));
+    await tester.pumpAndSettle();
+    expect(find.text('Current group caption'), findsOneWidget);
+    expect(find.text('Retained backup caption'), findsNothing);
+    await _tap(tester, 'home-resume-draft');
+    await tester.pumpAndSettle();
+    expect(resumed, same(original));
+    expect(resumed!.caption, 'Retained backup caption');
+    expect(original.videoPath, '/drafts/original.mp4');
+  });
+
+  testWidgets('group-only caption refresh replaces the Home preview',
+      (tester) async {
+    final key = GlobalKey<HomeActivitySectionState>();
+    final original = _draft('original', caption: 'Unchanged source');
+    var group = savedGroup('Shared before refresh');
+    await tester.pumpWidget(_app(_section(
+        key: key,
+        loadDrafts: () async => [original],
+        loadClipGroups: () async => [group])));
+    await tester.pumpAndSettle();
+    expect(find.text('Shared before refresh'), findsOneWidget);
+    group = group.copyWith(sharedCaption: 'Shared after refresh', revision: 2);
+    await key.currentState!.refresh();
+    await tester.pumpAndSettle();
+    expect(find.text('Shared after refresh'), findsOneWidget);
+    expect(find.text('Shared before refresh'), findsNothing);
+    expect(original.caption, 'Unchanged source');
+    expect(original.clipGroupId, isNull);
+  });
+
+  testWidgets('a late group display read cannot leak into a switched owner',
+      (tester) async {
+    final pending = Completer<List<ClipGroupDraft>>();
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [_draft('original')],
+      loadClipGroups: () => pending.future,
+    )));
+    await tester.pump();
+    _signIn('buyer');
+    pending.complete([savedGroup('Private seller group caption')]);
+    await tester.pumpAndSettle();
+    expect(find.text('Private seller group caption'), findsNothing);
+    expect(find.text('แคปชัน original'), findsNothing);
+  });
 
   for (final mode in ['inactive', 'reduced', 'ticker', 'background']) {
     testWidgets('motion audit $mode stops a live hero fade without replay',
@@ -322,6 +408,129 @@ void main() {
     expect(restored, same(newest));
     await _tap(tester, 'home-create-post');
     expect(created, 1);
+  });
+
+  testWidgets('latest group member resumes the source as one saved group entry',
+      (tester) async {
+    PublishDraft? resumed;
+    final source = _draft('original',
+        age: 20, clipGroupId: 'clip-group', isClipGroupSource: true);
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [
+        source,
+        _draft('unrelated', age: 5),
+        _draft('part-1', age: 3, clipGroupId: 'clip-group'),
+        _draft('part-2', age: 1, clipGroupId: 'clip-group'),
+        _draft('foreign', owner: 'another-owner', clipGroupId: 'clip-group'),
+      ],
+      onResumeDraft: (draft) async => resumed = draft,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ทำชุดคลิปต่อ'), findsOneWidget);
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsOneWidget);
+    expect(find.text('ถัดไป: ตรวจทั้งชุด'), findsOneWidget);
+    expect(find.text('แคปชัน original'), findsOneWidget);
+    expect(find.text('แคปชัน part-2'), findsNothing);
+    expect(find.text('แคปชัน unrelated'), findsNothing);
+    expect(find.text('แคปชัน foreign'), findsNothing);
+    expect(find.byKey(const ValueKey('home-resume-draft')), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    expect(resumed, same(source));
+  });
+
+  testWidgets('a newer unrelated draft outranks all older group members',
+      (tester) async {
+    PublishDraft? resumed;
+    final unrelated = _draft('unrelated', age: 0);
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [
+        _draft('original',
+            age: 20, clipGroupId: 'clip-group', isClipGroupSource: true),
+        _draft('part-2', age: 2, clipGroupId: 'clip-group'),
+        unrelated,
+      ],
+      onResumeDraft: (draft) async => resumed = draft,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsNothing);
+    expect(find.text('แคปชัน unrelated'), findsOneWidget);
+    expect(find.text('ร่างที่บันทึกไว้'), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    expect(resumed, same(unrelated));
+  });
+
+  testWidgets(
+      'a source-only group stays reachable without inventing a part count',
+      (tester) async {
+    PublishDraft? resumed;
+    final source =
+        _draft('original', clipGroupId: 'clip-group', isClipGroupSource: true);
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [source],
+      onResumeDraft: (draft) async => resumed = draft,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsOneWidget);
+    expect(find.textContaining('0 คลิป'), findsNothing);
+    expect(find.text('ถัดไป: ตรวจทั้งชุด'), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    expect(resumed, same(source));
+  });
+
+  testWidgets('a group without its source resumes a stable local member',
+      (tester) async {
+    PublishDraft? resumed;
+    final first = _draft('part-0', age: 5, clipGroupId: 'clip-group');
+    await tester.pumpWidget(_app(_section(
+      loadDrafts: () async => [
+        _draft('part-2', age: 1, clipGroupId: 'clip-group'),
+        first,
+      ],
+      onResumeDraft: (draft) async => resumed = draft,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsOneWidget);
+    await _tap(tester, 'home-resume-draft');
+    expect(resumed, same(first));
+    expect(resumed!.clipGroupId, 'clip-group');
+  });
+
+  testWidgets('group labels and next action are translated into English',
+      (tester) async {
+    await tester.pumpWidget(_app(
+        _section(
+          loadDrafts: () async => [
+            _draft('original',
+                clipGroupId: 'clip-group', isClipGroupSource: true)
+          ],
+        ),
+        locale: const Locale('en')));
+    await tester.pumpAndSettle();
+    expect(find.text('Continue your clip group'), findsOneWidget);
+    expect(find.text('Saved clip group'), findsOneWidget);
+    expect(find.text('Next: Review group'), findsOneWidget);
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byKey(const ValueKey('home-resume-draft')),
+            matching: find.text('Review group')),
+        findsOneWidget);
+  });
+
+  testWidgets('group entry fits small screens and enlarged text',
+      (tester) async {
+    await tester.pumpWidget(_app(
+        _section(
+          loadDrafts: () async => [
+            _draft('long-source-name',
+                clipGroupId: 'clip-group', isClipGroupSource: true)
+          ],
+        ),
+        width: 320,
+        textScale: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('ชุดคลิปที่บันทึกไว้'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('counts each supported connected platform once', (tester) async {

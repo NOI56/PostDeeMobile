@@ -186,7 +186,7 @@ void main() {
           find.descendant(of: panel, matching: target);
       for (final label in [
         'ให้ AI ช่วยเขียน',
-        'เลือกช่องทางที่ต้องการ',
+        'เลือกช่องทางให้ AI เขียน',
         'TikTok',
         'YouTube Shorts',
         'Instagram Reels',

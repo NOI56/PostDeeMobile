@@ -492,7 +492,8 @@ void main() {
     await tester.ensureVisible(open);
     await tester.tap(open);
     await tester.pumpAndSettle();
-    await goToUploaderStep(tester, 1);
+    expect(tester.widget<TextField>(find.byKey(_captionField)).controller!.text,
+        'ข้อความแก้ก่อนบันทึกร่าง');
     await _editAndNext(tester, 'ข้อความแก้หลังเปิดร่าง');
     expect(fixture.store.saves, isEmpty);
   });

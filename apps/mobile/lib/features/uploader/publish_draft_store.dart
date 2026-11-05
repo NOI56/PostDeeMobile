@@ -5,6 +5,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/models/caption_language.dart';
+import 'clip_group_draft.dart';
+import 'clip_group_draft_store.dart';
 import 'cover_image_processor.dart';
 import 'platform_publish_settings.dart';
 import 'platform_publish_preflight.dart';
@@ -19,7 +21,11 @@ abstract class PublishDraftStore {
   Future<void> deleteAllDrafts();
 }
 
-class FilePublishDraftStore implements PublishDraftStore {
+class FilePublishDraftStore
+    implements
+        PublishDraftStore,
+        ClipGroupDraftStore,
+        ClipGroupDraftRollbackStore {
   FilePublishDraftStore({
     required Directory rootDirectory,
     required Directory ownerRootBoundary,
@@ -46,6 +52,31 @@ class FilePublishDraftStore implements PublishDraftStore {
   final Future<void> Function()? _beforePromotion;
   final Future<void> Function(Directory directory)? _deleteDraftDirectory;
   static final Map<String, Future<void>> _operationTails = {};
+  late final _clipGroups = FileClipGroupDraftRepository(
+    rootDirectory: _rootDirectory,
+    ownerUserId: _ownerUserId,
+    validateBoundary: _validateOwnerRootBoundary,
+    serialize: <T>(Future<T> Function() operation) =>
+        _runSerialized<T>('__clip_groups__', operation, validateId: false),
+  );
+
+  @override
+  Future<ClipGroupDraft?> loadClipGroup(String id) =>
+      _clipGroups.loadClipGroup(id);
+  @override
+  Future<List<ClipGroupDraft>> listClipGroups() => _clipGroups.listClipGroups();
+  @override
+  Future<ClipGroupDraft> saveClipGroup(ClipGroupDraft group,
+          {required int? expectedRevision}) =>
+      _clipGroups.saveClipGroup(group, expectedRevision: expectedRevision);
+  @override
+  Future<void> deleteClipGroup(String id) => _clipGroups.deleteClipGroup(id);
+
+  @override
+  Future<bool> deleteUnacceptedClipGroup(String id,
+          {required int expectedRevision}) =>
+      _clipGroups.deleteUnacceptedClipGroup(id,
+          expectedRevision: expectedRevision);
 
   @override
   Future<PublishDraft> saveDraft(PublishDraftSaveRequest request) =>
@@ -288,6 +319,10 @@ class FilePublishDraftStore implements PublishDraftStore {
       'platformSettings': request.platformSettings.toDraftJson(),
       'scheduledAt': request.scheduledAt?.toUtc().toIso8601String(),
       'cover': cover,
+      if (isValidClipGroupId(request.clipGroupId)) ...{
+        'clipGroupId': request.clipGroupId,
+        'isClipGroupSource': request.isClipGroupSource,
+      },
     };
   }
 
@@ -422,6 +457,10 @@ class FilePublishDraftStore implements PublishDraftStore {
         if (cover == null) return null;
       }
 
+      final rawGroupId = manifest['clipGroupId'];
+      final groupId = rawGroupId is String && isValidClipGroupId(rawGroupId)
+          ? rawGroupId
+          : null;
       return PublishDraft(
         version: manifestVersion as int,
         id: expectedId,
@@ -429,6 +468,9 @@ class FilePublishDraftStore implements PublishDraftStore {
         submissionRequestId: submissionRequestId,
         mediaContentFingerprint: fingerprint as String?,
         uploadedMedia: uploadedMedia,
+        clipGroupId: groupId,
+        isClipGroupSource:
+            groupId != null && manifest['isClipGroupSource'] == true,
         createdAt: createdAt,
         updatedAt: updatedAt,
         videoPath: videoFile.path,

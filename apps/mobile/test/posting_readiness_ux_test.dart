@@ -345,7 +345,9 @@ void main() {
       await goToUploaderStep(tester, 1);
       final action = find.byKey(const ValueKey('uploader-ai-generate-button'));
       await show(tester, action);
-      expect(find.descendant(of: action, matching: find.text('ให้ AI ช่วยเขียน')),
+      expect(
+          find.descendant(
+              of: action, matching: find.text('สร้างแคปชั่น · 1 เครดิต')),
           findsOneWidget);
     });
 

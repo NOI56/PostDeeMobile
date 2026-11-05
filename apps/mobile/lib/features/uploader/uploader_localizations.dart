@@ -23,6 +23,13 @@ String localizeUploaderMessage(BuildContext context, String message) {
   final known = _englishMessages[message];
   if (known != null) return known;
 
+  final splitDrafts = _wholeMatch(
+      RegExp(r'^เตรียมแล้ว (\d+) ร่าง · ตรวจแคปชั่นทีละตอน เปิดตอนอื่นได้จากฉบับร่าง$'),
+      message);
+  if (splitDrafts != null) {
+    return '${splitDrafts[1]} drafts prepared · Review captions for each part. Open other parts from Drafts.';
+  }
+
   final step = _wholeMatch(
       RegExp(
           r'^ขั้นตอนที่ ([1-4]) จาก 4 · (เลือกคลิป|เขียนแคปชัน|เลือกช่องทาง|ตรวจทาน)( เสร็จแล้ว)?$'),
@@ -134,6 +141,22 @@ const _recoveryStatuses = <String, String>{
 };
 
 const _englishMessages = <String, String>{
+  'เก็บร่างไว้ในเครื่องเพื่อกลับมาแก้ต่อ ยังไม่ส่งไปโซเชียลและไม่ใช้หน่วยโพสต์':
+      'Save a local draft to continue later. This does not send to social platforms or use post units.',
+  'ลงชื่อเข้าใช้ก่อนเก็บตอนที่แบ่งเป็นร่าง':
+      'Sign in before saving split parts as drafts.',
+  'เปิดพื้นที่เก็บร่างไม่ได้ กรุณาลองอีกครั้ง':
+      'Could not open draft storage. Please try again.',
+  'เตรียมคลิปไม่ครบ มีบางร่างที่เก็บไว้ กรุณาตรวจรายการฉบับร่างก่อนลองใหม่':
+      'Preparation did not finish. Some drafts remain. Check Drafts before retrying.',
+  'เตรียมคลิปไม่สำเร็จ และยังล้างไฟล์ชั่วคราวไม่ครบ ต้นฉบับยังอยู่ กรุณาตรวจพื้นที่ว่าง':
+      'Preparation failed and some temporary files remain. Your original is safe. Check available storage.',
+  'หยุดเตรียมคลิปแล้ว ต้นฉบับยังอยู่ในฉบับร่าง':
+      'Preparation stopped. Your original is still in Drafts.',
+  'แบ่งคลิปไม่สำเร็จ ตรวจสอบพื้นที่ว่างแล้วลองใหม่ ต้นฉบับยังอยู่ในฉบับร่าง':
+      'Could not split the video. Check available storage and retry. Your original is still in Drafts.',
+  'แบ่งคลิปไม่สำเร็จ ต้นฉบับยังอยู่ กรุณาลองอีกครั้ง':
+      'Could not split the video. Your original is safe. Please try again.',
   'สร้างโพสต์ใหม่': 'Create post',
   'อัปโหลดครั้งเดียว แล้วเลือกช่องทางที่ต้องการ':
       'Upload once, then choose your channels.',

@@ -13,6 +13,15 @@ import 'support/publish_preflight_fixtures.dart';
 import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
+late File _calendarVideo;
+
+Future<List<SocialConnectionResult>> _calendarConnections() async => const [
+      SocialConnectionResult(
+          platform: 'TIKTOK',
+          connected: true,
+          externalAccountId: 'calendar-tiktok'),
+    ];
+
 SubscriptionStatusResult _subscription(String plan) => SubscriptionStatusResult(
       userId: 'calendar-seller',
       plan: plan,
@@ -23,6 +32,21 @@ SubscriptionStatusResult _subscription(String plan) => SubscriptionStatusResult(
     );
 
 Future<void> _showSchedule(WidgetTester tester) async {
+  if (find.byKey(const ValueKey('uploader-schedule-later')).evaluate().isEmpty) {
+    await goToUploaderStep(tester, 1);
+    final caption = find.byKey(const ValueKey('uploader-caption-field'));
+    if (tester.widget<TextField>(caption).controller!.text.isEmpty) {
+      await tester.enterText(caption, 'ข้อความสำหรับตรวจการตั้งเวลา');
+    }
+    await goToUploaderStep(tester, 2);
+    final channel = find.byKey(const ValueKey('uploader-platform-TIKTOK'));
+    await tester.scrollUntilVisible(channel, 200,
+        scrollable: uploaderMainScroll);
+    await tester.ensureVisible(channel);
+    await tester.pumpAndSettle();
+    await tester.tap(channel);
+    await tester.pumpAndSettle();
+  }
   await goToUploaderStep(tester, 3);
   await tester.scrollUntilVisible(
     find.byKey(const ValueKey('uploader-schedule-later')),
@@ -38,7 +62,7 @@ Future<void> _chooseSchedule(WidgetTester tester) async {
 }
 
 Future<TestPublishDraftStore> _openCustomTime(WidgetTester tester,
-    {bool withClip = false}) async {
+    {bool withClip = true}) async {
   final store = TestPublishDraftStore(ownerUserId: 'calendar-seller');
   File? clip;
   if (withClip) {
@@ -63,7 +87,7 @@ Future<TestPublishDraftStore> _openCustomTime(WidgetTester tester,
     initialVideoHeight: clip == null ? null : 1920,
     now: () => DateTime(2026, 10, 11, 12),
     draftStore: store,
-    loadSocialConnections: () async => const [],
+    loadSocialConnections: _calendarConnections,
     loadSubscription: () async => _subscription('PRO'),
     createUpload: (_) async => throw StateError('Draft saves must not upload'),
     createPost: (_) async => throw StateError('Draft saves must not publish'),
@@ -93,6 +117,12 @@ void main() {
     PostDeeAuthSessionStore.instance.signIn(
       const AuthSession(userId: 'calendar-seller', idToken: 'test-token'),
     );
+    _calendarVideo = File('${Directory.systemTemp.path}/calendar-schedule-'
+        '${DateTime.now().microsecondsSinceEpoch}.mp4')
+      ..writeAsBytesSync(List.filled(512, 1));
+    addTearDown(() {
+      if (_calendarVideo.existsSync()) _calendarVideo.deleteSync();
+    });
   });
   tearDown(PostDeeAuthSessionStore.instance.clear);
 
@@ -171,12 +201,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      initialVideoPath: _calendarVideo.path,
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 15, 8),
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: store,
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async {
         planChecks++;
         return _subscription('PRO');
@@ -200,11 +231,12 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      initialVideoPath: _calendarVideo.path,
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: TestPublishDraftStore(),
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async => _subscription('PRO'),
     ))));
     await tester.pumpAndSettle();
@@ -231,12 +263,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      initialVideoPath: _calendarVideo.path,
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 15),
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: store,
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async => _subscription('BASIC'),
     ))));
     await tester.pumpAndSettle();
@@ -252,12 +285,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      initialVideoPath: _calendarVideo.path,
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 11),
       now: () => DateTime(2026, 10, 11, 20),
       draftStore: TestPublishDraftStore(),
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async => _subscription('PRO'),
     ))));
     await tester.pumpAndSettle();
@@ -281,12 +315,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      initialVideoPath: _calendarVideo.path,
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: localDay,
       now: () => clockUtc,
       draftStore: store,
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async => _subscription('PRO'),
     ))));
     await tester.pumpAndSettle();
@@ -300,12 +335,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      initialVideoPath: _calendarVideo.path,
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 10),
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: TestPublishDraftStore(),
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async => _subscription('PRO'),
     ))));
     await tester.pumpAndSettle();
@@ -318,12 +354,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      initialVideoPath: _calendarVideo.path,
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 11),
       now: () => DateTime(2026, 10, 11, 23, 59, 30),
       draftStore: TestPublishDraftStore(),
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async => _subscription('PRO'),
     ))));
     await tester.pumpAndSettle();
@@ -338,12 +375,13 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: UploaderScreen(
+      initialVideoPath: _calendarVideo.path,
       probePublishMedia: probeValidPublishMedia,
       loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
       initialScheduleDate: DateTime(2026, 10, 15),
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: TestPublishDraftStore(),
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async => _subscription('PRO'),
     ))));
     await tester.pumpAndSettle();
@@ -388,7 +426,7 @@ void main() {
       initialDraftId: 'saved',
       now: () => DateTime(2026, 10, 11, 12),
       draftStore: store,
-      loadSocialConnections: () async => const [],
+      loadSocialConnections: _calendarConnections,
       loadSubscription: () async => _subscription('PRO'),
     ))));
     await tester.pumpAndSettle();

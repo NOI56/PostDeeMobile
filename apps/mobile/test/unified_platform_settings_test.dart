@@ -371,13 +371,11 @@ void main() {
     await tester.scrollUntilVisible(find.text('เพิ่มแคปชั่นก่อนโพสต์'), -300,
         scrollable: uploaderMainScroll);
     expect(find.text('เพิ่มแคปชั่นก่อนโพสต์'), findsOneWidget);
-    await goToUploaderStep(tester, 3);
-    expect(
-        tester
-            .widget<FilledButton>(
-                find.byKey(const ValueKey('publish-review-confirm')))
-            .onPressed,
-        isNull);
+    await tapKey(tester, const ValueKey('uploader-progress-3'));
+    expect(find.byKey(const ValueKey('uploader-step-body-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-step-review')), findsNothing);
+    expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+    expect(find.text('เพิ่มแคปชั่นก่อนโพสต์'), findsOneWidget);
     expect(requests, isEmpty);
   });
 

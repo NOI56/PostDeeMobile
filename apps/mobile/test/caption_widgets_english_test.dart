@@ -112,8 +112,9 @@ void main() {
             remainingThisMonth: 38,
             addonRemaining: 8))));
     await tester.pumpAndSettle();
-    expect(find.text('AI caption credits remaining'), findsOneWidget);
-    expect(find.text('38 / 50 credits', findRichText: true), findsOneWidget);
+    expect(find.text('46 AI credits available'), findsOneWidget);
+    expect(find.text('Monthly 38 / 50 credits', findRichText: true),
+        findsOneWidget);
     expect(
         tester
             .widget<LinearProgressIndicator>(
@@ -238,7 +239,7 @@ void main() {
             usedThisMonth: 1,
             remainingThisMonth: 0,
             addonRemaining: 1))));
-    expect(find.text('0 / 1 credit', findRichText: true), findsOneWidget);
+    expect(find.text('Monthly 0 / 1 credit', findRichText: true), findsOneWidget);
     expect(find.text('1 credit used'), findsOneWidget);
     expect(find.text('+ 1 add-on credit'), findsOneWidget);
     await tester.pumpWidget(_app(const CaptionQuotaStrip(
@@ -285,10 +286,11 @@ void main() {
             .widget<LinearProgressIndicator>(
                 find.byType(LinearProgressIndicator))
             .semanticsLabel,
-        '38 of 50 AI caption credits remaining');
+        '46 AI caption credits available · Monthly credits remaining: 38 of 50');
     locale.value = const Locale('th');
     await tester.pumpAndSettle();
-    expect(find.text('38 / 50 เครดิต', findRichText: true), findsOneWidget);
+    expect(find.text('รายเดือน 38 / 50 เครดิต', findRichText: true),
+        findsOneWidget);
     expect(
         tester.widget<CaptionQuotaStrip>(find.byType(CaptionQuotaStrip)).quota,
         same(quota));
@@ -367,7 +369,7 @@ void main() {
                 plan: 'STARTER',
                 quota: RealClipCaptionQuota(
                     limit: 50, usedThisMonth: 12, remainingThisMonth: 38)))));
-    expect(find.text('แคปชั่น AI คงเหลือ'), findsOneWidget);
+    expect(find.text('ใช้ได้ทั้งหมด 38 เครดิต'), findsOneWidget);
     expect(find.text('ใช้ไป 12 เครดิต'), findsOneWidget);
   });
 
@@ -445,8 +447,9 @@ void main() {
           dark: dark,
           scale: 2));
       await tester.pumpAndSettle();
-      _readable(tester, find.text('AI caption credits remaining'));
-      _readable(tester, find.text('38 / 50 credits', findRichText: true));
+      _readable(tester, find.text('46 AI credits available'));
+      _readable(
+          tester, find.text('Monthly 38 / 50 credits', findRichText: true));
       _readable(tester, find.text('+ 8 add-on credits'));
       expect(tester.takeException(), isNull);
     });

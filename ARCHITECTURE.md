@@ -2,6 +2,45 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Explicit source ranges for split parts (2026-11-05)
+
+`ClipSplitPlan.create(segmentOverrides: ...)` accepts optional per-channel
+source intervals at normalized microsecond precision. The automatic part count
+and channel duration rules remain authoritative; ranges must be ordered,
+non-overlapping and inside the source. Gaps are intentional omissions. In
+`sameParts`, one override applies to every selected channel and conflicting
+overrides fail closed. Unchanged planning and legacy first-boundary inputs stay
+compatible. The UI exposes this only for multi-part destinations, preserving
+the full-video meaning for unsplit destinations and existing saved groups.
+The same validated intervals drive preview, grouped-file deduplication, native
+encoding and existing local group source-range fields. No local schema or API
+change, and no source file rewrite. AI still reads the full retained original
+when invoked from the shared-caption editor.
+
+## Clip editor route boundary (2026-11-05)
+
+`UploaderScreen` is body content, including when `fullScreen` enables its exit
+handling. The shell and separately pushed clip-member routes must supply their
+own themed `Scaffold` and `SafeArea`. The shared-caption editor is embedded in
+`ClipGroupReviewScreen` and inherits its Material surface; do not wrap that
+embedded instance in another Scaffold. The 12111 fix adds the shell only at
+the member route boundary. No data or publishing contract changes.
+
+## Posting usability follow-up (2026-11-05, Staging APK 12110 checked)
+
+The Mobile composer reuses existing validation when opening review. AI result
+reuse is ephemeral and bound to the current owner/media/writing context; reopening
+valid choices does not call upload/generation or change quota rules. It requires
+explicit Apply and retains manual-edit/undo/session protections.
+
+Group list display metadata comes from validated owner-bound journals while
+retaining the original `PublishDraft` payload for resume and recovery. Submission
+activity is presentation-only. Accepted receipts stay separate from actual
+delivery outcomes; per-item status opens the existing post-detail loader and its
+platform-specific next steps. No persisted manifest, API or database migration.
+Analysis, the complete Mobile suite and native emulator checks for `3e52737a`
+are recorded in the [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Shared caption language catalog (2026-11-04, local candidate)
 
 `shared/caption-languages.json` snapshots the 109 documented general-use text
@@ -18,6 +57,75 @@ The Mobile picker searches labels/codes locally, preserves explicit choices in
 drafts, and protects cancelled/obsolete selections and busy generation states.
 Existing quota/refund, platform validation and clip-duration guidance are retained.
 API precedes Mobile; no schema or environment change.
+
+## Shared-caption-first clip sets (2026-11-05, Staging APK 12109 checked)
+
+The uploader's approved inline card opens a pure duration plan and source-range
+preview. `ClipSplitPlan` derives balanced ranges from the existing platform
+duration rules, supports affected-channel and common-part modes, and groups
+equal ranges into at most 64 file/draft jobs. An unknown TikTok Direct maximum
+cannot be substituted with the inbox-transfer ceiling.
+
+After confirmation, the uploader persists the original form as a local draft.
+`FfmpegClipSegmenter` writes new H.264/CFR30 outputs, retains audio as AAC when
+present, probes each result and scopes cancellation to its own native sessions.
+`ClipSplitDraftService` copies verified results into new owner-bound drafts,
+retains the source and rejects changed source files or obsolete sessions.
+Reusable publishing choices, including Facebook Publish/Page draft and AI
+disclosures, survive; per-media confirmations, upload receipts, covers and
+scheduled times do not transfer to the new part intents.
+
+`ClipGroupDraft` adds an owner-bound version-1 local journal alongside existing
+drafts. Optional group ID/source-role fields keep draft manifest version 3 and
+legacy reads compatible. Group writes share the owner's serialized store queue
+and compare revisions; immutable membership preserves independent submission
+IDs, source intervals and planned destinations. The original remains stored and
+is hidden as a source only for a valid group. Manifest projection repairs missing
+tags and leaves orphan/conflicting records visible as ordinary drafts.
+
+`ClipGroupReviewScreen` opens with the shared caption expanded and the existing
+AI panel directly inline. The user must explicitly start generation. Shared AI
+resolves the full retained `group.sourceDraftId`, never a first part, and cannot
+rewrite the original backup. Compact member rows retain caption overrides,
+member AI editing and cover/channel actions; switching back to shared inheritance
+requires confirmation. Shared edits skip custom/accepted intents and are locked
+against unresolved receipts. Existing quota/style/undo/fallback behavior remains.
+
+Optional `ClipGroupCaptionContext` stores guidance and canonical `auto`/109-code
+language preferences in the version-1 journal. Old journals omit it and read as
+null; unrelated copies preserve it. The existing journal byte cap applies, and
+completed groups cannot rewrite context. Auth/session, group revision and source
+identity guards discard stale asynchronous AI results before applying changes.
+
+Schedules retain separately remembered desired dates/times. Switching to immediate
+delivery clears effective child schedules while retaining desired times; there
+is no interval rule. Child editors lock media/destination membership and bind
+to the opening auth lifecycle. Group intent is checkpointed before member saves,
+and the final set requires explicit confirmation.
+
+`ClipGroupSubmission` serializes existing single-post operations. Fresh quota,
+readiness, media and consent checks remain authoritative per clip. Accepted post
+ID/status/effective schedule are persisted by revision before child deletion;
+partial completion never rolls back an accepted post. Unknown results recover
+the original intent first. Explicit Not Found can retry the same request ID and
+receipt after fresh review; lookup errors and expired unknown schedules do not
+issue a new POST.
+
+Preparation failures roll back only untouched, unaccepted new groups/drafts and
+report residual IDs. Source tag/untag writes preserve the latest source metadata.
+Edited or accepted groups survive cleanup failure. Process termination can leave
+partial local drafts; inspect Drafts before retrying. No cross-process batch
+transaction, backend/schema/environment/entitlement change or retired AI-editor
+restoration is introduced. Variant 2 source `54b222638` builds on `cffe7191` and
+verified `main` `8a340638`; final analysis, full Mobile suite and guarded APK 12109
+build/install passed. Native direct caption landing, custom/shared propagation,
+context-only Back saving and force-stop/restart passed. All 22 older JSON files
+and the new source manifest/video hashes stayed unchanged. The work record
+separates current proof from APK 12108's earlier grouped review and APK 12104/12105 splitting
+evidence remain historical. Live AI, native paid scheduling, real publishing,
+iOS and physical phones remain unverified. No API/provider/credit-rule change,
+migration, bootstrap change, merge or push is included. See the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Caption language preference (2026-11-04, local candidate)
 

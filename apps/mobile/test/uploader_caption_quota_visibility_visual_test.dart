@@ -174,9 +174,12 @@ void main() {
       }
       final strip = find.byType(CaptionQuotaStrip);
       await _show(tester, strip);
-      expect(find.text('แคปชั่น AI คงเหลือ'), findsOneWidget);
       expect(
-          find.text(paid ? '38 / 50 เครดิต' : '0 / 0 เครดิต',
+          find.text(
+              paid ? 'ใช้ได้ทั้งหมด 38 เครดิต' : 'ใช้ได้ทั้งหมด 0 เครดิต'),
+          findsOneWidget);
+      expect(
+          find.text(paid ? 'รายเดือน 38 / 50 เครดิต' : 'รายเดือน 0 / 0 เครดิต',
               findRichText: true),
           findsOneWidget);
       expect(find.text('ใช้ไป 12 เครดิต'), findsOneWidget);
@@ -191,7 +194,8 @@ void main() {
       if (mode.advanced) {
         // Basic sees the package path instead of a credit price.
         expect(
-            find.text(paid ? 'สร้างแคปชั่น · 4 เครดิต' : 'ดูแพ็กเกจเพื่อใช้ AI'),
+            find.text(
+                paid ? 'สร้างแคปชั่น · 4 เครดิต' : 'ดูแพ็กเกจเพื่อใช้ AI'),
             findsOneWidget);
       }
       expect(writes, 0);

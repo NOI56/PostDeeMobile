@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,7 +12,10 @@ import 'package:postdee_mobile/core/network/postdee_api_client.dart';
 import 'package:postdee_mobile/core/theme/app_theme.dart';
 import 'package:postdee_mobile/core/theme/theme_controller.dart';
 import 'package:postdee_mobile/features/shell/postdee_shell.dart';
+import 'package:postdee_mobile/features/uploader/video_picker_service.dart';
 
+import 'support/publish_preflight_fixtures.dart';
+import 'support/test_publish_draft_store.dart';
 import 'support/uploader_wizard_test_navigation.dart';
 
 Finder _referenceNav() =>
@@ -84,11 +89,13 @@ void main() {
 
     expect(find.text('Post once. Sell everywhere.'), findsOneWidget);
     expect(
-      find.text('Post one video to TikTok, Shorts,\nReels and Facebook at once.'),
+      find.text(
+          'Post one video to TikTok, Shorts,\nReels and Facebook at once.'),
       findsOneWidget,
     );
     expect(
-      find.text('Connect your account once. Sign in securely. PostDee does not store your password.'),
+      find.text(
+          'Connect your account once. Sign in securely. PostDee does not store your password.'),
       findsOneWidget,
     );
     expect(find.text('Sign in with Google'), findsOneWidget);
@@ -225,6 +232,7 @@ void main() {
     final sessionStore = PostDeeAuthSessionStore.instance;
     sessionStore.signIn(
       const AuthSession(
+        userId: 'layout-pro-user',
         idToken: 'firebase-id-token',
         email: 'seller@example.com',
         displayName: 'PostDee Seller',
@@ -234,6 +242,15 @@ void main() {
 
     // The layout exercise needs a known scheduling entitlement. Use the
     // existing shell injection rather than assuming the offline API is Pro.
+    final videoDirectory =
+        Directory.systemTemp.createTempSync('postdee-app-wizard-');
+    final video = File('${videoDirectory.path}/layout.mp4')
+      ..writeAsBytesSync([1, 2, 3]);
+    addTearDown(() {
+      if (video.existsSync()) video.deleteSync();
+      if (videoDirectory.existsSync()) videoDirectory.deleteSync();
+    });
+    var remoteWrites = 0;
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
@@ -248,6 +265,32 @@ void main() {
       supportedLocales: PostDeeLocalizations.supportedLocales,
       home: PostDeeShell(
         languageController: PostDeeLanguageController.instance,
+        uploaderDraftStore:
+            TestPublishDraftStore(ownerUserId: 'layout-pro-user'),
+        pickVideo: () async => PickedVideoFile(
+            name: 'layout.mp4',
+            path: video.path,
+            sizeBytes: 3,
+            width: 1080,
+            height: 1920,
+            durationSeconds: 10),
+        probePublishMedia: probeValidPublishMedia,
+        loadSocialConnections: () async => const [
+          SocialConnectionResult(
+              platform: 'TIKTOK',
+              connected: true,
+              externalAccountId: 'layout-tiktok',
+              displayName: 'Layout seller')
+        ],
+        loadSocialPublishingReadiness: connectedPublishingReadinessForTests,
+        createUpload: (_) async {
+          remoteWrites++;
+          throw StateError('Layout navigation must not upload');
+        },
+        createPost: (_) async {
+          remoteWrites++;
+          throw StateError('Layout navigation must not publish');
+        },
         loadSubscription: () async => const SubscriptionStatusResult(
           userId: 'layout-pro-user',
           plan: 'PRO',
@@ -263,6 +306,22 @@ void main() {
     await _tapReferenceNavButton(tester, 'สร้างโพสต์');
 
     expect(_referenceNav(), findsNothing);
+    final picker = find.byKey(const ValueKey('uploader-video-preview-picker'));
+    await tester.scrollUntilVisible(picker, 180,
+        scrollable: uploaderMainScroll);
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 1);
+    await tester.enterText(find.byKey(const ValueKey('uploader-caption-field')),
+        'ข้อความสำหรับตรวจตำแหน่งการตั้งเวลา');
+    await goToUploaderStep(tester, 2);
+    final channel = find.byKey(const ValueKey('uploader-platform-TIKTOK'));
+    await tester.scrollUntilVisible(channel, 180,
+        scrollable: uploaderMainScroll);
+    await tester.ensureVisible(channel);
+    await tester.pumpAndSettle();
+    await tester.tap(channel);
+    await tester.pumpAndSettle();
     await goToUploaderStep(tester, 3);
     final footerTop = tester
         .getTopLeft(
@@ -285,7 +344,7 @@ void main() {
     await tester.scrollUntilVisible(
       schedulePanel,
       500,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: uploaderMainScroll,
     );
     await tester.pumpAndSettle();
 
@@ -314,6 +373,7 @@ void main() {
       find.byKey(const ValueKey('uploader-schedule-summary')),
       findsOneWidget,
     );
+    expect(remoteWrites, 0);
   });
 
   testWidgets('keeps upload video preview compact on a phone viewport',

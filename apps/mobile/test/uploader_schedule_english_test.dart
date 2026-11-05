@@ -29,6 +29,9 @@ SubscriptionStatusResult _subscription(String plan) => SubscriptionStatusResult(
     status: 'ACTIVE',
     phoneVerified: true,
     requiresPhoneVerification: false,
+    monthlyPostLimit: 3,
+    usedPostsThisMonth: 0,
+    remainingPostsThisMonth: 3,
     canSchedule: plan == 'PRO' || plan == 'STARTER',
     canUseAiCaptions: true,
     canUseAnalytics: true);
@@ -473,6 +476,8 @@ void main() {
       (tester) async {
     final fixture = _Fixture()..plan = 'BASIC';
     await _mount(tester, fixture);
+    expect(find.text('Scheduling needs Starter or Pro. You can save a local draft first.'),
+        findsOneWidget);
     await _later(tester);
     expect(
         find.byKey(const ValueKey('uploader-schedule-summary')), findsNothing);

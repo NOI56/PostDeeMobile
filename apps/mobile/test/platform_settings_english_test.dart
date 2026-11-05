@@ -220,6 +220,7 @@ void main() {
       'Title shown on YouTube Shorts',
       'Customize YouTube title',
       'Visibility',
+      'Only you and people you explicitly share with can watch this video.',
       'Audience and content',
       'Is this video made for kids?',
       'Yes',

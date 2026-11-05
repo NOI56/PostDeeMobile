@@ -312,6 +312,8 @@ void main() {
     final fixture = _Fixture();
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
+    await goToUploaderStep(tester, 1);
+    await tester.enterText(_key('uploader-caption-field'), 'ข้อความของร้าน');
     await goToUploaderStep(tester, 2);
     expect(tester.widget<Text>(_key('uploader-platform-account-TIKTOK')).data,
         'ร้านของเรา');
@@ -330,11 +332,12 @@ void main() {
     await _show(tester, _key('uploader-platform-INSTAGRAM_REELS'));
     await tester.tap(_key('uploader-platform-INSTAGRAM_REELS'));
     await tester.pumpAndSettle();
-    await goToUploaderStep(tester, 3);
+    await tester.tap(_key('uploader-progress-3'));
+    await tester.pumpAndSettle();
     expect(_key('uploader-sticky-summary'), findsOneWidget);
-    expect(
-        tester.widget<FilledButton>(_key('publish-review-confirm')).onPressed,
-        isNull);
+    expect(_key('uploader-step-platforms'), findsOneWidget);
+    expect(_key('publish-review-confirm'), findsNothing);
+    expect(find.textContaining('ยังยืนยันบัญชีหรือเพจปลายทางไม่ได้'), findsWidgets);
     fixture.expectNoSubmission();
   });
 
@@ -400,6 +403,8 @@ void main() {
       final fixture = _Fixture();
       await tester.pumpWidget(fixture.app());
       await tester.pumpAndSettle();
+      await goToUploaderStep(tester, 1);
+      await tester.enterText(_key('uploader-caption-field'), 'ข้อความของร้าน');
       await goToUploaderStep(tester, 2);
       final row = _key('uploader-platform-TIKTOK');
       await _show(tester, row);

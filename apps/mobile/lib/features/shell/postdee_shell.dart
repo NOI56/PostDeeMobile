@@ -38,6 +38,8 @@ import '../legal/legal_document_screen.dart';
 import '../shared/postdee_undo_toast.dart';
 import '../templates/templates_screen.dart';
 import '../uploader/uploader_screen.dart';
+import '../uploader/clip_group_draft_list.dart';
+import '../uploader/clip_group_draft_store.dart';
 import '../uploader/platform_publish_defaults_store.dart';
 import '../uploader/publish_draft.dart';
 import '../uploader/publish_draft_store.dart';
@@ -370,7 +372,14 @@ class _PostDeeShellState extends State<PostDeeShell> {
       return const [];
     }
     if (store == null) throw StateError('Draft store is unavailable.');
-    final drafts = await store.listDrafts();
+    var drafts = await store.listDrafts();
+    if (!mounted || owner != _authController.session.stableUserId) {
+      return const [];
+    }
+    if (store is ClipGroupDraftStore) {
+      drafts = projectClipGroupDrafts(
+          drafts, await (store as ClipGroupDraftStore).listClipGroups());
+    }
     if (!mounted || owner != _authController.session.stableUserId) {
       return const [];
     }

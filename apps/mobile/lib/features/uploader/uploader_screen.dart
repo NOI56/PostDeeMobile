@@ -31,6 +31,19 @@ import '../shared/postdee_time_picker.dart';
 import '../shared/post_schedule_policy.dart';
 import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
+import 'clip_group_draft.dart';
+import 'clip_group_caption_context.dart';
+import 'clip_group_draft_store.dart';
+import 'clip_group_draft_edit.dart';
+import 'clip_group_draft_list.dart';
+import 'clip_group_localizations.dart';
+import 'clip_group_review_screen.dart';
+import 'clip_group_submission.dart';
+import 'clip_segmenter.dart';
+import 'clip_split_draft_service.dart';
+import 'clip_split_plan.dart';
+import 'clip_split_prompt.dart';
+import 'clip_split_screen.dart';
 import 'caption_quota_strip.dart';
 import 'caption_localizations.dart';
 import 'caption_language_picker.dart';
@@ -61,6 +74,8 @@ import 'video_duration_guide.dart';
 import 'watermark_video_processor.dart';
 
 export '../shared/post_schedule_policy.dart';
+
+part 'uploader_clip_group.dart';
 
 typedef UploaderTemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef UploaderSubscriptionLoader = Future<SubscriptionStatusResult>
@@ -170,6 +185,22 @@ class _ObsoleteCaptionException implements Exception {
   const _ObsoleteCaptionException();
 }
 
+class _GeneratedCaptionResult {
+  _GeneratedCaptionResult({required this.session, required this.inputContext,
+    required this.sourcePath, required this.creditsUsed,
+    required List<String> choices, required Map<SocialPlatform, String> captions,
+    required List<String> seoKeywords})
+      : choices = List.unmodifiable(choices), captions = Map.unmodifiable(captions),
+        seoKeywords = List.unmodifiable(seoKeywords);
+  final AuthSessionBinding session;
+  final String? inputContext;
+  final String sourcePath;
+  final int creditsUsed;
+  final List<String> choices;
+  final Map<SocialPlatform, String> captions;
+  final List<String> seoKeywords;
+}
+
 bool _isRetryablePublishApiError(ApiException error) {
   final statusCode = error.statusCode;
   return statusCode == null ||
@@ -211,10 +242,21 @@ class UploaderScreen extends StatefulWidget {
     this.analytics,
     this.watermarkVideo,
     this.prepareTikTokVideo,
+    this.segmentClip,
     this.openCoverEditor,
     this.coverImageProcessor,
     this.draftStore,
     this.initialDraftId,
+    this.clipGroupEditor = false,
+    this.clipGroupEditorStep = 1,
+    this.clipGroupOwnerSession,
+    this.clipGroupSharedCaptionController,
+    this.clipGroupCaptionContext,
+    this.onClipGroupCaptionBusyChanged,
+    this.onClipGroupCaptionContextChanged,
+    this.validateClipGroupCaptionContext,
+    this.clipGroupCaptionEnabled = true,
+    this.beforeClipGroupMemberSave,
     this.initialScheduleDate,
     this.now = DateTime.now,
     this.extractFrames,
@@ -262,12 +304,25 @@ class UploaderScreen extends StatefulWidget {
   final PostDeeAnalytics? analytics;
   final UploaderWatermarkVideoProcessor? watermarkVideo;
   final UploaderTikTokVideoPreparer? prepareTikTokVideo;
+  final UploaderClipSegmenter? segmentClip;
   final UploaderCoverEditorLauncher? openCoverEditor;
   final CoverImageProcessor? coverImageProcessor;
   final PublishDraftStore? draftStore;
   // Resume a persisted draft by reloading it from the current owner's store.
   // An explicitly handed-over clip takes precedence over this request.
   final String? initialDraftId;
+  final bool clipGroupEditor;
+  final int clipGroupEditorStep;
+  final AuthSessionBinding? clipGroupOwnerSession;
+  final TextEditingController? clipGroupSharedCaptionController;
+  final ClipGroupCaptionContext? clipGroupCaptionContext;
+  final ValueChanged<bool>? onClipGroupCaptionBusyChanged;
+  final ValueChanged<ClipGroupCaptionContext>?
+      onClipGroupCaptionContextChanged;
+  final Future<bool> Function()? validateClipGroupCaptionContext;
+  final bool clipGroupCaptionEnabled;
+  final Future<void> Function(String draftId, String caption)?
+      beforeClipGroupMemberSave;
 
   // A local day chosen in Calendar. It remains a suggestion until the seller
   // enables scheduling and the existing entitlement check succeeds.
@@ -314,9 +369,20 @@ class _UploaderScreenState extends State<UploaderScreen>
   final _apiClient = PostDeeApiClient();
   PostDeeAnalytics get _analytics =>
       widget.analytics ?? PostDeeAnalytics.instance;
-  final _captionController = TextEditingController();
+  late TextEditingController _captionController;
+  bool _ownsCaptionController = true;
+  bool _clipGroupCaptionSourceReady = false;
+  bool _clipGroupCaptionContextInvalid = false;
+  bool _clipGroupCaptionNotificationPending = false;
+  bool _isOpeningClipGroupCaptionStyle = false;
+  int _clipGroupCaptionStyleLoads = 0;
+  bool? _lastClipGroupCaptionBusy;
+  ClipGroupCaptionContext? _lastClipGroupCaptionContext;
   final _captionFocusNode = FocusNode();
   final _captionAnchorKey = GlobalKey();
+  // Use the current panel element for scrolling. Reparenting a GlobalKey here
+  // during draft deletion leaves stale geometry in the modal semantics tree.
+  BuildContext? _aiCaptionActionContext;
   final _platformValidationAnchors = {
     for (final platform in SocialPlatform.values) platform: GlobalKey(),
   };
@@ -361,6 +427,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool _isRecoveringSubmission = false;
   bool _isPreparingReview = false;
   bool _isPreparingSubmission = false;
+  bool _isPlanningClipSplit = false;
+  int _clipSplitGeneration = 0;
   bool _isLoadingTemplates = false;
   bool _isGeneratingCaption = false;
   CaptionQuotaResult? _captionQuota;
@@ -407,10 +475,106 @@ class _UploaderScreenState extends State<UploaderScreen>
   Completer<VideoDimensions?>? _videoDurationReadResult;
   CoverEditorResult? _coverResult;
   List<PublishDraft> _drafts = const [];
+  Map<String, ClipGroupDraft> _clipGroupRecords = const {};
   String? _activeDraftId;
   DateTime? _activeDraftCreatedAt;
   bool? _activeDraftWatermarkEnabled;
   PublishDraftUploadedMedia? _activeDraftUploadedMedia;
+  String? _activeClipGroupId;
+  bool _activeIsClipGroupSource = false;
+  bool _isOpeningClipGroup = false;
+  int _clipGroupRouteGeneration = 0;
+  Future<void> Function(QueuedPostResult)? _clipGroupAcceptedCheckpoint;
+
+  void _updateClipGroupState(VoidCallback update) {
+    if (mounted) setState(update);
+  }
+
+  bool get _isClipGroupSharedCaption =>
+      widget.clipGroupSharedCaptionController != null;
+
+  bool get _clipGroupCaptionOwned {
+    final binding = widget.clipGroupOwnerSession;
+    return widget.clipGroupEditor &&
+        binding != null &&
+        binding.isCurrent &&
+        binding.userId != null &&
+        binding.userId ==
+            PostDeeAuthSessionStore.instance.session.stableUserId &&
+        PostDeeAuthSessionStore.instance.session.isSignedIn;
+  }
+
+  bool get _clipGroupCaptionBusy =>
+      _isLoadingDrafts ||
+      _isRestoringInitialDraft ||
+      _clipGroupCaptionStyleLoads > 0 ||
+      _isOpeningClipGroupCaptionStyle ||
+      _isGeneratingCaption ||
+      _isChoosingCaption ||
+      _isSavingCaptionStyle ||
+      _isLoadingTemplates;
+
+  void _queueClipGroupCaptionNotifications() {
+    if (!_isClipGroupSharedCaption || _clipGroupCaptionNotificationPending) {
+      return;
+    }
+    _clipGroupCaptionNotificationPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _clipGroupCaptionNotificationPending = false;
+      if (!mounted || !_isClipGroupSharedCaption || !_clipGroupCaptionOwned) {
+        return;
+      }
+      // Publish restored preferences before releasing the parent's controls.
+      if (_clipGroupCaptionSourceReady) {
+        final context = ClipGroupCaptionContext(
+            aiGuidance: _aiGuidanceController.text,
+            captionLanguage: _captionLanguage);
+        if (context != _lastClipGroupCaptionContext) {
+          _lastClipGroupCaptionContext = context;
+          widget.onClipGroupCaptionContextChanged?.call(context);
+        }
+      }
+      if (!mounted || !_clipGroupCaptionOwned) return;
+      final busy = _clipGroupCaptionBusy;
+      if (busy != _lastClipGroupCaptionBusy) {
+        _lastClipGroupCaptionBusy = busy;
+        widget.onClipGroupCaptionBusyChanged?.call(busy);
+      }
+    });
+  }
+
+  Future<bool> _validateInlineCaptionContext(
+      bool Function() stillCurrent) async {
+    if (!_isClipGroupSharedCaption) return true;
+    if (!_clipGroupCaptionOwned || !stillCurrent()) return false;
+    final validate = widget.validateClipGroupCaptionContext;
+    if (validate == null) return true;
+    var valid = false;
+    try {
+      valid = await validate();
+    } catch (_) {/* A failed read cannot authorize a new AI operation. */}
+    if (!mounted || !_clipGroupCaptionOwned || !stillCurrent()) return false;
+    if (!valid) {
+      setState(() {
+        _clipGroupCaptionContextInvalid = true;
+        _aiCaptionErrorMessage =
+            'ข้อมูลชุดคลิปเปลี่ยนแล้ว ข้อความเดิมยังอยู่ กรุณาเปิดชุดคลิปใหม่';
+      });
+    }
+    return valid;
+  }
+
+  void _closeCaptionSheet(BuildContext sheetContext) {
+    if (!sheetContext.mounted) return;
+    if (!_isClipGroupSharedCaption) {
+      Navigator.of(sheetContext).pop();
+      return;
+    }
+    final route = ModalRoute.of(sheetContext);
+    if (route != null && route.isActive) {
+      route.navigator?.removeRoute(route);
+    }
+  }
   String? _resolvedDraftOwnerUserId;
   Future<PublishDraftStore?>? _draftStoreFuture;
   BuildContext? _draftSheetContext;
@@ -438,6 +602,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   String? _captionStyleError;
   BuildContext? _captionStyleSheetContext;
   BuildContext? _platformCaptionPreviewContext;
+  _GeneratedCaptionResult? _latestGeneratedCaption;
   Map<SocialPlatform, String>? _platformCaptionsBeforeAi;
   Set<SocialPlatform> _platformCaptionUndoPlatforms = const {};
   bool _platformCaptionReviewBeforeAi = false;
@@ -808,7 +973,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final previewContext = _platformCaptionPreviewContext;
     _platformCaptionPreviewContext = null;
     if (previewContext != null && previewContext.mounted) {
-      Navigator.of(previewContext).pop();
+      _closeCaptionSheet(previewContext);
     }
     _isGeneratingCaption = false;
     _isChoosingCaption = false;
@@ -1094,6 +1259,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   bool get _formBusy =>
+      (_isClipGroupSharedCaption &&
+          (!widget.clipGroupCaptionEnabled ||
+              !_clipGroupCaptionOwned || !_clipGroupCaptionSourceReady)) ||
+      _isPlanningClipSplit ||
       _isRestoringInitialDraft ||
       _isSavingDraft ||
       _isSubmitting ||
@@ -1186,8 +1355,22 @@ class _UploaderScreenState extends State<UploaderScreen>
         child: child,
       );
 
-  Future<void> _goToStep(int step) async {
+  Future<void> _goToStep(int step, {bool validateReview = true}) async {
+    if (widget.clipGroupEditor && step == 0) step = 1;
     if (_formBusy) return;
+    // Earlier sections remain freely editable. Review uses the same checks as
+    // Next and takes the seller directly to the first missing prerequisite.
+    if (step == 3 && validateReview && _currentStep != 3) {
+      final needsCaption = (!_hasAnyCaption &&
+              !_connectedPlatforms.contains(SocialPlatform.youtubeShorts)) ||
+          _captionLimitError != null;
+      final requiredStep = _localFilePathController.text.trim().isEmpty
+          ? 0
+          : needsCaption ? 1 : 2;
+      await _goToStep(requiredStep, validateReview: false);
+      if (mounted) await _nextStep();
+      return;
+    }
     if (step == 3 && !await _ensurePlatformDefaultsForReview()) {
       _revealFormError();
       return;
@@ -1273,7 +1456,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final caption = _captionController.text.trim();
     final source = _localFilePathController.text;
     final generation = _captionGeneration;
-    await _goToStep((_currentStep + 1).clamp(0, 3));
+    await _goToStep((_currentStep + 1).clamp(0, 3), validateReview: false);
     if (leavingCaption && _currentStep == 2) {
       unawaited(_rememberCaptionEdit(caption, source, generation));
     }
@@ -1329,7 +1512,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                   scrollable: MediaQuery.textScalerOf(dialogContext).scale(14) > 20,
                   title: const UploaderText('เก็บโพสต์นี้ไว้ไหม?'),
                   content: const UploaderText(
-                      'มีข้อมูลที่ยังไม่ได้บันทึก กลับมาแก้ต่อได้จากฉบับร่าง'),
+                      'เก็บร่างไว้ในเครื่องเพื่อกลับมาแก้ต่อ ยังไม่ส่งไปโซเชียลและไม่ใช้หน่วยโพสต์'),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(dialogContext, 'cancel'),
@@ -1371,6 +1554,250 @@ class _UploaderScreenState extends State<UploaderScreen>
             videoFile: File(path),
             videoName: _selectedVideoName ??
                 uploaderText(context, 'คลิปของคุณ', 'Your video'))));
+  }
+
+  Set<SocialPlatform> get _clipSplitPlatforms {
+    final selected = {..._selectedPlatforms, ..._draftUnavailablePlatforms};
+    return selected.isNotEmpty
+        ? selected
+        : {
+            SocialPlatform.tiktok,
+            SocialPlatform.youtubeShorts,
+            SocialPlatform.instagramReels,
+            SocialPlatform.facebookReels,
+          };
+  }
+
+  List<SocialPlatform> get _clipSplitExceededPlatforms {
+    final duration = _videoDurationSeconds;
+    if (duration == null || !duration.isFinite || duration <= 0) {
+      return const [];
+    }
+    final direct =
+        _platformSettings.tiktokPublishMode == TikTokPublishMode.directPost;
+    final exceeded = <SocialPlatform>[];
+    for (final platform in _clipSplitPlatforms) {
+      if (platform == SocialPlatform.tiktok &&
+          direct &&
+          _tikTokGuideMaximum == null) {
+        continue;
+      }
+      final rule = platformVideoDurationRule(platform,
+          tikTokMaxDurationSeconds: direct ? _tikTokGuideMaximum : null);
+      if (rule != null && duration > rule.maximumSeconds) {
+        exceeded.add(platform);
+      }
+    }
+    return exceeded;
+  }
+
+  Future<void> _openClipSplitPlan() async {
+    if (widget.clipGroupEditor ||
+        _formBusy ||
+        _isGeneratingCaption ||
+        _activeDraftUploadedMedia != null ||
+        _requiresNewSubmissionAttempt) {
+      return;
+    }
+    final sourceDuration = _videoDurationSeconds;
+    var sourcePath = _localFilePathController.text.trim();
+    if (sourceDuration == null || sourcePath.isEmpty) return;
+    final session = PostDeeAuthSessionStore.instance.captureSession();
+    final owner = session.userId;
+    final generation = ++_clipSplitGeneration;
+    var cancelled = false;
+    bool isCancelled() =>
+        cancelled ||
+        !mounted ||
+        !session.isCurrent ||
+        generation != _clipSplitGeneration ||
+        _localFilePathController.text.trim() != sourcePath;
+    setState(() => _isPlanningClipSplit = true);
+    final navigator = Navigator.of(context);
+    DialogRoute<void>? progressRoute;
+    ValueNotifier<({int completed, int total, bool cancelled})>? progress;
+    try {
+      final plan = await navigator.push<ClipSplitPlan>(MaterialPageRoute(
+        builder: (_) => ClipSplitScreen(
+          sourceDurationSeconds: sourceDuration,
+          videoName: _selectedVideoName ?? _readFileNameFromPath(sourcePath),
+          videoFile: File(sourcePath),
+          ownerSession: session,
+          initialPlatforms: _clipSplitPlatforms,
+          tikTokDirectPost: _platformSettings.tiktokPublishMode ==
+              TikTokPublishMode.directPost,
+          tikTokMaxDurationSeconds: _tikTokGuideMaximum,
+        ),
+      ));
+      if (plan == null || isCancelled()) return;
+      if (owner == null ||
+          !PostDeeAuthSessionStore.instance.session.isSignedIn) {
+        setState(() =>
+            _errorMessage = 'ลงชื่อเข้าใช้ก่อนเก็บตอนที่แบ่งเป็นร่าง');
+        return;
+      }
+
+      // Keep the entire current form, cover and original media in its existing
+      // draft before opening any newly generated part. This never submits it.
+      final original = await _persistCurrentDraft(showSavedMessage: false);
+      if (original == null ||
+          !mounted ||
+          !session.isCurrent ||
+          generation != _clipSplitGeneration) {
+        return;
+      }
+      sourcePath = original.videoPath;
+      if (isCancelled()) return;
+      final store = await _resolveDraftStore();
+      if (isCancelled() || !mounted) return;
+      if (store == null) {
+        setState(() =>
+            _errorMessage = 'เปิดพื้นที่เก็บร่างไม่ได้ กรุณาลองอีกครั้ง');
+        return;
+      }
+
+      final notifier = ValueNotifier(
+          (completed: 0, total: plan.groupedParts.length, cancelled: false));
+      progress = notifier;
+      progressRoute = DialogRoute<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            key: const ValueKey('uploader-clip-split-progress'),
+            scrollable: true,
+            title: Text(uploaderText(dialogContext, 'กำลังเตรียมชุดคลิป',
+                'Preparing clip set')),
+            content: ValueListenableBuilder(
+              valueListenable: notifier,
+              builder: (_, value, __) => Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: AppTheme.spaceMd),
+                  Text(uploaderText(
+                      dialogContext,
+                      'เตรียมแล้ว ${value.completed} / ${value.total} รายการ',
+                      '${value.completed} / ${value.total} items prepared')),
+                  const SizedBox(height: AppTheme.spaceSm),
+                  Text(uploaderText(
+                      dialogContext,
+                      'ต้นฉบับเก็บเป็นร่างแล้ว · ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา',
+                      'Original saved as a draft · No upload, posts or post units used')),
+                  const SizedBox(height: AppTheme.spaceMd),
+                  OutlinedButton(
+                    key: const ValueKey('uploader-clip-split-cancel'),
+                    onPressed: value.cancelled
+                        ? null
+                        : () {
+                            cancelled = true;
+                            notifier.value = (
+                              completed: value.completed,
+                              total: value.total,
+                              cancelled: true,
+                            );
+                          },
+                    child: Text(uploaderText(
+                        dialogContext,
+                        value.cancelled ? 'กำลังหยุด...' : 'หยุดเตรียมคลิป',
+                        value.cancelled ? 'Stopping...' : 'Stop preparation')),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      unawaited(navigator.push(progressRoute));
+      final sourceFile = File(sourcePath);
+      final batch = await ClipSplitDraftService(segmenter: widget.segmentClip)(
+        ClipSplitDraftRequest(
+          plan: plan,
+          inputFile: sourceFile,
+          fileName: original.videoName,
+          store: store,
+          ownerUserId: owner,
+          sourceDraftId: original.id,
+          caption: _captionController.text,
+          aiGuidance: _aiGuidanceController.text,
+          captionLanguage: _captionLanguage,
+          watermarkEnabled: original.watermarkEnabled,
+          platformSettings: _platformSettings,
+          sourceMetadata: PublishMediaMetadata(
+            durationSeconds: sourceDuration,
+            width: original.videoWidth,
+            height: original.videoHeight,
+            sizeBytes: sourceFile.lengthSync(),
+          ),
+          isCancelled: isCancelled,
+          onProgress: (completed, total) {
+            if (isCancelled()) return;
+            notifier.value = (
+              completed: completed,
+              total: total,
+              cancelled: false,
+            );
+          },
+        ),
+      );
+      if (isCancelled()) return;
+      if (progressRoute.isActive) navigator.removeRoute(progressRoute);
+      progressRoute = null;
+      final drafts = {
+        for (final draft in [
+          ..._drafts,
+          if (batch.sourceDraft != null) batch.sourceDraft!,
+          ...batch.drafts,
+        ]) draft.id: draft,
+      }.values.toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      setState(() {
+        _drafts = drafts;
+        if (batch.group != null) {
+          _clipGroupRecords = {
+            ..._clipGroupRecords,
+            batch.group!.id: batch.group!,
+          };
+        }
+      });
+      if (batch.group == null) {
+        throw const PublishDraftValidationException(
+            'บันทึกชุดคลิปไม่สำเร็จ กรุณาเปิดฉบับร่างเพื่อตรวจรายการ');
+      }
+      setState(() => _isPlanningClipSplit = false);
+      await _openSavedClipGroup(batch.group!.id);
+    } on ClipSplitDraftException catch (error) {
+      if (!mounted || !session.isCurrent) return;
+      setState(() {
+        _errorMessage = error.residualDraftIds.isNotEmpty
+                ? 'เตรียมคลิปไม่ครบ มีบางร่างที่เก็บไว้ กรุณาตรวจรายการฉบับร่างก่อนลองใหม่'
+                : error.cleanupFailed
+                    ? 'เตรียมคลิปไม่สำเร็จ และยังล้างไฟล์ชั่วคราวไม่ครบ ต้นฉบับยังอยู่ กรุณาตรวจพื้นที่ว่าง'
+                : error.isCancelled
+                    ? 'หยุดเตรียมคลิปแล้ว ต้นฉบับยังอยู่ในฉบับร่าง'
+                    : 'แบ่งคลิปไม่สำเร็จ ตรวจสอบพื้นที่ว่างแล้วลองใหม่ ต้นฉบับยังอยู่ในฉบับร่าง';
+        _successMessage = null;
+      });
+      unawaited(_loadDrafts());
+    } catch (_) {
+      if (!mounted || !session.isCurrent) return;
+      setState(() {
+        _errorMessage = 'แบ่งคลิปไม่สำเร็จ ต้นฉบับยังอยู่ กรุณาลองอีกครั้ง';
+        _successMessage = null;
+      });
+    } finally {
+      if (progressRoute != null &&
+          progressRoute.isActive &&
+          navigator.mounted) {
+        navigator.removeRoute(progressRoute);
+      }
+      progress?.dispose();
+      if (mounted && generation == _clipSplitGeneration) {
+        setState(() => _isPlanningClipSplit = false);
+      }
+    }
   }
 
   Future<void> _openPostPreview() async {
@@ -1459,6 +1886,9 @@ class _UploaderScreenState extends State<UploaderScreen>
   @override
   void initState() {
     super.initState();
+    _ownsCaptionController = widget.clipGroupSharedCaptionController == null;
+    _captionController =
+        widget.clipGroupSharedCaptionController ?? TextEditingController();
     WidgetsBinding.instance.addObserver(this);
     _captionQuotaSession = PostDeeAuthSessionStore.instance.captureSession();
     PostDeeAuthSessionStore.instance
@@ -1484,13 +1914,14 @@ class _UploaderScreenState extends State<UploaderScreen>
     _initialDraftOwnerUserId =
         PostDeeAuthSessionStore.instance.session.stableUserId;
     unawaited(_loadVideoPoster());
-    if (widget.draftStore == null) {
+    if (widget.draftStore == null || widget.clipGroupEditor) {
       PostDeeAuthSessionStore.instance.addListener(_handleDraftOwnerChanged);
     }
     _captionStyleOwner = PostDeeAuthSessionStore.instance.session.stableUserId;
     PostDeeAuthSessionStore.instance
         .addListener(_handleCaptionStyleOwnerChanged);
     _captionStyleLoadFuture = _loadCaptionWritingStyle();
+    _aiGuidanceController.addListener(_queueClipGroupCaptionNotifications);
     unawaited(_loadConnections());
     unawaited(_loadDrafts());
     unawaited(_loadWatermarkPreference());
@@ -1505,6 +1936,35 @@ class _UploaderScreenState extends State<UploaderScreen>
     _localFilePathController.addListener(_handlePostQuotaClipChanged);
     _postQuotaClipPath = _localFilePathController.text.trim();
     unawaited(_loadPostQuota());
+  }
+
+  @override
+  void didUpdateWidget(covariant UploaderScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.clipGroupSharedCaptionController !=
+        widget.clipGroupSharedCaptionController) {
+      final previous = _captionController;
+      previous.removeListener(_handleFeedbackTextChanged);
+      if (_ownsCaptionController) previous.dispose();
+      _ownsCaptionController = widget.clipGroupSharedCaptionController == null;
+      _captionController = widget.clipGroupSharedCaptionController ??
+          TextEditingController();
+      _captionController.addListener(_handleFeedbackTextChanged);
+      _invalidateAiCaption();
+    }
+    if (_isClipGroupSharedCaption &&
+        (oldWidget.initialDraftId != widget.initialDraftId ||
+            oldWidget.clipGroupOwnerSession != widget.clipGroupOwnerSession)) {
+      _invalidateAiCaption();
+      _clipGroupCaptionSourceReady = false;
+      _clipGroupCaptionContextInvalid = false;
+      _lastClipGroupCaptionContext = null;
+      _initialDraftRestoreAttempted = false;
+      _isRestoringInitialDraft = true;
+      _initialDraftOwnerUserId = widget.clipGroupOwnerSession?.userId;
+      unawaited(_loadDrafts());
+    }
+    _queueClipGroupCaptionNotifications();
   }
 
   @override
@@ -1629,6 +2089,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     _captionQuotaRequestId++;
     _postQuotaRequestId++;
     setState(() {
+      _latestGeneratedCaption = null;
       _clearTikTokDurationLimit();
       _clearTikTokFreshness();
       _connectionLoadGeneration++;
@@ -1674,7 +2135,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final sheetContext = _captionStyleSheetContext;
     _captionStyleSheetContext = null;
     if (sheetContext != null && sheetContext.mounted) {
-      Navigator.of(sheetContext).pop();
+      _closeCaptionSheet(sheetContext);
     }
     if (!mounted) return;
     setState(() {
@@ -1691,6 +2152,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     final owner = _captionStyleOwner;
     final generation = ++_captionStyleGeneration;
     if (owner == null) return;
+    if (_isClipGroupSharedCaption) _clipGroupCaptionStyleLoads++;
     try {
       final profile = await widget.captionWritingStyleStore.load(owner);
       if (!_captionStyleIsCurrent(owner, generation)) return;
@@ -1703,6 +2165,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       if (!_captionStyleIsCurrent(owner, generation)) return;
       setState(
           () => _captionWritingProfile = const CaptionWritingStyleProfile());
+    } finally {
+      if (_isClipGroupSharedCaption) {
+        _clipGroupCaptionStyleLoads--;
+        if (mounted) setState(() {});
+      }
     }
   }
 
@@ -1781,6 +2248,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _openCaptionWritingStyle() async {
+    if (_isClipGroupSharedCaption && _formBusy) return;
+    if (_isClipGroupSharedCaption) {
+      setState(() => _isOpeningClipGroupCaptionStyle = true);
+    }
+    try {
     final owner = _captionStyleOwner;
     final source = _localFilePathController.text;
     final captionGeneration = _captionGeneration;
@@ -1824,6 +2296,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
     _captionStyleSheetContext = null;
+    } finally {
+      if (_isClipGroupSharedCaption && mounted) {
+        setState(() => _isOpeningClipGroupCaptionStyle = false);
+      }
+    }
   }
 
   void _handleDraftOwnerChanged() {
@@ -1835,6 +2312,10 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
     _invalidateAiCaption();
+    _clipSplitGeneration++;
+    _clipGroupRouteGeneration++;
+    _isOpeningClipGroup = false;
+    _isPlanningClipSplit = false;
     _draftLoadGeneration += 1;
     _connectionLoadGeneration += 1;
     final draftSheetContext = _draftSheetContext;
@@ -1845,20 +2326,25 @@ class _UploaderScreenState extends State<UploaderScreen>
     _resolvedDraftOwnerUserId = null;
     _draftStoreFuture = null;
     if (!mounted) return;
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    if (!_isClipGroupSharedCaption) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
     final previousCover = _coverResult;
     setState(() {
       _drafts = const [];
+      _clipGroupRecords = const {};
       _draftStoreAvailable = false;
       _isLoadingDrafts = true;
       _activeDraftId = null;
+      _activeClipGroupId = null;
+      _activeIsClipGroupSource = false;
       _activeDraftCreatedAt = null;
       _activeDraftWatermarkEnabled = null;
       _activeDraftUploadedMedia = null;
       _selectedVideoName = null;
       _setVideoDuration(null);
       _coverResult = null;
-      _captionController.clear();
+      if (!_isClipGroupSharedCaption) _captionController.clear();
       _captionNeedsReview = false;
       _aiGuidanceController.clear();
       _captionLanguage = 'auto';
@@ -1901,6 +2387,9 @@ class _UploaderScreenState extends State<UploaderScreen>
     final generation = ++_draftLoadGeneration;
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     try {
+      if (_isClipGroupSharedCaption && !_clipGroupCaptionOwned) {
+        throw const AuthSessionChangedException();
+      }
       final store = await _readStartupDraft(_resolveDraftStore());
       if (generation != _draftLoadGeneration) return;
       if (store == null) {
@@ -1914,8 +2403,17 @@ class _UploaderScreenState extends State<UploaderScreen>
       }
       final drafts = await _readStartupDraft(store.listDrafts());
       if (!mounted || generation != _draftLoadGeneration) return;
+      final groups = store is ClipGroupDraftStore
+          ? await _readStartupDraft(
+              (store as ClipGroupDraftStore).listClipGroups())
+          : <ClipGroupDraft>[];
+      if (!mounted || generation != _draftLoadGeneration) return;
       setState(() {
-        _drafts = drafts;
+        _clipGroupRecords = {
+          for (final group in groups)
+            if (group.ownerUserId == owner) group.id: group,
+        };
+        _drafts = projectClipGroupDrafts(drafts, _clipGroupRecords.values);
         _isLoadingDrafts = false;
         _draftStoreAvailable = true;
       });
@@ -1943,6 +2441,14 @@ class _UploaderScreenState extends State<UploaderScreen>
             });
           } else {
             await _restoreDraft(draft);
+            if (widget.clipGroupEditor) {
+              setState(() =>
+                  _currentStep = widget.clipGroupEditorStep.clamp(1, 2));
+            } else if (_groupIdForDraft(draft) case final groupId?) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) unawaited(_openSavedClipGroup(groupId));
+              });
+            }
           }
         } catch (_) {
           if (!mounted || generation != _draftLoadGeneration) return;
@@ -2346,6 +2852,7 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   @override
   void dispose() {
+    _clipSplitGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     PostDeeAuthSessionStore.instance
         .removeListener(_handleCaptionQuotaSessionChanged);
@@ -2355,6 +2862,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     _cancelVideoDurationRead();
     _postQuotaRequestId++;
     _localFilePathController.removeListener(_handlePostQuotaClipChanged);
+    _aiGuidanceController.removeListener(_queueClipGroupCaptionNotifications);
     _captionGeneration++;
     _captionStyleGeneration++;
     _captionValidationGeneration++;
@@ -2372,7 +2880,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         .removeListener(_handleCaptionStyleOwnerChanged);
     _posterGeneration++;
     unawaited(_videoPoster?.cleanupTemporaryFiles() ?? Future<void>.value());
-    if (widget.draftStore == null) {
+    if (widget.draftStore == null || widget.clipGroupEditor) {
       PostDeeAuthSessionStore.instance.removeListener(_handleDraftOwnerChanged);
     }
     final cover = _coverResult;
@@ -2380,7 +2888,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (cover != null) {
       unawaited(cover.cleanupTemporaryFiles());
     }
-    _captionController.dispose();
+    if (_ownsCaptionController) _captionController.dispose();
     _fileNameController.dispose();
     _localFilePathController.dispose();
     _sizeBytesController.dispose();
@@ -2694,11 +3202,19 @@ class _UploaderScreenState extends State<UploaderScreen>
     return createAndUploadFileWithRetry(
       request: request,
       file: file,
-      createUpload: (request) {
+      createUpload: (request) async {
+        if (_isClipGroupSharedCaption &&
+            !await _validateInlineCaptionContext(stillCurrent)) {
+          throw const _ObsoleteCaptionException();
+        }
         if (!stillCurrent()) throw const _ObsoleteCaptionException();
         return createUpload(request);
       },
-      uploadFile: (upload, file) {
+      uploadFile: (upload, file) async {
+        if (_isClipGroupSharedCaption &&
+            !await _validateInlineCaptionContext(stillCurrent)) {
+          throw const _ObsoleteCaptionException();
+        }
         if (!stillCurrent()) throw const _ObsoleteCaptionException();
         return uploadFile(upload, file);
       },
@@ -2986,7 +3502,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _setAdvancedCaptions(bool enabled) {
-    if (_formBusy) return;
+    if (_isClipGroupSharedCaption) return;
+    if (_formBusy || _isGeneratingCaption || _isChoosingCaption) return;
     FocusScope.of(context).unfocus();
     final previousTikTokCaption = _effectiveCaption(SocialPlatform.tiktok);
     setState(() {
@@ -3127,6 +3644,136 @@ class _UploaderScreenState extends State<UploaderScreen>
     return parts.join('\n\n');
   }
 
+  String? _captionInputContext() {
+    try {
+      final path = _localFilePathController.text;
+      final stat = File(path).statSync();
+      if (stat.type != FileSystemEntityType.file || stat.size < 1) return null;
+      return jsonEncode([
+        _activeDraftId, _draftLoadGeneration, path, stat.size,
+        stat.modified.microsecondsSinceEpoch,
+        _aiGuidanceController.text.trim(), _captionLanguage,
+        _captionWritingProfile.forGeneration.toJson(),
+        _platformSettings.usePlatformCaptions,
+        if (_platformSettings.usePlatformCaptions)
+          for (final platform in captionPlatforms)
+            if (_platformSettings.aiCaptionPlatforms.contains(platform)) platform.apiValue,
+      ]);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  _GeneratedCaptionResult? get _reusableCaptionResult {
+    final result = _latestGeneratedCaption;
+    if (result == null || !result.session.isCurrent || result.inputContext == null ||
+        result.inputContext != _captionInputContext() ||
+        (_isClipGroupSharedCaption &&
+            (!_clipGroupCaptionOwned || _clipGroupCaptionContextInvalid))) {
+      return null;
+    }
+    return result;
+  }
+
+  Future<void> _reopenCaptionResult() async {
+    if (_formBusy || _isGeneratingCaption || _isChoosingCaption || _isSavingCaptionStyle) return;
+    final result = _reusableCaptionResult;
+    if (result == null) return;
+    final generation = _captionGeneration;
+    final originalText = _captionController.text;
+    final originalTargets = _aiCaptionTargetSnapshot();
+    bool stillCurrent() => mounted && generation == _captionGeneration &&
+        identical(result, _reusableCaptionResult);
+    bool textUnchanged() => _captionController.text == originalText &&
+        _aiCaptionTargetSnapshot() == originalTargets;
+    setState(() => _isChoosingCaption = true);
+    try {
+      if (!await _validateInlineCaptionContext(stillCurrent) || !stillCurrent()) return;
+      await _reviewCaptionResult(result, stillCurrent, textUnchanged, forcePreview: true);
+    } finally {
+      if (mounted) setState(() => _isChoosingCaption = false);
+    }
+  }
+
+  Future<void> _reviewCaptionResult(_GeneratedCaptionResult result,
+      bool Function() stillCurrent, bool Function() textUnchanged,
+      {bool forcePreview = false}) async {
+    bool sameInput() => result.session.isCurrent && result.inputContext != null &&
+        result.inputContext == _captionInputContext();
+    if (!stillCurrent() || !sameInput()) return;
+    final advanced = result.captions.isNotEmpty;
+    String? selectedCaption;
+    final preview = advanced || forcePreview || result.choices.length > 1 ||
+        _captionController.text.trim().isNotEmpty;
+    if (preview) {
+      setState(() {
+        _isGeneratingCaption = false;
+        _isChoosingCaption = true;
+      });
+      try {
+        if (advanced) {
+          final accepted = await showModalBottomSheet<bool>(context: context,
+              isScrollControlled: true, useSafeArea: true, builder: (sheetContext) {
+            _platformCaptionPreviewContext = sheetContext;
+            return PlatformCaptionPreviewSheet(captions: result.captions,
+                isFallback: false, charged: result.creditsUsed > 0,
+                creditsUsed: result.creditsUsed);
+          });
+          if (accepted != true) return;
+        } else {
+          selectedCaption = await showModalBottomSheet<String>(context: context,
+              isScrollControlled: true, useSafeArea: true, builder: (sheetContext) {
+            _platformCaptionPreviewContext = sheetContext;
+            return CaptionOptionsPreviewSheet(captions: result.choices,
+                creditsUsed: result.creditsUsed);
+          });
+          if (selectedCaption == null) return;
+        }
+      } finally {
+        _platformCaptionPreviewContext = null;
+        if (mounted) setState(() => _isChoosingCaption = false);
+      }
+    } else if (result.choices.isNotEmpty) {
+      selectedCaption = result.choices.first;
+    }
+    if (!stillCurrent() || !sameInput() || !textUnchanged() ||
+        !await _validateInlineCaptionContext(stillCurrent) || !stillCurrent() ||
+        !sameInput() || !textUnchanged()) {
+      return;
+    }
+    setState(() {
+      if (advanced) {
+        final previousTikTokCaption = _effectiveCaption(SocialPlatform.tiktok);
+        _platformCaptionsBeforeAi = Map.of(_platformSettings.platformCaptions);
+        _platformCaptionUndoPlatforms = result.captions.keys.toSet();
+        _platformCaptionReviewBeforeAi = _captionNeedsReview;
+        _platformSettings = _platformSettings.copyWith(platformCaptions: {
+          ..._platformSettings.platformCaptions, ...result.captions,
+        });
+        if (_effectiveCaption(SocialPlatform.tiktok) != previousTikTokCaption) {
+          _clearTikTokFreshness();
+        }
+        _captionNeedsReview = _captionNeedsReview &&
+            result.captions.length < captionPlatforms.length;
+        _acceptedAiCaption = jsonEncode(_platformSettings.platformCaptions
+            .map((key, value) => MapEntry(key.apiValue, value)));
+      } else if (selectedCaption != null) {
+        _sharedCaptionBeforeAi = (text: _captionController.text,
+          needsReview: _captionNeedsReview, fallbackMessage: _aiCaptionFallbackMessage,
+          seoKeywords: List.of(_aiCaptionSeoKeywords));
+        _captionController.value = TextEditingValue(text: selectedCaption,
+            selection: TextSelection.collapsed(offset: selectedCaption.length));
+        _captionNeedsReview = false;
+        _acceptedAiCaption = selectedCaption;
+        _captionRevealRevision++;
+        _aiCaptionSeoKeywords = result.seoKeywords;
+      }
+      _acceptedAiCaptionOwner = result.session.userId;
+      _acceptedAiCaptionSource = result.sourcePath;
+      _aiCaptionFallbackMessage = null;
+    });
+  }
+
   Future<void> _generateAiCaption() async {
     if (_formBusy || _isGeneratingCaption || _isSavingCaptionStyle ||
         _platformCaptionPreviewContext != null) {
@@ -3151,6 +3798,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       return;
     }
     final generation = ++_captionGeneration;
+    if (_isClipGroupSharedCaption) _clipGroupCaptionContextInvalid = false;
     _clearCaptionLearningBaseline();
     final sourcePath = _localFilePathController.text;
     final originalCaption = _captionController.text;
@@ -3166,6 +3814,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     bool stillCurrent() =>
         mounted &&
+        (!_isClipGroupSharedCaption ||
+            (_clipGroupCaptionOwned && !_clipGroupCaptionContextInvalid)) &&
         quotaSession.isCurrent &&
         generation == _captionGeneration &&
         sourcePath == _localFilePathController.text &&
@@ -3233,6 +3883,11 @@ class _UploaderScreenState extends State<UploaderScreen>
         return;
       }
 
+      if (_isClipGroupSharedCaption &&
+          !await _validateInlineCaptionContext(stillCurrent)) {
+        return;
+      }
+      if (!stillCurrent()) return;
       final clipMedia = await _uploadSelectedClipForAiCaption(stillCurrent);
       if (!stillCurrent()) return;
 
@@ -3250,6 +3905,12 @@ class _UploaderScreenState extends State<UploaderScreen>
       final guidance = _aiGuidanceController.text.trim();
       final generator =
           widget.generateRealClipCaption ?? _apiClient.generateCaptionFromClip;
+      if (_isClipGroupSharedCaption &&
+          !await _validateInlineCaptionContext(stillCurrent)) {
+        return;
+      }
+      if (!stillCurrent()) return;
+      final requestContext = _captionInputContext();
       final caption = await generator(
         GenerateRealClipCaptionRequest(
           audioS3Key: clipMedia.isAudio ? clipMedia.s3Key : null,
@@ -3281,17 +3942,17 @@ class _UploaderScreenState extends State<UploaderScreen>
         return;
       }
 
-      if (!textUnchanged()) {
-        setState(() => _aiCaptionErrorMessage =
-            'คุณแก้ข้อความระหว่างที่ AI ทำงาน จึงเก็บข้อความที่คุณเขียนไว้');
+      if (_isClipGroupSharedCaption &&
+          !await _validateInlineCaptionContext(stillCurrent)) {
         return;
       }
+      if (!stillCurrent()) return;
       if (caption.isFallback) {
         setState(() => _aiCaptionFallbackMessage = _captionFallbackNotice(caption));
         return;
       }
+      final captions = <SocialPlatform, String>{};
       if (advanced) {
-        final captions = <SocialPlatform, String>{};
         for (final platform in requestedPlatforms) {
           final generated = caption.platformCaptions[platform.apiValue];
           if (generated == null || generated.caption.trim().isEmpty) {
@@ -3301,50 +3962,6 @@ class _UploaderScreenState extends State<UploaderScreen>
           captions[platform] =
               _formatCaptionParts(generated.caption, generated.hashtags);
         }
-        if (!mounted) return;
-        setState(() {
-          _isGeneratingCaption = false;
-          _isChoosingCaption = true;
-        });
-        final accepted = await showModalBottomSheet<bool>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          builder: (sheetContext) {
-            _platformCaptionPreviewContext = sheetContext;
-            return PlatformCaptionPreviewSheet(
-                captions: captions,
-                isFallback: caption.isFallback,
-                charged: caption.quota.charged);
-          },
-        );
-        _platformCaptionPreviewContext = null;
-        if (mounted) setState(() => _isChoosingCaption = false);
-        if (accepted != true || !stillCurrent() || !textUnchanged()) {
-          return;
-        }
-        setState(() {
-          final previousTikTokCaption = _effectiveCaption(SocialPlatform.tiktok);
-          _platformCaptionsBeforeAi = Map.of(_platformSettings.platformCaptions);
-          _platformCaptionUndoPlatforms = requestedPlatforms.toSet();
-          _platformCaptionReviewBeforeAi = _captionNeedsReview;
-          _platformSettings = _platformSettings.copyWith(platformCaptions: {
-            ..._platformSettings.platformCaptions,
-            ...captions,
-          });
-          if (_effectiveCaption(SocialPlatform.tiktok) != previousTikTokCaption) {
-            _clearTikTokFreshness();
-          }
-          // A partial generation cannot review the other captions for a new clip.
-          _captionNeedsReview = _captionNeedsReview &&
-              requestedPlatforms.length < captionPlatforms.length;
-          _aiCaptionFallbackMessage = null;
-          _acceptedAiCaption = jsonEncode(_platformSettings.platformCaptions
-              .map((key, value) => MapEntry(key.apiValue, value)));
-          _acceptedAiCaptionOwner = owner;
-          _acceptedAiCaptionSource = sourcePath;
-        });
-        return;
       }
       final choices = <String>{
         nextCaption,
@@ -3352,52 +3969,24 @@ class _UploaderScreenState extends State<UploaderScreen>
           if (option.trim().isNotEmpty)
             _formatCaptionParts(option, caption.hashtags),
       }.where((value) => value.isNotEmpty).take(3).toList();
-      var selectedCaption = nextCaption;
-      if (choices.length > 1 || originalCaption.trim().isNotEmpty) {
-        // The modal protects input while the snapshots also guard changes
-        // caused by a new owner, clip or text behind the sheet.
-        if (!mounted) return;
-        setState(() {
-          _isGeneratingCaption = false;
-          _isChoosingCaption = true;
-        });
-        final selected = await showModalBottomSheet<String>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          builder: (sheetContext) {
-            _platformCaptionPreviewContext = sheetContext;
-            return CaptionOptionsPreviewSheet(captions: choices);
-          },
-        );
-        _platformCaptionPreviewContext = null;
-        if (mounted) setState(() => _isChoosingCaption = false);
-        if (selected == null || !stillCurrent() || !textUnchanged()) return;
-        selectedCaption = selected;
-      }
-      setState(() {
-        _sharedCaptionBeforeAi = (
-          text: _captionController.text,
-          needsReview: _captionNeedsReview,
-          fallbackMessage: _aiCaptionFallbackMessage,
-          seoKeywords: List.of(_aiCaptionSeoKeywords),
-        );
-        _captionController.value = TextEditingValue(
-          text: selectedCaption,
-          selection: TextSelection.collapsed(offset: selectedCaption.length),
-        );
-        _captionNeedsReview = false;
-        _acceptedAiCaption = selectedCaption;
-        _acceptedAiCaptionOwner = owner;
-        _acceptedAiCaptionSource = sourcePath;
-        _captionRevealRevision++;
-        _aiCaptionSeoKeywords = caption.seoKeywords
+      final generated = _GeneratedCaptionResult(session: quotaSession,
+          inputContext: requestContext, sourcePath: sourcePath,
+          creditsUsed: caption.quota.charged ? requiredCredits : 0,
+          captions: captions, choices: choices,
+          seoKeywords: caption.seoKeywords
             .map((keyword) => keyword.trim())
             .where((keyword) => keyword.isNotEmpty)
             .toSet()
-            .toList();
-        _aiCaptionFallbackMessage = null;
-      });
+            .toList());
+      setState(() => _latestGeneratedCaption = generated);
+      if (!textUnchanged()) {
+        setState(() => _aiCaptionErrorMessage =
+            'คุณแก้ข้อความระหว่างที่ AI ทำงาน จึงเก็บข้อความที่คุณเขียนไว้');
+        return;
+      }
+      await _reviewCaptionResult(generated, stillCurrent, textUnchanged);
+    } on _ObsoleteCaptionException {
+      // A stale inline source keeps its existing text and the contextual error.
     } on ApiException catch (error) {
       if (!stillCurrent()) {
         return;
@@ -3518,6 +4107,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _pickVideoFile() async {
+    if (widget.clipGroupEditor) return;
     final picker = widget.pickVideo ?? GalleryVideoPicker().pickVideo;
 
     try {
@@ -3682,8 +4272,12 @@ class _UploaderScreenState extends State<UploaderScreen>
     final previousDraftId = _activeDraftId;
     final previousCreatedAt = _activeDraftCreatedAt;
     final previousUploadedMedia = _activeDraftUploadedMedia;
+    final previousClipGroupId = _activeClipGroupId;
+    final previousIsClipGroupSource = _activeIsClipGroupSource;
     setState(() {
       _activeDraftId = null;
+      _activeClipGroupId = null;
+      _activeIsClipGroupSource = false;
       _activeDraftCreatedAt = null;
       _activeDraftUploadedMedia = null;
     });
@@ -3692,6 +4286,8 @@ class _UploaderScreenState extends State<UploaderScreen>
     if (saved == null) {
       setState(() {
         _activeDraftId = previousDraftId;
+        _activeClipGroupId = previousClipGroupId;
+        _activeIsClipGroupSource = previousIsClipGroupSource;
         _activeDraftCreatedAt = previousCreatedAt;
         _activeDraftUploadedMedia = previousUploadedMedia;
       });
@@ -3706,6 +4302,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   Future<PublishDraft?> _persistCurrentDraft({
     required bool showSavedMessage,
   }) async {
+    if (_isClipGroupSharedCaption) return null;
     if (_isSavingDraft || _isSubmitting || _isGeneratingCaption) return null;
     _isSavingDraft = true;
     if (mounted) {
@@ -3740,6 +4337,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   Future<PublishDraft?> _persistCurrentDraftWhileLocked({
     required bool showSavedMessage,
   }) async {
+    if (_isClipGroupSharedCaption) return null;
     final preserveTikTokConsent =
         _tikTokConsentedIntent == _tikTokConsentIntent;
     // A historical upload may already belong to an accepted request whose
@@ -3794,6 +4392,15 @@ class _UploaderScreenState extends State<UploaderScreen>
     final coverLease = cover?.retainTemporaryFiles();
 
     try {
+      if (widget.beforeClipGroupMemberSave != null) {
+        await widget.beforeClipGroupMemberSave!(
+            draftId, _captionController.text);
+        if (!_draftOperationStillOwned(
+            ownerUserId: ownerUserIdAtStart,
+            generation: draftGenerationAtStart)) {
+          return null;
+        }
+      }
       final watermarkEnabled = await _watermarkEnabledForCurrentSelection();
       final desiredPlatforms = {
         ..._selectedPlatforms,
@@ -3828,6 +4435,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           coverSourceImageFile: cover?.sourceImageFile,
           coverSourceImageName: cover?.sourceImageName,
           uploadedMedia: _activeDraftUploadedMedia,
+          clipGroupId: _activeClipGroupId,
+          isClipGroupSource: _activeIsClipGroupSource,
         ),
       );
       if (!_draftOperationStillOwned(
@@ -3850,6 +4459,8 @@ class _UploaderScreenState extends State<UploaderScreen>
         _activeDraftCreatedAt = saved.createdAt;
         _activeDraftWatermarkEnabled = saved.watermarkEnabled;
         _activeDraftUploadedMedia = saved.uploadedMedia;
+        _activeClipGroupId = saved.clipGroupId;
+        _activeIsClipGroupSource = saved.isClipGroupSource;
         _platformSettings = saved.platformSettings;
         _selectedVideoName = saved.videoName;
         _localFilePathController.text = saved.videoPath;
@@ -3858,7 +4469,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         _widthController.text = saved.videoWidth?.toString() ?? '';
         _heightController.text = saved.videoHeight?.toString() ?? '';
         _coverResult = persistedCover;
-        _drafts = drafts;
+        _drafts = projectClipGroupDrafts(drafts, _clipGroupRecords.values);
         _successMessage = showSavedMessage
             ? 'บันทึกร่างในเครื่องแล้ว · ยังไม่อัปโหลด ไม่โพสต์ และไม่ใช้โควตา'
             : null;
@@ -3916,6 +4527,15 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   bool _draftBelongsToCurrentSession(PublishDraft draft) {
+    if (widget.clipGroupEditor) {
+      final binding = widget.clipGroupOwnerSession;
+      return binding != null &&
+          binding.isCurrent &&
+          binding.userId == draft.ownerUserId &&
+          binding.userId ==
+              PostDeeAuthSessionStore.instance.session.stableUserId &&
+          PostDeeAuthSessionStore.instance.session.isSignedIn;
+    }
     if (widget.draftStore != null) return true;
     final ownerUserId = PostDeeAuthSessionStore.instance.session.stableUserId;
     return ownerUserId != null &&
@@ -3927,6 +4547,15 @@ class _UploaderScreenState extends State<UploaderScreen>
     required String? ownerUserId,
     required int generation,
   }) {
+    if (widget.clipGroupEditor) {
+      final binding = widget.clipGroupOwnerSession;
+      return binding != null &&
+          binding.isCurrent &&
+          generation == _draftLoadGeneration &&
+          binding.userId ==
+              PostDeeAuthSessionStore.instance.session.stableUserId &&
+          PostDeeAuthSessionStore.instance.session.isSignedIn;
+    }
     if (widget.draftStore != null) return true;
     return ownerUserId != null &&
         generation == _draftLoadGeneration &&
@@ -3951,13 +4580,15 @@ class _UploaderScreenState extends State<UploaderScreen>
       _blockedSubmissionDraftIds.remove(activeDraftId);
     }
     _activeDraftId = null;
+    _activeClipGroupId = null;
+    _activeIsClipGroupSource = false;
     _activeDraftCreatedAt = null;
     _activeDraftWatermarkEnabled = null;
     _activeDraftUploadedMedia = null;
     _selectedVideoName = null;
     _setVideoDuration(null);
     _coverResult = null;
-    _captionController.clear();
+    if (!_isClipGroupSharedCaption) _captionController.clear();
     _captionNeedsReview = false;
     _aiGuidanceController.clear();
     _captionLanguage = 'auto';
@@ -3984,6 +4615,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _restoreDraft(PublishDraft draft) async {
+    if (_isClipGroupSharedCaption &&
+        (!_clipGroupCaptionOwned || draft.id != widget.initialDraftId)) {
+      return;
+    }
     if (!_draftBelongsToCurrentSession(draft)) {
       _showDraftOwnerChangedError();
       return;
@@ -4008,6 +4643,8 @@ class _UploaderScreenState extends State<UploaderScreen>
 
     setState(() {
       _activeDraftId = draft.id;
+      _activeClipGroupId = draft.clipGroupId;
+      _activeIsClipGroupSource = draft.isClipGroupSource;
       _platformValidationTarget = null;
       _recoveredPost = null;
       _platformSettingsFromRestoredDraft = true;
@@ -4022,10 +4659,14 @@ class _UploaderScreenState extends State<UploaderScreen>
       _sizeBytesController.text = draft.videoSizeBytes.toString();
       _widthController.text = draft.videoWidth?.toString() ?? '';
       _heightController.text = draft.videoHeight?.toString() ?? '';
-      _captionController.text = draft.caption;
+      if (!_isClipGroupSharedCaption) _captionController.text = draft.caption;
       _captionNeedsReview = draft.captionNeedsReview;
-      _aiGuidanceController.text = draft.aiGuidance;
-      _captionLanguage = readCaptionOutputLanguage(draft.captionLanguage);
+      _aiGuidanceController.text = _isClipGroupSharedCaption
+          ? widget.clipGroupCaptionContext?.aiGuidance ?? draft.aiGuidance
+          : draft.aiGuidance;
+      _captionLanguage = readCaptionOutputLanguage(_isClipGroupSharedCaption
+          ? widget.clipGroupCaptionContext?.captionLanguage ?? draft.captionLanguage
+          : draft.captionLanguage);
       _selectedPlatforms
         ..clear()
         ..addAll(desiredPlatforms.where(_connectedPlatforms.contains));
@@ -4037,6 +4678,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           ),
         );
       _platformSettings = draft.platformSettings.copyWith(
+        usePlatformCaptions:
+            _isClipGroupSharedCaption ? false : draft.platformSettings.usePlatformCaptions,
         youtubeCommunityGuidelinesCertified: false,
         tiktokMusicUsageConfirmed: false,
         tiktokBrandedContentPolicyConfirmed: false,
@@ -4064,6 +4707,7 @@ class _UploaderScreenState extends State<UploaderScreen>
               : 'บางช่องทางในร่างยังไม่ได้เชื่อมต่อ กรุณาเชื่อมใหม่ก่อนโพสต์';
       _savedFormSnapshot = _formSnapshot;
       _invalidateAiCaption();
+      if (_isClipGroupSharedCaption) _clipGroupCaptionSourceReady = true;
     });
     if (previousCover != null && !identical(previousCover, _coverResult)) {
       unawaited(previousCover.cleanupTemporaryFiles());
@@ -4152,7 +4796,8 @@ class _UploaderScreenState extends State<UploaderScreen>
             ownerUserId: ownerUserIdAtStart,
             generation: draftGenerationAtStart,
           )) {
-        setState(() => _drafts = drafts);
+        setState(() => _drafts =
+            projectClipGroupDrafts(drafts, _clipGroupRecords.values));
       }
     } catch (_) {
       // The requested draft is already gone and the local list was updated.
@@ -4228,38 +4873,53 @@ class _UploaderScreenState extends State<UploaderScreen>
                           physics: MediaQuery.textScalerOf(context).scale(14) > 20
                               ? const NeverScrollableScrollPhysics()
                               : null,
-                          itemCount: _drafts.length,
+                          itemCount: clipGroupDraftList(_drafts,
+                                  groups: _clipGroupRecords.values).length,
                           separatorBuilder: (_, __) => const Divider(),
                           itemBuilder: (context, index) {
-                            final draft = _drafts[index];
+                            final entry = clipGroupDraftList(_drafts,
+                                groups: _clipGroupRecords.values)[index];
+                            final draft = entry.primaryDraft;
                             return ListTile(
                               key: ValueKey('publish-draft-${draft.id}'),
                               contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.video_file_outlined),
+                              leading: Icon(entry.isGroup
+                                  ? Icons.video_library_outlined
+                                  : Icons.video_file_outlined),
                               title: Text(
-                                draft.caption.trim().isEmpty
-                                    ? draft.videoName
-                                    : draft.caption.trim(),
+                                entry.displayTitle,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: UploaderText(
-                                '${draft.platformApiValues.length} ช่องทาง · เก็บในเครื่อง',
-                              ),
+                              subtitle: entry.isGroup
+                                  ? Text(uploaderText(context, 'ชุดคลิปที่บันทึกไว้',
+                                      'Saved clip set'))
+                                  : UploaderText(
+                                      '${draft.platformApiValues.length} ช่องทาง · เก็บในเครื่อง'),
                               trailing: IconButton(
                                 key: ValueKey(
                                   'publish-draft-delete-${draft.id}',
                                 ),
-                                tooltip: localizeUploaderMessage(context, 'ลบฉบับร่าง'),
+                                tooltip: entry.isGroup
+                                    ? uploaderText(context, 'ลบชุดคลิป', 'Delete clip set')
+                                    : localizeUploaderMessage(context, 'ลบฉบับร่าง'),
                                 onPressed: () async {
-                                  await _deleteDraft(draft);
+                                  if (entry.isGroup) {
+                                    await _deleteClipGroupEntry(entry);
+                                  } else {
+                                    await _deleteDraft(draft);
+                                  }
                                   if (mounted) setSheetState(() {});
                                 },
                                 icon: const Icon(Icons.delete_outline),
                               ),
                               onTap: () async {
                                 Navigator.of(sheetContext).pop();
-                                await _restoreDraft(draft);
+                                if (entry.isGroup) {
+                                  await _openSavedClipGroup(entry.groupId!);
+                                } else {
+                                  await _restoreDraft(draft);
+                                }
                               },
                             );
                           },
@@ -4281,6 +4941,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   /// no clip is selected yet, skip straight to [_createPost] so its validation
   /// message shows instead of reviewing an empty post.
   Future<void> _reviewThenPost() async {
+    if (widget.clipGroupEditor) {
+      await _saveClipGroupMemberAndClose();
+      return;
+    }
     if (_isPreparingReview ||
         _isSubmitting ||
         _isSavingDraft ||
@@ -4402,6 +5066,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         _errorMessage = 'เวลาตั้งโพสต์ไม่ถูกต้อง กรุณาเลือกใหม่';
         _successMessage = null;
       });
+      _revealFormError();
       return;
     }
     final now = widget.now();
@@ -4410,6 +5075,7 @@ class _UploaderScreenState extends State<UploaderScreen>
         _errorMessage = 'เวลาเดิมผ่านไปแล้ว เลือกเวลาใหม่หรือเลือกโพสต์เลย';
         _successMessage = null;
       });
+      _revealFormError();
       return;
     }
 
@@ -4445,6 +5111,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   Future<QueuedPostResult?> _createPost([
     PublishProgressReporter? reportProgress,
   ]) async {
+    if (widget.clipGroupEditor || _isClipGroupSharedCaption) return null;
     if (_isPreparingSubmission ||
         _isSubmitting ||
         _isGeneratingCaption ||
@@ -5156,6 +5823,15 @@ class _UploaderScreenState extends State<UploaderScreen>
         return null;
       }
       report(PublishFlowStage.finalizing, 0.96);
+      final groupCheckpoint = _clipGroupAcceptedCheckpoint;
+      if (groupCheckpoint != null) {
+        if (post.videoS3Key != uploadedVideoS3Key) {
+          throw const ClipGroupDraftException(
+              'ข้อมูลโพสต์ที่ตอบกลับไม่ตรงกับคลิป กรุณาตรวจรายการเดิม');
+        }
+        await groupCheckpoint(post);
+        ensureSubmissionStillOwned();
+      }
       _blockedSubmissionDraftIds.remove(submittedDraftId);
 
       var draftCleanupWarning = '';
@@ -5189,7 +5865,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                   ownerUserId: submittedDraftOwnerUserId,
                   generation: submittedDraftGeneration,
                 )) {
-              setState(() => _drafts = drafts);
+              setState(() => _drafts =
+                  projectClipGroupDrafts(drafts, _clipGroupRecords.values));
             }
           } catch (_) {
             draftCleanupWarning = ' · ลบร่างแล้ว แต่รีเฟรชรายการร่างไม่สำเร็จ';
@@ -5448,6 +6125,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _setPlatformSelected(SocialPlatform platform, bool isSelected) {
+    if (widget.clipGroupEditor) return;
     if (isSelected && _durationProblem(platform) != null) return;
     setState(() {
       _clearTikTokFreshness();
@@ -5461,17 +6139,19 @@ class _UploaderScreenState extends State<UploaderScreen>
     });
   }
 
-  Future<void> _openPlatformSettings(SocialPlatform platform) async {
+  Future<void> _openPlatformSettings(SocialPlatform platform,
+      {String? clipContextLabel}) async {
     if (_platformSettingsSheetOpen) return;
     _platformSettingsSheetOpen = true;
     try {
-      await _showPlatformSettings(platform);
+      await _showPlatformSettings(platform, clipContextLabel: clipContextLabel);
     } finally {
       _platformSettingsSheetOpen = false;
     }
   }
 
-  Future<void> _showPlatformSettings(SocialPlatform platform) async {
+  Future<void> _showPlatformSettings(SocialPlatform platform,
+      {String? clipContextLabel}) async {
     if (platform == SocialPlatform.tiktok) setState(_clearTikTokFreshness);
     final session = PostDeeAuthSessionStore.instance.captureSession();
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
@@ -5557,6 +6237,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           useSafeArea: true,
           builder: (_) => settingsLoader((settings, memoryMessage) =>
               TikTokPublishingSettingsSheet(
+                  clipContextLabel: clipContextLabel,
                   initialSettings: settings,
                   memoryMessage: memoryMessage,
                   connectionDisplayName:
@@ -5710,6 +6391,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _selectAllConnectedPlatforms() {
+    if (widget.clipGroupEditor) return;
     final compatible = _connectedPlatforms
         .where((platform) => _durationProblem(platform) == null)
         .toList();
@@ -5720,6 +6402,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _clearSelectedPlatforms() {
+    if (widget.clipGroupEditor) return;
     setState(() {
       _clearTikTokFreshness();
       _selectedPlatforms.clear();
@@ -5770,6 +6453,10 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_isClipGroupSharedCaption) {
+      _queueClipGroupCaptionNotifications();
+      return _buildClipGroupSharedCaptionBody(context);
+    }
     final body = LayoutBuilder(
         builder: (context, constraints) {
           // Reserve typing space while the keyboard resizes the large-text
@@ -5942,6 +6629,24 @@ class _UploaderScreenState extends State<UploaderScreen>
                               ],
                               const SizedBox(height: 12),
                               _buildPostQuota(),
+                              _buildPostingChecklist(),
+                              if (_clipSplitExceededPlatforms.isNotEmpty) ...[
+                                const SizedBox(height: AppTheme.spaceMd),
+                                ClipSplitPrompt(
+                                  exceededPlatforms: _clipSplitExceededPlatforms,
+                                  hasSelectedChannels: _selectedPlatforms.isNotEmpty,
+                                  needsSubmissionRecovery:
+                                      _activeDraftUploadedMedia != null ||
+                                          _requiresNewSubmissionAttempt,
+                                  onOpen: _formBusy ||
+                                          _isGeneratingCaption ||
+                                          _activeDraftUploadedMedia != null ||
+                                          _requiresNewSubmissionAttempt
+                                      ? null
+                                      : _openClipSplitPlan,
+                                ),
+                                const SizedBox(height: AppTheme.spaceMd),
+                              ],
                               VideoDurationGuide(
                                 durationSeconds: _videoDurationSeconds,
                                 tikTokMaxDurationSeconds: _tikTokGuideMaximum,
@@ -5952,7 +6657,6 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 onRetryTikTokLimit: _retryTikTokDurationLimit,
                               ),
                               const SizedBox(height: 16),
-                              _buildPostingChecklist(),
                             ],
                             if (_currentStep == 1) ...[
                               if (_selectedVideoName != null) ...[
@@ -6092,6 +6796,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                         selectedTime: _selectedScheduleTime,
                                         schedulePlan:
                                             _scheduleSubscription?.plan,
+                                        scheduleAvailable: _postQuota?.canSchedule,
                                         onPostNow: _clearSchedule,
                                         onSchedule: _useSuggestedSchedule,
                                         onQuickDaySelected:
@@ -6162,7 +6867,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       canPop: _allowExit,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || _formBusy) return;
-        if (_currentStep > 0) {
+        if (widget.clipGroupEditor && _currentStep <= 1) {
+          unawaited(_requestExit());
+        } else if (_currentStep > 0) {
           _goToStep(_currentStep - 1);
         } else {
           unawaited(_requestExit());
@@ -6172,7 +6879,9 @@ class _UploaderScreenState extends State<UploaderScreen>
     );
   }
 
-  Widget _buildToolbar(BuildContext context) => Padding(
+  Widget _buildToolbar(BuildContext context) => widget.clipGroupEditor
+      ? _buildClipGroupEditorToolbar(context)
+      : Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -6196,7 +6905,8 @@ class _UploaderScreenState extends State<UploaderScreen>
                         ? null
                         : _openDrafts,
                 icon: const Icon(Icons.folder_open_outlined, size: 17),
-                label: UploaderText('ฉบับร่าง (${_drafts.length})')),
+                label: UploaderText(
+                    'ฉบับร่าง (${clipGroupDraftList(_drafts, groups: _clipGroupRecords.values).length})')),
             OutlinedButton.icon(
                 key: const ValueKey('uploader-save-draft-button'),
                 style: OutlinedButton.styleFrom(
@@ -6327,23 +7037,78 @@ class _UploaderScreenState extends State<UploaderScreen>
         enabled: !_formBusy);
   }
 
+  Widget _buildClipGroupSharedCaptionBody(BuildContext context) {
+    if (!_clipGroupCaptionOwned) {
+      return PostDeeNotice(
+          key: const ValueKey('clip-group-shared-caption-source-error'),
+          message: uploaderText(context,
+              'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดชุดคลิปใหม่',
+              'Your account changed. Reopen this clip set.'),
+          icon: Icons.error_outline);
+    }
+    if (_isLoadingDrafts || _isRestoringInitialDraft) {
+      return Column(
+          key: const ValueKey('clip-group-shared-caption-source-loading'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const LinearProgressIndicator(),
+            const SizedBox(height: AppTheme.spaceSm),
+            Text(uploaderText(context, 'กำลังเปิดคลิปต้นฉบับ...',
+                'Opening the original video...')),
+          ]);
+    }
+    if (!_clipGroupCaptionSourceReady) {
+      return PostDeeNotice(
+          key: const ValueKey('clip-group-shared-caption-source-error'),
+          message: uploaderText(context,
+              'เปิดคลิปต้นฉบับไม่ได้ ข้อความเดิมยังอยู่ กรุณาเปิดชุดคลิปใหม่',
+              'Could not open the original video. Your text is kept. Reopen this clip set.'),
+          icon: Icons.error_outline);
+    }
+    return AbsorbPointer(
+      key: const ValueKey('clip-group-shared-caption-editor'),
+      absorbing: !widget.clipGroupCaptionEnabled,
+      child: _buildCaptionCard(context),
+    );
+  }
+
   Widget _buildCaptionCard(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!_isClipGroupSharedCaption) ...[
           PostDeeCard(
             padding: EdgeInsets.zero,
             child: SwitchListTile.adaptive(
               key: const ValueKey('uploader-platform-captions-toggle'),
-              title: const CaptionText('ตั้งค่าขั้นสูง'),
+              title: const CaptionText('ใช้แคปชั่นแยกตามช่องทาง'),
               subtitle: CaptionText(_platformSettings.usePlatformCaptions
                   ? 'เขียนเอง หรือเลือกช่องทางที่ต้องการให้ AI เขียน'
-                  : 'เขียนแคปชั่นแยกแต่ละช่องทาง'),
+                  : 'ตอนนี้ใช้แคปชั่นเดียวกันทุกช่องทาง'),
               secondary: const Icon(Icons.tune, color: AppTheme.accent),
               value: _platformSettings.usePlatformCaptions,
-              onChanged: _formBusy ? null : _setAdvancedCaptions,
+              onChanged: _formBusy || _isGeneratingCaption || _isChoosingCaption
+                  ? null : _setAdvancedCaptions,
             ),
           ),
           const SizedBox(height: 12),
+          ],
+          if (!_platformSettings.usePlatformCaptions)
+            Align(alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                    key: const ValueKey('uploader-ai-open-shortcut'),
+                    onPressed: _formBusy || _isGeneratingCaption || _isChoosingCaption
+                        ? null : () async {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      final anchor = _aiCaptionActionContext;
+                      if (anchor != null && anchor.mounted) {
+                        await Scrollable.ensureVisible(anchor,
+                          alignment: .7,
+                          duration: _uploaderMotionAllowed(context, _appIsResumed)
+                              ? const Duration(milliseconds: 200) : Duration.zero);
+                      }
+                    },
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: const CaptionText('เปิดตัวช่วย AI'))),
           if (_platformSettings.usePlatformCaptions) ...[
             _buildAiCaptionPanel(),
             const SizedBox(height: 12),
@@ -6579,6 +7344,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Widget _buildAiCaptionPanel() => _AiCaptionPanel(
+        onActionBuilt: (context) => _aiCaptionActionContext = context,
+        onReopenResult: _reusableCaptionResult == null ? null : _reopenCaptionResult,
         guidanceController: _aiGuidanceController,
         captionLanguage: _captionLanguage,
         languageSelectionScope: (
@@ -6633,6 +7400,9 @@ class _UploaderScreenState extends State<UploaderScreen>
       );
 
   Widget _buildStickyActionBar(BuildContext context) {
+    if (widget.clipGroupEditor) {
+      return _buildClipGroupEditorActionBar(context);
+    }
     final canConfirm = _destinationsReady && _postTextValidationError() == null;
     final backAction = _press(
         OutlinedButton(
@@ -7959,6 +8729,28 @@ class _PlatformSettingsSheetState extends State<_PlatformSettingsSheet> {
                               ));
                         },
                       ),
+                      const SizedBox(height: AppTheme.spaceSm),
+                      Text(
+                        channelText(context,
+                            switch (current.youtubeVisibility) {
+                              YouTubeVisibility.private =>
+                                'เฉพาะคุณและคนที่คุณเลือกแชร์ให้เท่านั้นที่ดูได้',
+                              YouTubeVisibility.unlisted =>
+                                'ทุกคนที่มีลิงก์ดูได้ และส่งลิงก์ต่อได้',
+                              YouTubeVisibility.public =>
+                                'ทุกคนดูได้ และอาจพบวิดีโอนี้ในการค้นหาหรือหน้าแนะนำ',
+                            },
+                            switch (current.youtubeVisibility) {
+                              YouTubeVisibility.private =>
+                                'Only you and people you explicitly share with can watch this video.',
+                              YouTubeVisibility.unlisted =>
+                                'Anyone with the link can watch and share the link.',
+                              YouTubeVisibility.public =>
+                                'Anyone can watch. This video may appear in search or recommendations.',
+                            }),
+                        key: const ValueKey('uploader-youtube-visibility-help'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                       if (current.youtubeVisibility !=
                           YouTubeVisibility.private) ...[
                         const SizedBox(height: 8),
@@ -8520,6 +9312,8 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
 
 class _AiCaptionPanel extends StatelessWidget {
   const _AiCaptionPanel({
+    this.onActionBuilt,
+    this.onReopenResult,
     required this.guidanceController,
     required this.captionLanguage,
     required this.languageSelectionScope,
@@ -8545,6 +9339,8 @@ class _AiCaptionPanel extends StatelessWidget {
   });
 
   final TextEditingController guidanceController;
+  final ValueChanged<BuildContext>? onActionBuilt;
+  final VoidCallback? onReopenResult;
   final String captionLanguage;
   final Object languageSelectionScope;
   final ValueChanged<String?> onLanguageChanged;
@@ -8621,7 +9417,7 @@ class _AiCaptionPanel extends StatelessWidget {
                 ),
               ]),
               const SizedBox(height: 4),
-              CaptionText('เลือกช่องทางที่ต้องการ',
+              CaptionText('เลือกช่องทางให้ AI เขียน',
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
@@ -8742,16 +9538,21 @@ class _AiCaptionPanel extends StatelessWidget {
             // The tap still re-checks the fresh plan, so a stale Basic quota
             // never blocks someone who has just upgraded.
             if (aiLocked)
-              OutlinedButton.icon(
+              Builder(builder: (actionContext) {
+                onActionBuilt?.call(actionContext);
+                return OutlinedButton.icon(
                 key: const ValueKey('uploader-ai-generate-button'),
                 onPressed: formBusy || isGenerating || isSavingStyle
                     ? null
                     : onGenerate,
                 icon: const Icon(Icons.workspace_premium_outlined, size: 18),
                 label: const CaptionText('ดูแพ็กเกจเพื่อใช้ AI'),
-              )
+                );
+              })
             else
-            PostDeePressFeedback(
+            Builder(builder: (actionContext) {
+              onActionBuilt?.call(actionContext);
+              return PostDeePressFeedback(
               enabled: animate &&
                   !insufficientCredits &&
                   !formBusy &&
@@ -8766,13 +9567,9 @@ class _AiCaptionPanel extends StatelessWidget {
                     ? 'กำลังเตรียมแคปชัน...'
                     : isSavingStyle
                         ? 'กำลังบันทึกสไตล์...'
-                        : compact
-                            ? requiredCredits == 0
+                        : requiredCredits == 0
                                 ? 'เลือกช่องทางให้ AI เขียน'
-                                : 'สร้างแคปชั่น · $requiredCredits เครดิต'
-                            : insufficientCredits
-                                ? 'เครดิต AI หมดแล้ว'
-                                : 'ให้ AI ช่วยเขียน'),
+                                : 'สร้างแคปชั่น · $requiredCredits เครดิต'),
                 icon: Icons.auto_awesome,
                 onPressed: formBusy ||
                         insufficientCredits ||
@@ -8782,7 +9579,21 @@ class _AiCaptionPanel extends StatelessWidget {
                     ? null
                     : onGenerate,
               ),
-            ),
+              );
+            }),
+            if (!aiLocked) ...[
+              const SizedBox(height: AppTheme.spaceSm),
+              CaptionText('ใช้เครดิตเมื่อสร้างผลลัพธ์แล้ว เปิดดูหรือเลือกใช้ไม่หักเพิ่ม',
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: AppTheme.textSecondary)),
+            ],
+            if (onReopenResult != null)
+              TextButton.icon(
+                  key: const ValueKey('uploader-ai-reopen-result'),
+                  onPressed: formBusy || isGenerating || isChoosingCaption || isSavingStyle
+                      ? null : onReopenResult,
+                  icon: const Icon(Icons.history, size: 18),
+                  label: const CaptionText('ดูผล AI ที่สร้างไว้ · ไม่ใช้เครดิตเพิ่ม')),
             if (isGenerating || captionReady) ...[
               const SizedBox(height: 10),
               Semantics(
@@ -8899,6 +9710,7 @@ class _SchedulePanel extends StatelessWidget {
     required this.onPickCustomTime,
     required this.onPickCustomDate,
     this.schedulePlan,
+    this.scheduleAvailable,
   });
 
   static const _dayOptions = [
@@ -8973,6 +9785,7 @@ class _SchedulePanel extends StatelessWidget {
   final VoidCallback onPickCustomTime;
   final VoidCallback onPickCustomDate;
   final String? schedulePlan;
+  final bool? scheduleAvailable;
 
   DateTime _todayDate() {
     final currentTime = now().toLocal();
@@ -9096,6 +9909,16 @@ class _SchedulePanel extends StatelessWidget {
             ),
           ],
         ),
+        if (scheduleAvailable == false) ...[
+          const SizedBox(height: AppTheme.spaceSm),
+          Text(
+            reviewText(context,
+                'การตั้งเวลาใช้ Starter หรือ Pro · เก็บร่างในเครื่องไว้ก่อนได้',
+                'Scheduling needs Starter or Pro. You can save a local draft first.'),
+            key: const ValueKey('uploader-schedule-access-hint'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
         if (!hasSchedule && selectedDate != null) ...[
           const SizedBox(height: 10),
           Text(

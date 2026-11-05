@@ -1,5 +1,68 @@
 # PostDee Mobile
 
+## Shared caption first after splitting (2026-11-05, Staging APK 12109 checked)
+
+The owner approved the first design: a card in the existing clip-selection
+screen, shown when the measured source is too long for a destination. Opening
+the plan performs no write or upload. Thai/English controls select destinations,
+choose affected-channel or matching-part mode, inspect source intervals and
+adjust a valid first boundary. The duration rules remain those of the guide
+below; unknown TikTok Direct capabilities keep that destination unavailable in
+the split plan until verified.
+
+Confirmation saves the entire original draft before native preparation. Equal
+intervals across channels share one file and draft; full-length destinations
+retain a copied original. Every new draft has its own submission identity, with
+the chosen Facebook/TikTok modes and AI disclosures retained but clip-specific
+confirmations reset. After splitting or reopening, the shared caption is expanded
+with the existing AI panel inline. Generation requires a manual click and uses
+the full retained original video; the source backup is never rewritten. Compact
+member rows provide manual caption overrides, member AI, cover and channel
+editing. Shared edits retain overrides and accepted/unknown intents, and restoring
+shared inheritance requires explicit confirmation. Guidance and the canonical
+output language are saved in optional journal context; existing journals stay
+readable. AI credits, style, undo, fallback and session/race checks remain in use.
+Each clip has an independently chosen date
+and time; no interval is calculated. A final explicit confirmation sends pending
+members through the existing single-post flow. Drafts shows one reopenable group
+row; the original stays stored. Splitting and local saves use no post quota or AI
+credits.
+
+Plans are limited to 64 distinct outputs. Native preparation uses H.264, AAC
+when the source has audio and CFR30, validates every output and provides scoped
+cancellation and temporary-file cleanup. An owner-bound version-1 group journal
+uses revision checks; optional group metadata keeps existing version-3 drafts
+compatible. Each accepted post is checkpointed before its child draft is deleted.
+Partial completion keeps accepted results and resumes remaining clips. Unknown
+outcomes recover the same original request first; only explicit Not Found permits
+a fresh review and exact-ID/receipt retry, while expired unknown schedules stay
+read-only. Quota, account readiness and per-media consent are checked per clip.
+
+Live preparation failures remove only untouched, unaccepted new drafts/groups;
+edited or accepted groups survive cleanup failure with residual IDs reported.
+Process termination may leave partial local drafts; inspect Drafts before retrying.
+The original and older drafts remain. This uploader utility does not restore the
+retired AI editor. No API, database, entitlement or environment change is required.
+
+Variant 2 source `54b222638` builds on `cffe7191` and verified `main` `8a340638`,
+preserving the 109-language picker and connection-screen changes. Final analysis
+passed in 18.0s. Guarded Staging APK 12109 built in 42.8s; installed SHA-256 matches
+`bdfc5338181cad46dd3e97f2acc198d83cfbe05e0952d169653c656a72f2179b`.
+The update retained UID 10197/internal storage on `emulator-5554`; the complete
+Mobile suite passed 5,489 tests with 10 optional skips in 8m01s. A fresh 180-second
+source split into one three-clip set and opened directly on the shared-caption/
+AI page. Native override preservation, language-only Back saving, restart/reopen
+and cancelling inheritance restoration passed. All 22 older JSON files and the
+new original backup retained their hashes. Detailed proof is in the work record.
+No actual AI, credit spend or social posting. Earlier
+APK 12108 hashes/data-retention/grouped-review checks and APK 12104/12105 split
+evidence remain historical in the work record. They do not verify inline shared
+AI. Live AI, paid-account native date/time pickers, real publishing, physical
+phones, iOS and live quality in all 109 languages remain unverified. No API,
+provider, credit-rule, database, environment, deployment, merge or push change.
+See the
+[work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Clip duration guide (2026-11-04, local candidate)
 
 The clip-selection step lists all four supported destinations below the clip's

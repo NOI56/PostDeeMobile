@@ -149,10 +149,14 @@ void main() {
     fixture.language.value = const Locale('th');
     await tester.pumpAndSettle();
     expect(find.text('เก็บโพสต์นี้ไว้ไหม?'), findsOneWidget);
+    expect(find.text('เก็บร่างไว้ในเครื่องเพื่อกลับมาแก้ต่อ ยังไม่ส่งไปโซเชียลและไม่ใช้หน่วยโพสต์'),
+        findsOneWidget);
     expect(find.text('บันทึกแล้วออก'), findsOneWidget);
     fixture.language.value = const Locale('en');
     await tester.pumpAndSettle();
     expect(find.text('Keep this post?'), findsOneWidget);
+    expect(find.text('Save a local draft to continue later. This does not send to social platforms or use post units.'),
+        findsOneWidget);
     await _dialogAction(tester, 'Keep editing');
 
     expect(find.byType(AlertDialog), findsNothing);

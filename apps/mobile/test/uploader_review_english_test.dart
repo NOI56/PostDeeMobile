@@ -54,7 +54,7 @@ class ReviewEnglishFixture extends ChannelsEnglishFixture {
   Future<SubscriptionStatusResult>? subscriptionGate;
   Future<void>? availabilityGate;
   bool allowFakePublish = false;
-  bool viewReadOnly = false;
+  bool reviewBlocked = false;
   bool bareMaterialApp = false;
   final uploads = <CreateUploadRequest>[];
   final uploadedPaths = <String>[];
@@ -178,7 +178,7 @@ class ReviewEnglishFixture extends ChannelsEnglishFixture {
       await tester.pumpAndSettle();
       await tapVideoEnglishControl(tester, 'uploader-progress-1');
       await tapVideoEnglishControl(tester, 'uploader-wizard-next');
-      if (!viewReadOnly &&
+      if (!reviewBlocked &&
           store.drafts[initialDraftId]!.platformApiValues
               .contains('YOUTUBE_SHORTS')) {
         await tapVideoEnglishControl(
@@ -196,7 +196,13 @@ class ReviewEnglishFixture extends ChannelsEnglishFixture {
       }
     }
     await tapVideoEnglishControl(
-        tester, viewReadOnly ? 'uploader-progress-3' : 'uploader-wizard-next');
+        tester, reviewBlocked ? 'uploader-progress-3' : 'uploader-wizard-next');
+    if (reviewBlocked) {
+      expect(find.byKey(const ValueKey('uploader-step-platforms')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('publish-review-confirm')), findsNothing);
+      return;
+    }
     expect(find.byKey(const ValueKey('uploader-step-review')), findsOneWidget,
         reason: tester
             .widgetList<Text>(find.byType(Text))
@@ -208,7 +214,7 @@ class ReviewEnglishFixture extends ChannelsEnglishFixture {
             .widget<FilledButton>(
                 find.byKey(const ValueKey('publish-review-confirm')))
             .onPressed,
-        viewReadOnly ? isNull : isNotNull);
+        isNotNull);
   }
 }
 
@@ -489,29 +495,34 @@ void main() {
   });
 
   testWidgets(
-      'restored overlong selection stays read-only with an English correction action',
+      'restored overlong selection returns to its channel with an English correction',
       (tester) async {
-    final fixture = ReviewEnglishFixture()..viewReadOnly = true;
+    final fixture = ReviewEnglishFixture()..reviewBlocked = true;
     fixture.initialVideo = fixture.makeVideo('คลิปยาวเกิน.mp4', duration: 700);
     addTearDown(fixture.dispose);
     await fixture.seed(platforms: {'TIKTOK'});
     await fixture.mount(tester);
-    await revealVideoEnglishControl(
-        tester, find.byKey(const ValueKey('uploader-selected-duration-error')));
     expect(
         find.text(
             'TikTok requires a video no longer than 10 minutes. Deselect this channel or choose another video.'),
         findsOneWidget);
-    expect(find.text('Edit channels'), findsOneWidget);
-    expect(find.text('Check destinations before sending'), findsOneWidget);
+    await revealVideoEnglishControl(
+        tester, find.byKey(const ValueKey('uploader-platform-duration-TIKTOK')));
+    expect(
+        find.text('TikTok requires a video no longer than 10 minutes. '
+            'This video cannot be posted to this channel.'),
+        findsOneWidget);
+    expect(channelEnglishIsSelected(tester, 'TIKTOK'), isTrue);
+    expect(find.byType(PublishReviewSummary), findsNothing);
+    expect(fixture.store.savedRequests, isEmpty);
     reviewEnglishNoSend(fixture);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-      'restored blocked permissions keep Confirm disabled and show the known prefix',
+      'restored blocked permissions return to channels and show the known prefix',
       (tester) async {
-    final fixture = ReviewEnglishFixture()..viewReadOnly = true;
+    final fixture = ReviewEnglishFixture()..reviewBlocked = true;
     addTearDown(fixture.dispose);
     await fixture.seed(platforms: {'TIKTOK'});
     fixture.readiness = const [
@@ -523,26 +534,33 @@ void main() {
         tester, find.text('TikTok: Reconnect this account before posting'));
     expect(find.text('TikTok: Reconnect this account before posting'),
         findsOneWidget);
-    expect(find.text('Check destinations before sending'), findsOneWidget);
+    expect(channelEnglishIsSelected(tester, 'TIKTOK'), isTrue);
+    expect(find.byType(PublishReviewSummary), findsNothing);
+    expect(fixture.store.savedRequests, isEmpty);
     reviewEnglishNoSend(fixture);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-      'missing identity remains a blocked Review rather than an invented destination',
+      'missing identity returns to channels without inventing a destination',
       (tester) async {
-    final fixture = ReviewEnglishFixture()..viewReadOnly = true;
+    final fixture = ReviewEnglishFixture()..reviewBlocked = true;
     addTearDown(fixture.dispose);
     await fixture.seed(platforms: {'TIKTOK'});
     fixture.connections = const [
       SocialConnectionResult(platform: 'TIKTOK', connected: true)
     ];
     await fixture.mount(tester);
-    await revealVideoEnglishControl(
-        tester, find.byKey(const ValueKey('publish-review-unknown-outcome')));
-    expect(find.byKey(const ValueKey('publish-review-unknown-outcome')),
+    expect(
+        find.text('The destination account or Page is not confirmed. '
+            'Refresh channels or reconnect it.'),
         findsOneWidget);
-    expect(find.text('Check destinations before sending'), findsOneWidget);
+    await revealVideoEnglishControl(
+        tester, find.byKey(const ValueKey('uploader-platform-account-TIKTOK')));
+    expect(find.text('Account not confirmed'), findsOneWidget);
+    expect(channelEnglishIsSelected(tester, 'TIKTOK'), isTrue);
+    expect(find.byType(PublishReviewSummary), findsNothing);
+    expect(fixture.store.savedRequests, isEmpty);
     reviewEnglishNoSend(fixture);
     expect(tester.takeException(), isNull);
   });

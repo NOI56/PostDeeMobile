@@ -1,5 +1,35 @@
 # API.md
 
+## Manual split source ranges (2026-11-05)
+
+Per-part start/end choices are local planning inputs, not posting dates or
+times. They feed the existing native segment request and local group interval
+fields; no API field, endpoint, migration, configuration or deployment is
+required. Local range editing, preview and preparation consume no credits or
+post units. Each resulting member keeps the existing single-post validation,
+consent, idempotency and quota contract; provider duration policy is unchanged.
+
+## Clip editor rendering fix (2026-11-05, Staging APK 12111)
+
+This Mobile-only route-shell fix adds no API request, schema, entitlement or
+credit-rule change. Opening Caption / AI continues to load the local draft and
+read current access; generation/upload still requires its separate explicit
+action. No API deploy or database migration is required.
+
+## Mobile posting clarity follow-up (2026-11-05, Staging APK 12110 checked)
+
+No route, payload, database, quota or entitlement change. Reopening valid cached
+AI choices is a local presentation action; fresh generation retains the existing
+request cost, reservation/refund and usage response. Closing a successful preview
+does not undo its generation charge. Local draft preparation/saves consume no
+post units. Accepted group receipts are not proof of platform publication; actual
+status and TikTok follow-up use the existing post-detail contract. Recovery keeps
+the original per-item request identities and never treats an unresolved receipt
+as permission to charge/create a replacement post.
+Source `3e52737a` passed the full Mobile suite and guarded emulator checks;
+this UI-only delivery requires no API deploy or database migration. Real provider
+generation and publishing were not exercised during this follow-up.
+
 ## Expanded caption languages (2026-11-04, local candidate)
 
 `POST /captions/generate-from-clip` extends the existing optional
@@ -25,6 +55,51 @@ exhaustive speech-language guarantee or measured quality on the configured
 **Roll out API before Mobile**: older APIs reject the new codes, while older
 clients continue sending their existing codes or Automatic. No migration.
 See the [work record](docs/superpowers/plans/2026-11-04-expanded-caption-languages.md).
+
+## Shared-caption-first clip sets (2026-11-05, Staging APK 12109 checked)
+
+The approved inline clip-splitting flow adds no route, request/response field,
+database migration, entitlement or environment variable. Planning, encoding
+and saving parts operate on device-local files and drafts; they call neither
+the publishing API nor an AI provider and reserve no credits.
+
+The Mobile group review saves shared/per-clip captions and independently chosen
+dates/times locally, then requires a final explicit confirmation. Each member
+uses the existing upload and `POST /posts` contract with its own stable
+`clientRequestId`, fresh readiness/consent and server quota checks. No batch-post
+endpoint or interval scheduling contract is introduced. Existing post creation
+charges one unit per destination; split estimates and local group saves reserve
+no quota. Identical intervals may share a draft with multiple destinations.
+
+The selected variant opens the shared caption and existing AI controls inline.
+Only an explicit AI action uses the existing caption/upload contract and its
+current credits, style, undo and fallback behavior. Shared generation reads the
+full retained original (`group.sourceDraftId`), while the source backup remains
+unchanged. Optional local `captionContext` stores guidance and canonical output
+language (`auto` plus the existing 109 choices); it adds no API field or provider
+change. Shared updates preserve custom captions and accepted/unknown request
+intents; per-member editing and independent schedules remain available.
+
+An owner-bound local journal checkpoints each accepted post before member-draft
+deletion. A partial run retains accepted results and resumes remaining members.
+An unknown result first uses the existing read-only submission recovery. Only
+explicit Not Found permits a freshly reviewed retry with the same original
+request ID and upload receipt; a failed lookup or an expired unknown schedule
+does not authorize a new POST. Facebook remains `platform: 'facebook'` with
+`platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and
+optional `isAiGenerated`, with no Page-feed fallback.
+
+Source `54b222638` builds on `cffe7191` and verified `main` `8a340638` without
+API/schema/environment/dependency changes or migration. Final analysis, full Mobile
+suite and guarded Staging APK 12109 build/install passed; API health returned HTTP
+200 with the same Firebase auth/Test Store configuration. Native shared/override
+caption and language-context restart checks passed without changing the source
+backup. No live AI, credit spend or social post was made. Detailed current proof
+is in the work record. Earlier APK 12108 grouped
+review and APK 12104/12105 splitting results remain separate historical proof.
+No live AI/real-publishing claim, API deployment, bootstrap change, merge or push
+is included. See the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## Clip duration guide (2026-11-04, Mobile-only candidate)
 

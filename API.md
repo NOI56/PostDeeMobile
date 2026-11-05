@@ -1,5 +1,11 @@
 # API.md
 
+API contract for PostDee. Keep contracts country-neutral: send timestamps as
+ISO-8601 (stored in UTC), preserve provider-neutral plan ids (`BASIC`, `STARTER`,
+`PRO`, `BUSINESS`), and avoid Thailand-only fields or formats. Dated headings
+record their original scope; see "Current status snapshot" in `ROADMAP.md`
+and exact delivery evidence in `docs/STAGING.md`.
+
 ## Manual split source ranges (2026-11-05)
 
 Per-part start/end choices are local planning inputs, not posting dates or
@@ -2151,10 +2157,17 @@ The backend currently supports:
   `POST /captions/generate` degrades directly to the local template caption;
   no secondary Gemini model is attempted.
 - Real-clip caption flow at `POST /captions/generate-from-clip`, with
-  Starter/Pro mode selection, authenticated media-key ownership checks,
+  Starter (audio) / Pro and Business (audio plus frames) mode selection,
+  Automatic or explicit output language, authenticated media-key ownership checks,
   optional temporary AI media cleanup, and monthly quota reservation through
   memory or Prisma-backed usage storage.
 - Saved templates
+- Public store-link pages (`/p/:slug`) with Thai/English language negotiation
+  and owner-managed themes; owner-written content is not translated
+- Support chat, the optional Dot helper, service status notices, and the
+  private admin console (documented in their dated sections above)
+- Basic/Starter/Pro/Business plans and consumable top-ups; offer availability
+  follows the target environment's configured sales switches
 - Authenticated retired-analytics compatibility response (`410 ANALYTICS_RETIRED`)
 - Store subscription verification scaffold for Apple App Store and Google Play
 - Store server notification routes for renewal, cancel, refund, and grace-period handoff

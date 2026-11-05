@@ -24,10 +24,11 @@ description: Change or add PostDee Flutter screens, layout, copy, or translation
 
 ## Copy and translations
 
-- Thai is the default language and English is complete. Every new user-visible string needs both.
+- Thai and English are supported. Startup uses the saved choice, then a supported phone language, then English; the controller's pre-bootstrap fallback is Thai. Every new user-visible string needs both.
 - Feature copy lives in per-feature `*_localizations.dart` files (for example `features/onboarding/onboarding_localizations.dart`, `features/uploader/channel_localizations.dart`): a Thai/English text helper and a Thai→English map. Add to the file for that feature. `core/localization/postdee_localizations.dart` holds app-wide strings and the language list.
 - Leave user data, platform names, and native language names untranslated.
 - Thai copy is short, friendly, and plain; avoid technical terms the seller would not use.
+- PostDee serves many countries (`AGENTS.md`, "Multi-Country Direction"). Use localized store prices and the user's locale/time zone; avoid fixed THB amounts, Thai-only phone examples, Bangkok time, or Thai-only legal wording.
 
 ## Behavior to keep
 

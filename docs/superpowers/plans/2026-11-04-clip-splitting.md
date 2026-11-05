@@ -1,5 +1,20 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Pending-work integration — 2026-11-05
+
+The owner authorized integrating the current clip work into main, pushing and
+deploying Staging. The candidate merges `codex/clip-group-review` `1c91c22e`
+onto verified `origin/main` `c5a418ae`, preserving PR #64 language persistence,
+country-neutral price copy and localized public-store pages. The prior
+`codex/clip-parts` checkpoint is an earlier version, not a second feature.
+Premium category label/padding and the pending delivery/documentation records
+are integrated separately. No API endpoint, schema, migration, entitlement,
+environment flag or provider-policy change is needed for local splitting.
+AI editing remains retired. Native APK 12112 and the test counts below belong
+to their named earlier sources; they do not prove the combined build or a real
+social publish. Record exact combined-source CI, API deploy and Mobile artifact
+checks in `docs/STAGING.md` before claiming that delivery complete.
+
 ## Per-part source range selection — 2026-11-05
 
 The owner could see the automatic parts but could not choose which source

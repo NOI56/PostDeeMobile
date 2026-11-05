@@ -2,6 +2,37 @@
 
 Build roadmap for PostDee.
 
+## Current status snapshot (2026-11-05)
+
+Dated headings below record each item's original scope. This snapshot
+reconciles older "local candidate" and sales-off statements; exact source,
+CI, hosted deploy and installed-app evidence remains in `docs/STAGING.md` and
+the linked work records. A source integration is not an app-store release.
+
+- Product direction: serve many countries, starting with Thailand. See
+  "Multi-Country Direction" in `AGENTS.md` and "Global Readiness Plan" below.
+- Verified integration baseline: `origin/main` `c5a418ae` (PR #64). Its hosted
+  Staging deploy is `dep-dbm6eedg1s2s73c8q6vg`, Live 2026-11-05 18:25 Thai time.
+  This includes scheduled-caption edits (#58), premium storefront (#59),
+  caption output choice (#60), clip-duration guidance (#61), 109 searchable
+  caption languages (#62), duplicate connect-button removal (#63), and saved
+  UI language/localized storefront/store-price copy (#64), plus earlier themes,
+  membership, packages, support and publishing systems.
+- The pending-work integration is based on that baseline and adds local clip
+  splitting, grouped review, shared captions, individual schedules, source-range
+  editing and the premium category label/padding adjustment. Existing APK 12112
+  evidence covers the earlier clip source, not the combined integration build.
+  No API endpoint, schema, migration, entitlement or environment change is added.
+  Local preparation consumes no post units/AI credits; actual generation and
+  submission retain the existing checks. AI video editing stays retired.
+- Business and replacement top-ups are enabled on Staging for RevenueCat Test
+  Store acceptance, with sandbox purchase/retained-credit evidence recorded.
+  Code defaults and Production remain unchanged; refund, interrupted recovery,
+  quota-enforcement and real-store billing acceptance are still incomplete.
+- Multi-country API/source support is not approval to launch in every market.
+  Broader publishing E2E, physical-device/iOS, country-specific stores and legal
+  readiness retain their release gates. Production remains outside this delivery.
+
 ## Select source ranges per split part (2026-11-05)
 
 - Offer start/end editing and preview for every split part, including exact
@@ -1832,8 +1863,9 @@ Goal: make the first usable PostDee MVP work end to end.
 
 Core items:
 
-- Mobile UI refresh for a Thai creator workflow, using PostDee light/dark
-  palettes and the approved green creator UI.
+- Mobile UI refresh for a creator workflow that starts with Thai sellers and
+  works for other countries, using PostDee light/dark palettes and the
+  approved green creator UI.
 - Global-ready product foundations: localization, timezone, currency, phone
   formats, store products per market, and country launch checklists.
 - Gemini caption generation through the backend.
@@ -1928,9 +1960,10 @@ Current status:
 - Legacy AI Clip Review UI, `/clip-reviews` route, config, and internal
   mock/provider code have been removed from the active app path. Subscription
   compatibility flags remain false for older clients.
-- Global readiness is now part of the plan. The app remains Thai-first for the
-  first launch, but future screens and backend flows should avoid Thailand-only
-  assumptions where the cost is low.
+- Global readiness is part of the plan. The owner's direction since 2026-11-05
+  is to serve many countries, starting with Thailand; new screens and backend
+  flows must avoid Thailand-only assumptions (see "Global Readiness Plan" and
+  `AGENTS.md`).
 - Firebase Auth, Render deployments, Upstash, RevenueCat webhooks, uploads,
   real-clip caption provider hardening, production verification of
   the Prisma AI caption usage ledger, and broader PostPeer social posting still
@@ -2130,7 +2163,8 @@ direction and is superseded wherever it conflicts with this light-default
 product decision. Keep its verified navigation and behavior improvements, but
 do not restore the older theme just because an unchecked historical step remains.
 
-Goal: make the Flutter app feel like a polished Thai mobile product before
+Goal: make the Flutter app feel like a polished mobile product for sellers in
+Thailand and other countries before
 connecting more production providers. This UI work should stay incremental and
 must not change backend contracts, billing rules, auth rules, or social posting
 behavior unless a later task explicitly says so.
@@ -2139,7 +2173,8 @@ Reference direction:
 
 - Light/dark PostDee palettes with green accents, clear cards, thin borders, and
   small status indicators.
-- Thai-first copy for visible user flows.
+- Thai and English copy for every visible user flow, kept in localization
+  helpers so more languages can be added.
 - Bottom navigation has five entry points: Home, Calendar, Create post,
   Store link, and Account. Store link opens the internal link manager and Account
   opens the existing profile/settings screen. The full-width opaque dock extends
@@ -2200,24 +2235,63 @@ Planned order:
 
 ## Global Readiness Plan
 
-Goal: keep PostDee easy for Thai sellers first, while making the app usable in
-other countries without a future rewrite.
+Goal (owner decision, 2026-11-05): serve sellers, creators, and affiliate
+marketers in many countries, starting with Thailand. New work must not lock
+the product to Thailand. Working rules are in `AGENTS.md` under
+"Multi-Country Direction".
+
+Current source state (verified baseline PR #64 and the pending-work integration):
+
+- The interface is complete/selectable in Thai and English. Startup loads the
+  saved language, then the first supported phone preference, then English.
+  Unsupported/failed preference reads follow that fallback; owner content and
+  in-progress forms are preserved during language changes.
+- Schedules use UTC ISO-8601 and display/edit in the phone's local time zone.
+- Phone verification accepts international E.164 numbers; Thai local `08x…`
+  numbers retain their `+66` shortcut.
+- Checkout reads the selected store product's localized price; scheduling and
+  top-up copy no longer hard-code THB amounts. Internal `priceThb` fields and
+  Thailand reference prices retain their existing compatibility meaning.
+- AI captions offer Automatic plus 109 selectable output languages, separate
+  from UI language and detected speech. Per-language provider quality is not
+  established by the catalog or script checks.
+- Public store pages and 404s negotiate Thai/English from `Accept-Language`,
+  fall back to English, preserve owner-written text, and retain `Vary`,
+  `no-store` and CSP/nonce. Source #64 has hosted HTTP acceptance evidence.
+- Plan ids remain provider-neutral: Basic, Starter, Pro, Business. Availability
+  of stores, payments and platform permissions still needs each market's checks.
+
+Remaining gaps:
+
+- Other UI languages have only a few app-wide labels and cannot be selected;
+  feature screens and public store chrome currently support Thai/English only.
+- Monthly post-unit and caption-credit windows remain UTC calendar months
+  (07:00 on the first in Thailand), rather than each user's local month.
+- Some phone examples/errors remain Thai-specific. The owner-only admin console
+  uses Thai date formatting and Bangkok time.
+- Privacy Policy and Terms still require reviewed country, governing-law,
+  regulator and minimum-age choices before market launch.
+- Physical-device/iOS acceptance, real-country store prices and real-store
+  purchases remain separate from emulator/Test Store evidence. Disconnected
+  legacy AI screens still contain old prices; they are not active entry points.
 
 Recommended order:
 
 1. Localization foundation
-   - Keep Thai as the first complete language.
-   - Prepare app copy for English and future languages.
-   - Avoid hard-coded Thai-only strings when redesigning screens.
+   - Keep Thai and English complete and preserve the saved/device-language flow.
+   - Keep visible copy in localization helpers for future languages.
+   - Add further interface/public-page languages only with complete copy and QA.
 
 2. Country, timezone, and schedule handling
    - Store schedule times in UTC on the backend.
    - Display and edit schedules in the user's local timezone.
+   - Decide/document whether quota windows should stay UTC or follow local months.
 
 3. Currency and store subscription markets
-   - Keep backend plan ids provider-neutral: Basic, Starter, Pro.
+   - Keep backend plan ids provider-neutral: Basic, Starter, Pro, Business.
    - Let App Store Connect and Google Play map localized prices per country.
-   - Show user-facing price text from store product metadata where possible.
+   - Keep user-facing checkout prices sourced from store metadata and verify each
+     target store/market; Test Store USD 0.99 is not a real-country price.
 
 4. International phone and identity
    - Keep Firebase Phone Auth using international E.164 phone numbers.
@@ -2226,8 +2300,9 @@ Recommended order:
 
 5. Content and AI localization
    - Thai affiliate captions remain the first polished prompt style.
-   - Upload AI captioning should infer language and market from the selected
-     clip instead of making the seller choose fields.
+   - Automatic captioning infers language/market from the selected clip; the
+     optional output-language choice remains its explicit override.
+   - Preserve public-page language negotiation without translating owner content.
    - Keep optional guidance as the simple override path for requests like
      "write this in English for the US market".
    - Add provider-tested language detection for high-priority markets such as
@@ -2294,38 +2369,45 @@ truth is `docs/superpowers/plans/2026-06-13-subscription-packages-plan.md`.
 The older AI Clip Review route, config, UI, and internal backend code have been
 removed so this package plan does not compete with a separate review feature.
 
+THB amounts below are Thailand reference prices; checkout uses localized store
+metadata. Business/replacement top-ups are enabled for Staging Test Store only;
+their code defaults and Production settings remain unchanged.
+
 | Tier | Price | Main Value | Intended Limits |
 | --- | ---: | --- | --- |
 | Basic | Free | Try posting and publish a profile page | Phone verification required for 3 real-time test posts per month; one profile page with up to 2 links |
 | Starter | 199 THB/month | Practical daily posting plus AI caption from the real clip audio | 120 post units/month, scheduling up to 14 days ahead, calendar, templates, auto watermark, EP clip splitting UI, one profile page with up to 7 links, and 50 real-clip AI caption credits/month |
 | Pro | 299 THB/month | Growth tools, team workflows, and stronger AI from audio plus selected visual frames | 250 post units/month, scheduling up to 30 days ahead, calendar, templates, auto watermark, EP clip splitting, hashtag radar, AI comment center, viral alert, one profile page with up to 20 links, Team & Editor Access, and 120 real-clip AI caption credits/month |
+| Business | 399 THB/month reference | Higher posting and caption capacity | 400 post units/month, scheduling up to 30 days ahead, audio plus selected-frame AI captions (220 credits/month), and one profile page with up to 50 links; real-store sales require their separate release gate |
 
 Package rules:
 
-- Shop-link 2/7/20 limits are the 2026-10-26 contract, with API on Staging. New additions
+- Shop-link 2/7/20/50 limits for Basic/Starter/Pro/Business are enforced by the
+  current API. New additions
   count stored links including disabled links; publication counts only the
   enabled payload. Existing over-limit drafts and published pages follow the
   preservation and explicit-next-publish rules above, not automatic deletion.
-- The active Paywall must show only end-to-end ready benefits. EP splitting,
-  hashtag radar, viral alerts, and team/editor access remain planned and must
-  not be presented as included until their real flows are verified.
+- The active Paywall must show only end-to-end ready benefits. Local splitting
+  and grouped review have emulator evidence; publishing the resulting parts
+  still needs the relevant real-account release checks. EP link comments,
+  hashtag radar, viral alerts, and team/editor access remain planned.
 - Basic must verify a phone number before using the 3-post free test quota.
 - Post units count by platform: posting one video to four platforms uses four
   units.
-- Starter can schedule up to 14 days ahead; Pro can schedule up to 30 days.
+- Starter can schedule up to 14 days ahead; Pro and Business up to 30 days.
   Previously accepted schedules retain their time after this policy change or
   a downgrade. New schedules and reschedules use the current plan's limit;
   these limits do not define R2 file retention. Hashtag radar,
   AI comment center, viral alert, and team access stay Pro-only.
 - Starter AI captioning listens to the selected clip audio and returns SEO
   wording, hashtags, caption options, and hook ideas.
-- Pro AI captioning can use audio plus selected visual frames from the clip for
+- Pro and Business AI captioning can use audio plus selected visual frames from the clip for
   stronger suggestions.
 - AI caption credits count by generation target: one credit per selected
   channel, with shared-caption requests costing one. Repeating generation
   consumes the same selected cost; preview dismissal does not refund success.
-- Upload AI captioning should auto-detect language and market from the selected
-  clip. Sellers can override through optional guidance instead of extra fields.
+- Upload AI captioning defaults to Automatic inference from the selected clip.
+  Sellers can explicitly choose an output language and supply optional guidance.
 - Do not sell prompt-only AI captioning as the main paid feature. Text guidance
   can exist only as an optional extra after the user selects a clip.
 - Do not include a separate "AI audio clip review" feature in Starter or Pro

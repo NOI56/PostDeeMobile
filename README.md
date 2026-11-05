@@ -1,5 +1,24 @@
 # PostDee
 
+PostDee is a mobile app (Flutter + Express/Prisma API) for online sellers,
+creators, and affiliate marketers. Upload one vertical video, then post or
+schedule it to TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels
+from one place. It also offers AI captions, local clip splitting and grouped
+review, a public store-link page, and support chat.
+
+**Many countries, not only Thailand.** Thailand is the starting market. The app
+supports Thai and English, remembers the chosen language, and otherwise follows
+a supported phone language before falling back to English. New work must avoid
+Thailand-only assumptions such as fixed THB prices, `+66`-only phone numbers,
+Bangkok time, or Thai-only text. See "Multi-Country Direction" in
+[AGENTS.md](AGENTS.md) and "Global Readiness Plan" in [ROADMAP.md](ROADMAP.md).
+
+Dated sections below are a history log. The "Current status snapshot" in
+[ROADMAP.md](ROADMAP.md) reconciles them; [docs/STAGING.md](docs/STAGING.md)
+records exact hosted deployments and device evidence. Source integration does
+not itself update an installed app. Retired features are listed in
+[AGENTS.md](AGENTS.md).
+
 ## Choose each split part's source range (2026-11-05, Staging APK 12112)
 
 Each split part offers an explicit start/end time editor and preview, including
@@ -281,10 +300,11 @@ environment setting is required. See the
 for validation and actual delivery state. Staging API runs `449b4657`; Mobile
 source is on main, but the APK is not installed and native acceptance is pending.
 
-PostDee is a cross-platform mobile app and backend for Thai e-commerce sellers,
-affiliate marketers, and creators. The product is Thai-first and has an
-8-locale foundation (th, en, vi, zh, id, ms, tl, ja), but many active screens
-still contain Thai copy and are not fully localized. The Flutter app supports
+PostDee is a cross-platform mobile app and backend for e-commerce sellers,
+affiliate marketers, and creators in many countries; Thailand is the starting
+market. The selectable interface is complete in Thai and English since PR #43.
+`PostDeeLocalizations` also lists vi, zh, id, ms, tl and ja, but those have only
+a few app-wide labels and cannot be selected yet. The Flutter app supports
 light and dark palettes (light is the current default), backed by Express,
 Prisma, and provider adapters that remain mock-safe until explicitly enabled.
 
@@ -3180,9 +3200,13 @@ Seed helpers:
 ## Roadmap
 
 See `ROADMAP.md` for the build roadmap. The current product keeps real-clip AI
-captions and replaces AI video editing with a publishable profile link. Prices
-remain Basic free, Starter 199, and Pro 299. EP tools, hashtag radar, AI comment
-center, viral alerts, and team access retain their separate future release gates.
+captions and replaces AI video editing with a publishable profile link. Thailand
+reference prices are Basic free, Starter 199, Pro 299 and Business 399 THB/month;
+checkout uses the store's localized price. Business and replacement top-ups are
+enabled for Staging Test Store acceptance; code defaults and Production are
+unchanged. Local splitting/grouped review has emulator evidence, while real
+publishing, EP link comments, hashtag radar, AI comment center, viral alerts,
+and team access retain their separate release gates.
 
 ## Current Limits
 

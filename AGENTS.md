@@ -4,7 +4,24 @@ Working guide for Codex and AI assistants helping to develop the PostDee project
 
 ## Project Goals
 
-PostDee is a mobile app for online sellers, creators, and affiliate marketers in Thailand. The long-term goal is to upload a single vertical video, then post or schedule it to TikTok, YouTube Shorts, Instagram Reels, Facebook, Shopee Video, and Lazada Video from one place. The current PostPeer path targets TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels. The existing `FACEBOOK_REELS` value must always send PostPeer `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and optional `isAiGenerated`; there is no fallback to a Page feed video. Facebook Reel delivery and optional best-effort thumbnails still require real-account end-to-end verification before production claims. Shopee Video and Lazada Video remain future targets. Do not apply Facebook Page Video duration or width limits to Page Reels.
+PostDee is a mobile app for online sellers, creators, and affiliate marketers in many countries. Thailand is the starting market, but the product is not Thailand-only (see Multi-Country Direction below). The long-term goal is to upload a single vertical video, then post or schedule it to TikTok, YouTube Shorts, Instagram Reels, Facebook, Shopee Video, and Lazada Video from one place. The current PostPeer path targets TikTok, YouTube Shorts, Instagram Reels, and Facebook Page Reels. The existing `FACEBOOK_REELS` value must always send PostPeer `platform: 'facebook'` with `platformSpecificData.contentType: 'reel'`, preserving `PUBLISH|PAGE_DRAFT` and optional `isAiGenerated`; there is no fallback to a Page feed video. Facebook Reel delivery and optional best-effort thumbnails still require real-account end-to-end verification before production claims. Shopee Video and Lazada Video remain future targets. Do not apply Facebook Page Video duration or width limits to Page Reels.
+
+## Multi-Country Direction
+
+The owner wants PostDee to be usable in many countries, not only Thailand (decided 2026-11-05). Thailand is the starting market. The interface supports Thai and English; startup uses the saved choice, then a supported phone language, then English. The controller retains a Thai fallback before startup resolves the preference.
+
+Rules for every change:
+
+- Do not add Thailand-only assumptions: hard-coded THB amounts, `+66`-only phone handling, Bangkok time, Thai-only copy, or Thai-only legal wording. Where a Thai-specific default remains necessary, keep it replaceable and document it.
+- Every new user-visible string needs Thai and English. Keep text in localization helpers so more languages can be added later; do not translate user-written content.
+- Show prices from App Store / Google Play product metadata. THB amounts in docs are Thailand reference prices, not the price in every country.
+- Store and send times in UTC (ISO-8601). Show and edit schedules in the user's local time zone.
+- Accept international phone numbers (E.164). Thai local numbers may keep their shortcut.
+- Keep the AI caption output language separate from the app UI language and the clip's spoken language.
+- Do not assume every social platform, API permission, or payment option exists in every country. Shopee Video and Lazada Video remain future targets.
+- Opening a new country still needs its launch checklist for privacy, tax, consumer protection, store subscriptions, and platform policy.
+
+Current state and remaining gaps are tracked in `ROADMAP.md` under "Global Readiness Plan".
 
 ## Retired Features (do not revive)
 
@@ -142,8 +159,15 @@ Current Stack:
 
 - Flutter mobile app with light/dark themes (light is the default)
 - Bottom navigation: Home, Calendar, Create post, Store link, and Account
-- Full-screen create-post flow with AI captions and saved caption templates,
-  plus publishing, notifications, billing, and post delivery results
+- Full-screen create-post flow with AI captions (Automatic or a chosen output
+  language), saved caption templates, local clip splitting and grouped review,
+  per-clip schedules, publishing, caption edits on scheduled posts,
+  notifications, billing, and post delivery results
+- Store link: one public profile page per account; Simple themes are free,
+  3D/Cartoon/Premium themes need a purchased Starter/Pro/Business plan
+- Support chat (the Dot AI helper stays off until an owner enables it) and
+  service status notices
+- App interface in Thai and English with a saved language preference
 - AI video editing is retired; see Retired Features above
 
 Note: In the current environment, Flutter might not be in `PATH` yet. Do not claim `flutter analyze` or `flutter test` passed if they haven't been actually run.

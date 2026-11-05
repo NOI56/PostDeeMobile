@@ -2,6 +2,11 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+PostDee serves many countries, starting with Thailand; see "Product Goal"
+below. Dated headings record their original scope. "Current status snapshot"
+in `ROADMAP.md` and the exact delivery records in `docs/STAGING.md` reconcile
+source integration, hosted API state, and installed Mobile artifacts.
+
 ## Explicit source ranges for split parts (2026-11-05)
 
 `ClipSplitPlan.create(segmentOverrides: ...)` accepts optional per-channel
@@ -2284,7 +2289,7 @@ lock/transaction and add scheduled orphan reconciliation.
 
 ## Product Goal
 
-PostDee helps Thai e-commerce sellers, affiliate marketers, and creators upload one vertical 9:16 video and publish or schedule it across multiple short-form platforms from one app. The product should remain Thai-first for the initial launch while keeping the architecture global-ready for other countries, languages, currencies, timezones, phone formats, billing markets, and compliance requirements.
+PostDee helps e-commerce sellers, affiliate marketers, and creators upload one vertical 9:16 video and publish or schedule it across multiple short-form platforms from one app. The owner's direction (2026-11-05) is to serve many countries, starting with Thailand. The architecture must support other languages, currencies, timezones, phone formats, billing markets, and compliance requirements. Rules are in `AGENTS.md` ("Multi-Country Direction"); current state and remaining gaps are in `ROADMAP.md` ("Global Readiness Plan").
 
 Target platforms:
 
@@ -2506,12 +2511,13 @@ Important mobile services:
   RevenueCat SDK, then the authenticated `POST /billing/revenuecat/resync` route
   to reconcile the server subscription store.
 
-Global readiness principles:
+Global readiness principles (PostDee targets many countries):
 
-- Store user-facing copy through localization-ready structures instead of hard-coded Thai-only strings when a screen is redesigned.
-- Use user locale and timezone for schedules and billing display.
-- Keep prices and plan names provider-neutral so App Store and Google Play can map products per country.
-- Accept international phone number formats for Firebase Phone Auth.
+- Keep visible copy in localization helpers. Thai/English startup loads the saved device-local choice, then the first supported phone preference, then English; the constructor's pre-bootstrap fallback remains Thai.
+- Store schedules in UTC and send UTC ISO-8601 from Mobile; display/edit in the user's local time zone. Monthly post-unit and caption-credit windows remain UTC calendar months.
+- Keep plan ids provider-neutral (Basic, Starter, Pro, Business) and read checkout prices from store metadata. Scheduling and top-up copy no longer hard-code THB amounts.
+- Accept E.164 phone numbers; Thai local `0x` numbers retain their `+66` shortcut. Some phone examples and errors still need broader localization.
+- Public store pages negotiate Thai/English from `Accept-Language`, default to English, and preserve owner-written content, `Vary`, `no-store` and CSP/nonce. Fonts and artwork remain unchanged.
 - Keep country-specific legal, tax, platform-policy, and privacy requirements behind explicit launch checklists before opening each market.
 
 Design system:

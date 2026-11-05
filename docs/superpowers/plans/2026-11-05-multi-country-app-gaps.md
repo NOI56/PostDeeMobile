@@ -1,5 +1,20 @@
 # Multi-country app gaps (2026-11-05, local review candidate)
 
+## Integration and documentation reconciliation — 2026-11-05
+
+PR #64 was merged as `c5a418ae` and its Staging API delivery is recorded in
+`docs/STAGING.md` (Live 18:25 Thai time). The local-only/review exclusions below
+record earlier phases; they do not describe the later authorized delivery.
+The pending-work integration starts from that verified `origin/main` and ports
+the separate multi-country documentation/rules without overwriting source.
+Root docs now describe saved/device UI-language selection, localized store
+prices and Thai/English public-page negotiation accurately. Staging sandbox
+offers are distinguished from unchanged code defaults and Production.
+The existing publication, data, retired-feature and country-launch gates remain.
+This documentation reconciliation adds no API, schema, dependency, migration,
+environment or entitlement change. Exact integration validation/delivery belongs
+in the new `docs/STAGING.md` receipt, not the older test counts below.
+
 ## Claude review follow-up: storefront language priority (2026-11-05)
 
 - Continued from local commit `858eea0d750dc4bf7803f2eb66b215972f7c15f3`

@@ -18,6 +18,10 @@ Claude Code อ่านไฟล์นี้อัตโนมัติทุ�
 
 > เมื่อแก้แผนผลิตภัณฑ์ กฎ package, API contract หรือทิศทางสถาปัตยกรรม ให้ sync เอกสารด้านบนให้ตรงกันด้วย
 
+## ทิศทางผลิตภัณฑ์: ใช้ได้หลายประเทศ
+
+PostDee ตั้งใจให้ใช้ได้หลายประเทศ โดยไทยเป็นตลาดแรก แอปรองรับไทย/อังกฤษและจำภาษาที่เลือก งานใหม่ต้องไม่ผูกกับไทยอย่างเดียว เช่น ราคาบาทตายตัว เบอร์ `+66` อย่างเดียว เวลา Bangkok หรือข้อความภาษาไทยอย่างเดียว กฎเต็มอยู่ในหัวข้อ "Multi-Country Direction" ของ [AGENTS.md](AGENTS.md)
+
 ## Language
 
 - **Chat with the user in Thai** — all conversation, explanations, and summaries should be in Thai.

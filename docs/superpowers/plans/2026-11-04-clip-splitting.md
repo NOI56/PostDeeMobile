@@ -1,5 +1,71 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Softer split-plan presentation — 2026-11-05 (local candidate)
+
+The owner found the split-planning screen stiff and requested small playful
+details. Start from freshly fetched `origin/main` `e4004355`, with a clean
+reused checkout and no omitted main capabilities. Runtime source `b354605d`
+on `codex/clip-split-soft-motion` adds soft selected channel/mode surfaces,
+existing platform logos, numbered part rows, an overview painted from the
+actual source intervals (including omissions), and the shared press feedback.
+Finite color/overview transitions respect reduced motion. Controls retain
+their keys, callback gates and native Material ink; inputs are not replaced
+by outgoing animated copies. The planner, ranges, quotas, ownership checks,
+draft persistence, encoder, API, dependencies and environment are unchanged.
+No new translated copy, API contract, migration or deployment is required.
+
+Changed runtime files: `clip_split_screen.dart`, `clip_split_timeline.dart`.
+New regression file: `clip_split_motion_test.dart`. Baseline RED was 3 passes
+and one missing-overview failure. Focused screen/planner/motion/real-font visual
+tests passed 43/43; analysis had no issues after replacing the deprecated
+ticker accessor. Coverage includes exact fractional ranges across rapid
+selection changes, preview locking, reduced motion, 64 parts, 320dp/dark/large
+text, and Thai/English light/dark captures. Fractional endpoint labels wrap
+instead of overflowing at 2x text size.
+
+Full Mobile on exact `b354605d68a6c467676a8affa1759e7a65972411` passed
+**5,565 tests / 10 optional skips**, with all four shards exiting 0 and no OOM:
+1,437/0 skips and 1,422/4 skips with two workers; 1,358/0 and 1,348/6 with four
+workers after available memory was verified. Logs are
+`E:/PostDeeTaskScratch/clip-split-soft-motion/full-final-shard-0.log` through
+`full-final-shard-3.log`. An earlier shard on `547da85a` was stopped for the
+ticker lint fix and is not included in the result.
+
+The Staging helper built x86_64 APK **12114** (base 8114) in 95.3 seconds,
+package `com.postdee.postdee_mobile.staging`, minSdk 24 / targetSdk 36,
+175,933,054 bytes. API/Firebase/mock-off/RevenueCat Test Store validation passed;
+the signing certificate matches the installed app. Archived artifact:
+`E:/PostDeeBuildArchive/clip-split-soft-motion-12114/app-x86_64-12114.apk`.
+SHA-256: `7c2163d04d375c7b246e006417bda0afcfc56f921be936f3f7eb8c428157acba`.
+
+The emulator initially contained an in-progress range plan, so installation
+was held. Later its prepared set was already on shared captions. The normal
+local Save completed; the visible AI section had no reusable-result action
+or open result/style sheet. No AI generation or post was requested. Guarded
+update **12113 -> 12114** on `emulator-5554` retained UID 10197 and internal
+volume. Before native launch, **153 files** under files/shared_prefs/databases
+had identical hashes, and the installed APK matched the archive. Receipt:
+`E:/PostDeeTaskScratch/clip-split-soft-motion/guarded-update-receipt.json`,
+checked 2026-11-05 12:54:05 UTC / 19:54:05 Thai time.
+
+Native Thai/light opened with the same signed-in Basic account, retained
+550/300 top-up balances, saved-set continuation and 17 local draft entries.
+The existing synthetic 180-second gallery video opened the new planner with
+two Facebook parts and five total units. A fresh accessibility-bounds tap
+changed YouTube off/on and verified **5 -> 4 -> 5** units. The range editor
+opened and cancelled without modifying ranges; the timeline/numbered rows
+rendered with the real channel logos. The planner remains open for review;
+no prepare/encode/AI/upload/post or purchase action was taken during this UI
+smoke. App-PID logcat checks found no fatal/unhandled/Flutter exception or
+overflow; startup and emulator checks are not performance acceptance.
+
+Native captures, XML, visual before/after images and logs are under
+`E:/PostDeeTaskScratch/clip-split-soft-motion/`. Physical devices, native
+English/dark mode, iOS, live AI and real-account publishing were not retested.
+This candidate is committed locally; no push, main merge, API deploy or
+Production change was made for this UI request. The source worktrees and
+pre-existing uncommitted changes remain intact.
+
 ## Pending-work integration — 2026-11-05
 
 The owner authorized integrating the current clip work into main, pushing and

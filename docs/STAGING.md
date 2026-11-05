@@ -120,6 +120,58 @@
   sandbox renewal ยังเป็นข้อจำกัดที่พบจริง และ guard เดิมยังปฏิเสธ Starter/Pro-to-Business
   upgrades ของ Test Store ไม่มี Production activation และ ANR ก่อนทดสอบยังไม่ถือว่า
   ผ่าน performance acceptance
+## รองรับหลายประเทศและลำดับภาษาเว็บร้านค้า — 5 พฤศจิกายน 2026
+
+- เจ้าของอนุมัติ merge [PR #64](https://github.com/NOI56/PostDeeMobile/pull/64)
+  และ deploy เฉพาะ Staging เมื่อยืนยันว่า Production ไม่อัปเดตอัตโนมัติ
+  รวม head `e1d609a10c08a9beb80553e98cb00e38b2eabb41` บน main
+  `8a340638` เป็น `c5a418aec41c281638c6c31cfc3ec10a7e9fa3ae`
+  โดยระบุ `[skip render]` ใน merge commit; tree `7276d0cd` ตรงกับชุดที่
+  Claude Code ตรวจและทดสอบไว้ ไม่มี conflict หรือการเปลี่ยน workflow/deploy config
+- [CI ของ merge commit](https://github.com/NOI56/PostDeeMobile/actions/runs/42016804293)
+  ผ่านก่อน deploy: API **4,040 ผ่าน / 80 opt-in ข้าม**, Flutter
+  **5,291 ผ่าน / 10 optional ข้าม**, analyze ไม่มีปัญหา (19.4 วินาที),
+  typecheck/build/Prisma validation และ audit gate ระดับ high ผ่าน
+  [iOS build](https://github.com/NOI56/PostDeeMobile/actions/runs/42016804262)
+  ผ่านและสร้าง unsigned artifact เท่านั้น ยังไม่ใช่การติดตั้งหรือเผยแพร่บน iPhone
+- ตรวจ main และบริการสดก่อน trigger: My Workspace
+  `tea-d45nsamuk2gs73cmhol0`, `postdee-api-staging`
+  `srv-d9bb72ojs32c739osa5g`, branch main, manual/off, previews off
+  แทน Live เดิม `3b7da9d3` / `dep-dbll1tafngtc738bacog` ด้วย
+  [`dep-dbm6eedg1s2s73c8q6vg`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbm6eedg1s2s73c8q6vg)
+  ซึ่ง Render ยืนยัน commit `c5a418ae` ตรงกับ CI
+- เริ่ม deploy **18:23:37 เวลาไทย / 11:23:37 UTC** และ Live
+  **18:25:05 เวลาไทย / 11:25:05 UTC** วันที่ 5 พ.ย. 2026 ใช้ประมาณ 88 วินาที
+  ไม่มี schema/migration/dependency/environment/feature flag ใหม่
+  Startup ตรวจ 30 migrations และรายงาน `No pending migrations to apply`,
+  ฟัง port 10000; application error logs ช่วง 11:23:37–11:26:10 UTC ว่าง
+  (`hasMore: false`)
+- หลัง Live: `GET /health` 200, `/ready` 200 พร้อม database/queue `ok`
+  และ `Cache-Control: no-store`; unauthenticated `GET /posts` 401
+- เก็บ baseline ของ fixture ที่มีอยู่
+  [`/p/cartoon-test-0311`](https://postdee-api-staging.onrender.com/p/cartoon-test-0311)
+  ก่อน deploy แล้วตรวจ hosted HTTP **12/12 ผ่าน**: regional/base q-priority
+  ทั้งสองภาษา, q-value, tie/header order, ไม่ส่งภาษา, ภาษาที่ไม่รองรับ,
+  wildcard ที่ตัดภาษา q=0 และ `/p/-invalid` 404 ไทย/อังกฤษ
+  ตรวจ `html lang`, footer, `Vary: Accept-Language`, `no-store` และ CSP/nonce
+  พร้อมเทียบ hash ชื่อร้าน ข้อความลิงก์ URL หมวดหมู่ ธีม และรูปกับก่อน deploy
+  ซึ่งยังเหมือนเดิมทั้งหมด ไม่สร้างหรือแก้ข้อมูลร้านค้า
+- Description ของ fixture เดิมตรงกับ default ไทย จึงแยกจาก HTML ไม่ได้ว่า
+  เว้นว่างหรือเจ้าของเขียนข้อความเดียวกันเอง การตรวจยอมรับเฉพาะข้อความเดิม
+  หรือ default ที่แปลตรงภาษา ไม่อ้างว่าได้แปลข้อความเจ้าของ
+  รอบนี้ตรวจ hosted response ผ่าน HTTP; เครื่องมือ browser ใช้งานไม่ได้
+  จึงไม่ได้ยืนยันภาพหน้าจอ hosted เพิ่มเติม
+- Production `postdee-api` ไม่ถูก trigger/resume/เปลี่ยนค่า;
+  หลัง merge และหลัง Staging Live ยังเป็น `dep-d9g4dl58nd3s73enhf60` /
+  `a43ce6aa` และคง user-suspended ตามเดิม
+  ไม่ได้ติดตั้ง APK เพิ่ม เปลี่ยนบัญชีหรือ entitlement ซื้อสินค้า หรือโพสต์โซเชียล
+- Native language/persistence และ Test Store prices ผ่านบน emulator ก่อนหน้า
+  ด้วย source tree เดียวกัน และคืน APK เดิมพร้อมข้อมูลแล้ว การ deploy API
+  ครั้งนี้ไม่อัปเดต native APK อัตโนมัติ มือถือจริง/iOS, ราคาประเทศจริงและ
+  แพ็กเสริมยังต้องเตรียมบัญชีร้านค้า credentials และบัญชี QA ที่มีสิทธิ์
+- หลักฐาน local: `D:\codex\2026-11-05\task\pr64-device-test\`
+  (`merge-preflight.json`, `hosted-storefront-before.json`,
+  `hosted-storefront-after.json`, `hosted-health-after.json`)
 
 ## แก้แคปชั่นโพสต์ที่ตั้งเวลาและชื่อ YouTube — 4 พฤศจิกายน 2026
 

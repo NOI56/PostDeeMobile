@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -52,7 +51,7 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
     SocialPlatform.instagramReels,
   ];
   final _selected = <SocialPlatform>{};
-  final _boundaries = <SocialPlatform, double>{};
+  final _segmentOverrides = <SocialPlatform, List<ClipSplitSegment>>{};
   final _scrollController = ScrollController();
   late final AuthSessionBinding _owner;
   ClipSplitMode _mode = ClipSplitMode.affectedChannels;
@@ -61,6 +60,7 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
   bool _previewing = false;
   bool _ownerChanged = false;
   String? _previewError;
+  String? _rangeNotice;
 
   List<SocialPlatform> get _available => _platformOrder
       .where(
@@ -104,14 +104,126 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
     super.dispose();
   }
 
-  ClipSplitPlan _createPlan() => ClipSplitPlan.create(
+  ClipSplitPlan _createPlan({
+    Map<SocialPlatform, List<ClipSplitSegment>>? overrides,
+    Set<SocialPlatform>? platforms,
+    ClipSplitMode? mode,
+  }) =>
+      ClipSplitPlan.create(
         sourceDurationSeconds: widget.sourceDurationSeconds,
-        platforms: _selected,
-        mode: _mode,
+        platforms: platforms ?? _selected,
+        mode: mode ?? _mode,
         tikTokDirectPost: widget.tikTokDirectPost,
         tikTokMaxDurationSeconds: widget.tikTokMaxDurationSeconds,
-        firstBoundaries: _boundaries,
+        segmentOverrides: overrides ?? _segmentOverrides,
       );
+
+  void _retainCompatibleRanges() {
+    _rangeNotice = null;
+    _segmentOverrides
+        .removeWhere((platform, _) => !_selected.contains(platform));
+    if (_segmentOverrides.isEmpty || _selected.isEmpty) return;
+    final reset = <SocialPlatform>[];
+    if (_mode == ClipSplitMode.sameParts) {
+      try {
+        final plan = _createPlan();
+        for (final channel in plan.channelPlans) {
+          _segmentOverrides[channel.platform] = channel.segments;
+        }
+      } on ClipSplitPlanException {
+        reset.addAll(_selected);
+        _segmentOverrides.clear();
+      }
+    } else {
+      for (final platform in _segmentOverrides.keys.toList()) {
+        try {
+          _createPlan(platforms: {
+            platform
+          }, overrides: {
+            platform: _segmentOverrides[platform]!,
+          });
+        } on ClipSplitPlanException {
+          reset.add(platform);
+          _segmentOverrides.remove(platform);
+        }
+      }
+    }
+    if (reset.isNotEmpty) {
+      final names = reset.map((platform) => platform.label).join(' · ');
+      _rangeNotice = clipSplitText(
+          context,
+          'คืนช่วงเวลา $names เป็นอัตโนมัติ เพราะวิธีแบ่งหรือข้อกำหนดเปลี่ยน กรุณาตรวจอีกครั้ง',
+          '$names ranges were reset to automatic because the split mode or limits changed. Review them again.');
+    }
+  }
+
+  int _ticks(double seconds) => (seconds * 1000000).round();
+
+  bool _isFullVideo(ClipSplitChannelPlan channel) =>
+      channel.segments.length == 1 &&
+      _ticks(channel.segments.single.startSeconds) == 0 &&
+      _ticks(channel.segments.single.endSeconds) ==
+          _ticks(widget.sourceDurationSeconds);
+
+  bool _hasGaps(ClipSplitChannelPlan channel) {
+    var end = 0;
+    for (final segment in channel.segments) {
+      if (_ticks(segment.startSeconds) > end) return true;
+      end = _ticks(segment.endSeconds);
+    }
+    return _ticks(widget.sourceDurationSeconds) > end;
+  }
+
+  Future<void> _editRange(ClipSplitChannelPlan channel, int index) async {
+    if (_previewing ||
+        _ownerChanged ||
+        !_owner.isCurrent ||
+        channel.segments.length < 2) {
+      return;
+    }
+    ClipSplitPlan validate(ClipSplitSegment segment) {
+      final segments = List<ClipSplitSegment>.of(channel.segments)
+        ..[index] = segment;
+      return _createPlan(overrides: {
+        ..._segmentOverrides,
+        if (_mode == ClipSplitMode.sameParts)
+          for (final platform in _selected) platform: segments
+        else
+          channel.platform: segments,
+      });
+    }
+
+    final plan = await showDialog<ClipSplitPlan>(
+        context: context,
+        builder: (_) => _ClipSplitRangeDialog(
+            segment: channel.segments[index],
+            sourceDuration: _ticks(widget.sourceDurationSeconds) / 1000000,
+            availableStart:
+                index == 0 ? 0 : channel.segments[index - 1].endSeconds,
+            availableEnd: index + 1 < channel.segments.length
+                ? channel.segments[index + 1].startSeconds
+                : _ticks(widget.sourceDurationSeconds) / 1000000,
+            minimumDuration: channel.minimumDurationSeconds,
+            maximumDuration: channel.maximumDurationSeconds,
+            shared: _mode == ClipSplitMode.sameParts,
+            owner: _owner,
+            validate: validate,
+            onPreview: widget.videoFile != null || widget.previewSegment != null
+                ? _preview
+                : null));
+    if (plan == null || !mounted || _ownerChanged || !_owner.isCurrent) return;
+    setState(() {
+      if (_mode == ClipSplitMode.sameParts) {
+        for (final selected in plan.channelPlans) {
+          _segmentOverrides[selected.platform] = selected.segments;
+        }
+      } else {
+        _segmentOverrides[channel.platform] =
+            plan.channelPlanFor(channel.platform).segments;
+      }
+      _rangeNotice = null;
+    });
+  }
 
   void _showReview() {
     if (_ownerChanged || !_owner.isCurrent) return;
@@ -205,13 +317,32 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
                 const SizedBox(height: AppTheme.spaceLg),
                 _modeChoices(),
                 const SizedBox(height: AppTheme.spaceLg),
+                if (_rangeNotice != null) ...[
+                  KeyedSubtree(
+                      key: const ValueKey('clip-split-ranges-reset-notice'),
+                      child: _notice(_rangeNotice!)),
+                  const SizedBox(height: AppTheme.spaceLg),
+                ],
                 if (plan != null && active != null) ...[
                   _channelTabs(plan),
                   const SizedBox(height: AppTheme.spaceLg),
                   _segments(active),
-                  if (active.canAdjustFirstBoundary) ...[
+                  if (_segmentOverrides.isNotEmpty) ...[
                     const SizedBox(height: AppTheme.spaceLg),
-                    _adjustBoundary(active),
+                    TextButton.icon(
+                      key: const ValueKey('clip-split-reset-ranges'),
+                      onPressed: _previewing || _ownerChanged
+                          ? null
+                          : () => setState(() {
+                                _segmentOverrides.clear();
+                                _rangeNotice = null;
+                              }),
+                      icon: const Icon(Icons.restart_alt),
+                      label: Text(clipSplitText(
+                          context,
+                          'คืนทุกช่วงเวลาเป็นอัตโนมัติ',
+                          'Reset all ranges to automatic')),
+                    ),
                   ],
                 ],
               ],
@@ -336,14 +467,14 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
               value: _selected.contains(platform),
               title: Text(platform.label),
               subtitle: Text(_channelLimit(platform)),
-              onChanged: !_canSelect(platform) || _ownerChanged
+              onChanged: !_canSelect(platform) || _ownerChanged || _previewing
                   ? null
                   : (checked) {
                       setState(() {
                         checked == true
                             ? _selected.add(platform)
                             : _selected.remove(platform);
-                        _boundaries.clear();
+                        _retainCompatibleRanges();
                         if (!_selected.contains(_active)) {
                           _active =
                               _available.where(_selected.contains).firstOrNull;
@@ -384,10 +515,10 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
         child: RadioGroup<ClipSplitMode>(
           groupValue: _mode,
           onChanged: (mode) {
-            if (mode == null || _ownerChanged) return;
+            if (mode == null || _ownerChanged || _previewing) return;
             setState(() {
               _mode = mode;
-              _boundaries.clear();
+              _retainCompatibleRanges();
             });
           },
           child: Column(children: [
@@ -452,7 +583,7 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
                             borderRadius:
                                 BorderRadius.circular(AppTheme.tileRadius)),
                       ),
-                      onPressed: _ownerChanged
+                      onPressed: _ownerChanged || _previewing
                           ? null
                           : () => setState(() => _active = platform),
                       child: Column(
@@ -461,7 +592,7 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
                           Text(platform.label, textAlign: TextAlign.center),
                           const SizedBox(height: AppTheme.spaceXs),
                           Text(
-                            plan.channelPlanFor(platform).segments.length == 1
+                            _isFullVideo(plan.channelPlanFor(platform))
                                 ? clipSplitText(
                                     context, 'คลิปเต็ม', 'Full video')
                                 : clipSplitPartsText(
@@ -502,13 +633,29 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
                 spacing: AppTheme.spaceSm,
                 runSpacing: AppTheme.spaceXs,
                 children: [
-                  Text(channel.segments.length == 1
+                  Text(_isFullVideo(channel)
                       ? clipSplitText(context, 'คลิปเต็ม', 'Full video')
                       : clipSplitText(
                           context, 'ตอน ${index + 1}', 'Part ${index + 1}')),
                   Text(
                       '${formatClipSplitTime(channel.segments[index].startSeconds)}–${formatClipSplitTime(channel.segments[index].endSeconds)}',
                       style: TextStyle(color: AppTheme.textSecondary)),
+                  Text(
+                      clipSplitText(
+                          context,
+                          'ยาว ${formatClipSplitTime(channel.segments[index].durationSeconds)} นาที',
+                          'Length ${formatClipSplitTime(channel.segments[index].durationSeconds)} min'),
+                      style: Theme.of(context).textTheme.bodySmall),
+                  if (channel.segments.length > 1)
+                    TextButton.icon(
+                      key: ValueKey('clip-split-range-$index'),
+                      onPressed: _previewing || _ownerChanged
+                          ? null
+                          : () => _editRange(channel, index),
+                      icon: const Icon(Icons.tune, size: 18),
+                      label: Text(clipSplitText(
+                          context, 'ปรับช่วงเวลา', 'Edit time range')),
+                    ),
                   IconButton(
                     key: ValueKey('clip-split-preview-$index'),
                     tooltip: clipSplitText(
@@ -525,47 +672,15 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
               ),
             ),
           ],
+          if (_hasGaps(channel)) ...[
+            const SizedBox(height: AppTheme.spaceSm),
+            _notice(clipSplitText(
+                context,
+                'ช่วงที่เว้นไว้จะไม่รวมอยู่ในคลิปที่เตรียม',
+                'Skipped ranges will not be included in the prepared clips.')),
+          ],
         ]),
       );
-
-  Widget _adjustBoundary(ClipSplitChannelPlan channel) {
-    final lower = channel.minimumFirstBoundarySeconds!;
-    final upper = channel.maximumFirstBoundarySeconds!;
-    final boundary = channel.segments.first.endSeconds;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(clipSplitText(
-          context,
-          'ปรับจุดจบตอนแรก · ${formatClipSplitTime(boundary)}',
-          'First cut · ${formatClipSplitTime(boundary)}')),
-      Slider(
-        key: const ValueKey('clip-split-first-boundary'),
-        min: lower,
-        max: upper,
-        value: boundary.clamp(lower, upper),
-        divisions:
-            math.min(1000, ((upper - lower) * 10).round()).clamp(1, 1000),
-        label: formatClipSplitTime(boundary),
-        onChanged: _ownerChanged
-            ? null
-            : (value) => setState(() {
-                  if (_mode == ClipSplitMode.sameParts) {
-                    for (final platform in _selected) {
-                      _boundaries[platform] = value;
-                    }
-                  } else {
-                    _boundaries[channel.platform] = value;
-                  }
-                }),
-      ),
-      Text(
-          clipSplitText(context, 'ตอนถัดไปจะปรับตาม โดยเก็บเนื้อหาครบ',
-              'Later parts adjust to keep all your content.'),
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: AppTheme.textSecondary)),
-    ]);
-  }
 
   List<Widget> _review(ClipSplitPlan plan) => [
         Text(
@@ -580,15 +695,40 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
               Divider(height: 1, color: AppTheme.borderSoft),
             Padding(
                 padding: const EdgeInsets.symmetric(vertical: AppTheme.spaceMd),
-                child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(child: Text(platform.label)),
-                      const SizedBox(width: AppTheme.spaceSm),
-                      Text(plan.channelPlanFor(platform).segments.length == 1
-                          ? clipSplitText(context, 'คลิปเต็ม', 'Full video')
-                          : clipSplitPartsText(context,
-                              plan.channelPlanFor(platform).segments.length)),
+                      Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: Text(platform.label)),
+                            const SizedBox(width: AppTheme.spaceSm),
+                            Text(_isFullVideo(plan.channelPlanFor(platform))
+                                ? clipSplitText(
+                                    context, 'คลิปเต็ม', 'Full video')
+                                : clipSplitPartsText(
+                                    context,
+                                    plan
+                                        .channelPlanFor(platform)
+                                        .segments
+                                        .length)),
+                          ]),
+                      for (var index = 0;
+                          index < plan.channelPlanFor(platform).segments.length;
+                          index++)
+                        Text(
+                            clipSplitText(
+                                context,
+                                'ตอน ${index + 1} · ${formatClipSplitTime(plan.channelPlanFor(platform).segments[index].startSeconds)}–${formatClipSplitTime(plan.channelPlanFor(platform).segments[index].endSeconds)}',
+                                'Part ${index + 1} · ${formatClipSplitTime(plan.channelPlanFor(platform).segments[index].startSeconds)}–${formatClipSplitTime(plan.channelPlanFor(platform).segments[index].endSeconds)}'),
+                            style: TextStyle(color: AppTheme.textSecondary)),
+                      if (_hasGaps(plan.channelPlanFor(platform)))
+                        Text(
+                            clipSplitText(
+                                context,
+                                'ช่วงที่เว้นไว้จะไม่รวมอยู่ในคลิปที่เตรียม',
+                                'Skipped ranges will not be included in the prepared clips.'),
+                            style: Theme.of(context).textTheme.bodySmall),
                     ])),
           ],
         ])),
@@ -638,6 +778,287 @@ class _ClipSplitScreenState extends State<ClipSplitScreen> {
 
   Widget _notice(String message) => Text(message,
       style: TextStyle(color: Theme.of(context).colorScheme.error));
+}
+
+class _ClipSplitRangeDialog extends StatefulWidget {
+  const _ClipSplitRangeDialog(
+      {required this.segment,
+      required this.sourceDuration,
+      required this.availableStart,
+      required this.availableEnd,
+      required this.minimumDuration,
+      required this.maximumDuration,
+      required this.shared,
+      required this.owner,
+      required this.validate,
+      this.onPreview});
+
+  final ClipSplitSegment segment;
+  final double sourceDuration;
+  final double availableStart;
+  final double availableEnd;
+  final double minimumDuration;
+  final double maximumDuration;
+  final bool shared;
+  final AuthSessionBinding owner;
+  final ClipSplitPlan Function(ClipSplitSegment) validate;
+  final Future<void> Function(ClipSplitSegment)? onPreview;
+
+  @override
+  State<_ClipSplitRangeDialog> createState() => _ClipSplitRangeDialogState();
+}
+
+class _ClipSplitRangeDialogState extends State<_ClipSplitRangeDialog> {
+  late final _start = TextEditingController(
+      text: formatClipSplitTime(widget.segment.startSeconds));
+  late final _end = TextEditingController(
+      text: formatClipSplitTime(widget.segment.endSeconds));
+  bool _previewing = false;
+  ClipSplitPlanProblem? _problem;
+  bool _invalidFormat = false;
+  String? _previewError;
+
+  @override
+  void initState() {
+    super.initState();
+    PostDeeAuthSessionStore.instance.addListener(_sessionChanged);
+  }
+
+  void _sessionChanged() {
+    if (mounted && !widget.owner.isCurrent) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    PostDeeAuthSessionStore.instance.removeListener(_sessionChanged);
+    _start.dispose();
+    _end.dispose();
+    super.dispose();
+  }
+
+  double? _parse(String input) {
+    final match =
+        RegExp(r'^(\d+):([0-5]\d)(?:\.(\d{1,6}))?$').firstMatch(input.trim());
+    if (match == null) return null;
+    final minutes = double.tryParse(match[1]!);
+    if (minutes == null || !minutes.isFinite) return null;
+    return minutes * 60 +
+        int.parse(match[2]!) +
+        (match[3] == null
+            ? 0
+            : int.parse(match[3]!.padRight(6, '0')) / 1000000);
+  }
+
+  ClipSplitSegment? get _segment {
+    final start = _parse(_start.text);
+    final end = _parse(_end.text);
+    return start == null || end == null
+        ? null
+        : ClipSplitSegment(startSeconds: start, endSeconds: end);
+  }
+
+  ClipSplitPlan? _validated() {
+    final segment = _segment;
+    if (segment == null) {
+      setState(() {
+        _invalidFormat = true;
+        _problem = null;
+      });
+      return null;
+    }
+    try {
+      return widget.validate(segment);
+    } on ClipSplitPlanException catch (error) {
+      setState(() {
+        _problem = error.problem;
+        _invalidFormat = false;
+      });
+      return null;
+    }
+  }
+
+  void _changed(String _) => setState(() {
+        _problem = null;
+        _invalidFormat = false;
+        _previewError = null;
+      });
+
+  Future<void> _preview() async {
+    if (!widget.owner.isCurrent || _previewing || _validated() == null) return;
+    final segment = _segment!;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _previewing = true;
+      _previewError = null;
+    });
+    try {
+      await widget.onPreview!(segment);
+    } catch (_) {
+      if (mounted && widget.owner.isCurrent) {
+        setState(() => _previewError = clipSplitText(
+            context,
+            'ยังเปิดตัวอย่างคลิปไม่ได้ ลองอีกครั้ง',
+            'Could not open the video preview. Try again.'));
+      }
+    } finally {
+      if (mounted) setState(() => _previewing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.owner.isCurrent && !_previewing;
+    final segment = _segment;
+    final sliderValid = segment != null &&
+        segment.startSeconds >= 0 &&
+        segment.endSeconds > segment.startSeconds &&
+        segment.endSeconds <= widget.sourceDuration;
+    return PopScope(
+      canPop: !_previewing,
+      child: AlertDialog(
+        key: const ValueKey('clip-split-range-dialog'),
+        scrollable: true,
+        insetPadding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spaceLg, vertical: AppTheme.spaceMd),
+        title: Text(clipSplitText(context, 'ปรับช่วงเวลา', 'Edit time range')),
+        content: SizedBox(
+            width: 440,
+            child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(clipSplitText(
+                      context,
+                      'ต้นฉบับ 0:00–${formatClipSplitTime(widget.sourceDuration)}',
+                      'Original 0:00–${formatClipSplitTime(widget.sourceDuration)}')),
+                  const SizedBox(height: AppTheme.spaceSm),
+                  Text(clipSplitText(
+                      context,
+                      'ช่วงที่เลือกได้ตอนนี้ ${formatClipSplitTime(widget.availableStart)}–${formatClipSplitTime(widget.availableEnd)}',
+                      'Available source range ${formatClipSplitTime(widget.availableStart)}–${formatClipSplitTime(widget.availableEnd)}')),
+                  const SizedBox(height: AppTheme.spaceSm),
+                  Text(
+                      clipSplitText(
+                          context,
+                          widget.minimumDuration > 0
+                              ? 'ความยาวตอน ${formatClipSplitTime(widget.minimumDuration)}–${formatClipSplitTime(widget.maximumDuration)} นาที'
+                              : 'ความยาวตอนต้องมากกว่า 0 และไม่เกิน ${formatClipSplitTime(widget.maximumDuration)} นาที',
+                          widget.minimumDuration > 0
+                              ? 'Part length ${formatClipSplitTime(widget.minimumDuration)}–${formatClipSplitTime(widget.maximumDuration)} min'
+                              : 'Part length must be above 0 and up to ${formatClipSplitTime(widget.maximumDuration)} min'),
+                      style: Theme.of(context).textTheme.bodySmall),
+                  if (widget.shared) ...[
+                    const SizedBox(height: AppTheme.spaceSm),
+                    Text(
+                        clipSplitText(
+                            context,
+                            'ใช้ช่วงเวลานี้กับทุกช่องทางที่เลือก',
+                            'Apply this range to every selected channel.'),
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                  const SizedBox(height: AppTheme.spaceLg),
+                  TextField(
+                      key: const ValueKey('clip-split-range-start'),
+                      controller: _start,
+                      enabled: enabled,
+                      onChanged: _changed,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                          labelText: clipSplitText(context,
+                              'เวลาเริ่ม (นาที:วินาที)', 'Start (M:SS)'),
+                          hintText: '0:00',
+                          border: const OutlineInputBorder())),
+                  const SizedBox(height: AppTheme.spaceMd),
+                  TextField(
+                      key: const ValueKey('clip-split-range-end'),
+                      controller: _end,
+                      enabled: enabled,
+                      onChanged: _changed,
+                      textInputAction: TextInputAction.done,
+                      decoration: InputDecoration(
+                          labelText: clipSplitText(
+                              context, 'เวลาจบ (นาที:วินาที)', 'End (M:SS)'),
+                          hintText: '0:00',
+                          border: const OutlineInputBorder())),
+                  RangeSlider(
+                      key: const ValueKey('clip-split-range-slider'),
+                      min: 0,
+                      max: widget.sourceDuration,
+                      values: sliderValid
+                          ? RangeValues(
+                              segment.startSeconds, segment.endSeconds)
+                          : RangeValues(widget.segment.startSeconds,
+                              widget.segment.endSeconds),
+                      labels: RangeLabels(
+                          formatClipSplitTime(sliderValid
+                              ? segment.startSeconds
+                              : widget.segment.startSeconds),
+                          formatClipSplitTime(sliderValid
+                              ? segment.endSeconds
+                              : widget.segment.endSeconds)),
+                      onChanged: !enabled
+                          ? null
+                          : (values) => setState(() {
+                                _start.text = formatClipSplitTime(values.start);
+                                _end.text = formatClipSplitTime(values.end);
+                                _problem = null;
+                                _invalidFormat = false;
+                              })),
+                  if (segment != null && segment.durationSeconds > 0)
+                    Text(clipSplitText(
+                        context,
+                        'ยาว ${formatClipSplitTime(segment.durationSeconds)} นาที',
+                        'Length ${formatClipSplitTime(segment.durationSeconds)} min')),
+                  if (_problem != null ||
+                      _invalidFormat ||
+                      !widget.owner.isCurrent)
+                    Padding(
+                        padding: const EdgeInsets.only(top: AppTheme.spaceSm),
+                        child: Text(
+                            !widget.owner.isCurrent
+                                ? clipSplitText(
+                                    context,
+                                    'บัญชีที่ใช้งานเปลี่ยนแล้ว กรุณาเปิดคลิปใหม่',
+                                    'Your account has changed. Reopen the video.')
+                                : _invalidFormat
+                                    ? clipSplitText(
+                                        context,
+                                        'ใส่เวลาเป็น นาที:วินาที เช่น 1:30 หรือ 1:30.125',
+                                        'Enter M:SS, for example 1:30 or 1:30.125.')
+                                    : clipSplitProblemText(context, _problem!),
+                            key: const ValueKey('clip-split-range-error'),
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error))),
+                  if (_previewError != null) Text(_previewError!),
+                  if (widget.onPreview != null)
+                    TextButton.icon(
+                        key: const ValueKey('clip-split-range-preview'),
+                        onPressed: enabled ? _preview : null,
+                        icon: const Icon(Icons.play_circle_outline),
+                        label: Text(clipSplitText(context, 'ดูตัวอย่างช่วงนี้',
+                            'Preview this range'))),
+                ])),
+        actions: [
+          TextButton(
+              key: const ValueKey('clip-split-range-cancel'),
+              onPressed: _previewing ? null : () => Navigator.pop(context),
+              child: Text(clipSplitText(context, 'ยกเลิก', 'Cancel'))),
+          FilledButton(
+              key: const ValueKey('clip-split-range-save'),
+              onPressed: !enabled
+                  ? null
+                  : () {
+                      final plan = _validated();
+                      if (plan != null && widget.owner.isCurrent) {
+                        Navigator.pop(context, plan);
+                      }
+                    },
+              child:
+                  Text(clipSplitText(context, 'บันทึกช่วงเวลา', 'Save range'))),
+        ],
+      ),
+    );
+  }
 }
 
 class _ClipRangePreviewScreen extends StatefulWidget {

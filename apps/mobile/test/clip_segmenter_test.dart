@@ -167,6 +167,32 @@ void main() {
     await result.cleanupTemporaryFiles();
   });
 
+  test('manual gapped ranges seek to each selected start independently',
+      () async {
+    final result = await processor().call(request(ranges: const [
+      ClipSegmentRange(
+          index: 0,
+          startSeconds: 1,
+          endSeconds: 4,
+          minimumDurationSeconds: 3,
+          maximumDurationSeconds: 5),
+      ClipSegmentRange(
+          index: 1,
+          startSeconds: 6,
+          endSeconds: 9,
+          minimumDurationSeconds: 3,
+          maximumDurationSeconds: 5),
+    ]));
+    expect(
+        commands[0], containsAllInOrder(['-ss', '1.000000', '-t', '3.000000']));
+    expect(
+        commands[1], containsAllInOrder(['-ss', '6.000000', '-t', '3.000000']));
+    expect(result.parts.map((p) => (p.startSeconds, p.endSeconds)),
+        [(1, 4), (6, 9)]);
+    expect(input.readAsBytesSync(), [1, 2, 3]);
+    await result.cleanupTemporaryFiles();
+  });
+
   test(
       'microsecond boundaries exactly at the limit do not fail from floating subtraction',
       () async {

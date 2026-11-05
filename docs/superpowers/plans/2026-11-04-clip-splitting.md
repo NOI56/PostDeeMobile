@@ -1,5 +1,50 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Per-part source range selection — 2026-11-05
+
+The owner could see the automatic parts but could not choose which source
+content each part retained. The former first-boundary slider was absent when
+the source exactly filled all channel limits. Replace that control with an
+explicit start/end editor for every split part, independent preview, unchanged
+other parts, visible gap disclosure and an automatic-range reset. Same-parts
+edits apply to all selected destinations; unsplit channels keep the full video.
+The part count is unchanged. Ranges must fit source bounds, preserve order
+without overlap, and satisfy existing per-channel minimum/maximum duration.
+
+Baseline: `b67e1def`, runtime `8f3b25c7`, branch `codex/clip-group-review`;
+freshly fetched `origin/main` and merge base `8a340638` (ahead 13 / behind 0).
+Pre-existing generated Windows changes and scratch output are preserved.
+No API, schema, migration, entitlement, feature flag or provider-policy change.
+The original backup, caption-first flow, per-clip schedules, consent,
+submission identities, accepted/unknown recovery and existing quota checks
+must remain working. Regression tests were added first; the integration RED
+failed for the absent `segmentOverrides` input and UI RED failed for the absent
+range controls (11 existing tests passed, 5 new interaction tests failed).
+Logs: `output/manual-clip-ranges/regression-before.log`, `ui-before.log`.
+Changed runtime files: `clip_split_plan.dart`, `clip_split_screen.dart` and
+`clip_split_localizations.dart`. Five existing test files cover planner rules,
+native arguments, stored group intervals, real uploader navigation and visual
+layouts. The range dialog shows the available interval between neighboring
+parts, accepts exact M:SS fractions, offers a slider/preview, and validates the
+whole candidate plan before applying. Compatible mode/channel changes retain
+input; incompatible ranges reset with a notice beside the mode choices.
+The dialog and planner share normalized source precision, including a source
+whose fractional measurement rounds upward to the next microsecond.
+
+Focused core tests: 82 passed. UI/uploader/real-font layout tests: 32 passed,
+including English/dark, 320dp, large text, keyboard insets, preview locking and
+owner changes. Initial UI failures were offscreen lazy-list assertions; the
+tests now scroll to the exact notice/range and retain their original assertions.
+Reset notices also moved nearer the mode controls. Final analysis: No issues,
+10.2 seconds. Logs: `core-tests.log`, `ui-final.log`, `analyze.log` under
+`output/manual-clip-ranges/`. The final complete Mobile suite passed **5,539
+tests, 10 optional skips**, exit 0, **8m45s** with
+`flutter test --no-pub --concurrency=4 --reporter expanded`; log:
+`output/manual-clip-ranges/full-mobile.log`. The final diff contains the three
+related runtime files, five test files and synchronized product/workflow docs,
+with no unexpected deletions. No existing native/API/configuration files were
+changed. Exact build and native evidence will be recorded below.
+
 ## Member route Material hotfix — 2026-11-05
 
 The owner reported missing-Material error widgets and oversized red/yellow

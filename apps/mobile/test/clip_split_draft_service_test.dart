@@ -294,6 +294,82 @@ void main() {
     expect(result.drafts.every((d) => d.platformApiValues.length == 4), isTrue);
   });
 
+  test('manual source ranges reach encoding and the saved group unchanged',
+      () async {
+    final source = await f.seed('manual_source');
+    f.source = File(source.videoPath);
+    final originalBytes = await f.source.readAsBytes();
+    final plan = ClipSplitPlan.create(
+      sourceDurationSeconds: 270,
+      platforms: f.plan().platforms,
+      segmentOverrides: const {
+        SocialPlatform.facebookReels: [
+          ClipSplitSegment(startSeconds: 20, endSeconds: 90),
+          ClipSplitSegment(startSeconds: 105, endSeconds: 180),
+          ClipSplitSegment(startSeconds: 195, endSeconds: 260),
+        ],
+      },
+    );
+    final result = await f
+        .service()
+        .call(f.request(splitPlan: plan, sourceDraftId: source.id));
+
+    final facebookRanges = f.segmentRequest!.ranges
+        .where((range) => plan.groupedParts[range.index].platforms
+            .contains(SocialPlatform.facebookReels))
+        .toList();
+    expect(facebookRanges.map((r) => (r.startSeconds, r.endSeconds)),
+        [(20, 90), (105, 180), (195, 260)]);
+    final persisted = (await f.store.loadClipGroup(result.group!.id))!;
+    final members = persisted.items
+        .where((item) => item.platformApiValues.contains('FACEBOOK_REELS'))
+        .toList();
+    expect(members.map((m) => (m.sourceStartSeconds, m.sourceEndSeconds)),
+        [(20, 90), (105, 180), (195, 260)]);
+    for (final member in members) {
+      final draft = (await f.store.loadDraft(member.draftId))!;
+      expect(result.metadataByDraftId[draft.id]!.durationSeconds,
+          member.sourceEndSeconds - member.sourceStartSeconds);
+      expect(draft.scheduledAt, isNull);
+      expect(draft.uploadedMedia, isNull);
+      expect(draft.platformSettings.facebookPublishMode,
+          FacebookPublishMode.pageDraft);
+      expect(draft.platformSettings.facebookIsAiGenerated, isTrue);
+    }
+    expect(result.drafts, hasLength(6));
+    expect(result.totalPostUnits, 7);
+    final full = result.drafts.singleWhere(
+        (draft) => draft.platformApiValues.contains('INSTAGRAM_REELS'));
+    expect(full.platformApiValues, {'TIKTOK', 'INSTAGRAM_REELS'});
+    expect(await File(full.videoPath).readAsBytes(), originalBytes);
+    expect(await f.source.readAsBytes(), originalBytes);
+    expect((await f.store.loadDraft(source.id))!.caption, 'Existing draft');
+    expect(result.drafts.map((d) => d.submissionRequestId).toSet(),
+        hasLength(result.drafts.length));
+    expect(f.cleanupCalls, 1);
+  });
+
+  test('manual shared parts encode once for all destinations', () async {
+    final plan = ClipSplitPlan.create(
+      sourceDurationSeconds: 270,
+      platforms: f.plan().platforms,
+      mode: ClipSplitMode.sameParts,
+      segmentOverrides: const {
+        SocialPlatform.facebookReels: [
+          ClipSplitSegment(startSeconds: 20, endSeconds: 90),
+          ClipSplitSegment(startSeconds: 105, endSeconds: 180),
+          ClipSplitSegment(startSeconds: 195, endSeconds: 260),
+        ],
+      },
+    );
+    final result = await f.service().call(f.request(splitPlan: plan));
+    expect(f.segmentRequest!.ranges.map((r) => (r.startSeconds, r.endSeconds)),
+        [(20, 90), (105, 180), (195, 260)]);
+    expect(result.drafts, hasLength(3));
+    expect(result.drafts.every((d) => d.platformApiValues.length == 4), isTrue);
+    expect(result.totalPostUnits, 12);
+  });
+
   test('a full-length-only plan copies the original without native work',
       () async {
     final plan = ClipSplitPlan.create(

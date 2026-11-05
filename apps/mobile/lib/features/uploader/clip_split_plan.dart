@@ -16,6 +16,7 @@ enum ClipSplitPlanProblem {
   tooShort,
   tooManyParts,
   invalidBoundary,
+  invalidSegmentRange,
   noSharedRange,
 }
 
@@ -86,7 +87,7 @@ class ClipSplitPart {
 
 /// A local preparation plan only: it neither encodes media nor spends quota.
 /// Durations are normalized to the measured microsecond precision once, so
-/// adjacent ranges share exact boundaries and no tail is silently discarded.
+/// automatic ranges cover the source and explicitly edited ranges retain gaps.
 class ClipSplitPlan {
   ClipSplitPlan._({
     required this.sourceDurationSeconds,
@@ -107,6 +108,7 @@ class ClipSplitPlan {
     bool tikTokDirectPost = false,
     int? tikTokMaxDurationSeconds,
     Map<SocialPlatform, double> firstBoundaries = const {},
+    Map<SocialPlatform, List<ClipSplitSegment>> segmentOverrides = const {},
   }) {
     if (!sourceDurationSeconds.isFinite ||
         sourceDurationSeconds <= 0 ||
@@ -152,8 +154,42 @@ class ClipSplitPlan {
       throw const ClipSplitPlanException(ClipSplitPlanProblem.noSharedRange);
     }
 
+    final overrides = <SocialPlatform, List<(int, int)>>{};
+    List<(int, int)>? sharedSegments;
+    for (final entry in rules.entries) {
+      final requested = segmentOverrides[entry.key];
+      if (requested == null) continue;
+      final minimumTicks = mode == ClipSplitMode.sameParts
+          ? sharedMinimum
+          : (entry.value.minimumSeconds ?? 0) * _ticksPerSecond;
+      final maximumTicks = mode == ClipSplitMode.sameParts
+          ? sharedMaximum
+          : entry.value.maximumSeconds * _ticksPerSecond;
+      final count = (durationTicks + maximumTicks - 1) ~/ maximumTicks;
+      if (count > maxClipSplitParts) {
+        throw const ClipSplitPlanException(ClipSplitPlanProblem.tooManyParts);
+      }
+      final normalized = _validatedSegmentTicks(requested,
+          sourceTicks: durationTicks,
+          count: count,
+          minimumTicks: math.max(1, minimumTicks),
+          maximumTicks: maximumTicks);
+      overrides[entry.key] = normalized;
+      if (mode == ClipSplitMode.sameParts) {
+        if (sharedSegments != null) {
+          for (var index = 0; index < normalized.length; index++) {
+            if (sharedSegments[index] != normalized[index]) {
+              throw const ClipSplitPlanException(
+                  ClipSplitPlanProblem.invalidSegmentRange);
+            }
+          }
+        }
+        sharedSegments = normalized;
+      }
+    }
+
     int? sharedFirst;
-    if (mode == ClipSplitMode.sameParts) {
+    if (mode == ClipSplitMode.sameParts && sharedSegments == null) {
       for (final entry in firstBoundaries.entries
           .where((entry) => platforms.contains(entry.key))) {
         if (!entry.value.isFinite || entry.value <= 0) {
@@ -193,7 +229,9 @@ class ClipSplitPlan {
           ? math.min(
               maximumTicks, durationTicks - (count - 1) * positiveMinimumTicks)
           : null;
-      final requestedFirst = firstBoundaries[entry.key];
+      final segments = sharedSegments ?? overrides[entry.key];
+      final requestedFirst =
+          segments == null ? firstBoundaries[entry.key] : null;
       if (requestedFirst != null &&
           (!requestedFirst.isFinite || requestedFirst <= 0)) {
         throw const ClipSplitPlanException(
@@ -222,13 +260,21 @@ class ClipSplitPlan {
             lower == null ? null : lower / _ticksPerSecond,
         maximumFirstBoundarySeconds:
             upper == null ? null : upper / _ticksPerSecond,
-        segments: [
-          for (var index = 0; index < count; index++)
-            ClipSplitSegment(
-              startSeconds: boundaries[index] / _ticksPerSecond,
-              endSeconds: boundaries[index + 1] / _ticksPerSecond,
-            ),
-        ],
+        segments: segments == null
+            ? [
+                for (var index = 0; index < count; index++)
+                  ClipSplitSegment(
+                    startSeconds: boundaries[index] / _ticksPerSecond,
+                    endSeconds: boundaries[index + 1] / _ticksPerSecond,
+                  ),
+              ]
+            : [
+                for (final segment in segments)
+                  ClipSplitSegment(
+                    startSeconds: segment.$1 / _ticksPerSecond,
+                    endSeconds: segment.$2 / _ticksPerSecond,
+                  ),
+              ],
       ));
     }
 
@@ -290,6 +336,41 @@ class ClipSplitPlan {
 
   ClipSplitChannelPlan channelPlanFor(SocialPlatform platform) =>
       channelPlans.firstWhere((channel) => channel.platform == platform);
+}
+
+List<(int, int)> _validatedSegmentTicks(List<ClipSplitSegment> segments,
+    {required int sourceTicks,
+    required int count,
+    required int minimumTicks,
+    required int maximumTicks}) {
+  const invalid =
+      ClipSplitPlanException(ClipSplitPlanProblem.invalidSegmentRange);
+  if (segments.length != count) throw invalid;
+  final result = <(int, int)>[];
+  var previousEnd = 0;
+  for (final segment in segments) {
+    final start = segment.startSeconds * _ticksPerSecond;
+    final end = segment.endSeconds * _ticksPerSecond;
+    if (!start.isFinite ||
+        !end.isFinite ||
+        start.abs() > 9007199254740991 ||
+        end.abs() > 9007199254740991) {
+      throw invalid;
+    }
+    final startTicks = start.round();
+    final endTicks = end.round();
+    final duration = endTicks - startTicks;
+    if (startTicks < previousEnd ||
+        startTicks < 0 ||
+        endTicks > sourceTicks ||
+        duration < minimumTicks ||
+        duration > maximumTicks) {
+      throw invalid;
+    }
+    result.add((startTicks, endTicks));
+    previousEnd = endTicks;
+  }
+  return result;
 }
 
 class _GroupedPart {

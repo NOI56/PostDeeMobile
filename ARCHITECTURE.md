@@ -2,6 +2,21 @@
 
 Architecture overview for the PostDee mobile app and backend scaffold.
 
+## Explicit source ranges for split parts (2026-11-05)
+
+`ClipSplitPlan.create(segmentOverrides: ...)` accepts optional per-channel
+source intervals at normalized microsecond precision. The automatic part count
+and channel duration rules remain authoritative; ranges must be ordered,
+non-overlapping and inside the source. Gaps are intentional omissions. In
+`sameParts`, one override applies to every selected channel and conflicting
+overrides fail closed. Unchanged planning and legacy first-boundary inputs stay
+compatible. The UI exposes this only for multi-part destinations, preserving
+the full-video meaning for unsplit destinations and existing saved groups.
+The same validated intervals drive preview, grouped-file deduplication, native
+encoding and existing local group source-range fields. No local schema or API
+change, and no source file rewrite. AI still reads the full retained original
+when invoked from the shared-caption editor.
+
 ## Clip editor route boundary (2026-11-05)
 
 `UploaderScreen` is body content, including when `fullScreen` enables its exit

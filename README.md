@@ -1,5 +1,17 @@
 # PostDee
 
+## Choose each split part's source range (2026-11-05)
+
+Each split part offers an explicit start/end time editor and preview, including
+parts whose automatic length already equals a channel's limit. Editing one part
+keeps the other parts in place; omitted source ranges are clearly disclosed.
+The shared-parts mode applies the chosen ranges to all selected channels.
+Ranges must stay inside the original video, in order, without overlap, and meet
+the existing channel duration limits. Full-video destinations stay unchanged.
+Automatic ranges can be restored before preparing the set. This remains local
+preparation: no AI request, upload, post or quota charge. See the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md) for verification.
+
 ## Clip member editor rendering fix (2026-11-05, Staging APK 12111)
 
 Opening an individual clip's Caption / AI or channel editor now supplies its

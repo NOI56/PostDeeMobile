@@ -41,6 +41,10 @@ String clipSplitProblemText(
           context,
           'จุดแบ่งนี้ทำให้บางตอนสั้นหรือยาวเกินไป กรุณาปรับใหม่',
           'This cut makes a part too short or too long. Adjust it again.'),
+      ClipSplitPlanProblem.invalidSegmentRange => clipSplitText(
+          context,
+          'ช่วงเวลาต้องอยู่ในต้นฉบับ ไม่ทับตอนอื่น และยาวตามข้อกำหนดของช่องทาง',
+          'Keep ranges within the original, without overlaps, and within the channel’s allowed length.'),
       ClipSplitPlanProblem.noSharedRange => clipSplitText(
           context,
           'ยังใช้จุดแบ่งร่วมกันไม่ได้ ลองแบ่งเฉพาะช่องทางที่ยาวเกิน',
@@ -49,13 +53,13 @@ String clipSplitProblemText(
 
 /// Exact measured ranges keep fractional boundaries visible when required.
 String formatClipSplitTime(double seconds) {
-  final milliseconds = (seconds * 1000).round();
-  final minutes = milliseconds ~/ 60000;
-  final wholeSeconds = (milliseconds ~/ 1000) % 60;
-  final fraction = milliseconds % 1000;
+  final microseconds = (seconds * 1000000).round();
+  final minutes = microseconds ~/ 60000000;
+  final wholeSeconds = (microseconds ~/ 1000000) % 60;
+  final fraction = microseconds % 1000000;
   final whole = '$minutes:${wholeSeconds.toString().padLeft(2, '0')}';
   if (fraction == 0) return whole;
   final suffix =
-      fraction.toString().padLeft(3, '0').replaceFirst(RegExp(r'0+$'), '');
+      fraction.toString().padLeft(6, '0').replaceFirst(RegExp(r'0+$'), '');
   return '$whole.$suffix';
 }

@@ -2,6 +2,18 @@
 
 Build roadmap for PostDee.
 
+## Select source ranges per split part (2026-11-05)
+
+- Offer start/end editing and preview for every split part, including exact
+  duration-limit cases; preserve other parts and full-video destinations.
+- Apply shared-parts changes consistently, disclose omitted ranges and provide
+  an explicit return to automatic ranges. Validate source bounds, order,
+  non-overlap and existing channel duration limits before preparation.
+- Preserve originals, shared-caption-first review, per-clip schedules, quota
+  rules and publishing recovery. No API/schema/environment change.
+- Verification is recorded in the
+  [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Clip member editor rendering fix (2026-11-05, Staging APK 12111)
 
 - Fix the missing Material/Scaffold boundary on separately opened caption/AI

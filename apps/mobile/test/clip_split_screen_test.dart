@@ -59,6 +59,7 @@ void main() {
       {bool english = false,
       bool dark = false,
       double scale = 1,
+      double duration = 270,
       bool direct = false,
       Set<SocialPlatform> platforms = _platforms,
       File? videoFile,
@@ -87,7 +88,7 @@ void main() {
                   final plan = await Navigator.of(context)
                       .push<ClipSplitPlan>(MaterialPageRoute(
                           builder: (_) => ClipSplitScreen(
-                                sourceDurationSeconds: 270,
+                                sourceDurationSeconds: duration,
                                 videoName: 'คลิปสินค้าของฉัน.mp4',
                                 initialPlatforms: platforms,
                                 videoFile: videoFile,
@@ -104,6 +105,8 @@ void main() {
   }
 
   Future<void> tap(WidgetTester tester, String key) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
     final finder = find.byKey(ValueKey(key));
     if (finder.evaluate().isEmpty) {
       await tester.fling(find.byKey(const ValueKey('clip-split-scroll')),
@@ -185,6 +188,265 @@ void main() {
     await tap(tester, 'clip-split-mode-all');
     expect(find.text('12 หน่วยโพสต์'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('each exact-ceiling part keeps its own chosen source range',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    ClipSplitPlan? confirmed;
+    await mount(tester,
+        duration: 360,
+        platforms: const {SocialPlatform.youtubeShorts},
+        preview: (segment) async => previews.add(segment),
+        onResult: (plan) => confirmed = plan);
+    await tap(tester, 'clip-split-range-0');
+    expect(find.text('ช่วงที่เลือกได้ตอนนี้ 0:00–3:00'), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-start')), '0:05');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-end')), '2:55');
+    await tap(tester, 'clip-split-range-save');
+    await tap(tester, 'clip-split-preview-0');
+    await tap(tester, 'clip-split-preview-1');
+    expect(previews.map((part) => (part.startSeconds, part.endSeconds)),
+        [(5, 175), (180, 360)]);
+    expect(
+        find.text('ช่วงที่เว้นไว้จะไม่รวมอยู่ในคลิปที่เตรียม'), findsOneWidget);
+    await tap(tester, 'clip-split-review');
+    expect(find.textContaining('0:05–2:55'), findsOneWidget);
+    await tap(tester, 'clip-split-confirm');
+    expect(
+        confirmed!
+            .channelPlanFor(SocialPlatform.youtubeShorts)
+            .segments
+            .map((part) => (part.startSeconds, part.endSeconds)),
+        [(5, 175), (180, 360)]);
+  });
+
+  testWidgets('invalid and cancelled range edits never move another part',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    await mount(tester,
+        duration: 360,
+        platforms: const {SocialPlatform.youtubeShorts},
+        preview: (segment) async => previews.add(segment));
+    await tap(tester, 'clip-split-range-0');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-start')), '0:10');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-end')), '3:10');
+    await tap(tester, 'clip-split-range-save');
+    expect(
+        find.byKey(const ValueKey('clip-split-range-dialog')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('clip-split-range-error')), findsOneWidget);
+    await tap(tester, 'clip-split-range-cancel');
+    await tap(tester, 'clip-split-preview-0');
+    await tap(tester, 'clip-split-preview-1');
+    expect(previews.map((part) => (part.startSeconds, part.endSeconds)),
+        [(0, 180), (180, 360)]);
+  });
+
+  testWidgets(
+      'shared edits apply everywhere and keep compatible ranges on mode change',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    await mount(tester,
+        duration: 360,
+        platforms: const {
+          SocialPlatform.youtubeShorts,
+          SocialPlatform.instagramReels,
+        },
+        preview: (segment) async => previews.add(segment));
+    await tap(tester, 'clip-split-mode-all');
+    await tap(tester, 'clip-split-range-0');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-start')), '0:10');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-end')), '2:50');
+    await tap(tester, 'clip-split-range-save');
+    await tap(tester, 'clip-split-tab-INSTAGRAM_REELS');
+    await tap(tester, 'clip-split-preview-0');
+    expect((previews.last.startSeconds, previews.last.endSeconds), (10, 170));
+    await tap(tester, 'clip-split-mode-affected');
+    await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('clip-split-ranges-reset-notice')), 150,
+        scrollable: find
+            .descendant(
+                of: find.byKey(const ValueKey('clip-split-scroll')),
+                matching: find.byType(Scrollable))
+            .first);
+    expect(find.byKey(const ValueKey('clip-split-ranges-reset-notice')),
+        findsOneWidget);
+    await tap(tester, 'clip-split-preview-0');
+    expect((previews.last.startSeconds, previews.last.endSeconds), (0, 360));
+    await tap(tester, 'clip-split-tab-YOUTUBE_SHORTS');
+    await tap(tester, 'clip-split-preview-0');
+    expect((previews.last.startSeconds, previews.last.endSeconds), (10, 170));
+    await tap(tester, 'clip-split-reset-ranges');
+    await tap(tester, 'clip-split-preview-0');
+    expect((previews.last.startSeconds, previews.last.endSeconds), (0, 180));
+  });
+
+  testWidgets('fractional split part uses a Material English editor at 320dp',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 850);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final previews = <ClipSplitSegment>[];
+    await mount(tester,
+        english: true,
+        dark: true,
+        scale: 2,
+        duration: 270.125,
+        platforms: const {SocialPlatform.youtubeShorts},
+        preview: (segment) async => previews.add(segment));
+    await tap(tester, 'clip-split-range-0');
+    expect(find.textContaining('4:30.125'), findsWidgets);
+    expect(find.text('Available source range 0:00–2:15.0625'), findsOneWidget);
+    expect(
+        find.ancestor(
+            of: find.byKey(const ValueKey('clip-split-range-start')),
+            matching: find.byType(Material)),
+        findsWidgets);
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-start')), '0:10.125');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-end')), '2:00.125');
+    await tap(tester, 'clip-split-range-preview');
+    expect((previews.single.startSeconds, previews.single.endSeconds),
+        (10.125, 120.125));
+    await tap(tester, 'clip-split-range-save');
+    await tap(tester, 'clip-split-review');
+    expect(find.text('Full video'), findsNothing);
+    await tester.scrollUntilVisible(
+        find.textContaining('0:10.125–2:00.125'), 150,
+        scrollable: find
+            .descendant(
+                of: find.byKey(const ValueKey('clip-split-scroll')),
+                matching: find.byType(Scrollable))
+            .first);
+    expect(find.textContaining('0:10.125–2:00.125'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'a channel that fits keeps the full original without range editing',
+      (tester) async {
+    await mount(tester,
+        duration: 90, platforms: const {SocialPlatform.instagramReels});
+    final scroll = find.descendant(
+        of: find.byKey(const ValueKey('clip-split-scroll')),
+        matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('clip-split-preview-0')), 150,
+        scrollable: scroll);
+    expect(find.byKey(const ValueKey('clip-split-range-0')), findsNothing);
+    expect(find.text('คลิปเต็ม'), findsWidgets);
+  });
+
+  testWidgets(
+      'adding a compatible channel preserves ranges but a stricter shared plan resets explicitly',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    await mount(tester,
+        duration: 360,
+        platforms: const {SocialPlatform.youtubeShorts},
+        preview: (segment) async => previews.add(segment));
+    await tap(tester, 'clip-split-range-0');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-start')), '0:05');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-end')), '2:55');
+    await tap(tester, 'clip-split-range-save');
+    await tap(tester, 'clip-split-channel-INSTAGRAM_REELS');
+    await tap(tester, 'clip-split-preview-0');
+    expect((previews.last.startSeconds, previews.last.endSeconds), (5, 175));
+    await tap(tester, 'clip-split-mode-all');
+    await tap(tester, 'clip-split-channel-FACEBOOK_REELS');
+    await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('clip-split-ranges-reset-notice')), 150,
+        scrollable: find
+            .descendant(
+                of: find.byKey(const ValueKey('clip-split-scroll')),
+                matching: find.byType(Scrollable))
+            .first);
+    expect(find.byKey(const ValueKey('clip-split-ranges-reset-notice')),
+        findsOneWidget);
+    await tap(tester, 'clip-split-tab-YOUTUBE_SHORTS');
+    await tap(tester, 'clip-split-preview-0');
+    expect((previews.last.startSeconds, previews.last.endSeconds), (0, 90));
+  });
+
+  for (final duration in [180.000001, 180.0000005]) {
+    testWidgets(
+        'opening and saving an untouched $duration range preserves canonical microseconds',
+        (tester) async {
+      ClipSplitPlan? confirmed;
+      await mount(tester,
+          duration: duration,
+          platforms: const {SocialPlatform.youtubeShorts},
+          onResult: (plan) => confirmed = plan);
+      final automatic = ClipSplitPlan.create(
+          sourceDurationSeconds: duration,
+          platforms: const {SocialPlatform.youtubeShorts});
+      await tap(tester, 'clip-split-range-1');
+      expect(
+          tester
+              .widget<TextField>(
+                  find.byKey(const ValueKey('clip-split-range-end')))
+              .controller!
+              .text,
+          '3:00.000001');
+      await tap(tester, 'clip-split-range-save');
+      await tap(tester, 'clip-split-review');
+      await tap(tester, 'clip-split-confirm');
+      expect(
+          confirmed!
+              .channelPlanFor(SocialPlatform.youtubeShorts)
+              .segments
+              .map((part) => (part.startSeconds, part.endSeconds)),
+          automatic
+              .channelPlanFor(SocialPlatform.youtubeShorts)
+              .segments
+              .map((part) => (part.startSeconds, part.endSeconds)));
+    });
+  }
+
+  testWidgets(
+      'range preview locks saving and changed owners cannot apply edits',
+      (tester) async {
+    final gate = Completer<void>();
+    await mount(tester,
+        platforms: const {SocialPlatform.youtubeShorts},
+        preview: (_) => gate.future);
+    await tap(tester, 'clip-split-range-0');
+    await tester.tap(find.byKey(const ValueKey('clip-split-range-preview')));
+    await tester.pump();
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.byKey(const ValueKey('clip-split-range-save')))
+            .onPressed,
+        isNull);
+    PostDeeAuthSessionStore.instance.signIn(AuthSession.authenticated(
+        userId: 'new-range-owner', idToken: 'new-range-token'));
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.byKey(const ValueKey('clip-split-range-save')))
+            .onPressed,
+        isNull);
+    await tap(tester, 'clip-split-range-cancel');
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.byKey(const ValueKey('clip-split-review')))
+            .onPressed,
+        isNull);
   });
 
   testWidgets(

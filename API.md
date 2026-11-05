@@ -1,5 +1,14 @@
 # API.md
 
+## Manual split source ranges (2026-11-05)
+
+Per-part start/end choices are local planning inputs, not posting dates or
+times. They feed the existing native segment request and local group interval
+fields; no API field, endpoint, migration, configuration or deployment is
+required. Local range editing, preview and preparation consume no credits or
+post units. Each resulting member keeps the existing single-post validation,
+consent, idempotency and quota contract; provider duration policy is unchanged.
+
 ## Clip editor rendering fix (2026-11-05, Staging APK 12111)
 
 This Mobile-only route-shell fix adds no API request, schema, entitlement or

@@ -154,6 +154,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
       AppTheme.applyThemeMode(mode.dark ? ThemeMode.dark : ThemeMode.light);
       await _fonts(tester);
       await tester.pumpWidget(
@@ -179,11 +180,30 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(youtube);
       await tester.pumpAndSettle();
-      final cut = find.byKey(const ValueKey('clip-split-first-boundary'));
+      final cut = find.byKey(const ValueKey('clip-split-range-0'));
       await tester.scrollUntilVisible(cut, 150, scrollable: scroll);
       await tester.ensureVisible(cut);
       await tester.pumpAndSettle();
       await _capture(tester, 'clip-split-${mode.name}-ranges');
+
+      await tester.tap(cut);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('clip-split-range-dialog')),
+          findsOneWidget);
+      await _capture(tester, 'clip-split-${mode.name}-range-editor');
+      final start = find.byKey(const ValueKey('clip-split-range-start'));
+      await tester.enterText(start, '0:05');
+      tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+      await tester.pumpAndSettle();
+      await tester
+          .ensureVisible(find.byKey(const ValueKey('clip-split-range-save')));
+      await tester.pumpAndSettle();
+      await _capture(tester, 'clip-split-${mode.name}-range-keyboard');
+      tester.view.resetViewInsets();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('clip-split-range-save')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('clip-split-review')));
       await tester.pumpAndSettle();

@@ -1,5 +1,39 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Main-caption design example — 2026-11-05 (preview only)
+
+The owner requested a visual example of returning to the familiar main caption
+page after splitting an overlength video. Freshly fetched `origin/main` remains
+`e4004355`; the clean reused branch starts at `49a0783c`, ahead 5 / behind 0.
+No production Dart code or route is changed by this example.
+
+`test/support/split_caption_page_preview.dart` supplies familiar create-post
+chrome, the proposed Channels → Video → Caption → Review order, a compact
+split-set summary and a parts detail sheet. It embeds the **actual**
+`UploaderScreen` shared-caption editor, keeping its caption field, AI helper,
+templates, style/language controls and owner/source checks. The example uses
+the existing local 180-second fixture with Facebook Reels selected; the real
+planner derives two ranges, `0:00–1:30` and `1:30–3:00`. The caption starts empty.
+The fixture uses Basic access and no usable AI credits, not fabricated Pro
+balances or generated sample text. The Save/Back/Continue callbacks are local
+preview callbacks; media preparation, persistence and the production navigation
+remain unchanged. This is not a completed integration of the proposed flow.
+
+`test/split_caption_main_preview_test.dart` is opt-in with
+`POSTDEE_UI_CAPTURE_DIR` and `POSTDEE_PREVIEW_SOURCE`. It captures real-font
+Thai/English light screens and a 320dp Thai dark screen at 1.5x text size;
+checks the shared controller, parts sheet, Continue callback and zero upload,
+AI-generation, publish or extra draft writes. The three visual examples plus
+14 existing shared-caption editor tests pass **17/17**, exit 0. Analysis of
+the two preview files has no issues (4.4s). No full-suite or native/store build
+was run for these test-only files; the installed Staging 12115 is untouched.
+
+Screenshots are in `D:/PostDeeMobile/output/split-caption-main-preview/` and
+scratch logs in `E:/PostDeeTaskScratch/split-caption-main-preview*`.
+Runtime route integration, per-item override/scheduling continuation and device
+acceptance of this proposed flow remain future work. No API/schema/environment,
+entitlement, migration, main merge, push, deploy or account data change occurred.
+
 ## Compact range clocks — 2026-11-05 (local candidate)
 
 The owner reported long fractional clocks after dragging a range, such as

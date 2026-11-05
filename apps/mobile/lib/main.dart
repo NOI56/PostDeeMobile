@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'core/auth/firebase_bootstrap.dart';
 import 'core/config/app_config.dart';
+import 'core/localization/language_controller.dart';
 import 'core/monitoring/postdee_firebase_monitoring.dart';
 import 'core/monitoring/postdee_sentry_monitoring.dart';
 import 'core/theme/theme_controller.dart';
@@ -29,6 +30,7 @@ Future<void> main() async {
 
 Future<void> _startPostDee(bool sentryEnabled) async {
   await PostDeeThemeController.instance.loadSavedThemeMode();
+  await PostDeeLanguageController.instance.loadSavedLocale();
   final firebaseBootstrapResult = await initializeFirebaseForPostDee();
   await configurePostDeeFirebaseMonitoring(
     firebaseBootstrapResult: firebaseBootstrapResult,

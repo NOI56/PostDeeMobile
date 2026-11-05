@@ -586,9 +586,7 @@ void main() {
 
     expect(find.text('One-time credit pack'), findsOneWidget);
     expect(find.text('100 post units + 50 AI caption credits'), findsOneWidget);
-    expect(
-        find.text('Thailand price: THB 49 · Pay the price shown by your store'),
-        findsOneWidget);
+    expect(find.text('You pay the price shown by your store'), findsOneWidget);
     expect(find.text('Available for repeat purchases'), findsOneWidget);
     expect(find.text('One-time purchase CHF 1.25'), findsOneWidget);
     expect(tester.widget<FilledButton>(_key('paywall-buy-addon')).onPressed,
@@ -596,6 +594,38 @@ void main() {
     expect(fixture.addons.productReads, 1);
     expect(tester.takeException(), isNull);
   });
+
+  for (final languageCode in ['th', 'en']) {
+    testWidgets(
+        '$languageCode top-up card uses store pricing without Thai price assumptions',
+        (tester) async {
+      final fixture = _Fixture(locale: Locale(languageCode));
+      addTearDown(fixture.dispose);
+      await tester.pumpWidget(fixture.app());
+      await tester.pumpAndSettle();
+      final card = _key('paywall-addon-card');
+      await _reveal(tester, card, addon: true);
+      final copy = tester
+          .widgetList<Text>(
+              find.descendant(of: card, matching: find.byType(Text)))
+          .map((text) => text.data ?? text.textSpan?.toPlainText() ?? '')
+          .join('\n');
+      for (final priceText in ['THB', 'บาท', '199', '299', '49']) {
+        expect(copy, isNot(contains(priceText)));
+      }
+      expect(
+          find.text(languageCode == 'th'
+              ? 'ชำระตามราคาที่ร้านค้าแสดง'
+              : 'You pay the price shown by your store'),
+          findsOneWidget);
+      expect(
+          find.text(languageCode == 'th'
+              ? 'ซื้อครั้งเดียว CHF 1.25'
+              : 'One-time purchase CHF 1.25'),
+          findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets(
       'credit policy preserves nonexpiry monthly-first and retained bank',
@@ -625,9 +655,7 @@ void main() {
     await tester.pumpAndSettle();
     await _reveal(tester, _key('paywall-addon-card'), addon: true);
     expect(find.text('One-time purchase   ๑๒,๙๐ บาท  '), findsOneWidget);
-    expect(
-        find.text('Thailand price: THB 49 · Pay the price shown by your store'),
-        findsOneWidget);
+    expect(find.text('You pay the price shown by your store'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

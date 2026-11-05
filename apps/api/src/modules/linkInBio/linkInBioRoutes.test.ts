@@ -59,7 +59,7 @@ describe('link in bio routes', () => {
   it('publishes responsive Thai HTML without requiring the viewer to log in', async () => {
     const app = createApp();
     await publish(app, 'owner').expect(200);
-    const result = await request(app).get('/p/my-shop').expect(200).expect('Content-Type', /html/);
+    const result = await request(app).get('/p/my-shop').set('Accept-Language', 'th').expect(200).expect('Content-Type', /html/);
     expect(result.text).toContain('lang="th"');
     expect(result.text).toContain('name="viewport"');
     expect(result.text).toContain('ร้านของดี');

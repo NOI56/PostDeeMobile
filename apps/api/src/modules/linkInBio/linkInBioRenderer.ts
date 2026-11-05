@@ -6,6 +6,7 @@ import { isDecoratedLinkInBioTheme, linkInBioThemeStyles, renderLinkInBioDecorat
 import { getProfileTemplate } from './profileTemplateCatalog.generated.js';
 import { linkInBioTemplateStyles } from './linkInBioTemplateStyles.js';
 import { fillsLastLinkRow, hasCustomProfileTemplateBackground, isDefaultPortraitSecondaryLink, profileTemplateLinkFill } from './linkInBioCompositionStyles.js';
+import { linkInBioLocalizations, type LinkInBioLanguage } from './linkInBioLocalizations.js';
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -38,7 +39,8 @@ const contactVectors = {
 const contactVector = (icon: keyof typeof contactVectors) => `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">${contactVectors[icon]}</svg>`;
 const outboundArrow = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M7 17 17 7M7 7h10v10"/></svg>';
 
-export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) => {
+export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string, language: LinkInBioLanguage = 'en') => {
+  const text = linkInBioLocalizations[language];
   const appearance = normalizeStoredLinkInBioAppearance(profile.appearance, profile.links);
   const template = getProfileTemplate(appearance.templateId);
   const decorated = Boolean(template) || isDecoratedLinkInBioTheme(appearance.themeId);
@@ -101,7 +103,7 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
     const destination = readLinkInBioUrl(link.url);
     const target = destination?.startsWith('mailto:') || destination?.startsWith('tel:') ? '' : ' target="_blank" rel="noopener noreferrer"';
     const animateFeatured = effects.featured && (featured || (!appearance.featuredLinkId && index === 0));
-    return `${heading}<li class="link-item${effects.entrance ? ' entrance' : ''}${fillRow ? ' fill-row' : ''}"${template ? ` data-position="${index + 1}" data-rhythm="${rhythm}"` : ''}><a class="link-${index}${featured ? ' featured' : ''}${animateFeatured ? ' motion-featured' : ''}${template && readLinkInBioColor(link.buttonColor) ? ' custom-button' : ''}${railOutlineLinks.has(index) ? ' rail-outline' : ''}${filledHairlineLinks.has(index) ? ' filled-button' : ''}" href="${escapeHtml(destination ?? link.url)}"${target}>${template ? `<span class="link-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>` : ''}<span class="platform-icon${isBrand ? ' brand-logo' : ''}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeText(link.title)}</span>${!template && appearance.themeId === 'cards' ? '<span class="link-cta">เปิดลิงก์</span>' : ''}</span><span class="arrow" aria-hidden="true">${decorated ? outboundArrow : '↗'}</span></a></li>`;
+    return `${heading}<li class="link-item${effects.entrance ? ' entrance' : ''}${fillRow ? ' fill-row' : ''}"${template ? ` data-position="${index + 1}" data-rhythm="${rhythm}"` : ''}><a class="link-${index}${featured ? ' featured' : ''}${animateFeatured ? ' motion-featured' : ''}${template && readLinkInBioColor(link.buttonColor) ? ' custom-button' : ''}${railOutlineLinks.has(index) ? ' rail-outline' : ''}${filledHairlineLinks.has(index) ? ' filled-button' : ''}" href="${escapeHtml(destination ?? link.url)}"${target}>${template ? `<span class="link-number" aria-hidden="true">${String(index + 1).padStart(2, '0')}</span>` : ''}<span class="platform-icon${isBrand ? ' brand-logo' : ''}" data-icon="${icon}" aria-hidden="true">${logo}</span><span class="link-copy">${featured && appearance.featuredLabel ? `<span class="featured-label">${escapeHtml(appearance.featuredLabel)}</span>` : ''}<span>${escapeText(link.title)}</span>${!template && appearance.themeId === 'cards' ? `<span class="link-cta">${text.openLink}</span>` : ''}</span><span class="arrow" aria-hidden="true">${decorated ? outboundArrow : '↗'}</span></a></li>`;
   }).join('');
   const customBackground = hasCustomProfileTemplateBackground(appearance);
   const dimensional = template?.category === 'dimensional';
@@ -110,9 +112,9 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
   // A shop sign or a pinned photo holds the cartoon avatar in two layouts.
   const cartoonFrame = cartoon && template ? ({ signboard: 'profile-cartoon-sign', pinboard: 'profile-cartoon-photo' } as Record<string, string>)[template.layout.composition] : undefined;
   const templateAttributes = template ? ` data-template="${template.id}"${dimensional || cartoon || premium ? ` data-template-category="${template.category}"` : ''} data-custom-background="${customBackground}"${(['header', 'links', 'button', 'decoration', 'avatar', 'composition'] as const).map((field) => ` data-${field}="${template.layout[field]}"`).join('')}` : '';
-  const cover = appearance.coverKey ? `<img class="cover${dimensional ? ' profile-3d-cover' : cartoon ? ' profile-cartoon-cover' : premium ? ' profile-premium-cover' : ''}" src="${imagePath('cover')}" alt="ภาพปกของ ${escapeHtml(profile.storeName)}">`
+  const cover = appearance.coverKey ? `<img class="cover${dimensional ? ' profile-3d-cover' : cartoon ? ' profile-cartoon-cover' : premium ? ' profile-premium-cover' : ''}" src="${imagePath('cover')}" alt="${escapeHtml(text.coverAlt(profile.storeName))}">`
     : template?.layout.composition === 'torn' ? '<div class="cover cover-fallback" aria-hidden="true"></div>' : '';
-  const avatar = appearance.logoKey ? `<img class="logo" src="${imagePath('logo')}" alt="โลโก้ ${escapeHtml(profile.storeName)}">`
+  const avatar = appearance.logoKey ? `<img class="logo" src="${imagePath('logo')}" alt="${escapeHtml(text.logoAlt(profile.storeName))}">`
     : decorated ? `<div class="logo avatar-initial" aria-hidden="true">${escapeHtml(linkInBioAvatarInitial(profile.storeName))}</div>` : '';
   const arch = template?.layout.composition === 'arch';
   // Premium pictures sit in an arched window or a framed panel in two layouts.
@@ -126,7 +128,7 @@ export const renderLinkInBioPage = (profile: LinkInBioProfile, nonce: string) =>
       : premium ? `<div class="profile-premium-hero">${premiumFrame ? `<span class="${premiumFrame}">${premiumPicture}</span>` : premiumPicture}${avatar}</div>`
       : arch ? `<div class="arch-hero">${cover}${avatar}</div>` : avatar;
   return `<!doctype html>
-<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer"><title>${escapeHtml(profile.storeName)} | PostDee</title>
 <style nonce="${nonce}">
 @font-face{font-family:Anuphan;font-style:normal;font-weight:400;font-display:swap;src:url('/profile-fonts/anuphan-regular.ttf') format('truetype')}
@@ -146,6 +148,6 @@ ${linkInBioThemeStyles(appearance)}
 ${linkInBioTemplateStyles(appearance)}
 .background-motion{${background}}
 </style></head><body data-theme="${appearance.themeId}"${templateAttributes}>${effects.background ? '<div class="background-motion"></div>' : ''}${renderLinkInBioDecorations(effects.stickers)}<main>${arch || dimensional || cartoon || premium ? '' : cover}<header class="profile-header">${template ? '' : '<div class="brand">PostDee</div>'}${profileAvatar}${template ? '<div class="profile-copy">' : ''}<h1>${escapeHtml(profile.storeName)}</h1>
-<p class="description">${escapeText(appearance.description || 'เลือกช่องทางที่ต้องการได้เลย')}</p>${template ? '</div>' : ''}</header><ul>${links}</ul>
-<footer>สร้างหน้าเว็บร้านค้าด้วย PostDee</footer></main></body></html>`;
+<p class="description">${escapeText(appearance.description || text.defaultDescription)}</p>${template ? '</div>' : ''}</header><ul>${links}</ul>
+<footer>${text.footer}</footer></main></body></html>`;
 };

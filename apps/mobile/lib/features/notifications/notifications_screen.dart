@@ -426,37 +426,39 @@ String _notificationsText(BuildContext context, String thai, String english) =>
   PostDeeNotification notification, {
   required String languageCode,
 }) {
-  if (languageCode == 'th') {
-    return (title: notification.title, body: notification.body);
+  // Translate exact known templates in either received language, retaining the
+  // original payload and read identity. Unknown/user-written copy stays intact.
+  const templates = [
+    (
+      thai: (title: 'ส่งคลิปสำเร็จ',
+          body: 'ระบบส่งคลิปไปยังช่องทางที่เลือกเรียบร้อยแล้ว แตะเพื่อดูผลลัพธ์'),
+      english: (title: 'Video delivered',
+          body: 'Your video was sent to the selected channels. Tap to view the result.'),
+    ),
+    (
+      thai: (title: 'ส่งคลิปสำเร็จบางช่องทาง',
+          body: 'บางช่องทางส่งคลิปไม่สำเร็จ แตะเพื่อดูรายละเอียด'),
+      english: (title: 'Video partially delivered',
+          body: 'Your video could not be sent to some channels. Tap for details.'),
+    ),
+    (
+      thai: (title: 'ส่งคลิปไม่สำเร็จ',
+          body: 'ส่งคลิปไปยังช่องทางที่เลือกไม่สำเร็จ แตะเพื่อดูรายละเอียด'),
+      english: (title: 'Video delivery failed',
+          body: 'Your video could not be sent to the selected channels. Tap for details.'),
+    ),
+    (
+      thai: (title: 'ทีมงาน PostDee ตอบกลับแล้ว',
+          body: 'แตะเพื่ออ่านคำตอบในแชทกับทีมงาน'),
+      english: (title: 'The PostDee team replied',
+          body: 'Tap to read the reply in your support chat.'),
+    ),
+  ];
+  final received = (title: notification.title, body: notification.body);
+  for (final template in templates) {
+    if (received == template.thai || received == template.english) {
+      return languageCode == 'th' ? template.thai : template.english;
+    }
   }
-  // Translate known receipt templates at display time, retaining read identity.
-  return switch ((notification.title, notification.body)) {
-    (
-      'ส่งคลิปสำเร็จ',
-      'ระบบส่งคลิปไปยังช่องทางที่เลือกเรียบร้อยแล้ว แตะเพื่อดูผลลัพธ์'
-    ) =>
-      (
-        title: 'Video delivered',
-        body:
-            'Your video was sent to the selected channels. Tap to view the result.',
-      ),
-    (
-      'ส่งคลิปสำเร็จบางช่องทาง',
-      'บางช่องทางส่งคลิปไม่สำเร็จ แตะเพื่อดูรายละเอียด'
-    ) =>
-      (
-        title: 'Video partially delivered',
-        body: 'Your video could not be sent to some channels. Tap for details.',
-      ),
-    (
-      'ส่งคลิปไม่สำเร็จ',
-      'ส่งคลิปไปยังช่องทางที่เลือกไม่สำเร็จ แตะเพื่อดูรายละเอียด'
-    ) =>
-      (
-        title: 'Video delivery failed',
-        body:
-            'Your video could not be sent to the selected channels. Tap for details.',
-      ),
-    _ => (title: notification.title, body: notification.body),
-  };
+  return received;
 }

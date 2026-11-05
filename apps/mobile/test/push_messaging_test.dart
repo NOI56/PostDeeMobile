@@ -70,6 +70,110 @@ class _RetryRotationClient extends FakeFirebaseMessagingClient {
 }
 
 void main() {
+  test('language refresh only re-registers a token in its current signed-in session', () async {
+    final sessions = PostDeeAuthSessionStore();
+    final client = FakeFirebaseMessagingClient();
+    final registrations = <({String token, String language, AuthSessionBinding binding})>[];
+    var language = 'th';
+    final gateway = FirebasePushMessagingGateway(
+      client: client, sessionStore: sessions,
+      registerBoundToken: (token, binding) async {
+        registrations.add((token: token, language: language, binding: binding));
+      },
+    );
+    addTearDown(gateway.dispose);
+    await gateway.refreshRegisteredToken();
+    await gateway.start();
+    await gateway.refreshRegisteredToken();
+    expect(registrations, isEmpty);
+    sessions.signIn(const AuthSession(userId: 'owner', idToken: 'token'));
+    await gateway.initialize();
+    expect(registrations.map((item) => item.language), ['th']);
+    language = 'en';
+    await gateway.refreshRegisteredToken();
+    expect(registrations.map((item) => item.language), ['th', 'en']);
+    expect(registrations.last.token, registrations.first.token);
+    expect(registrations.last.binding.isCurrent, isTrue);
+    expect(client.tokenDeletes, 0);
+    sessions.clear();
+    await gateway.refreshRegisteredToken();
+    expect(registrations, hasLength(2));
+    expect(registrations.last.binding.isCurrent, isFalse);
+  });
+
+  test('language refresh does not initialize a denied or failed registration', () async {
+    final client = FakeFirebaseMessagingClient(permissionGranted: false);
+    final sessions = PostDeeAuthSessionStore(initialSession:
+        const AuthSession(userId: 'owner', idToken: 'token'));
+    var registrations = 0;
+    final gateway = FirebasePushMessagingGateway(client: client, sessionStore: sessions,
+      registerBoundToken: (_, __) async {
+        registrations++;
+        throw StateError('fixture unavailable');
+      });
+    addTearDown(gateway.dispose);
+    await gateway.start();
+    await gateway.refreshRegisteredToken();
+    expect(registrations, 0);
+    expect(client.permissionRequests, 0);
+    client.permissionGranted = true;
+    await expectLater(gateway.initialize(), throwsStateError);
+    await gateway.refreshRegisteredToken();
+    expect(registrations, 1);
+  });
+
+  test('queued language refresh cannot rebind an old same-UID sign-in', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession:
+        const AuthSession(userId: 'owner', idToken: 'token'));
+    final client = FakeFirebaseMessagingClient();
+    final bindings = <AuthSessionBinding>[];
+    final gateway = FirebasePushMessagingGateway(client: client, sessionStore: sessions,
+      registerBoundToken: (_, binding) async => bindings.add(binding));
+    addTearDown(gateway.dispose);
+    await gateway.start();
+    final refresh = gateway.refreshRegisteredToken();
+    sessions.signIn(const AuthSession(userId: 'owner', idToken: 'new-token'));
+    await refresh;
+    await gateway.initialize();
+    expect(bindings, hasLength(2));
+    expect(bindings.first.isCurrent, isFalse);
+    expect(bindings.last.isCurrent, isTrue);
+    expect(client.tokenDeletes, 1);
+  });
+
+  test('late language registration reasserts the latest registered language', () async {
+    final sessions = PostDeeAuthSessionStore(initialSession:
+        const AuthSession(userId: 'owner', idToken: 'token'));
+    final late = Completer<void>();
+    var language = 'th';
+    String? storedLanguage;
+    final registrations = <String>[];
+    final gateway = FirebasePushMessagingGateway(
+      client: FakeFirebaseMessagingClient(), sessionStore: sessions,
+      operationTimeout: const Duration(milliseconds: 10),
+      registerBoundToken: (_, __) async {
+        final sentLanguage = language;
+        registrations.add(sentLanguage);
+        if (registrations.length == 2) await late.future;
+        storedLanguage = sentLanguage;
+      },
+    );
+    addTearDown(gateway.dispose);
+    await gateway.start();
+    language = 'en';
+    await gateway.refreshRegisteredToken();
+    language = 'th';
+    await gateway.refreshRegisteredToken();
+    await gateway.initialize();
+    expect(storedLanguage, 'th');
+    late.complete();
+    for (var i = 0; i < 5; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(storedLanguage, 'th');
+    expect(registrations, ['th', 'en', 'th', 'th']);
+  });
+
   test('recipientless push cannot belong to a session without a stable UID', () async {
     final sessions = PostDeeAuthSessionStore(initialSession: const AuthSession(idToken: 'token'));
     final client = FakeFirebaseMessagingClient();

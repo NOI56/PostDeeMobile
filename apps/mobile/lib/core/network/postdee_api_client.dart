@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import '../auth/auth_session.dart';
 import '../config/app_config.dart';
+import '../localization/language_controller.dart';
 import '../models/caption_writing_style.dart';
 import '../models/link_in_bio_appearance.dart';
 import '../models/profile_template_catalog.generated.dart';
@@ -1798,6 +1799,7 @@ class GenerateRealClipCaptionRequest {
     this.videoS3Key,
     this.guidance,
     this.captionLanguage = 'auto',
+    this.appLanguage,
     this.selectedFrameKeys = const [],
     this.deleteAfterUse = false,
     this.writingStyle,
@@ -1815,6 +1817,8 @@ class GenerateRealClipCaptionRequest {
 
   /// Requested caption output language; auto follows the clip's language.
   final String captionLanguage;
+  /// UI language is only the last fallback for Automatic caption output.
+  final String? appLanguage;
   final List<String> selectedFrameKeys;
   final bool deleteAfterUse;
   final CaptionWritingStyle? writingStyle;
@@ -1827,6 +1831,7 @@ class GenerateRealClipCaptionRequest {
         if (guidance != null && guidance!.trim().isNotEmpty)
           'guidance': guidance,
         if (captionLanguage != 'auto') 'captionLanguage': captionLanguage,
+        if (appLanguage != null) 'appLanguage': appLanguage,
         if (selectedFrameKeys.isNotEmpty)
           'selectedFrameKeys': selectedFrameKeys,
         if (deleteAfterUse) 'deleteAfterUse': true,
@@ -3911,10 +3916,12 @@ class PostDeeApiClient {
 
   /// Registers this device's FCM token so the backend can target it with push
   /// notifications. Backed by `POST /devices`.
-  Future<void> registerDeviceToken(String token, {String? platform}) async {
+  Future<void> registerDeviceToken(String token,
+      {String? platform, required String language}) async {
     await _postJson('/devices', {
       'token': token,
       if (platform != null) 'platform': platform,
+      'language': language,
     });
   }
 
@@ -4258,7 +4265,13 @@ class PostDeeApiClient {
   ) async {
     final response = await _postJson(
       '/captions/generate-from-clip',
-      request.toJson(),
+      {
+        ...request.toJson(),
+        'appLanguage': request.appLanguage ??
+            (PostDeeLanguageController.instance.locale?.languageCode == 'th'
+                ? 'th'
+                : 'en'),
+      },
     );
 
     return RealClipCaptionResult.fromJson(response);

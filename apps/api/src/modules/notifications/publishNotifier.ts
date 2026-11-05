@@ -1,4 +1,6 @@
 import type { DeviceTokenStore } from '../devices/deviceTokenStore.js';
+import type { AppLanguage } from '../shared/appLanguage.js';
+import { sendLocalizedPush } from './localizedPush.js';
 import { type PushSender, createMockPushSender } from './pushSender.js';
 
 export type PublishOutcome = 'PUBLISHED' | 'PARTIAL_PUBLISHED' | 'FAILED';
@@ -15,10 +17,29 @@ export const createNoopPublishNotifier = (): PublishNotifier => ({
   notifyPublishResult: async () => undefined
 });
 
-// User-facing push copy is Thai (the app's primary language).
 const messageForOutcome = (
-  outcome: PublishOutcome
+  outcome: PublishOutcome,
+  language: AppLanguage
 ): { title: string; body: string } => {
+  if (language === 'en') {
+    switch (outcome) {
+      case 'PUBLISHED':
+        return {
+          title: 'Video delivered',
+          body: 'Your video was sent to the selected channels. Tap to view the result.'
+        };
+      case 'PARTIAL_PUBLISHED':
+        return {
+          title: 'Video partially delivered',
+          body: 'Your video could not be sent to some channels. Tap for details.'
+        };
+      case 'FAILED':
+        return {
+          title: 'Video delivery failed',
+          body: 'Your video could not be sent to the selected channels. Tap for details.'
+        };
+    }
+  }
   switch (outcome) {
     case 'PUBLISHED':
       return {
@@ -55,25 +76,12 @@ export const createPublishNotifier = ({
       return;
     }
 
-    const tokens = (await deviceTokenStore.listForUser(userId)).map(
-      (device) => device.token
-    );
-
-    if (tokens.length === 0) {
-      return;
-    }
-
-    const { title, body } = messageForOutcome(outcome);
-    const result = await pushSender.send({
-      tokens,
-      title,
-      body,
+    await sendLocalizedPush({
+      userId,
+      deviceTokenStore,
+      pushSender,
+      messageForLanguage: language => messageForOutcome(outcome, language),
       data: { postId, userId, type: 'publish_result' }
     });
-
-    // Dead tokens (uninstalled apps) are removed for this owner only.
-    for (const token of result?.invalidTokens ?? []) {
-      await deviceTokenStore.unregister({ userId, token });
-    }
   }
 });

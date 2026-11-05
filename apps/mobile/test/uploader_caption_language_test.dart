@@ -83,6 +83,8 @@ void main() {
     expect(_selectedLanguage(tester), 'auto');
     await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
     expect(fixture.requests.single.captionLanguage, 'auto');
+    expect(fixture.requests.single.appLanguage, 'th');
+    expect(fixture.requests.single.toJson()['appLanguage'], 'th');
     expect(fixture.requests.single.toJson().containsKey('captionLanguage'),
         isFalse);
     expect(fixture.requests.single.platforms, isEmpty);
@@ -96,6 +98,7 @@ void main() {
     await _selectLanguage(tester, captionOutputLanguages['ru']!);
     await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
     expect(fixture.requests.single.captionLanguage, 'ru');
+    expect(fixture.requests.single.appLanguage, 'th');
     expect(fixture.requests.single.toJson()['captionLanguage'], 'ru');
     expect(fixture.requests.single.expectedCredits, 1);
     expect(fixture.requests.single.platforms, isEmpty);
@@ -115,6 +118,7 @@ void main() {
     await tapCaptionEnglishControl(tester, 'ai-caption-target-TIKTOK');
     await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
     expect(fixture.requests.single.captionLanguage, 'th');
+    expect(fixture.requests.single.appLanguage, 'en');
     expect(fixture.requests.single.platforms, ['TIKTOK']);
     expect(fixture.requests.single.expectedCredits, 1);
     final preview = find.byKey(const ValueKey('uploader-platform-ai-preview'));
@@ -142,6 +146,19 @@ void main() {
     expect(find.text('Caption language'), findsOneWidget);
     expect(_selectedLanguage(tester), 'th');
     expect(fixture.requests, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Automatic sends the current UI language after a locale switch',
+      (tester) async {
+    final fixture = CaptionEnglishFixture(locale: const Locale('th'));
+    await _mount(tester, fixture);
+    fixture.language.value = const Locale('en');
+    await tester.pumpAndSettle();
+    await tapCaptionEnglishControl(tester, 'uploader-ai-generate-button');
+    expect(fixture.requests.single.captionLanguage, 'auto');
+    expect(fixture.requests.single.appLanguage, 'en');
+    expect(fixture.requests.single.toJson()['appLanguage'], 'en');
     expect(tester.takeException(), isNull);
   });
 

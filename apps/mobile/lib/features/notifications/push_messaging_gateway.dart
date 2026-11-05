@@ -23,6 +23,12 @@ abstract interface class PushMessagingLifecycle {
   Future<void> start();
 }
 
+/// Updates registration metadata without requesting permission or creating a
+/// registration for a token outside the current signed-in session.
+abstract interface class PushMessagingLanguageSync {
+  Future<void> refreshRegisteredToken();
+}
+
 /// No-op gateway used when push messaging is not configured.
 class DisabledPushMessagingGateway implements PushMessagingGateway {
   const DisabledPushMessagingGateway();

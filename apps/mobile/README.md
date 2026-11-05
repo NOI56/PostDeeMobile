@@ -1,5 +1,24 @@
 # PostDee Mobile
 
+## App-language pushes and automatic captions (2026-11-05, local candidate)
+
+Device registration sends the current Thai/English app language. A language
+switch refreshes only the current signed-in session's registered token; existing
+sign-out/unregister and late-session cleanup remain in use. Known publish and
+support-reply templates display in either interface language, whether originally
+stored in Thai or English. Unknown messages remain as stored.
+
+Every real-clip caption request sends `appLanguage`, including Automatic. This
+is separate from saved caption output choice; it supplies only the final
+fallback after clip evidence and seller guidance. Explicit output choice and
+credits are unchanged. The keyword-caption method has no caller in `lib/` and
+remains unchanged.
+
+Deploy migration `20261105010000_device_token_language` and API before Mobile;
+old builds preserve Thai behavior. No environment, flags, dependencies or app
+installation change in this local candidate. See the
+[work record](../../docs/superpowers/plans/2026-11-05-multi-country-push-caption-language.md).
+
 ## Shared caption first after splitting (2026-11-05, Staging APK 12109 checked)
 
 The owner approved the first design: a card in the existing clip-selection

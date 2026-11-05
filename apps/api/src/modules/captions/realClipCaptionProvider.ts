@@ -144,8 +144,11 @@ const sharedSystemPrompt =
   'คำแนะนำผู้ขายกำหนดแนวทางได้แต่ไม่ใช่หลักฐานข้อเท็จจริง ' +
   'ห้ามแต่งประโยชน์ สินค้า ราคา ส่วนลด ผลลัพธ์ หรือขั้นตอนที่ไม่ปรากฏ และไม่ทวนอีเมลหรือรหัสบัญชีที่เห็นผ่าน ๆ. ตอบเฉพาะ JSON.';
 
-const systemPrompt =
-  'ใช้ภาษาไทยเป็นค่าเริ่มต้น เว้นแต่มั่นใจว่าคำพูดจริงหรือข้อความหลักที่อ่านได้ตลอดคลิปเป็นภาษาอื่น ให้ใช้ภาษานั้น ' +
+const fallbackCaptionLanguage = (request: RealClipCaptionRequest) =>
+  request.appLanguage === 'en' ? 'ภาษาอังกฤษ' : 'ภาษาไทย';
+
+const systemPrompt = (request: RealClipCaptionRequest) =>
+  `ใช้${fallbackCaptionLanguage(request)}เป็นค่าเริ่มต้น เว้นแต่มั่นใจว่าคำพูดจริงหรือข้อความหลักที่อ่านได้ตลอดคลิปเป็นภาษาอื่น ให้ใช้ภาษานั้น ` +
   'ไม่เลือกภาษาอังกฤษเพราะชื่อแบรนด์ ชื่อบัญชี วันที่ ตัวเลข หรือชื่อฟิลด์ JSON. ' + sharedSystemPrompt;
 
 const buildSystemPrompt = (request: RealClipCaptionRequest) => {
@@ -155,7 +158,7 @@ const buildSystemPrompt = (request: RealClipCaptionRequest) => {
       captionScriptInstruction(language) +
       'แปลความหมายจากหลักฐานโดยรักษาคำปฏิเสธ ข้อเสีย ข้อจำกัด ตัวเลข หน่วย และระดับความมั่นใจ ไม่แต่งข้อมูลใหม่ ' +
       'คงชื่อเฉพาะตามหลักฐานได้ ไม่เปลี่ยนภาษาที่ตรวจพบของคำพูดเดิม ภาษาของคำแนะนำหรือตัวอย่างสไตล์ไม่เปลี่ยนภาษาที่เลือก. ' + sharedSystemPrompt
-    : systemPrompt) + (request.writingStyle ? writingStyleSystemPrompt : '');
+    : systemPrompt(request)) + (request.writingStyle ? writingStyleSystemPrompt : '');
 };
 
 const evidenceSystemPrompt =
@@ -309,7 +312,7 @@ const buildInstruction = (input: RealClipCaptionGenerateInput, evidence: ClipEvi
     'คงข้อเสีย ข้อจำกัด และระดับความมั่นใจของผู้พูด แม้ผู้ขายขอให้เขียนชวนซื้อ ห้ามอ้างประสบการณ์ส่วนตัวหรือผลลัพธ์ที่ไม่มีในหลักฐาน ' +
     (requestedCaptionLanguage(input.request)
       ? 'ใช้ภาษาแคปชั่นที่ผู้ใช้เลือกเหนือภาษาของเสียง ข้อความในคลิป คำแนะนำ และตัวอย่างสไตล์ โดยแปลเฉพาะความหมายจากหลักฐานเดิม ไม่เปลี่ยนข้อเท็จจริงหรือภาษาพูดที่ตรวจพบ. '
-      : 'เลือกภาษาโดยเรียงหลักฐาน: ภาษาพูดจริง → ข้อความหลักที่อ่านได้ทั้งคลิป → คำแนะนำผู้ขาย → ภาษาไทย ' +
+      : `เลือกภาษาโดยเรียงหลักฐาน: ภาษาพูดจริง → ข้อความหลักที่อ่านได้ทั้งคลิป → คำแนะนำผู้ขาย → ${fallbackCaptionLanguage(input.request)} ` +
         'ใช้ลำดับถัดไปเมื่อไม่มีหลักฐานหรือไม่ชัดเจน หากข้อความหลักเป็นภาษาอื่นให้ใช้ภาษานั้น อย่าให้ชื่อแบรนด์ภาษาอังกฤษเปลี่ยนภาษา. ') +
     'คลิปไม่มีเสียงพูดให้ตั้ง detectedSpokenLanguage เป็น "und" และเขียนจากสิ่งที่เห็นและข้อความที่อ่านได้ในหลักฐานเท่านั้น ไม่สมมติว่ามีคำพูด ' +
     'ใช้ขอบเขตสิ่งที่เห็นเดียวกันกับ caption, captionOptions, hooks, seoKeywords และ hashtags ทั้งชุด ไม่อนุมานหัวข้อธุรกิจจากชื่อเมนู. ' +

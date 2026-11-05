@@ -23,6 +23,22 @@ Latest Staging delivery (2026-11-05): source `66dd84d0` is on main and hosted
 Staging, with matching emulator APK 12113. Full CI and hosted regression passed;
 see [delivery evidence and limits](docs/STAGING.md). Production remains suspended.
 
+## App-language pushes and caption fallback (2026-11-05, local candidate)
+
+Push notifications use each device's Thai/English app language, including after
+a signed-in language switch. Known publish/support-reply templates in the
+in-app list follow the current language too. Automatic AI captions use the app
+language only after speech, main on-screen text and seller guidance provide no
+language; a chosen output language remains authoritative. Old clients retain
+Thai pushes and the exact Thai caption fallback.
+
+This adds nullable `DeviceToken.language` with no backfill. Roll out migration
+and API before Mobile. No environment, feature flag or dependency changes;
+keyword captions remain unchanged because Mobile no longer calls that endpoint.
+The candidate is local only for Claude Code review. See the
+[work record](docs/superpowers/plans/2026-11-05-multi-country-push-caption-language.md)
+for tests, migration evidence and remaining acceptance limits.
+
 ## Choose each split part's source range (2026-11-05, Staging APK 12112)
 
 Each split part offers an explicit start/end time editor and preview, including

@@ -2259,6 +2259,12 @@ Current source state (verified baseline PR #64 and the pending-work integration)
 - AI captions offer Automatic plus 109 selectable output languages, separate
   from UI language and detected speech. Per-language provider quality is not
   established by the catalog or script checks.
+- Local candidate (2026-11-05): device push language follows Thai/English app
+  preference; known in-app publish/support-reply templates map both ways.
+  Automatic clip captions use app language as the final fallback after speech,
+  main on-screen text and guidance; explicit output choice still wins. Old
+  clients retain Thai behavior. Migration/API must precede Mobile; no backfill,
+  configuration or dependency changes. See the [work record](docs/superpowers/plans/2026-11-05-multi-country-push-caption-language.md).
 - Public store pages and 404s negotiate Thai/English from `Accept-Language`,
   fall back to English, preserve owner-written text, and retain `Vary`,
   `no-store` and CSP/nonce. Source #64 has hosted HTTP acceptance evidence.
@@ -2278,6 +2284,9 @@ Remaining gaps:
 - Physical-device/iOS acceptance, real-country store prices and real-store
   purchases remain separate from emulator/Test Store evidence. Disconnected
   legacy AI screens still contain old prices; they are not active entry points.
+- The local push/caption-language candidate still needs review and later hosted
+  delivery, real-device lock-screen acceptance and live-provider caption quality
+  checks. The unused keyword-caption endpoint retains legacy Thai prompts.
 
 Recommended order:
 
@@ -2304,7 +2313,8 @@ Recommended order:
 
 5. Content and AI localization
    - Thai affiliate captions remain the first polished prompt style.
-   - Automatic captioning infers language/market from the selected clip; the
+   - Automatic captioning infers language/market from the selected clip, with
+     app language as the final language fallback in the local candidate; the
      optional output-language choice remains its explicit override.
    - Preserve public-page language negotiation without translating owner content.
    - Keep optional guidance as the simple override path for requests like

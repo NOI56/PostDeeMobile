@@ -29,6 +29,12 @@ const _messages = [
     englishBody:
         'Your video could not be sent to the selected channels. Tap for details.',
   ),
+  (
+    thaiTitle: 'ทีมงาน PostDee ตอบกลับแล้ว',
+    thaiBody: 'แตะเพื่ออ่านคำตอบในแชทกับทีมงาน',
+    englishTitle: 'The PostDee team replied',
+    englishBody: 'Tap to read the reply in your support chat.',
+  ),
 ];
 
 class _RecordingCenter extends PostDeeNotificationCenter {
@@ -105,6 +111,22 @@ void main() {
       expect(find.text(message.thaiBody), findsOneWidget);
       expect(find.text(message.englishTitle), findsNothing);
       expect(center.items.single, same(notification));
+      expect(center.marked, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Thai presentation translates English pair ${message.englishTitle}',
+        (tester) async {
+      final notification = _notification(message.englishTitle, message.englishBody);
+      final center = _RecordingCenter()..add(notification);
+      await tester.pumpWidget(
+          _app(NotificationsScreen(center: center), languageCode: 'th'));
+      await tester.pumpAndSettle();
+      expect(find.text(message.thaiTitle), findsOneWidget);
+      expect(find.text(message.thaiBody), findsOneWidget);
+      expect(center.items.single, same(notification));
+      expect(notification.title, message.englishTitle);
+      expect(notification.body, message.englishBody);
       expect(center.marked, isEmpty);
       expect(tester.takeException(), isNull);
     });

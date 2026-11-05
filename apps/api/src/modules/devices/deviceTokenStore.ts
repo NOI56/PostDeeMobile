@@ -1,9 +1,12 @@
+import type { AppLanguage } from '../shared/appLanguage.js';
+
 export type DevicePlatform = 'IOS' | 'ANDROID' | 'WEB';
 
 export type DeviceToken = {
   userId: string;
   token: string;
   platform?: DevicePlatform;
+  language: AppLanguage | null;
   updatedAt: string;
 };
 
@@ -15,6 +18,7 @@ export type RegisterDeviceTokenInput = {
   userId: string;
   token: string;
   platform?: DevicePlatform;
+  language?: AppLanguage | null;
 };
 
 export type DeviceTokenStore = {
@@ -37,11 +41,12 @@ export const createInMemoryDeviceTokenStore = ({
   const tokens = new Map<string, DeviceToken>();
 
   return {
-    register: async ({ userId, token, platform }) => {
+    register: async ({ userId, token, platform, language }) => {
       const record: DeviceToken = {
         userId,
         token,
         platform,
+        language: language ?? null,
         updatedAt: now()
       };
 

@@ -1,3 +1,4 @@
+import type { AppLanguage } from '../shared/appLanguage.js';
 import {
   maxDeviceTokensPerOwner,
   type DevicePlatform,
@@ -9,6 +10,7 @@ type PrismaDeviceToken = {
   userId: string;
   token: string;
   platform: string | null;
+  language: AppLanguage | null;
   updatedAt: Date;
 };
 
@@ -16,6 +18,7 @@ type DeviceTokenSelect = {
   userId: true;
   token: true;
   platform: true;
+  language: true;
   updatedAt: true;
 };
 
@@ -25,8 +28,8 @@ type DeviceTokenDelegate = {
   }) => Promise<{ count: number }>;
   upsert: (args: {
     where: { token: string };
-    update: { userId: string; platform?: string | null };
-    create: { userId: string; token: string; platform?: string | null };
+    update: { userId: string; platform?: string | null; language: AppLanguage | null };
+    create: { userId: string; token: string; platform?: string | null; language: AppLanguage | null };
     select: DeviceTokenSelect;
   }) => Promise<PrismaDeviceToken>;
   findMany: (args: {
@@ -46,6 +49,7 @@ const deviceTokenSelect = {
   userId: true,
   token: true,
   platform: true,
+  language: true,
   updatedAt: true
 } satisfies DeviceTokenSelect;
 
@@ -53,6 +57,7 @@ const mapToken = (record: PrismaDeviceToken): DeviceToken => ({
   userId: record.userId,
   token: record.token,
   platform: (record.platform ?? undefined) as DevicePlatform | undefined,
+  language: record.language ?? null,
   updatedAt: record.updatedAt.toISOString()
 });
 
@@ -61,11 +66,11 @@ export const createPrismaDeviceTokenRepository = ({
 }: {
   prisma: PrismaDeviceTokenClient;
 }): DeviceTokenStore => ({
-  register: async ({ userId, token, platform }) => {
+  register: async ({ userId, token, platform, language }) => {
     const record = await prisma.deviceToken.upsert({
       where: { token },
-      update: { userId, platform: platform ?? null },
-      create: { userId, token, platform: platform ?? null },
+      update: { userId, platform: platform ?? null, language: language ?? null },
+      create: { userId, token, platform: platform ?? null, language: language ?? null },
       select: deviceTokenSelect
     });
     // upsert refreshes updatedAt, so everything past the newest N is stale.

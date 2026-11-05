@@ -1,6 +1,95 @@
 # Local clip splitting from the clip step — 2026-11-04
 
-## Actual parent-uploader caption scopes — 2026-11-06 (Staging APK 12117)
+## Final parent-uploader candidate — 2026-11-06 (Staging APK 12118)
+
+Final runtime **`37b182ef845094d542ad74e628bd877e465e3314`** retains the actual
+parent Caption composer and corrects its footer destination count to use the
+prepared set's real planned targets. Two regression cases cover the display
+correction. Fresh fetch confirms `origin/main` is still **`e4004355`**; this
+source is **10 ahead / 0 behind**, with a clean tree before the guarded update.
+Later documentation commits do not change the runtime source of this artifact.
+
+### Final automated verification
+
+The fresh complete Mobile run passes **5,607 tests / 13 opt-in skips / zero
+failures** in **12m23s**. Full analysis reports **no issues in 18.2s**. Log:
+`E:/PostDeeTaskScratch/caption-composer-footer-final-full.log`.
+The 5,605-test / APK 12117 results below remain historical evidence for
+`e7fa4a57`, not a substitute for this final run.
+
+### Exact final APK and verified update
+
+The validated Staging helper builds x86_64 debug APK **12118** in **34.9s**,
+**175,988,234 bytes**, archived at
+`E:/PostDeeBuildArchive/clip-parent-caption-12118/app-x86_64-12118.apk`.
+SHA-256: `34d5fe9dcdb232f604181cfa53913d92502957d9887b7dc9630c17f743b03052`.
+The installed APK matches that hash and runtime source on `emulator-5554`,
+package `com.postdee.postdee_mobile.staging`; **UID 10197** and **internal
+storage** stay unchanged. Signing certificate SHA-256 remains
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+Staging API/Firebase, auth-on/mock-off and RevenueCat Test Store configuration
+remain as validated for the preceding build; no configuration change is made.
+
+The first update attempt stops at **17:47:40 UTC** with
+`INSTALL_FAILED_INSUFFICIENT_STORAGE`. APK 12117, its installed hash and UID
+remain unchanged; this failed attempt is not counted as an installation.
+Before cleanup, cumulative backup covers 180 current files: 155 reused from
+the original archive and 25 delta files. That delta TAR is **158,408,192 bytes**,
+SHA-256 `c4d3e2781d67d3d625c45ba55c8025a16ce1bec05eea48f9c71c669e21beeb65`.
+
+Only the newly created, pinned QA group is deleted through the existing app UI
+after verified backup; no baseline group/draft identity is targeted. The newest
+own picker-cache copy (about 24.77 MB) is also archived and removed; older
+copies are retained. A corrected backup gate then covers **all 171 current
+files**, with **19 delta files**, **92,401 payload bytes** and a **114,176-byte
+TAR**, SHA-256
+`ef143b61b6506703787a5deedf6ff53069bbf9fd741b6f03ac0374872573b7de`.
+Both coverage and comparison verify the original **57 JSON manifests and 48
+media files** byte-identical, with none missing or changed.
+
+The corrected guarded update succeeds **12117 → 12118**. All **171 current
+private files** are byte-identical before/after installation: **zero missing,
+added, SDK-changed or unexpectedly changed files**. The strict receipt records
+success at **2026-11-05 18:02:39 UTC / 2026-11-06 01:02:39 Thai time**:
+`E:/PostDeeTaskScratch/caption-multiple-native/update-12118-after-qa-cleanup-receipt.json`.
+No uninstall, data clear, signing change or storage-volume move is used.
+
+### Fresh native acceptance — passed on APK 12118
+
+A fresh real three-minute, four-platform split completes native encoding
+**2/2** and persists **three members / five estimated post units**: Facebook **0–90s**
+and **90–180s**, plus one shared full-length **0–180s** TikTok/YouTube/Instagram
+member. It returns to the **actual parent Caption step 2** with **All / Full /
+Part 1 / Part 2**, and switching scopes works. The whole AI section opens via
+its shortcut, shows the language/quota controls with the existing Basic guard,
+and collapses again through its header without generation.
+
+Next opens normal Channels step 3, which shows the four planned apps and the
+correct footer **`เลือกแล้ว 4 ช่องทาง`**. Native screenshot:
+`E:/PostDeeTaskScratch/caption-multiple-native/final-four-channels-observed.png`.
+Back/Close → Home → normal Create → Drafts (**21 entries**) → newest set reopens
+the same actual Caption page with all four scopes and AI collapsed. The **20
+older entries** remain; the new QA set is retained for the owner to try.
+
+`verify-final-caption-group.py` passes with the new group/member identities
+pinned to creation after APK 12118 installation. Shared and member captions are
+blank, inheritance is true, platform maps are empty and platform-caption mode
+is off. There are **no upload receipts, schedules or accepted-post identities**.
+All original **57 JSON manifests and 48 media files** remain byte-identical.
+The first part plays natively with audio muted; the captured playback position
+is **0:54 / 1:30**. The preview is closed, leaving the shared Caption scope ready
+to use. The inspected process log contains **zero fatal, unhandled Flutter or
+layout-overflow errors**. Final screen:
+`E:/PostDeeTaskScratch/caption-multiple-native/native-delivered.png`.
+The separate APK 12117 split/save/reopen record below remains historical
+evidence for its own exact artifact.
+
+The API runtime, contracts, schema, provider, entitlements and environment remain
+unchanged. No migration, main merge, push or hosted deploy occurs. No live AI,
+real-store purchase or social publishing is claimed; physical phones and iOS
+remain outside these local Mobile checks.
+
+## Prior actual parent-uploader caption scopes — 2026-11-06 (Staging APK 12117)
 
 The owner rejected a separately owned group-caption page, including a version
 with familiar uploader chrome. The current follow-up starts from local runtime
@@ -104,13 +193,12 @@ unchanged. No database migration, new main merge, push or hosted deploy occurred
 Real AI generation, real social delivery, physical phones and iOS are outside
 these local Mobile checks.
 
-### Separate footer follow-up — verification pending
+### Subsequent footer follow-up
 
 Native QA also found a destination-count display issue in the normal composer
-footer. A separate small display fix and two regression cases are undergoing
-their own full-suite/build verification. The `e7fa4a57`, 5,605-test and APK 12117
-results above remain evidence for that exact verified runtime. They do not
-claim verification of the subsequent footer revision or a later APK.
+footer. A separate display fix and two regression cases are verified by the
+final source/full-suite/APK 12118 section above. The `e7fa4a57`, 5,605-test and
+APK 12117 results here remain evidence only for this preceding exact runtime.
 
 ## Prior main-style group caption integration — 2026-11-05 (Staging APK 12116)
 

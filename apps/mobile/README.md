@@ -1,6 +1,6 @@
 # PostDee Mobile
 
-## Existing Caption step for prepared clips (2026-11-06, Staging APK 12117)
+## Existing Caption step for prepared clips (2026-11-06, Staging APK 12118)
 
 The current local follow-up returns prepared and reopened clip sets to the real
 Caption step of the parent `UploaderScreen`; it does not open another caption
@@ -17,23 +17,21 @@ blank overrides. Group review is used later for per-member settings/times,
 consent, final confirmation and the existing submission/recovery pipeline.
 
 No API, schema, entitlement, provider or environment change is introduced.
-Runtime `e7fa4a57` passes full analysis and a fresh complete Mobile run:
-5,605 passed / 13 opt-in skips, zero failures, two workers. The guarded helper
-builds x86_64 debug APK 12117 in 164.5s; installed hash, signing certificate,
-UID 10197 and internal storage match, and all 171 private files are unchanged
-before launch. Staging API/Firebase auth-on/mock-off and RevenueCat Test Store
-configuration remain validated. Native existing-group reopening confirms the
-normal Caption step and collapsed/open AI section without AI or publishing;
-the Basic account's 550 post / 300 AI top-up balances remain unchanged.
-Fresh four-platform preparation returns to the same normal Caption step with
-All/Full/Part 1/Part 2. Shared, full-clip and TikTok override text survives save,
-channel review and Back/reopen. QA text/overrides are then cleared and the new
-test set retained empty. All 57 original draft/group JSON files remain
-byte-identical; the current process logs zero native/Flutter errors. Exact
-artifact/data/native evidence and the separate footer follow-up are in the
+Final runtime `37b182ef` also fixes the footer destination count. It passes full
+analysis (18.2s) and a fresh complete Mobile run: 5,607 passed / 13 opt-in skips,
+zero failures, 12m23s. The guarded helper builds x86_64 debug APK 12118 in 34.9s;
+installed hash/signing certificate, UID 10197 and internal storage match, and
+all 171 current private files are byte-identical before/after installation.
+Both backup coverage and install comparison confirm the original 57 JSON
+manifests and 48 media files unchanged. Staging API/Firebase auth-on/mock-off
+and RevenueCat Test Store configuration remain validated. Earlier APK 12117
+native split/save/reopen/override checks remain exact historical evidence;
+fresh 12118 native acceptance is recorded separately with the artifact and
+storage-retry proof in the
 [work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
-No new main merge, push or hosted deploy occurred. The 12116 checks below remain
-evidence only for the earlier route.
+No new main merge, push or hosted deploy occurred, and no live AI, real-store
+purchase or social publishing is claimed. The 12116 checks below remain evidence
+only for the earlier route.
 
 ## Prior main-style group caption route (2026-11-05, Staging APK 12116)
 

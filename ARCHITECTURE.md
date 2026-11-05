@@ -7,7 +7,7 @@ below. Dated headings record their original scope. "Current status snapshot"
 in `ROADMAP.md` and the exact delivery records in `docs/STAGING.md` reconcile
 source integration, hosted API state, and installed Mobile artifacts.
 
-## Parent-uploader caption scopes (2026-11-06, Staging APK 12117)
+## Parent-uploader caption scopes (2026-11-06, Staging APK 12118)
 
 The current local follow-up keeps the prepared-set caption composer in the
 existing parent `UploaderScreen` State, using its real `_currentStep == 1`
@@ -34,21 +34,19 @@ language, cost, preview and undo boundaries. No implicit provider operation is
 added by selecting a scope or opening the composer.
 
 Existing draft/journal formats and server contracts remain in use; no database,
-API, entitlement or environment migration is required. Runtime `e7fa4a57`, from
-the verified `main e4004355` baseline, passes full analysis and a fresh full
-Mobile run (5,605 passed / 13 opt-in skips, zero failures). Exact-source Staging
-APK 12117 is installed with unchanged UID/storage and all 171 private files
-byte-identical before launch. Native existing-group resume confirms parent
-Caption ownership and the AI collapse/expand boundary. A fresh affected-channel
-split returns to the same Caption step with two Facebook parts plus a shared
-TikTok/YouTube/Instagram full-length member. Shared/full/TikTok override
-persistence passes through channel review and Back/reopen. Temporary test text
-is cleared afterward; all 57 pre-existing draft/group JSON files remain
-byte-identical at final QA. Exact native evidence and the separate footer
-follow-up are in the
+API, entitlement or environment migration is required. Final runtime `37b182ef`,
+from verified `main e4004355`, also derives the footer destination count from
+the real prepared-set targets. Full analysis is clean (18.2s); a fresh full
+Mobile run passes 5,607 tests / 13 opt-in skips, zero failures, in 12m23s.
+Exact-source APK 12118 is installed with unchanged UID/storage and all 171
+current private files byte-identical before/after update, including unchanged
+original 57 JSON manifests and 48 media files. Earlier `e7fa4a57` / APK 12117
+native split/save/reopen and override proof remains attached to that source;
+the fresh 12118 native acceptance boundary is recorded separately in the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 Earlier APK 12116 checks below remain historical evidence for the preceding
-group-owned caption route. No new main merge, push or API deploy occurred.
+group-owned caption route. No new main merge, push or API deploy occurred;
+live AI, store purchase and social publishing are outside this verification.
 
 ## Prior group-owned caption route (2026-11-05, Staging APK 12116)
 

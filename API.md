@@ -6,7 +6,7 @@ ISO-8601 (stored in UTC), preserve provider-neutral plan ids (`BASIC`, `STARTER`
 record their original scope; see "Current status snapshot" in `ROADMAP.md`
 and exact delivery evidence in `docs/STAGING.md`.
 
-## Mobile uploader caption scopes (2026-11-06, Staging APK 12117)
+## Mobile uploader caption scopes (2026-11-06, Staging APK 12118)
 
 The current local Mobile follow-up places prepared-set caption editing on the
 actual parent uploader's Caption step. All/Full/Part selection is local UI
@@ -22,19 +22,18 @@ Local scope selection, planning and saves do not consume post units or trigger
 AI/upload/publishing. Later group review retains per-member schedules, consent,
 stable request identities, accepted checkpoints and unresolved-request recovery.
 
-Runtime `e7fa4a57` passes full Mobile analysis and a fresh complete suite
-(5,605 passed / 13 opt-in skips, zero failures). Matching Staging APK 12117
-retains the validated Staging API/Firebase, auth-on/mock-off and RevenueCat
-Test Store configuration. Existing-group resume and a fresh mixed-output split
-return to the actual parent Caption step. Shared/full/TikTok text survives
-save/reopen through the existing later review; the safe JSON check confirms
-no upload receipts, schedules or accepted posts. Temporary QA text is cleared
-and saved empty afterward. Balances are unchanged; no AI generation, upload
-or publishing occurred. Exact evidence and the separate footer follow-up are in the
+Final runtime `37b182ef` adds a footer destination-count display correction;
+full Mobile analysis is clean and the fresh complete suite passes 5,607 tests /
+13 opt-in skips, zero failures, in 12m23s. Matching guarded Staging APK 12118
+retains Staging API/Firebase auth-on/mock-off and RevenueCat Test Store
+configuration; all 171 current private files are unchanged by installation.
+The exact APK 12117 native split/override/save/reopen checks remain historical
+evidence for `e7fa4a57`. Fresh 12118 native acceptance is tracked separately in the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 The API runtime and contracts are unchanged; no API deploy, database migration,
-main merge or push occurred for this revision. APK 12116 evidence below belongs
-to the earlier caption route.
+main merge or push occurred for this revision. No live AI, real store purchase
+or social publishing is claimed. APK 12116 evidence below belongs to the earlier
+caption route.
 
 ## Prior Mobile main-style group caption route (2026-11-05, Staging APK 12116)
 

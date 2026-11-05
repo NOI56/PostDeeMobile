@@ -37,7 +37,7 @@ the linked work records. A source integration is not an app-store release.
   Broader publishing E2E, physical-device/iOS, country-specific stores and legal
   readiness retain their release gates. Production remains outside this delivery.
 
-## Existing-uploader caption scopes (2026-11-06, Staging APK 12117)
+## Existing-uploader caption scopes (2026-11-06, Staging APK 12118)
 
 - Use the actual parent uploader's Caption step, rather than another caption
   page inside group review. Keep normal single-post navigation unchanged.
@@ -49,20 +49,18 @@ the linked work records. A source integration is not an app-store release.
 - Keep the existing group journal, owner/context/receipt guards, per-clip times,
   consent, recovery and final submission pipeline. Group review is the later
   review/timing/confirmation stage, not the owner of the main caption page.
-- Runtime `e7fa4a57` passes a fresh full Mobile run: 5,605 passed / 13 opt-in
-  skips, zero failures, two workers; full analysis reports no issues. Guarded
-  Staging APK 12117 is installed with UID 10197/internal storage retained and
-  all 171 private files unchanged before launch.
-- Native reopening and a fresh four-platform split confirm the normal Caption
-  step with All/Full/Part scopes and AI collapse/expand. Shared, full-clip and
-  TikTok overrides persist through channel review and Back/reopen; QA text is
-  then cleared and the new set saved empty. The original 57 JSON manifests remain
-  byte-identical. Basic balances stay 550 post / 300 AI top-up credits with no
-  AI generation or posting. Exact native evidence and a separate footer follow-up
-  are recorded in the
+- Final runtime `37b182ef` fixes the footer destination count and passes a fresh
+  complete Mobile suite: 5,607 passed / 13 opt-in skips, zero failures, 12m23s;
+  full analysis reports no issues (18.2s). Guarded APK 12118 is installed with
+  UID 10197/internal storage retained and all 171 current private files unchanged.
+- Current backup coverage and install comparison both confirm the original 57
+  JSON manifests and 48 media files unchanged. Verified APK 12117 native
+  split/save/reopen/override/clean checks remain historical exact-source evidence;
+  fresh native acceptance for 12118 is tracked separately in the
   [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 - No API/schema/entitlement/provider/environment migration, new main merge,
-  push or hosted deploy. Prior APK 12116 evidence verifies the preceding route.
+  push or hosted deploy; no real AI/store purchase/social publish is claimed.
+  Prior APK 12116 evidence verifies the preceding route.
 
 ## Prior main-style group caption route (2026-11-05, Staging APK 12116)
 

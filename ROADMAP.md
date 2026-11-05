@@ -37,7 +37,24 @@ the linked work records. A source integration is not an app-store release.
   Broader publishing E2E, physical-device/iOS, country-specific stores and legal
   readiness retain their release gates. Production remains outside this delivery.
 
-## Main caption page for prepared sets (2026-11-05, local candidate)
+## Existing-uploader caption scopes (2026-11-05, local implementation)
+
+- Use the actual parent uploader's Caption step, rather than another caption
+  page inside group review. Keep normal single-post navigation unchanged.
+- Select All, a real full-length delivery member or a numbered part. Derive
+  destination labels from that member's immutable planned channel set; never
+  turn the source backup into a post or assign every channel to every clip.
+- Keep shared text, per-clip and per-platform overrides, including deliberate
+  blanks. Start the entire AI section collapsed; generation remains explicit.
+- Keep the existing group journal, owner/context/receipt guards, per-clip times,
+  consent, recovery and final submission pipeline. Group review is the later
+  review/timing/confirmation stage, not the owner of the main caption page.
+- No API/schema/entitlement/provider/environment migration. This local revision
+  still needs full regression, exact build/install and native acceptance; prior
+  APK 12116 evidence verifies the preceding route only. See the
+  [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
+## Prior main-style group caption route (2026-11-05, Staging APK 12116)
 
 - Replace the prepared group's separate caption-page chrome with the familiar
   create-post header/progress and a compact split summary. Reuse the actual

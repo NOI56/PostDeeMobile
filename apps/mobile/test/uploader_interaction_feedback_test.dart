@@ -210,6 +210,7 @@ double _revealOpacity(WidgetTester tester) => tester
     .opacity;
 
 Future<void> _startAi(WidgetTester tester, _Fixture fixture) async {
+  await _openAiCardForTest(tester);
   final generate = _key('uploader-ai-generate-button');
   await _show(tester, generate);
   await tester.tap(generate);
@@ -249,6 +250,21 @@ void _resumeApp(WidgetTester tester) {
   }
   if (binding.lifecycleState != AppLifecycleState.resumed) {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+}
+
+Future<void> _openAiCardForTest(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await tester.scrollUntilVisible(toggle, 160, scrollable: uploaderMainScroll);
+  await Scrollable.ensureVisible(tester.element(toggle), alignment: .5);
+  await tester.pumpAndSettle();
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(content).offstage) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
   }
 }
 

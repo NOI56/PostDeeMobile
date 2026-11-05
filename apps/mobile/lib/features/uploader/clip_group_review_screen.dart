@@ -59,6 +59,7 @@ class ClipGroupReviewScreen extends StatefulWidget {
     this.previewClip,
     this.connectionDisplayNames = const {},
     this.sharedCaptionEditorBuilder,
+    this.initialStage=0,
     this.onOpenPost,
   });
   final ClipGroupDraft initialGroup;
@@ -79,6 +80,7 @@ class ClipGroupReviewScreen extends StatefulWidget {
   final Future<void> Function(PublishDraft)? previewClip;
   final Map<SocialPlatform, String> connectionDisplayNames;
   final ClipGroupSharedCaptionEditorBuilder? sharedCaptionEditorBuilder;
+  final int initialStage;
   final ValueChanged<String>? onOpenPost;
   @override
   State<ClipGroupReviewScreen> createState() => _ClipGroupReviewScreenState();
@@ -175,6 +177,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
   void initState() {
     super.initState();
     _group = widget.initialGroup;
+    _stage=widget.initialStage.clamp(0,2);
     _result = _group.isComplete;
     _drafts = Map.of(widget.draftsById);
     _sharedCaption = TextEditingController(text: _group.sharedCaption);
@@ -778,7 +781,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
 
   Future<void> _back() async {
     if (_actionBusy || _navigating) return;
-    if (_stage > 0 && !_result) {
+    if (_stage > widget.initialStage && !_result) {
       setState(() => _stage--);
       if (_scroll.hasClients) _scroll.jumpTo(0);
       return;
@@ -815,7 +818,7 @@ class _ClipGroupReviewScreenState extends State<ClipGroupReviewScreen> {
               child: LayoutBuilder(
                   builder: (context, constraints) => Column(
                         children: [
-                          if (!_result)
+                                    if (!_result && widget.initialStage == 0)
                             ConstrainedBox(
                               constraints: BoxConstraints(
                                   maxHeight: constraints.maxHeight * .35),

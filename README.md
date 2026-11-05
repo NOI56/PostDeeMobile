@@ -23,7 +23,28 @@ Latest Staging delivery (2026-11-05): source `66dd84d0` is on main and hosted
 Staging, with matching emulator APK 12113. Full CI and hosted regression passed;
 see [delivery evidence and limits](docs/STAGING.md). Production remains suspended.
 
-## Familiar caption page after splitting (2026-11-05, local candidate)
+## Caption scopes in the existing uploader (2026-11-05, local implementation)
+
+The current local follow-up returns prepared and reopened sets to the existing
+parent `UploaderScreen`, on its real second step, Caption. It adds All, Full clip
+and numbered-part choices to that page. Full is a prepared delivery member,
+identified against the measured original; the retained source backup is never
+a selectable delivery. Each choice shows only its actual planned destinations.
+The immutable split plan remains authoritative for channels and source ranges.
+
+Shared text, per-clip overrides and per-platform overrides remain separate;
+an explicitly blank override stays blank. The whole AI section starts collapsed
+and opens only on request, retaining the existing manual-generation and credit
+rules. The later group review still handles individual posting times, consent,
+recovery and final confirmation through the existing per-member pipeline.
+No API, schema, entitlement, provider or environment change is introduced.
+
+This revision is being integrated locally. Its complete regression, exact build,
+installation and native acceptance are pending; the APK 12116 and test evidence
+below belong to the preceding group-owned caption route. See the
+[current work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
+## Prior main-style group caption route (2026-11-05, Staging APK 12116)
 
 After a split set is prepared or reopened, the candidate uses familiar
 create-post caption chrome around the existing shared-caption editor. A compact

@@ -6,7 +6,28 @@ ISO-8601 (stored in UTC), preserve provider-neutral plan ids (`BASIC`, `STARTER`
 record their original scope; see "Current status snapshot" in `ROADMAP.md`
 and exact delivery evidence in `docs/STAGING.md`.
 
-## Mobile main-caption page for split groups (2026-11-05, local candidate)
+## Mobile uploader caption scopes (2026-11-05, local implementation)
+
+The current local Mobile follow-up places prepared-set caption editing on the
+actual parent uploader's Caption step. All/Full/Part selection is local UI
+state. Full means a real prepared member, never the retained source backup;
+planned per-member destinations remain immutable. Shared text and existing
+per-clip/per-platform draft fields retain overrides, including explicit blank
+platform values rather than substituting fallback text.
+
+No new endpoint, request/response field, batch-post contract, provider setting,
+entitlement, quota or database migration is introduced. The whole AI section
+starts collapsed and generation still requires its existing explicit action.
+Local scope selection, planning and saves do not consume post units or trigger
+AI/upload/publishing. Later group review retains per-member schedules, consent,
+stable request identities, accepted checkpoints and unresolved-request recovery.
+
+This revision is still under local integration and verification. Complete tests,
+the exact APK and native acceptance remain to be recorded; APK 12116 evidence
+below belongs to the earlier caption route. No API deployment is required for
+this UI-only change.
+
+## Prior Mobile main-style group caption route (2026-11-05, Staging APK 12116)
 
 The Mobile follow-up changes prepared-group caption chrome and exposes a compact
 read-only ranges sheet. Shared/per-clip edits, individual posting times and

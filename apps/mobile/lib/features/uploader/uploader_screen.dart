@@ -33,6 +33,7 @@ import '../shared/publishing_availability.dart';
 import 'clip_frame_extractor.dart';
 import 'clip_group_draft.dart';
 import 'clip_group_caption_context.dart';
+import 'clip_group_caption_selector.dart';
 import 'clip_group_draft_store.dart';
 import 'clip_group_draft_edit.dart';
 import 'clip_group_draft_list.dart';
@@ -76,6 +77,7 @@ import 'watermark_video_processor.dart';
 export '../shared/post_schedule_policy.dart';
 
 part 'uploader_clip_group.dart';
+part 'uploader_clip_group_composer.dart';
 
 typedef UploaderTemplateLoader = Future<List<TextTemplateResult>> Function();
 typedef UploaderSubscriptionLoader = Future<SubscriptionStatusResult>
@@ -383,6 +385,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   // Use the current panel element for scrolling. Reparenting a GlobalKey here
   // during draft deletion leaves stale geometry in the modal semantics tree.
   BuildContext? _aiCaptionActionContext;
+  bool _aiCaptionExpanded = false;
   final _platformValidationAnchors = {
     for (final platform in SocialPlatform.values) platform: GlobalKey(),
   };
@@ -481,6 +484,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   bool? _activeDraftWatermarkEnabled;
   PublishDraftUploadedMedia? _activeDraftUploadedMedia;
   String? _activeClipGroupId;
+  _ClipCaptionComposer? _clipCaptionComposer;
   bool _activeIsClipGroupSource = false;
   bool _isOpeningClipGroup = false;
   int _clipGroupRouteGeneration = 0;
@@ -545,6 +549,9 @@ class _UploaderScreenState extends State<UploaderScreen>
 
   Future<bool> _validateInlineCaptionContext(
       bool Function() stillCurrent) async {
+    if (_clipCaptionComposer != null) {
+      return _validateComposerCaptionContext(stillCurrent);
+    }
     if (!_isClipGroupSharedCaption) return true;
     if (!_clipGroupCaptionOwned || !stillCurrent()) return false;
     final validate = widget.validateClipGroupCaptionContext;
@@ -1259,6 +1266,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   bool get _formBusy =>
+      (_clipCaptionComposer != null && !_clipCaptionComposer!.owned) ||
       (_isClipGroupSharedCaption &&
           (!widget.clipGroupCaptionEnabled ||
               !_clipGroupCaptionOwned || !_clipGroupCaptionSourceReady)) ||
@@ -1273,6 +1281,7 @@ class _UploaderScreenState extends State<UploaderScreen>
       _isLoadingScheduleSubscription;
 
   String get _formSnapshot => jsonEncode([
+        _clipCaptionComposer?.snapshot,
         _localFilePathController.text,
         _captionController.text,
         _captionNeedsReview,
@@ -1356,6 +1365,15 @@ class _UploaderScreenState extends State<UploaderScreen>
       );
 
   Future<void> _goToStep(int step, {bool validateReview = true}) async {
+    if (_clipCaptionComposer != null) {
+      if (_formBusy || _isGeneratingCaption) return;
+      if (step < 1) { await _requestExit(); return; }
+      if (step >= 3) { await _composerNext(); return; }
+      FocusManager.instance.primaryFocus?.unfocus();
+      setState(() { _currentStep=step; _errorMessage=null; });
+      if (_formScrollController.hasClients) _formScrollController.jumpTo(0);
+      return;
+    }
     if (widget.clipGroupEditor && step == 0) step = 1;
     if (_formBusy) return;
     // Earlier sections remain freely editable. Review uses the same checks as
@@ -1387,6 +1405,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Future<void> _nextStep() async {
+    if (_clipCaptionComposer != null) { await _composerNext(); return; }
     if (_formBusy) return;
     if (_currentStep == 2 && !await _ensurePlatformDefaultsForReview()) {
       _revealFormError();
@@ -2126,6 +2145,11 @@ class _UploaderScreenState extends State<UploaderScreen>
       generation == _captionStyleGeneration;
 
   void _handleCaptionStyleOwnerChanged() {
+    if (_clipCaptionComposer != null && !_clipCaptionComposer!.owned) {
+      final cover=_clearActiveDraftFormState();
+      if(cover != null) unawaited(cover.cleanupTemporaryFiles());
+      if(mounted) setState(() {_currentStep=0;});
+    }
     final owner = PostDeeAuthSessionStore.instance.session.stableUserId;
     if (owner == _captionStyleOwner) return;
     _clearTikTokFreshness();
@@ -2304,6 +2328,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   void _handleDraftOwnerChanged() {
+    if (_clipCaptionComposer != null && !_clipCaptionComposer!.owned) {
+      final cover=_clearActiveDraftFormState();
+      if(cover != null) unawaited(cover.cleanupTemporaryFiles());
+      if(mounted) setState(() {_currentStep=0;});
+    }
     final nextOwnerUserId =
         PostDeeAuthSessionStore.instance.session.stableUserId;
     if (nextOwnerUserId != null &&
@@ -2897,6 +2926,7 @@ class _UploaderScreenState extends State<UploaderScreen>
     _scheduledAtController.dispose();
     _aiGuidanceController.dispose();
     _formScrollController.dispose();
+    _clipCaptionComposer?.dispose();
     super.dispose();
   }
 
@@ -4302,6 +4332,9 @@ class _UploaderScreenState extends State<UploaderScreen>
   Future<PublishDraft?> _persistCurrentDraft({
     required bool showSavedMessage,
   }) async {
+    if (_clipCaptionComposer != null) {
+      return _persistCaptionComposer(showSavedMessage: showSavedMessage);
+    }
     if (_isClipGroupSharedCaption) return null;
     if (_isSavingDraft || _isSubmitting || _isGeneratingCaption) return null;
     _isSavingDraft = true;
@@ -4572,6 +4605,8 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   CoverEditorResult? _clearActiveDraftFormState() {
+    _clipCaptionComposer?.dispose();
+    _clipCaptionComposer=null;
     _invalidateAiCaption();
     _clearTikTokFreshness();
     final previousCover = _coverResult;
@@ -4941,6 +4976,12 @@ class _UploaderScreenState extends State<UploaderScreen>
   /// no clip is selected yet, skip straight to [_createPost] so its validation
   /// message shows instead of reviewing an empty post.
   Future<void> _reviewThenPost() async {
+    if (_clipCaptionComposer != null) { await _composerNext(); return; }
+    if (_activeIsClipGroupSource) {
+      setState(()=>_errorMessage=uploaderText(context,
+        'กรุณาเปิดชุดคลิปจากฉบับร่างก่อนส่ง','Open the clip set from Drafts before sending.'));
+      return;
+    }
     if (widget.clipGroupEditor) {
       await _saveClipGroupMemberAndClose();
       return;
@@ -5111,7 +5152,10 @@ class _UploaderScreenState extends State<UploaderScreen>
   Future<QueuedPostResult?> _createPost([
     PublishProgressReporter? reportProgress,
   ]) async {
-    if (widget.clipGroupEditor || _isClipGroupSharedCaption) return null;
+    if (widget.clipGroupEditor || _isClipGroupSharedCaption ||
+        _clipCaptionComposer != null || _activeIsClipGroupSource) {
+      return null;
+    }
     if (_isPreparingSubmission ||
         _isSubmitting ||
         _isGeneratingCaption ||
@@ -6658,7 +6702,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                               ),
                               const SizedBox(height: 16),
                             ],
-                            if (_currentStep == 1) ...[
+                            if (_currentStep == 1 && _clipCaptionComposer != null)
+                              _buildComposerCaption(context),
+                            if (_currentStep == 1 && _clipCaptionComposer == null) ...[
                               if (_selectedVideoName != null) ...[
                                 Row(
                                     crossAxisAlignment:
@@ -6703,7 +6749,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                               _buildCaptionCard(context),
                               _buildDurationWarnings(),
                             ],
-                            if (_currentStep == 2)
+                            if (_currentStep == 2 && _clipCaptionComposer != null)
+                              _buildComposerChannels(context),
+                            if (_currentStep == 2 && _clipCaptionComposer == null)
                               _PlatformSelectorSection(
                                 selectedPlatforms: {
                                   ..._selectedPlatforms,
@@ -7075,7 +7123,7 @@ class _UploaderScreenState extends State<UploaderScreen>
   Widget _buildCaptionCard(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!_isClipGroupSharedCaption) ...[
+          if (!_isClipGroupSharedCaption && _clipCaptionComposer == null) ...[
           PostDeeCard(
             padding: EdgeInsets.zero,
             child: SwitchListTile.adaptive(
@@ -7099,6 +7147,9 @@ class _UploaderScreenState extends State<UploaderScreen>
                     onPressed: _formBusy || _isGeneratingCaption || _isChoosingCaption
                         ? null : () async {
                       FocusManager.instance.primaryFocus?.unfocus();
+                      setState(() => _aiCaptionExpanded = true);
+                      await WidgetsBinding.instance.endOfFrame;
+                      if (!mounted) return;
                       final anchor = _aiCaptionActionContext;
                       if (anchor != null && anchor.mounted) {
                         await Scrollable.ensureVisible(anchor,
@@ -7216,6 +7267,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                 ),
               ],
             ),
+          if (_clipCaptionComposer != null) _buildComposerPlatformCaptions(context),
           if (!_platformSettings.usePlatformCaptions) _buildAiCaptionPanel(),
           if (!_platformSettings.usePlatformCaptions)
           ExpansionTile(
@@ -7344,6 +7396,11 @@ class _UploaderScreenState extends State<UploaderScreen>
   }
 
   Widget _buildAiCaptionPanel() => _AiCaptionPanel(
+        expanded: _aiCaptionExpanded,
+        onToggle: () {
+          FocusManager.instance.primaryFocus?.unfocus();
+          setState(() => _aiCaptionExpanded = !_aiCaptionExpanded);
+        },
         onActionBuilt: (context) => _aiCaptionActionContext = context,
         onReopenResult: _reusableCaptionResult == null ? null : _reopenCaptionResult,
         guidanceController: _aiGuidanceController,
@@ -9312,6 +9369,8 @@ class _CaptionWritingStyleSheetState extends State<_CaptionWritingStyleSheet> {
 
 class _AiCaptionPanel extends StatelessWidget {
   const _AiCaptionPanel({
+    required this.expanded,
+    required this.onToggle,
     this.onActionBuilt,
     this.onReopenResult,
     required this.guidanceController,
@@ -9338,6 +9397,8 @@ class _AiCaptionPanel extends StatelessWidget {
     this.platformTargets,
   });
 
+  final bool expanded;
+  final VoidCallback onToggle;
   final TextEditingController guidanceController;
   final ValueChanged<BuildContext>? onActionBuilt;
   final VoidCallback? onReopenResult;
@@ -9369,9 +9430,22 @@ class _AiCaptionPanel extends StatelessWidget {
     final compact = platformTargets != null;
     final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
     final requiredCredits = selectedPlatformCount ?? 1;
-    final insufficientCredits = quota?.isPaid == true &&
-        quota!.availableCount < requiredCredits;
+    final insufficientCredits =
+        quota?.isPaid == true && quota!.availableCount < requiredCredits;
     final aiLocked = quota != null && !quota!.isPaid;
+    final motion =
+        animate &&
+        !MediaQuery.disableAnimationsOf(context) &&
+        TickerMode.valuesOf(context).enabled;
+    final summary = isGenerating
+        ? 'กำลังเตรียมแคปชันจากคลิปที่เลือก'
+        : errorMessage != null || styleError != null
+        ? 'มีข้อความแจ้งเตือน · กดเปิดเพื่อดู'
+        : onReopenResult != null && !expanded
+        ? 'มีผล AI ที่สร้างไว้ · กดเปิดดู'
+        : expanded
+        ? 'กดพับเพื่อซ่อนตัวเลือก AI'
+        : 'กดเปิดเมื่อต้องการให้ AI ช่วย';
 
     return DecoratedBox(
       key: const ValueKey('uploader-ai-caption-panel'),
@@ -9395,277 +9469,411 @@ class _AiCaptionPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (compact) ...[
-              Row(children: [
-                const Icon(Icons.auto_awesome,
-                    color: AppTheme.accent, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: CaptionText('ให้ AI ช่วยเขียน',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+            Semantics(
+              expanded: expanded,
+              child: TextButton(
+                key: const ValueKey('uploader-ai-card-toggle'),
+                onPressed: formBusy ? null : onToggle,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 48),
+                  foregroundColor: AppTheme.textPrimary,
                 ),
-                TextButton.icon(
-                  key: const ValueKey('uploader-ai-style-button'),
-                  onPressed: formBusy || isGenerating || isSavingStyle
-                      ? null
-                      : onOpenStyle,
-                  icon: const Icon(Icons.tune, size: 16),
-                  label: const CaptionText('สไตล์'),
-                ),
-              ]),
-              const SizedBox(height: 4),
-              CaptionText('เลือกช่องทางให้ AI เขียน',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppTheme.textSecondary)),
-            ] else ...[
-              LayoutBuilder(builder: (context, constraints) {
-                final stackBadge = constraints.maxWidth < 300 ||
-                    MediaQuery.textScalerOf(context).scale(14) > 18;
-                final badge = Text(
-                    quota?.plan == 'BUSINESS' ? 'Business' : 'Starter/Pro',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.accentCyanInk,
-                        fontWeight: FontWeight.w700));
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(children: [
-                      const Icon(Icons.auto_awesome,
-                          color: AppTheme.accent, size: 18),
-                      const SizedBox(width: AppTheme.spaceSm),
-                      Expanded(
-                        child: CaptionText('AI แคปชั่นจากคลิปจริง',
-                            key: const ValueKey('uploader-ai-real-clip-title'),
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                      ),
-                      if (!stackBadge && quota == null) ...[
-                        const SizedBox(width: 8),
-                        badge,
-                      ],
-                    ]),
-                    if (stackBadge && quota == null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Align(
-                            alignment: Alignment.centerRight, child: badge),
-                      ),
-                  ],
-                );
-              }),
-              const SizedBox(height: AppTheme.spaceSm),
-              Text(
-                clipName == null || clipName.isEmpty
-                    ? localizeCaptionMessage(context,
-                        'เลือกคลิปก่อน แล้วให้ AI ฟังเสียงจริงในคลิปเพื่อทำ Hook, SEO และแฮชแท็ก')
-                    : captionText(context, 'คลิปที่เลือก: $clipName',
-                        'Selected video: $clipName'),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textSecondary,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              Text(styleSummary,
-                  key: const ValueKey('uploader-ai-style-summary'),
-                  style: Theme.of(context).textTheme.bodySmall),
-            ],
-            if (styleError != null)
-              PostDeeNotice(
-                  message: localizeCaptionMessage(context, styleError!),
-                  color: Theme.of(context).colorScheme.error,
-                  icon: Icons.error_outline),
-            if (errorMessage != null) ...[
-              const SizedBox(height: AppTheme.spaceSm),
-              PostDeeNotice(
-                message: localizeCaptionMessage(context, errorMessage!),
-                color: Theme.of(context).colorScheme.error,
-                icon: Icons.error_outline,
-              ),
-            ],
-            const SizedBox(height: 10),
-            CaptionLanguagePicker(
-              key: const ValueKey('uploader-caption-language'),
-              value: captionLanguage,
-              selectionScope: languageSelectionScope,
-              onChanged:
-                  formBusy || isGenerating || isSavingStyle || isChoosingCaption
-                      ? null
-                      : onLanguageChanged,
-            ),
-            const SizedBox(height: AppTheme.spaceMd),
-            if (platformTargets != null) ...[
-              platformTargets!,
-              const SizedBox(height: 12),
-            ],
-            if (isLoadingQuota) ...[
-              CaptionText('กำลังโหลดโควตา...',
-                  key: const ValueKey('uploader-ai-quota-loading'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.textSecondary)),
-              const SizedBox(height: 8),
-            ] else if (quotaLoadFailed) ...[
-              Row(children: [
-                Expanded(child: CaptionText('โหลดโควตาไม่สำเร็จ',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.textSecondary))),
-                IconButton(
-                  key: const ValueKey('uploader-ai-quota-retry'),
-                  tooltip: localizeCaptionMessage(context, 'โหลดโควตาอีกครั้ง'),
-                  onPressed: isGenerating ? null : onRetryQuota,
-                  icon: const Icon(Icons.refresh, size: 18)),
-              ]),
-            ] else if (quota != null) ...[
-              CaptionQuotaStrip(plan: quota!.plan, quota: quota!.quota),
-              const SizedBox(height: 8),
-            ],
-            if (insufficientCredits) ...[
-              CaptionText(compact
-                      ? 'เครดิตไม่พอ ลดช่องทางหรือเติมเครดิต'
-                      : 'เครดิตไม่พอ เติมเครดิตเพื่อให้ AI ช่วยเขียน',
-                  key: const ValueKey('uploader-ai-insufficient-credits'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error)),
-              const SizedBox(height: 8),
-            ],
-            // A plan without AI captions sees a quiet path to the packages.
-            // The tap still re-checks the fresh plan, so a stale Basic quota
-            // never blocks someone who has just upgraded.
-            if (aiLocked)
-              Builder(builder: (actionContext) {
-                onActionBuilt?.call(actionContext);
-                return OutlinedButton.icon(
-                key: const ValueKey('uploader-ai-generate-button'),
-                onPressed: formBusy || isGenerating || isSavingStyle
-                    ? null
-                    : onGenerate,
-                icon: const Icon(Icons.workspace_premium_outlined, size: 18),
-                label: const CaptionText('ดูแพ็กเกจเพื่อใช้ AI'),
-                );
-              })
-            else
-            Builder(builder: (actionContext) {
-              onActionBuilt?.call(actionContext);
-              return PostDeePressFeedback(
-              enabled: animate &&
-                  !insufficientCredits &&
-                  !formBusy &&
-                  !isGenerating &&
-                  !isSavingStyle &&
-                  selectedPlatformCount != 0,
-              child: PostDeeGradientButton(
-                key: const ValueKey('uploader-ai-generate-button'),
-                height: compact || largeText ? null : 48,
-                labelMaxLines: compact || largeText ? null : 1,
-                label: localizeCaptionMessage(context, isGenerating
-                    ? 'กำลังเตรียมแคปชัน...'
-                    : isSavingStyle
-                        ? 'กำลังบันทึกสไตล์...'
-                        : requiredCredits == 0
-                                ? 'เลือกช่องทางให้ AI เขียน'
-                                : 'สร้างแคปชั่น · $requiredCredits เครดิต'),
-                icon: Icons.auto_awesome,
-                onPressed: formBusy ||
-                        insufficientCredits ||
-                        isGenerating ||
-                        isSavingStyle ||
-                        selectedPlatformCount == 0
-                    ? null
-                    : onGenerate,
-              ),
-              );
-            }),
-            if (!aiLocked) ...[
-              const SizedBox(height: AppTheme.spaceSm),
-              CaptionText('ใช้เครดิตเมื่อสร้างผลลัพธ์แล้ว เปิดดูหรือเลือกใช้ไม่หักเพิ่ม',
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: AppTheme.textSecondary)),
-            ],
-            if (onReopenResult != null)
-              TextButton.icon(
-                  key: const ValueKey('uploader-ai-reopen-result'),
-                  onPressed: formBusy || isGenerating || isChoosingCaption || isSavingStyle
-                      ? null : onReopenResult,
-                  icon: const Icon(Icons.history, size: 18),
-                  label: const CaptionText('ดูผล AI ที่สร้างไว้ · ไม่ใช้เครดิตเพิ่ม')),
-            if (isGenerating || captionReady) ...[
-              const SizedBox(height: 10),
-              Semantics(
-                liveRegion: true,
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ExcludeSemantics(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: isGenerating
-                            ? (_uploaderMotionAllowed(context, animate)
-                                ? const CircularProgressIndicator(
-                                    key: ValueKey(
-                                        'uploader-ai-waiting-indicator'),
-                                    strokeWidth: 2)
-                                : const Icon(Icons.hourglass_empty,
-                                    key: ValueKey(
-                                        'uploader-ai-waiting-indicator'),
-                                    size: 18))
-                            : Icon(Icons.check_circle_outline,
-                                color: AppTheme.successInk, size: 18),
+                    const Icon(
+                      Icons.auto_awesome,
+                      color: AppTheme.accent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: AppTheme.spaceSm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CaptionText(
+                            compact
+                                ? 'ให้ AI ช่วยเขียน'
+                                : 'AI แคปชั่นจากคลิปจริง',
+                            key: const ValueKey('uploader-ai-real-clip-title'),
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: AppTheme.spaceXs),
+                          CaptionText(
+                            summary,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textSecondary),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: CaptionText(
-                        isGenerating
-                            ? 'กำลังเตรียมแคปชันจากคลิปที่เลือก'
-                            : 'แคปชันพร้อมแล้ว ตรวจข้อความก่อนใช้',
-                        key: isGenerating
-                            ? null
-                            : const ValueKey('uploader-ai-caption-ready'),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                    const SizedBox(width: AppTheme.spaceSm),
+                    AnimatedRotation(
+                      turns: expanded ? .5 : 0,
+                      duration: motion
+                          ? const Duration(milliseconds: 180)
+                          : Duration.zero,
+                      child: const Icon(Icons.expand_more),
                     ),
                   ],
                 ),
               ),
-            ],
-            if (!compact) ...[
-              const SizedBox(height: 4),
-              ExpansionTile(
-                key: const ValueKey('uploader-ai-open-panel'),
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: const EdgeInsets.only(bottom: 8),
-                title: const CaptionText('ปรับสไตล์และคำแนะนำ',
-                    style: TextStyle(fontSize: 13)),
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: PostDeePressFeedback(
-                      enabled: animate && !isGenerating && !isSavingStyle,
-                      child: OutlinedButton.icon(
-                        key: const ValueKey('uploader-ai-style-button'),
-                        onPressed:
-                            isGenerating || isSavingStyle ? null : onOpenStyle,
-                        icon: const Icon(Icons.tune),
-                        label: const CaptionText('สไตล์การเขียน'),
-                      ),
+            ),
+            ExcludeFocus(
+              excluding: !expanded,
+              child: ExcludeSemantics(
+                excluding: !expanded,
+                child: TickerMode(
+                  enabled: expanded && TickerMode.valuesOf(context).enabled,
+                  child: Offstage(
+                    key: const ValueKey('uploader-ai-card-content'),
+                    offstage: !expanded,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: AppTheme.spaceMd),
+                        if (compact) ...[
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              key: const ValueKey('uploader-ai-style-button'),
+                              onPressed:
+                                  formBusy || isGenerating || isSavingStyle
+                                  ? null
+                                  : onOpenStyle,
+                              icon: const Icon(Icons.tune, size: 16),
+                              label: const CaptionText('สไตล์'),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          CaptionText(
+                            'เลือกช่องทางให้ AI เขียน',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textSecondary),
+                          ),
+                        ] else ...[
+                          if (quota == null)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                quota?.plan == 'BUSINESS'
+                                    ? 'Business'
+                                    : 'Starter/Pro',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: AppTheme.accentCyanInk,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                            ),
+                          const SizedBox(height: AppTheme.spaceSm),
+                          Text(
+                            clipName == null || clipName.isEmpty
+                                ? localizeCaptionMessage(
+                                    context,
+                                    'เลือกคลิปก่อน แล้วให้ AI ฟังเสียงจริงในคลิปเพื่อทำ Hook, SEO และแฮชแท็ก',
+                                  )
+                                : captionText(
+                                    context,
+                                    'คลิปที่เลือก: $clipName',
+                                    'Selected video: $clipName',
+                                  ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: AppTheme.textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          Text(
+                            styleSummary,
+                            key: const ValueKey('uploader-ai-style-summary'),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                        if (styleError != null)
+                          PostDeeNotice(
+                            message: localizeCaptionMessage(
+                              context,
+                              styleError!,
+                            ),
+                            color: Theme.of(context).colorScheme.error,
+                            icon: Icons.error_outline,
+                          ),
+                        if (errorMessage != null) ...[
+                          const SizedBox(height: AppTheme.spaceSm),
+                          PostDeeNotice(
+                            message: localizeCaptionMessage(
+                              context,
+                              errorMessage!,
+                            ),
+                            color: Theme.of(context).colorScheme.error,
+                            icon: Icons.error_outline,
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+                        CaptionLanguagePicker(
+                          key: const ValueKey('uploader-caption-language'),
+                          value: captionLanguage,
+                          selectionScope: languageSelectionScope,
+                          onChanged:
+                              formBusy ||
+                                  isGenerating ||
+                                  isSavingStyle ||
+                                  isChoosingCaption
+                              ? null
+                              : onLanguageChanged,
+                        ),
+                        const SizedBox(height: AppTheme.spaceMd),
+                        if (platformTargets != null) ...[
+                          platformTargets!,
+                          const SizedBox(height: 12),
+                        ],
+                        if (isLoadingQuota) ...[
+                          CaptionText(
+                            'กำลังโหลดโควตา...',
+                            key: const ValueKey('uploader-ai-quota-loading'),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textSecondary),
+                          ),
+                          const SizedBox(height: 8),
+                        ] else if (quotaLoadFailed) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: CaptionText(
+                                  'โหลดโควตาไม่สำเร็จ',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: AppTheme.textSecondary),
+                                ),
+                              ),
+                              IconButton(
+                                key: const ValueKey('uploader-ai-quota-retry'),
+                                tooltip: localizeCaptionMessage(
+                                  context,
+                                  'โหลดโควตาอีกครั้ง',
+                                ),
+                                onPressed: isGenerating ? null : onRetryQuota,
+                                icon: const Icon(Icons.refresh, size: 18),
+                              ),
+                            ],
+                          ),
+                        ] else if (quota != null) ...[
+                          CaptionQuotaStrip(
+                            plan: quota!.plan,
+                            quota: quota!.quota,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        if (insufficientCredits) ...[
+                          CaptionText(
+                            compact
+                                ? 'เครดิตไม่พอ ลดช่องทางหรือเติมเครดิต'
+                                : 'เครดิตไม่พอ เติมเครดิตเพื่อให้ AI ช่วยเขียน',
+                            key: const ValueKey(
+                              'uploader-ai-insufficient-credits',
+                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        // A plan without AI captions sees a quiet path to the packages.
+                        // The tap still re-checks the fresh plan, so a stale Basic quota
+                        // never blocks someone who has just upgraded.
+                        if (aiLocked)
+                          Builder(
+                            builder: (actionContext) {
+                              onActionBuilt?.call(actionContext);
+                              return OutlinedButton.icon(
+                                key: const ValueKey(
+                                  'uploader-ai-generate-button',
+                                ),
+                                onPressed:
+                                    formBusy || isGenerating || isSavingStyle
+                                    ? null
+                                    : onGenerate,
+                                icon: const Icon(
+                                  Icons.workspace_premium_outlined,
+                                  size: 18,
+                                ),
+                                label: const CaptionText(
+                                  'ดูแพ็กเกจเพื่อใช้ AI',
+                                ),
+                              );
+                            },
+                          )
+                        else
+                          Builder(
+                            builder: (actionContext) {
+                              onActionBuilt?.call(actionContext);
+                              return PostDeePressFeedback(
+                                enabled:
+                                    animate &&
+                                    !insufficientCredits &&
+                                    !formBusy &&
+                                    !isGenerating &&
+                                    !isSavingStyle &&
+                                    selectedPlatformCount != 0,
+                                child: PostDeeGradientButton(
+                                  key: const ValueKey(
+                                    'uploader-ai-generate-button',
+                                  ),
+                                  height: compact || largeText ? null : 48,
+                                  labelMaxLines: compact || largeText
+                                      ? null
+                                      : 1,
+                                  label: localizeCaptionMessage(
+                                    context,
+                                    isGenerating
+                                        ? 'กำลังเตรียมแคปชัน...'
+                                        : isSavingStyle
+                                        ? 'กำลังบันทึกสไตล์...'
+                                        : requiredCredits == 0
+                                        ? 'เลือกช่องทางให้ AI เขียน'
+                                        : 'สร้างแคปชั่น · $requiredCredits เครดิต',
+                                  ),
+                                  icon: Icons.auto_awesome,
+                                  onPressed:
+                                      formBusy ||
+                                          insufficientCredits ||
+                                          isGenerating ||
+                                          isSavingStyle ||
+                                          selectedPlatformCount == 0
+                                      ? null
+                                      : onGenerate,
+                                ),
+                              );
+                            },
+                          ),
+                        if (!aiLocked) ...[
+                          const SizedBox(height: AppTheme.spaceSm),
+                          CaptionText(
+                            'ใช้เครดิตเมื่อสร้างผลลัพธ์แล้ว เปิดดูหรือเลือกใช้ไม่หักเพิ่ม',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textSecondary),
+                          ),
+                        ],
+                        if (onReopenResult != null)
+                          TextButton.icon(
+                            key: const ValueKey('uploader-ai-reopen-result'),
+                            onPressed:
+                                formBusy ||
+                                    isGenerating ||
+                                    isChoosingCaption ||
+                                    isSavingStyle
+                                ? null
+                                : onReopenResult,
+                            icon: const Icon(Icons.history, size: 18),
+                            label: const CaptionText(
+                              'ดูผล AI ที่สร้างไว้ · ไม่ใช้เครดิตเพิ่ม',
+                            ),
+                          ),
+                        if (isGenerating || captionReady) ...[
+                          const SizedBox(height: 10),
+                          Semantics(
+                            liveRegion: true,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ExcludeSemantics(
+                                  child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: isGenerating
+                                        ? (_uploaderMotionAllowed(
+                                                context,
+                                                animate,
+                                              )
+                                              ? const CircularProgressIndicator(
+                                                  key: ValueKey(
+                                                    'uploader-ai-waiting-indicator',
+                                                  ),
+                                                  strokeWidth: 2,
+                                                )
+                                              : const Icon(
+                                                  Icons.hourglass_empty,
+                                                  key: ValueKey(
+                                                    'uploader-ai-waiting-indicator',
+                                                  ),
+                                                  size: 18,
+                                                ))
+                                        : Icon(
+                                            Icons.check_circle_outline,
+                                            color: AppTheme.successInk,
+                                            size: 18,
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: CaptionText(
+                                    isGenerating
+                                        ? 'กำลังเตรียมแคปชันจากคลิปที่เลือก'
+                                        : 'แคปชันพร้อมแล้ว ตรวจข้อความก่อนใช้',
+                                    key: isGenerating
+                                        ? null
+                                        : const ValueKey(
+                                            'uploader-ai-caption-ready',
+                                          ),
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        if (!compact) ...[
+                          const SizedBox(height: 4),
+                          ExpansionTile(
+                            key: const ValueKey('uploader-ai-open-panel'),
+                            maintainState: true,
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: const EdgeInsets.only(bottom: 8),
+                            title: const CaptionText(
+                              'ปรับสไตล์และคำแนะนำ',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                            children: [
+                              SizedBox(
+                                width: double.infinity,
+                                child: PostDeePressFeedback(
+                                  enabled:
+                                      animate &&
+                                      !isGenerating &&
+                                      !isSavingStyle,
+                                  child: OutlinedButton.icon(
+                                    key: const ValueKey(
+                                      'uploader-ai-style-button',
+                                    ),
+                                    onPressed: isGenerating || isSavingStyle
+                                        ? null
+                                        : onOpenStyle,
+                                    icon: const Icon(Icons.tune),
+                                    label: const CaptionText('สไตล์การเขียน'),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              _CaptionInstructionsField(
+                                controller: guidanceController,
+                                readOnly: formBusy,
+                                hint:
+                                    'เช่น ขอขายจริงใจ / อยากได้แนวตลก / เน้นลูกค้าแม่และเด็ก',
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  _CaptionInstructionsField(
-                    controller: guidanceController,
-                    readOnly: formBusy,
-                    hint: 'เช่น ขอขายจริงใจ / อยากได้แนวตลก / เน้นลูกค้าแม่และเด็ก',
-                  ),
-                ],
+                ),
               ),
-            ],
+            ),
           ],
         ),
       ),

@@ -234,7 +234,7 @@ class _Fixture extends VideoEnglishFixture {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await super.mount(tester, settle: settle);
     await _settle(tester);
-    expect(_key('clip-group-review'), findsOneWidget);
+    expect(_key('uploader-step-caption'), findsOneWidget);
   }
 }
 
@@ -259,7 +259,8 @@ Future<void> _tap(WidgetTester tester, String key) async {
 }
 
 Future<void> _confirmSet(WidgetTester tester, _Fixture fixture) async {
-  await _tap(tester, 'clip-group-next');
+  await _tap(tester, 'uploader-wizard-next');
+  await _tap(tester, 'uploader-wizard-next');
   await _tap(tester, 'clip-group-next');
   expect(_key('uploader-platform-settings-sheet'), findsNothing);
   expect(fixture.preparations, isEmpty);

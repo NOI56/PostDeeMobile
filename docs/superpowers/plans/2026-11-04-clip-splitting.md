@@ -1,6 +1,50 @@
 # Local clip splitting from the clip step — 2026-11-04
 
-## Main-caption integration — 2026-11-05 (local candidate)
+## Actual parent-uploader caption scopes — 2026-11-05 (implementation pending verification)
+
+The owner rejected a separately owned group-caption page, including a version
+with familiar uploader chrome. The current follow-up starts from local runtime
+`730ecd6e` on the existing UI branch, with verified integration baseline
+`origin/main e4004355`. It moves caption ownership into the existing parent
+`UploaderScreen` State and its actual Caption step (index 1 / step 2), rather
+than wrapping or embedding another caption page in `ClipGroupReviewScreen`.
+The ordinary single-post wizard keeps its existing order and behavior.
+
+The parent composer offers All, actual Full clip and numbered-part scopes;
+full-length members do not consume part numbers. A full-length classification
+requires the owned retained backup plus measured original duration. The backup
+is never a delivery choice. Member labels and destinations come from committed
+membership, not inferred cross-products of all channels and all clips. The
+existing affected-channel mode already supports compatible platforms receiving
+a full-length member while other platforms receive parts; matching-part mode
+continues to use shared ranges. Planned source intervals and channel sets stay
+immutable after preparation.
+
+Shared captions, individual clip overrides and individual platform overrides
+remain distinct. An intentional blank is an override, not a request to restore
+fallback text. Scope changes must preserve the raw input and existing member
+settings. The entire AI section starts collapsed and expands only on request;
+fresh generation, preview Apply/Undo, source/context checks and credit rules
+remain explicit. The source backup, covers, schedules, submission identities,
+accepted receipts and unresolved requests must not be rewritten by scope
+selection or a shared edit.
+
+`ClipGroupReviewScreen` is retained for the later per-member review, timing,
+consent and final-confirmation flow. Submission continues through the existing
+per-member pipeline, with accepted results durably checkpointed before child
+cleanup and unknown outcomes recovered using their original identities.
+The actual parent caption page must not fall through to the ordinary single-post
+submit path with the retained source. No new server endpoint, database schema,
+local format migration, entitlement, provider or environment change is needed.
+
+Implementation is in progress locally. The selector and composer integration
+need final regression, owner/race/recovery, scope/blank/platform persistence,
+layout and native acceptance evidence for the frozen final source, plus its
+exact guarded Staging build/install record. No new complete-suite count, APK
+verification, main merge, push or hosted deploy is claimed here. The APK 12116
+and 5,578-test evidence below belong only to the preceding group-owned route.
+
+## Prior main-style group caption integration — 2026-11-05 (Staging APK 12116)
 
 The owner approved implementing the clickable design example. Work begins from
 clean `870db5b4` on the existing UI branch, with freshly fetched `origin/main`

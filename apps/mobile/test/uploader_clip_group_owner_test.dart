@@ -113,7 +113,8 @@ void _expectPrivateFormCleared(WidgetTester tester, _Fixture fixture) {
 
 Future<void> _tryAiWithoutPrivateMedia(
     WidgetTester tester, _Fixture fixture) async {
-  final ai = _key('uploader-ai-generate-button');
+  final ai = find.byKey(const ValueKey('uploader-ai-generate-button'),
+      skipOffstage:false);
   if (ai.evaluate().isNotEmpty) {
     final button = tester.widget(ai);
     if (button is PostDeeGradientButton) {

@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'cover_image_processor.dart';
 import 'publish_draft.dart';
+import 'platform_publish_settings.dart';
 
 /// Retains managed media, covers and the submission identity when editing one
 /// member. An unresolved upload always keeps the exact original request intent.
@@ -12,6 +14,7 @@ PublishDraftSaveRequest clipGroupMemberSaveRequest(
   bool? captionNeedsReview,
   DateTime? scheduledAt,
   bool replaceSchedule = false,
+  PlatformPublishSettings? platformSettings,
 }) {
   final nextCaption = caption ?? draft.caption;
   final nextSchedule = replaceSchedule ? scheduledAt : draft.scheduledAt;
@@ -20,7 +23,11 @@ PublishDraftSaveRequest clipGroupMemberSaveRequest(
       : nextSchedule != null &&
           draft.scheduledAt!.isAtSameMomentAs(nextSchedule);
   if (draft.uploadedMedia != null &&
-      (nextCaption != draft.caption || !sameSchedule)) {
+      (nextCaption != draft.caption ||
+          !sameSchedule ||
+          (platformSettings != null &&
+              jsonEncode(platformSettings.toDraftJson()) !=
+                  jsonEncode(draft.platformSettings.toDraftJson())))) {
     throw const PublishDraftValidationException(
         'ร่างนี้เคยเริ่มส่งแล้ว กรุณาตรวจผลรายการเดิมก่อนแก้ไข');
   }
@@ -42,7 +49,7 @@ PublishDraftSaveRequest clipGroupMemberSaveRequest(
     aiGuidance: draft.aiGuidance,
     watermarkEnabled: draft.watermarkEnabled,
     platformApiValues: draft.platformApiValues,
-    platformSettings: draft.platformSettings,
+    platformSettings: platformSettings ?? draft.platformSettings,
     scheduledAt: nextSchedule,
     coverImageFile: cover == null ? null : File(cover.imagePath),
     coverDesign: cover?.design,

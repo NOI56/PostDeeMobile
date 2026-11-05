@@ -1,6 +1,28 @@
 # PostDee Mobile
 
-## Main caption page after splitting (2026-11-05, local candidate)
+## Existing Caption step for prepared clips (2026-11-05, local implementation)
+
+The current local follow-up returns prepared and reopened clip sets to the real
+Caption step of the parent `UploaderScreen`; it does not open another caption
+page inside group review. All / Full clip / numbered-part choices preserve
+separate shared, clip and platform overrides. Full is an actual member whose
+range matches the measured original; the retained source backup is excluded.
+Only each member's planned destinations are shown and those channel sets stay
+immutable. The selector uses compact choices or a dropdown for larger sets.
+
+The entire AI section starts collapsed. Opening it is explicit, as is generation;
+the existing source, style/language, credit, preview, undo and owner/context
+guards remain. Switching caption targets must retain manual input and explicit
+blank overrides. Group review is used later for per-member settings/times,
+consent, final confirmation and the existing submission/recovery pipeline.
+
+No API, schema, entitlement, provider or environment change is introduced.
+Integration, full regression, exact build/install and native acceptance for
+this revision are pending. The 12116 checks below verify the earlier route;
+they do not verify this new parent-composer integration. See the
+[work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
+## Prior main-style group caption route (2026-11-05, Staging APK 12116)
 
 Prepared and reopened clip sets use familiar create-post caption chrome around
 the actual shared `UploaderScreen` editor, with a compact source/set summary and

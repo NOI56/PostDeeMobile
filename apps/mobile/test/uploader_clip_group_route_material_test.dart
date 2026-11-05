@@ -100,14 +100,17 @@ void main() {
       await fixture.seed();
       final source = fixture.store.drafts['material-source'];
       await fixture.mount(tester);
+      expect(find.byKey(const ValueKey('uploader-step-caption')), findsOneWidget);
+      expect(find.byType(UploaderScreen), findsOneWidget,
+          reason: 'The original uploader owns the normal caption page');
+
+      for(var step=0;step<2;step++) {
+        final next=find.byKey(const ValueKey('uploader-wizard-next'));
+        await tester.ensureVisible(next);
+        await tester.tap(next);
+        await tester.pumpAndSettle();
+      }
       expect(find.byKey(const ValueKey('clip-group-review')), findsOneWidget);
-      final inlineEditor = find.byWidgetPredicate((widget) =>
-          widget is UploaderScreen &&
-          widget.clipGroupSharedCaptionController != null);
-      expect(inlineEditor, findsOneWidget);
-      expect(find.descendant(of: inlineEditor, matching: find.byType(Scaffold)),
-          findsNothing,
-          reason: 'The shared editor stays inline inside the group Scaffold');
 
       final action = find.byKey(ValueKey(captionRoute
           ? 'clip-group-ai-material-part'
@@ -117,12 +120,6 @@ void main() {
               of: find.byKey(const ValueKey('clip-group-scroll')),
               matching: find.byType(Scrollable))
           .first;
-      final manager = find.byKey(const ValueKey('clip-group-manage-parts'));
-      await tester.scrollUntilVisible(manager, 180, scrollable: groupScroll);
-      await tester.ensureVisible(manager);
-      await tester.pumpAndSettle();
-      await tester.tap(manager);
-      await tester.pumpAndSettle();
       expect(fixture.apiWrites, 0);
       expect(fixture.store.drafts['material-source'], same(source));
       await tester.scrollUntilVisible(action, 240, scrollable: groupScroll);

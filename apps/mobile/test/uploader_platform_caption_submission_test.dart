@@ -312,6 +312,8 @@ void main() {
         tester, find.byKey(const ValueKey('uploader-video-preview-picker')));
     await goToUploaderStep(tester, 1);
     expect(find.byKey(const ValueKey('uploader-caption-field')), findsNothing);
+    await _tap(
+        tester, find.byKey(const ValueKey('uploader-ai-card-toggle')));
     for (final platform in [
       SocialPlatform.tiktok,
       SocialPlatform.youtubeShorts,
@@ -436,6 +438,8 @@ void main() {
     await tester.tap(save);
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);
+    await _tap(
+        tester, find.byKey(const ValueKey('uploader-ai-card-toggle')));
     await _tap(tester, find.byKey(const ValueKey('ai-caption-target-TIKTOK')));
     await _tap(
         tester, find.byKey(const ValueKey('ai-caption-target-YOUTUBE_SHORTS')));

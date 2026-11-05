@@ -7,7 +7,38 @@ below. Dated headings record their original scope. "Current status snapshot"
 in `ROADMAP.md` and the exact delivery records in `docs/STAGING.md` reconcile
 source integration, hosted API state, and installed Mobile artifacts.
 
-## Main caption chrome for split groups (2026-11-05, local candidate)
+## Parent-uploader caption scopes (2026-11-05, local implementation)
+
+The current local follow-up keeps the prepared-set caption composer in the
+existing parent `UploaderScreen` State, using its real `_currentStep == 1`
+caption page, header and navigation. `uploader_clip_group_composer.dart`
+coordinates the owner-bound journal, retained source and member drafts without
+turning the backup into a single-post delivery. `ClipGroupReviewScreen` remains
+the later per-member review, timing, consent and final-confirmation boundary;
+its existing submission/checkpoint/recovery pipeline remains authoritative.
+
+`ClipGroupCaptionSelector` derives All and available owned-member choices.
+A full-length choice requires an owned source backup and measured source
+duration; matching the final part endpoint alone is insufficient after manual
+cuts. The backup itself is excluded. Platform labels come from each member's
+immutable planned set, with All showing the union, not a Cartesian product of
+clips and channels. Same-range members still share the planner's deduplicated
+media; affected-channel mode may mix full-length and split delivery members.
+
+Shared, per-clip and per-platform captions retain their distinct inheritance
+and override state. Map presence distinguishes an explicit blank platform
+override from fallback. Scope changes must preserve input and owner/context
+validation; accepted or unresolved receipt intents remain locked. The whole AI
+section starts collapsed and manual generation keeps its existing source,
+language, cost, preview and undo boundaries. No implicit provider operation is
+added by selecting a scope or opening the composer.
+
+Existing draft/journal formats and server contracts remain in use; no database,
+API, entitlement or environment migration is required. Integration and regression
+verification for this revision are pending. Earlier APK 12116 checks below are
+historical evidence for the preceding group-owned caption route, not this one.
+
+## Prior group-owned caption route (2026-11-05, Staging APK 12116)
 
 `ClipGroupReviewScreen` remains the owner of group state, the shared controller,
 saving, navigation and submission. Familiar create-post chrome and a compact

@@ -114,6 +114,21 @@ Future<void> _capture(WidgetTester tester, String fileName) async {
   });
 }
 
+Future<void> _openAiCardForTest(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await tester.scrollUntilVisible(toggle, 160, scrollable: uploaderMainScroll);
+  await Scrollable.ensureVisible(tester.element(toggle), alignment: .5);
+  await tester.pumpAndSettle();
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(content).offstage) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -161,6 +176,7 @@ void main() {
       await _show(tester, mode);
       await tester.tap(mode);
       await tester.pumpAndSettle();
+      await _openAiCardForTest(tester);
 
       for (final platform in _platforms.take(2)) {
         final target = find.byKey(ValueKey('ai-caption-target-$platform'));
@@ -195,6 +211,9 @@ void main() {
       ]) {
         final text = inside(find.text(label));
         expect(text, findsOneWidget);
+        // The functional collapse header adds height. At large text sizes the
+        // expanded card is read by scrolling, while every label stays complete.
+        await _show(tester, text, alignment: .5);
         final bounds = tester.getRect(text);
         expect(bounds.left, greaterThanOrEqualTo(0));
         expect(bounds.right, lessThanOrEqualTo(size.width));
@@ -247,6 +266,7 @@ void main() {
 
       if (!dark) {
         final style = find.byKey(const ValueKey('uploader-ai-style-button'));
+        await _show(tester, style, alignment: .5);
         await tester.tap(style);
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('uploader-ai-style-sheet')),

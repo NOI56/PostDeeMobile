@@ -227,6 +227,10 @@ const _englishMessages = <String, String>{
   'ให้ AI ช่วยเขียน': 'Let AI write',
   'เลือกช่องทางที่ต้องการ': 'Choose channels',
   'AI แคปชั่นจากคลิปจริง': 'AI captions from your video',
+  'กดเปิดเมื่อต้องการให้ AI ช่วย': 'Expand when you want AI help',
+  'กดพับเพื่อซ่อนตัวเลือก AI': 'Collapse AI options',
+  'มีข้อความแจ้งเตือน · กดเปิดเพื่อดู': 'Open to view the message',
+  'มีผล AI ที่สร้างไว้ · กดเปิดดู': 'Open to view your saved AI result',
   'เลือกคลิปก่อน แล้วให้ AI ฟังเสียงจริงในคลิปเพื่อทำ Hook, SEO และแฮชแท็ก':
       'Choose a video first. AI will use its audio to create a hook, SEO keywords and hashtags.',
   'กำลังโหลดโควตา...': 'Loading AI caption quota...',

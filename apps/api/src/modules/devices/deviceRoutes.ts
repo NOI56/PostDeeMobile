@@ -1,6 +1,7 @@
 import type { RequestHandler, Router } from 'express';
 
 import { readAuthUser } from '../auth/authTypes.js';
+import { normalizeAppLanguage } from '../shared/appLanguage.js';
 import type { UserStore } from '../users/userStore.js';
 import type { DevicePlatform, DeviceTokenStore } from './deviceTokenStore.js';
 
@@ -73,7 +74,8 @@ export const registerDeviceRoutes = (
     await deviceTokenStore.register({
       userId: user.id,
       token,
-      platform: readPlatform(request.body?.platform)
+      platform: readPlatform(request.body?.platform),
+      language: normalizeAppLanguage(request.body?.language)
     });
 
     response.json({ status: 'ok' });

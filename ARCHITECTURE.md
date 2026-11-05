@@ -7,6 +7,28 @@ below. Dated headings record their original scope. "Current status snapshot"
 in `ROADMAP.md` and the exact delivery records in `docs/STAGING.md` reconcile
 source integration, hosted API state, and installed Mobile artifacts.
 
+## App-language delivery context (2026-11-05, local candidate)
+
+App language (`th`/`en`) is request context, separate from caption output choice
+and detected speech. A shared API normalizer strips regions, falls back to
+English for unsupported values, and preserves absent values as legacy. Device
+registration persists nullable language in both stores. A shared push helper
+groups each owner's tokens by language and settles each delivery/cleanup
+independently; legacy null tokens keep Thai. Existing data payloads and account
+deletion cascade remain unchanged.
+
+Mobile language changes refresh only an already registered token with a current
+signed-in session binding, using the existing serialized synchronization and
+late-session cleanup. Known publish/support-reply messages localize in both
+directions; unknown stored text stays intact. Every clip-caption request carries
+the current app language. It changes only Automatic's final fallback and default
+prompt wording; explicit output language, evidence priority, grounding and
+credit handling remain intact. Missing app language retains the old Thai prompt.
+
+Migration `20261105010000_device_token_language` is additive with no backfill.
+Apply migration/API before Mobile; no flags, environment or dependency changes.
+Local validation and delivery limits are in the [work record](docs/superpowers/plans/2026-11-05-multi-country-push-caption-language.md).
+
 ## Explicit source ranges for split parts (2026-11-05)
 
 `ClipSplitPlan.create(segmentOverrides: ...)` accepts optional per-channel

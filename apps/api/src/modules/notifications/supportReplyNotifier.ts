@@ -1,5 +1,11 @@
 import type { DeviceTokenStore } from '../devices/deviceTokenStore.js';
+import type { AppLanguage } from '../shared/appLanguage.js';
+import { sendLocalizedPush } from './localizedPush.js';
 import { type PushSender, createMockPushSender } from './pushSender.js';
+
+const messageForLanguage = (language: AppLanguage) => language === 'en'
+  ? { title: 'The PostDee team replied', body: 'Tap to read the reply in your support chat.' }
+  : { title: 'ทีมงาน PostDee ตอบกลับแล้ว', body: 'แตะเพื่ออ่านคำตอบในแชทกับทีมงาน' };
 
 /**
  * Pushes "the team replied" to a member's registered devices. The body stays
@@ -13,16 +19,11 @@ export const createSupportReplyNotifier = ({
   deviceTokenStore: DeviceTokenStore;
   pushSender?: PushSender;
 }) => async (userId: string) => {
-  const tokens = (await deviceTokenStore.listForUser(userId)).map((device) => device.token);
-  if (tokens.length === 0) return;
-  const result = await pushSender.send({
-    tokens,
-    title: 'ทีมงาน PostDee ตอบกลับแล้ว',
-    body: 'แตะเพื่ออ่านคำตอบในแชทกับทีมงาน',
+  await sendLocalizedPush({
+    userId,
+    deviceTokenStore,
+    pushSender,
+    messageForLanguage,
     data: { userId, type: 'support_reply' }
   });
-  // Dead tokens (uninstalled apps) are removed for this owner only.
-  for (const token of result?.invalidTokens ?? []) {
-    await deviceTokenStore.unregister({ userId, token });
-  }
 };

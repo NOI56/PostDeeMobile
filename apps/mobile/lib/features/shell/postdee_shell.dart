@@ -172,7 +172,10 @@ class _PostDeeShellState extends State<PostDeeShell> {
     _pushMessagingGateway = widget.pushMessagingGateway ??
         createPushMessagingGatewayFromConfig(
           firebaseBootstrapResult: widget.firebaseBootstrapResult,
-          registerBoundToken: (token, binding) => PostDeeApiClient(sessionBinding: binding).registerDeviceToken(token),
+          registerBoundToken: (token, binding) => PostDeeApiClient(sessionBinding: binding)
+              .registerDeviceToken(token,
+                  language: widget.languageController.locale?.languageCode == 'th'
+                      ? 'th' : 'en'),
           unregisterToken: (token, session) =>
               PostDeeApiClient(authTokenProvider: () async => session.idToken)
                   .unregisterDeviceToken(token),
@@ -187,9 +190,28 @@ class _PostDeeShellState extends State<PostDeeShell> {
           },
         );
     _notificationOwnerUserId = _authController.session.stableUserId;
+    widget.languageController.addListener(_handlePushLanguageChanged);
     final gateway = _pushMessagingGateway;
     if (gateway is PushMessagingLifecycle) {
       unawaited((gateway as PushMessagingLifecycle).start().catchError((_) {}));
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PostDeeShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.languageController != widget.languageController) {
+      oldWidget.languageController.removeListener(_handlePushLanguageChanged);
+      widget.languageController.addListener(_handlePushLanguageChanged);
+      _handlePushLanguageChanged();
+    }
+  }
+
+  void _handlePushLanguageChanged() {
+    final gateway = _pushMessagingGateway;
+    if (gateway is PushMessagingLanguageSync) {
+      unawaited((gateway as PushMessagingLanguageSync)
+          .refreshRegisteredToken().catchError((_) {}));
     }
   }
 
@@ -259,6 +281,7 @@ class _PostDeeShellState extends State<PostDeeShell> {
 
   @override
   void dispose() {
+    widget.languageController.removeListener(_handlePushLanguageChanged);
     unawaited(_pushMessagingGateway.dispose());
     _authController.removeListener(_handleComposerOwnerChanged);
     _authController.removeListener(_handleNotificationSessionChanged);

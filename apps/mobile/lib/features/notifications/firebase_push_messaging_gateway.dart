@@ -48,7 +48,7 @@ abstract class FirebaseMessagingClient {
 /// push capability. Account changes rotate the SDK token before registering it
 /// to the new owner; SDK/network failures must be retried on the next bell tap.
 class FirebasePushMessagingGateway
-    implements PushMessagingGateway, PushMessagingLifecycle {
+    implements PushMessagingGateway, PushMessagingLifecycle, PushMessagingLanguageSync {
   FirebasePushMessagingGateway({
     required FirebaseMessagingClient client,
     PostDeeNotificationCenter? center,
@@ -107,6 +107,9 @@ class FirebasePushMessagingGateway
   String? _latestToken;
   String? _registeredToken;
   AuthSession? _registeredSession;
+  AuthSessionBinding? _registeredBinding;
+  int _languageRevision = 0;
+  int _registeredLanguageRevision = 0;
   PushNotificationMessage? _pendingInitialMessage;
   Future<void> _syncFuture = Future<void>.value();
   Future<void>? _startFuture;
@@ -207,8 +210,27 @@ class FirebasePushMessagingGateway
     _handleMessage(message, opened: true);
   }
 
-  Future<void> _scheduleSync({bool reportErrors = false}) {
-    final pending = _syncFuture.then((_) => _syncAccount());
+  @override
+  Future<void> refreshRegisteredToken() {
+    _languageRevision += 1;
+    final binding = _registeredBinding;
+    if (_disposed || !_started || _registeredToken == null ||
+        binding == null || !binding.isCurrent ||
+        !_sessionStore.session.isSignedIn) {
+      return Future<void>.value();
+    }
+    return _scheduleSync(registeredBinding: binding);
+  }
+
+  Future<void> _scheduleSync({bool reportErrors = false,
+      AuthSessionBinding? registeredBinding}) {
+    final pending = _syncFuture.then((_) async {
+      if (registeredBinding != null &&
+          (!registeredBinding.isCurrent || _registeredToken == null)) {
+        return;
+      }
+      await _syncAccount();
+    });
     // Keep background delivery best-effort and the queue usable after failure.
     // An explicit request still receives its own failure for the shell's toast.
     _syncFuture = pending.catchError((_) {});
@@ -219,6 +241,7 @@ class FirebasePushMessagingGateway
     if (!_started || _disposed) return;
     final generation = _accountGeneration;
     final revision = _tokenRevision;
+    final languageRevision = _languageRevision;
     final binding = _sessionStore.captureSession();
     final session = _sessionStore.session;
     final owner = session.isSignedIn ? session.stableUserId : null;
@@ -229,6 +252,7 @@ class FirebasePushMessagingGateway
             (_latestToken != null && oldToken != _latestToken))) {
       _registeredToken = null;
       _registeredSession = null;
+      _registeredBinding = null;
       try {
         await _unregisterToken
             ?.call(oldToken, oldSession!)
@@ -260,12 +284,15 @@ class FirebasePushMessagingGateway
       return;
     }
     if (_registeredToken == token &&
-        _registeredSession?.stableUserId == owner) {
+        _registeredSession?.stableUserId == owner &&
+        _registeredLanguageRevision == languageRevision) {
       return;
     }
     _latestToken = token;
     _registeredToken = token;
     _registeredSession = session;
+    _registeredBinding = binding;
+    _registeredLanguageRevision = languageRevision;
     _onToken?.call(token);
     final register = _registerToken;
     final boundRegister = _registerBoundToken;
@@ -275,12 +302,23 @@ class FirebasePushMessagingGateway
     // A timed-out request can still complete at the server. Clean up with its
     // original credentials, then reassert the current owner after completion.
     unawaited(pending.then((_) async {
-      if (generation == _accountGeneration || _disposed) return;
+      if (_disposed) return;
+      if (generation == _accountGeneration) {
+        // A timed-out metadata request can finish after a newer language was
+        // saved. Reassert the latest language only for a current registration.
+        if (languageRevision != _languageRevision &&
+            _registeredToken != null && _registeredBinding?.isCurrent == true) {
+          _registeredLanguageRevision = -1;
+          await _scheduleSync();
+        }
+        return;
+      }
       try {
         await _unregisterToken?.call(token, session).timeout(_operationTimeout);
       } catch (_) {}
       _registeredToken = null;
       _registeredSession = null;
+      _registeredBinding = null;
       await _scheduleSync();
     }).catchError((_) {}));
     try {
@@ -290,6 +328,7 @@ class FirebasePushMessagingGateway
           _registeredSession?.stableUserId == owner) {
         _registeredToken = null;
         _registeredSession = null;
+        _registeredBinding = null;
       }
       rethrow;
     }

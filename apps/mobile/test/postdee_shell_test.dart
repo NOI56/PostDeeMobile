@@ -1607,6 +1607,36 @@ void main() {
     }
   }
 
+  testWidgets('language switches refresh the registered token for the current session',
+      (tester) async {
+    final language = _signInShell();
+    final registrations = <String>[];
+    final gateway = FirebasePushMessagingGateway(
+      client: _ShellFirebaseMessagingClient(),
+      sessionStore: PostDeeAuthSessionStore.instance,
+      center: PostDeeNotificationCenter(),
+      registerBoundToken: (_, binding) async {
+        binding.ensureCurrent();
+        registrations.add(language.locale!.languageCode);
+      },
+    );
+    await tester.pumpWidget(_shellApp(PostDeeShell(
+      languageController: language,
+      uploaderDraftStore: _ShellDraftStore(),
+      pushMessagingGateway: gateway,
+    )));
+    await tester.pumpAndSettle();
+    expect(registrations, ['en']);
+    await language.setLocale(const Locale('th'));
+    await tester.pumpAndSettle();
+    expect(registrations, ['en', 'th']);
+    PostDeeAuthSessionStore.instance.clear();
+    await language.setLocale(const Locale('en'));
+    await tester.pumpAndSettle();
+    expect(registrations, ['en', 'th']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('requests notification permission only after tapping the bell',
       (tester) async {
     SharedPreferences.setMockInitialValues({'postdee_onboarding_seen': true});

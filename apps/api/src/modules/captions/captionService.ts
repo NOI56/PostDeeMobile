@@ -1,5 +1,6 @@
 import type { Platform } from '../posts/postStore.js';
 import { readCaptionStorageIssue, readPlatformCaptionIssue } from '../posts/platformCaptionValidation.js';
+import { normalizeAppLanguage, type AppLanguage } from '../shared/appLanguage.js';
 import { captionLanguageCatalog, type CaptionLanguageCode } from './captionLanguages.generated.js';
 
 const affiliateLinkPlaceholder = '[ใส่ลิงก์ Affiliate ที่นี่]';
@@ -95,6 +96,8 @@ export type RealClipCaptionRequest = {
   guidance?: string;
   /** Requested text output language; omitted/auto keeps media-based selection. */
   captionLanguage?: RealClipCaptionLanguage;
+  /** Final automatic fallback only; omission preserves the legacy Thai prompt. */
+  appLanguage?: AppLanguage;
   writingStyle?: RealClipCaptionWritingStyle;
   selectedFrameKeys: string[];
   deleteAfterUse: boolean;
@@ -266,6 +269,7 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
   if (rawCaptionLanguage !== undefined && !captionLanguage) {
     return { ok: false as const, message: 'captionLanguage must be auto or a supported caption output language' };
   }
+  const appLanguage = normalizeAppLanguage(payload.appLanguage);
 
   const platforms = payload.platforms;
   if (platforms !== undefined && (!Array.isArray(platforms) || platforms.length < 1 || platforms.length > 4 ||
@@ -291,6 +295,7 @@ export const validateRealClipCaptionRequest = (body: unknown) => {
       ...(platforms !== undefined ? { platforms: platforms as Platform[] } : {}),
       guidance: readOptionalString(payload.guidance),
       ...(captionLanguage !== undefined ? { captionLanguage } : {}),
+      ...(appLanguage ? { appLanguage } : {}),
       ...(writingStyle.style ? { writingStyle: writingStyle.style } : {}),
       selectedFrameKeys,
       deleteAfterUse: readBoolean(payload.deleteAfterUse)

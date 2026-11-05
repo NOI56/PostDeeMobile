@@ -6,6 +6,38 @@ ISO-8601 (stored in UTC), preserve provider-neutral plan ids (`BASIC`, `STARTER`
 record their original scope; see "Current status snapshot" in `ROADMAP.md`
 and exact delivery evidence in `docs/STAGING.md`.
 
+## App-language pushes and automatic captions (2026-11-05, local candidate)
+
+`POST /devices` accepts optional `language`. Both this field and optional
+`appLanguage` on `POST /captions/generate-from-clip` normalize region tags
+(`en-US` → `en`), keep `th`/`en`, and use English for unsupported values.
+Missing/null values preserve legacy behavior. Device registration stores
+`language: th | en | null`; re-registering a token updates it, including clearing
+it to null when an old client omits the field. Owner scoping and unregister
+behavior are unchanged.
+
+Migration `20261105010000_device_token_language` adds nullable
+`DeviceToken.language` without a default or backfill. Publish-result, support
+reply and support-team pushes send one message per user's language group:
+English for `en`, Thai for `th`/null. Payload keys are unchanged; send failures
+and invalid-token cleanup are isolated per group. Support pushes contain no
+chat content or customer identity. Mobile re-registers the current session's
+registered token when its app language changes and displays known publish and
+support-reply templates in either interface language.
+
+For Automatic clip captions, evidence remains ordered as spoken language → main
+readable on-screen text → seller guidance → app language. Missing `appLanguage`
+retains the exact legacy Thai prompt/fallback. Explicit `captionLanguage` still
+wins; the 109-language catalog, grounding, channel outputs, response and credit
+reservation/refund rules are unchanged. Mobile always sends its app language,
+including Automatic. The unused Mobile keyword-caption endpoint remains
+unchanged and retains its legacy Thai behavior.
+
+Rollout: **migration and API first, then Mobile**. Old Mobile builds keep Thai
+pushes and the Thai caption fallback. No environment variables, feature flags
+or dependencies change. This is a local candidate, not a hosted deployment;
+verification is recorded in the [work record](docs/superpowers/plans/2026-11-05-multi-country-push-caption-language.md).
+
 ## Manual split source ranges (2026-11-05)
 
 Per-part start/end choices are local planning inputs, not posting dates or

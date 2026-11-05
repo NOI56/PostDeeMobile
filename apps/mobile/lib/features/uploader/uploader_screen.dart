@@ -3909,7 +3909,8 @@ class _UploaderScreenState extends State<UploaderScreen>
           !await _validateInlineCaptionContext(stillCurrent)) {
         return;
       }
-      if (!stillCurrent()) return;
+      if (!mounted || !stillCurrent()) return;
+      final appLanguage = reviewUsesThai(context) ? 'th' : 'en';
       final requestContext = _captionInputContext();
       final caption = await generator(
         GenerateRealClipCaptionRequest(
@@ -3917,6 +3918,7 @@ class _UploaderScreenState extends State<UploaderScreen>
           videoS3Key: clipMedia.isAudio ? null : clipMedia.s3Key,
           guidance: guidance.isEmpty ? null : guidance,
           captionLanguage: originalLanguage,
+          appLanguage: appLanguage,
           selectedFrameKeys: selectedFrameKeys,
           deleteAfterUse: true,
           writingStyle: writingStyle,

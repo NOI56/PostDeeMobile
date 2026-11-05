@@ -7536,7 +7536,7 @@ class _UploaderScreenState extends State<UploaderScreen>
                                 : _currentStep == 2
                                     ? (_isLoadingConnections
                                         ? 'กำลังตรวจบัญชี...'
-                                        : 'เลือกแล้ว ${_selectedPlatforms.length} ช่องทาง')
+                                        : 'เลือกแล้ว ${_clipCaptionComposer?.targets().length ?? _selectedPlatforms.length} ช่องทาง')
                                     : (canConfirm
                                         ? '${_readScheduledAt() == null ? 'ส่ง' : 'ตั้งเวลา'} ${_selectedPlatforms.length} ช่องทาง'
                                         : _captionLimitError != null

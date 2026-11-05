@@ -19,11 +19,12 @@ records exact hosted deployments and device evidence. Source integration does
 not itself update an installed app. Retired features are listed in
 [AGENTS.md](AGENTS.md).
 
-Latest Staging delivery (2026-11-05): source `66dd84d0` is on main and hosted
-Staging, with matching emulator APK 12113. Full CI and hosted regression passed;
-see [delivery evidence and limits](docs/STAGING.md). Production remains suspended.
+Latest hosted Staging API delivery (2026-11-05): source `66dd84d0` is on main
+and hosted Staging, originally verified with matching emulator APK 12113.
+Full CI and hosted regression passed; see [delivery evidence and limits](docs/STAGING.md).
+The newer local Mobile APK 12117 is recorded below. Production remains suspended.
 
-## Caption scopes in the existing uploader (2026-11-05, local implementation)
+## Caption scopes in the existing uploader (2026-11-06, Staging APK 12117)
 
 The current local follow-up returns prepared and reopened sets to the existing
 parent `UploaderScreen`, on its real second step, Caption. It adds All, Full clip
@@ -39,10 +40,19 @@ rules. The later group review still handles individual posting times, consent,
 recovery and final confirmation through the existing per-member pipeline.
 No API, schema, entitlement, provider or environment change is introduced.
 
-This revision is being integrated locally. Its complete regression, exact build,
-installation and native acceptance are pending; the APK 12116 and test evidence
-below belong to the preceding group-owned caption route. See the
-[current work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+Runtime `e7fa4a57` passes the full Mobile suite (5,605 passed / 13 opt-in skips,
+zero failures) and full analysis. The matching guarded Staging APK 12117 is
+installed with the same UID, storage volume and all 171 private files unchanged
+before first launch. Native reopening of an existing set confirms the actual
+normal Caption step, scopes and collapsed/open AI section without spending
+credits or posting. A fresh four-platform split also returns to that Caption
+step with All/Full/Part 1/Part 2; shared, full-clip and TikTok overrides survive
+save/reopen through channel review and Back. Temporary QA text is then cleared
+and the new test set saved empty. All 57 pre-existing draft/group JSON files
+remain byte-identical. See the exact native checks and separate footer follow-up
+in the [current work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+The source remains local; no new main merge, push or hosted deployment occurred.
+APK 12116 evidence below belongs to the preceding group-owned caption route.
 
 ## Prior main-style group caption route (2026-11-05, Staging APK 12116)
 

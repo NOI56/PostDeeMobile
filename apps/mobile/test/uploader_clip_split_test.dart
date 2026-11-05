@@ -298,6 +298,57 @@ void main() {
     expect(fixture.apiWrites, 0);
   });
 
+  for (final facebookOnly in [false, true]) {
+    testWidgets(
+        'composer channel footer counts ${facebookOnly ? 1 : 4} distinct '
+        'planned destinations instead of delivery members', (tester) async {
+      final fixture = _Fixture();
+      addTearDown(fixture.dispose);
+      fixture.initialVideo =
+          fixture.makeVideo('footer-targets.mp4', duration: 180);
+      await fixture.mount(tester);
+      final summary = _key('uploader-sticky-summary');
+      await _tap(tester, 'uploader-progress-2');
+      expect(
+          find.descendant(
+              of: summary, matching: find.text('เลือกแล้ว 0 ช่องทาง')),
+          findsOneWidget);
+      await _tap(tester, 'uploader-progress-0');
+      await revealVideoEnglishControl(tester, _key('uploader-clip-split-open'));
+      await _tap(tester, 'uploader-clip-split-open');
+      if (facebookOnly) {
+        for (final platform in [
+          'TIKTOK',
+          'YOUTUBE_SHORTS',
+          'INSTAGRAM_REELS'
+        ]) {
+          await _tap(tester, 'clip-split-channel-$platform');
+        }
+      }
+      await _tap(tester, 'clip-split-review');
+      await _tap(tester, 'clip-split-confirm');
+      final group =
+          (await (fixture.store as ClipGroupDraftStore).listClipGroups())
+              .single;
+      expect(group.items, hasLength(facebookOnly ? 2 : 3));
+      final part = group.items.firstWhere(
+          (item) => item.platformApiValues.contains('FACEBOOK_REELS'));
+      await _tap(tester, 'clip-group-caption-scope-${part.draftId}');
+      expect(
+          find.descendant(of: summary, matching: find.text('แคปชันแก้ไขได้')),
+          findsOneWidget);
+      await _tap(tester, 'uploader-wizard-next');
+      expect(_key('uploader-step-platforms'), findsOneWidget);
+      expect(
+          find.descendant(
+              of: summary,
+              matching: find.text('เลือกแล้ว ${facebookOnly ? 1 : 4} ช่องทาง')),
+          findsOneWidget);
+      expect(fixture.apiWrites, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final save in [false, true]) {
     testWidgets(
         'composer part-only edits prompt on Close and ${save ? 'save' : 'discard'} '

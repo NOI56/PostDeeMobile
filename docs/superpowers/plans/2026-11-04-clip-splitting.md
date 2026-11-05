@@ -1,6 +1,6 @@
 # Local clip splitting from the clip step — 2026-11-04
 
-## Actual parent-uploader caption scopes — 2026-11-05 (implementation pending verification)
+## Actual parent-uploader caption scopes — 2026-11-06 (Staging APK 12117)
 
 The owner rejected a separately owned group-caption page, including a version
 with familiar uploader chrome. The current follow-up starts from local runtime
@@ -37,12 +37,80 @@ The actual parent caption page must not fall through to the ordinary single-post
 submit path with the retained source. No new server endpoint, database schema,
 local format migration, entitlement, provider or environment change is needed.
 
-Implementation is in progress locally. The selector and composer integration
-need final regression, owner/race/recovery, scope/blank/platform persistence,
-layout and native acceptance evidence for the frozen final source, plus its
-exact guarded Staging build/install record. No new complete-suite count, APK
-verification, main merge, push or hosted deploy is claimed here. The APK 12116
-and 5,578-test evidence below belong only to the preceding group-owned route.
+### Frozen source and automated verification
+
+Runtime **`e7fa4a57d3a88d24c00f9a206310b724c102909b`** uses verified main
+baseline **`e4004355`**. A fresh complete Mobile suite passes **5,605 tests /
+13 opt-in skips, zero failures**, with two workers. Full Mobile analysis reports
+no issues. The complete-suite log is
+`E:/PostDeeTaskScratch/caption-composer-final-full.log`.
+The earlier 5,578-test result and APK 12116 below remain attached only to the
+preceding group-owned caption route.
+
+### Exact Staging build and preserved-data update
+
+The validated helper build completes in **164.5 seconds**, producing x86_64
+debug Staging APK **12117**, **175,990,258 bytes**, from that runtime source:
+
+- Artifact: `E:/PostDeeBuildArchive/clip-parent-caption-12117/app-x86_64-12117.apk`
+- APK SHA-256: `33fd047787acf2b5846d8dac61e98a76ceed1ac8a7c3a9f43549d1af7e7a2a20`
+- Installed package: `com.postdee.postdee_mobile.staging` on `emulator-5554`;
+  installed hash matches the artifact and the existing signing certificate.
+- Guarded update retains **UID 10197** and **internal storage**. All **171
+  private files** are byte-identical immediately before/after installation,
+  including zero SDK-file changes, before first launch.
+- The private-data backup contains 171 files; its TAR is **1,683,183,104 bytes**,
+  SHA-256 `96d1cab2a61cce89109f2fa611f44d9e079024402314944af455d20e1e811a94`.
+  This records backup integrity without exposing its contents.
+- Environment checks retain `https://postdee-api-staging.onrender.com`, Firebase
+  project `project-798caf7e-85b8-45e3-af7`, authentication enabled, mock auth
+  disabled and RevenueCat Test Store configuration.
+
+### Native acceptance of runtime `e7fa4a57` / APK 12117
+
+An existing saved group reopens on the **actual normal Caption step 2**, with
+All and two part scopes. The whole AI section starts collapsed and opens on
+request. The existing Basic account remains signed in with **550 post / 300 AI
+top-up credits**. No AI generation, upload or publishing was triggered. All
+**48 pre-existing draft JSON and 9 group JSON files (57 total)** remain
+byte-identical after reopening, through the fresh encoding check and at final QA.
+
+The fresh check uses a real three-minute vertical fixture and all four supported
+platforms in affected-channel mode. Its confirmed plan assigns **two Facebook
+parts** and **one shared full-length TikTok/YouTube/Instagram member**: three
+media members and five estimated post units. Native encoding and persistence
+complete, returning to the **same normal parent Caption step 2** with **All /
+Full / Part 1 / Part 2**. The safe JSON verifier confirms the actual planned
+membership and source ranges: full **0–180s** for TikTok/YouTube/Instagram,
+Facebook **0–90s** and **90–180s**. No member has an upload receipt, posting
+schedule or accepted-post identity.
+
+The native QA explicitly enters shared **`Caption smoke 12117`**, full-clip
+custom **`Full smoke 12117`**, and the full member's TikTok override
+**`TikTok smoke 12117`**. All three persist through Save, normal Channels
+step 3, the existing member review, Back and reopening; the safe JSON smoke check passes. This
+validates separate shared, per-clip and per-platform storage without submitting.
+
+The temporary QA text and overrides are then cleared using the app UI, shared
+inheritance is restored, and the set is explicitly saved. The safe clean check
+confirms all three member captions blank, platform maps empty, platform-caption
+mode off and `usesSharedCaption=true`. The check adds one retained QA group;
+Drafts shows **21 entries**. All original **57 JSON manifests** again match
+their pre-test hashes. The inspected current-process log contains **zero native
+or Flutter errors**. No AI generation, credit spend, upload or posting occurs.
+
+The API runtime, contracts, schema, provider, entitlements and environment are
+unchanged. No database migration, new main merge, push or hosted deploy occurred.
+Real AI generation, real social delivery, physical phones and iOS are outside
+these local Mobile checks.
+
+### Separate footer follow-up — verification pending
+
+Native QA also found a destination-count display issue in the normal composer
+footer. A separate small display fix and two regression cases are undergoing
+their own full-suite/build verification. The `e7fa4a57`, 5,605-test and APK 12117
+results above remain evidence for that exact verified runtime. They do not
+claim verification of the subsequent footer revision or a later APK.
 
 ## Prior main-style group caption integration — 2026-11-05 (Staging APK 12116)
 

@@ -43,7 +43,56 @@ tests, 10 optional skips**, exit 0, **8m45s** with
 `output/manual-clip-ranges/full-mobile.log`. The final diff contains the three
 related runtime files, five test files and synchronized product/workflow docs,
 with no unexpected deletions. No existing native/API/configuration files were
-changed. Exact build and native evidence will be recorded below.
+changed. Runtime source: `46a5fccb6606552c190d1ea1f9f0eaca169f7929`.
+
+Guarded feature-branch Staging build: **38.2 seconds**, x86_64-only APK
+**12112** (base build 8112 plus Flutter's split-ABI offset, actual manifest
+version checked). Permanent artifact:
+`E:\PostDeeBuildArchive\clip-group-review-12112\app-x86_64-12112.apk`,
+175,921,238 bytes, SHA-256
+`03b3b4c20deb93d6526afb127f548a972931817be16ef449e43dc9dcb0a136dc`.
+Installed hash matched on **emulator-5554**, package
+`com.postdee.postdee_mobile.staging`; UID **10197** and internal storage volume
+stayed unchanged. The helper retained Staging API/Firebase auth/Test Store
+configuration. Staging `/health` returned HTTP 200. The existing signed-in
+Basic account, zero usable credits and dormant purchased balances remained.
+No migration or hosted deployment is required or performed.
+
+The owner's open 180-second clip was first saved as a local draft before the
+update, retaining that unsaved selection. Fresh before/after update snapshots
+matched **all 71 draft/media files byte-for-byte**. Native verification then
+opened this source's split plan: the exact 2 × 90-second Facebook case now
+shows both edit actions. The editor showed the currently available neighbor
+interval, normal typography, working text input and Save above the keyboard.
+A 0:20–1:40 selection was rejected because it overlaps the next part; the
+dialog kept the input for correction. Preview of 0:20–1:30 opened and played,
+then returned to the retained values. Applying it left part 2 at 1:30–3:00;
+changing part 2 to 1:45–3:00 kept part 1 unchanged. The card and final review
+showed both exact ranges and disclosed the skipped content.
+
+Native preparation encoded both chosen Facebook ranges and reused the full
+source for TikTok, YouTube Shorts and Instagram Reels, retaining five estimated
+post units and three grouped files. It opened the shared-caption/AI page
+directly. Device journals contained the exact 20–90 / 105–180 source intervals;
+all three members had independent submission intents, no upload receipts and
+no posting dates. Read-only binary captures matched device sizes and hashes.
+Host ffprobe measured **70.000000 / 75.000000 seconds** for the two parts and
+**180.000000 seconds** for the full video, all H.264/AAC at 360×640.
+Evidence: `output/manual-clip-ranges/verified-media.json` and local captures in
+`E:\PostDeeBuildArchive\clip-group-review-12112\native-media\verified-part-*.mp4`.
+
+After preparation there were **78 files**: seven new member/group files, zero
+removed existing files, and only the newly retained source manifest changed
+through the normal persist/group-tag path. The other **70 existing files**,
+including every existing video, were identical. No old group was overwritten.
+The retained original still existed. The new app process (PID 9162) logged
+zero missing-Material/Flutter layout errors during the smoke check.
+Screenshots: `range-editor.png`, `dialog-keyboard.png`, `chosen-parts.png`,
+`review.png` and `after-cut.png` under `output/manual-clip-ranges/`.
+
+No AI generation, credit spending or post submission occurred. Actual social
+delivery, paid native scheduling, iOS and physical-phone verification remain
+outside this local-range change. There is no push, merge or hosted deployment.
 
 ## Member route Material hotfix — 2026-11-05
 

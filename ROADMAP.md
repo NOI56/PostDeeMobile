@@ -13,6 +13,10 @@ Build roadmap for PostDee.
   rules and publishing recovery. No API/schema/environment change.
 - Verification is recorded in the
   [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+- Source `46a5fccb`: analysis clean, 5,539 Mobile tests passed / 10 optional
+  skips; guarded Staging APK 12112 installed with existing data preserved.
+  Native custom ranges encoded to verified 70 / 75 second files and opened
+  shared captions directly. No live AI, posting, merge, push or hosted deploy.
 
 ## Clip member editor rendering fix (2026-11-05, Staging APK 12111)
 

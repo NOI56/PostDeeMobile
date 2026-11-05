@@ -1,6 +1,6 @@
 # PostDee
 
-## Choose each split part's source range (2026-11-05)
+## Choose each split part's source range (2026-11-05, Staging APK 12112)
 
 Each split part offers an explicit start/end time editor and preview, including
 parts whose automatic length already equals a channel's limit. Editing one part
@@ -11,6 +11,11 @@ the existing channel duration limits. Full-video destinations stay unchanged.
 Automatic ranges can be restored before preparing the set. This remains local
 preparation: no AI request, upload, post or quota charge. See the
 [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md) for verification.
+Source `46a5fccb` passed analysis and all 5,539 Mobile tests (10 optional skips).
+Guarded emulator APK 12112 preserved all 71 existing draft/media files during
+update. Native editing, invalid-overlap rejection, preview and actual cuts at
+0:20–1:30 / 1:45–3:00 passed; the resulting files measured exactly 70 / 75 seconds
+and opened the shared-caption page. No live AI or publishing was performed.
 
 ## Clip member editor rendering fix (2026-11-05, Staging APK 12111)
 

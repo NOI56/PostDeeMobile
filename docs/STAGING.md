@@ -39,8 +39,25 @@
   error/warn app logs ช่วง 03:39:50–03:44:32 UTC ว่าง (`hasMore: false`);
   ตรวจซ้ำหลัง Live: `/health` 200, `/ready` 200 (database/queue `ok`, `no-store`),
   unauthenticated `/posts` 401 ถ้าต้อง rollback ให้อ้าง deploy ตัวนี้ว่าเป็นตัวที่ Live
-- ยังไม่ได้ทำ: ไม่สร้าง/ติดตั้ง APK จาก `d69a04a4` (APK 12118 ในเครื่องมาจาก
-  `37b182ef` ก่อน merge จึงยังไม่มีงานฝั่ง Mobile ของ PR #65), ไม่ทดสอบ push
+- เจ้าของสั่งต่อให้สร้าง APK: build จาก main `a24f1ee1` (runtime เดียวกับ
+  `d69a04a4`; ต่างกันแค่เอกสาร) ผ่าน helper Staging ด้วย `--no-pub
+  --target-platform=android-x64 --split-per-abi --build-number=8119` ได้ package
+  `com.postdee.postdee_mobile.staging`, versionCode **12119**, `0.1.0-staging`,
+  175,997,958 bytes; helper ใช้ Staging example config และ RevenueCat Test Store
+  (ไม่แสดง key) APK SHA-256
+  `4bfeb0ff9b0a5a5ae2ef77947563e96ea753292158480de2eb93e73b21753c09`
+  เก็บไว้ที่ `E:/PostDeeBuildArchive/main-a24f1ee1-12119/app-x86_64-12119.apk`
+- Guarded updater บน AVD `Pixel_8` (`emulator-5554`): **12118 → 12119**
+  UID **10197** และ internal volume เดิม ไม่ uninstall/clear data; installed APK hash
+  ตรงตัวที่ build (lastUpdateTime 03:54:17 UTC) ไฟล์ส่วนตัวของแอป 188 ไฟล์
+  ก่อน/หลังติดตั้ง: **185/185 ไฟล์ข้อมูลตรงทุก byte** ต่างเฉพาะ 3 ไฟล์
+  `app_flutter/flutter_assets` ที่เป็นโค้ดแอปเอง
+- เปิด native: แถบ STAGING, บัญชี Basic เดิม, เครดิตเติม 550/300 และร่าง
+  `1000001341.mp4` ยังอยู่, โพสต์ล่าสุดโหลดได้; `POST_NOTIFICATIONS` granted;
+  logcat ของ app PID ไม่พบ fatal/unhandled/Flutter exception/overflow
+- ยังไม่ได้ทำ: ยืนยัน `DeviceToken.language` ใน DB ไม่ได้เพราะฐานข้อมูล Staging
+  ปิดการเชื่อมต่อจากภายนอก (ไม่ได้แก้ allowlist), ไม่ได้กดทดสอบหน้าแบ่งคลิป/แคปชั่น
+  ใหม่บน 12119 (Codex ทดสอบ native บน 12117/12118 ไว้แล้ว), ไม่ทดสอบ push
   ภาษาอังกฤษบนเครื่องจริง, live AI, real-store purchase หรือ real-account publishing
   Production ยัง user-suspended ไม่ deploy/resume หรือเปลี่ยนค่า
 

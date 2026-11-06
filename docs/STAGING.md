@@ -1,5 +1,40 @@
 # PostDee Staging
 
+## ภาษาแจ้งเตือน/แคปชั่นตามภาษาแอป และหน้าแคปชั่นหลักของชุดคลิป — 6 พฤศจิกายน 2026
+
+- เจ้าของสั่ง `main push deploy` สำหรับงานที่ค้าง: ก่อนเริ่ม Staging รัน
+  `66dd84d0` ขณะที่ main อยู่ที่ `d1121d58` (PR #65 ยังไม่ deploy) และสาขาในเครื่อง
+  ของ Codex `codex/clip-split-soft-motion` (11 commits บน `e4004355`) ยังไม่ push
+  สาขาอื่นที่ค้างตรวจแล้วว่าถูกแทนที่บน main แล้ว (PR #52/#53/#55, #43, #63,
+  readability ของลิงก์ร้าน, บันทึก PR #64) จึงไม่นำมารวม
+- รวมสาขา Codex บน main ล่าสุดเป็น [PR #66](https://github.com/NOI56/PostDeeMobile/pull/66)
+  merge commit `d69a04a4a0f365ad4c68055b59ac62e08d8b9d54` พร้อม `[skip render]`
+  conflict มีเฉพาะ `API.md`, `ARCHITECTURE.md`, `apps/mobile/README.md` (ทั้งสองฝั่ง
+  เพิ่มหัวข้อตามวันที่) จึงเก็บไว้ทั้งคู่ เรียงใหม่ก่อน; `uploader_screen.dart`
+  auto-merge และยังส่ง `appLanguage` ของ PR #65 ในคำขอแคปชั่นคลิปจุดเดียวที่มี
+  ไม่มีไฟล์ถูกลบ ไม่มีไฟล์ API เปลี่ยนจาก `d1121d58`
+- Local บน tree ที่ merge: `flutter analyze` ไม่มีปัญหา (28.9 วินาที) และ Mobile
+  เต็มชุด **5,629 ผ่าน / 13 opt-in ข้าม** ไม่มี failure;
+  [CI PR](https://github.com/NOI56/PostDeeMobile/actions/runs/42155078891) และ
+  [CI main](https://github.com/NOI56/PostDeeMobile/actions/runs/42156576560)
+  ของ SHA นี้ผ่านทั้ง Backend API และ Flutter Mobile ก่อน deploy
+- Staging `postdee-api-staging` (branch main, auto-deploy off) แทน `66dd84d0` /
+  `dep-dbm6vn88v5cc73dooom0` ด้วย
+  [deploy `dep-dbmko1gm7kps73bl574g`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbmko1gm7kps73bl574g)
+  เริ่ม **10:39:50 น. ไทย / 03:39:50 UTC** และ Live
+  **10:41:27 น. ไทย / 03:41:27 UTC** ตรง SHA `d69a04a4`
+- Startup instance `9kvvs` พบ 31 migrations และ apply
+  `20261105010000_device_token_language` สำเร็จ (เพิ่มคอลัมน์ `DeviceToken.language`
+  แบบ nullable ไม่มี backfill; token เดิมยังได้ push ภาษาไทย);
+  publishing guard ผ่าน (`publisher=postpeer`, backlog ว่าง) ฟัง port 10000
+  ด้วย memory scheduler ไม่พบ error/warn log ช่วง 03:39:50–03:42:04 UTC
+- หลัง Live: `/health` 200, `/ready` 200 พร้อม database/queue `ok` และ `no-store`,
+  unauthenticated `/posts` 401 และ `POST /devices` 401
+- ยังไม่ได้ทำ: ไม่สร้าง/ติดตั้ง APK จาก `d69a04a4` (APK 12118 ในเครื่องมาจาก
+  `37b182ef` ก่อน merge จึงยังไม่มีงานฝั่ง Mobile ของ PR #65), ไม่ทดสอบ push
+  ภาษาอังกฤษบนเครื่องจริง, live AI, real-store purchase หรือ real-account publishing
+  Production ยัง user-suspended ไม่ deploy/resume หรือเปลี่ยนค่า
+
 ## รวมงานแบ่งคลิป หมวดพรีเมียม และเอกสารหลายประเทศ — 5 พฤศจิกายน 2026
 
 - เจ้าของสั่ง `main push Deploy` จึงรวมงานบนฐานสด `c5a418ae` เป็น

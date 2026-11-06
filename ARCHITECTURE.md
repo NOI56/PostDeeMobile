@@ -7,6 +7,63 @@ below. Dated headings record their original scope. "Current status snapshot"
 in `ROADMAP.md` and the exact delivery records in `docs/STAGING.md` reconcile
 source integration, hosted API state, and installed Mobile artifacts.
 
+## Parent-uploader caption scopes (2026-11-06, Staging APK 12118)
+
+The current local follow-up keeps the prepared-set caption composer in the
+existing parent `UploaderScreen` State, using its real `_currentStep == 1`
+caption page, header and navigation. `uploader_clip_group_composer.dart`
+coordinates the owner-bound journal, retained source and member drafts without
+turning the backup into a single-post delivery. `ClipGroupReviewScreen` remains
+the later per-member review, timing, consent and final-confirmation boundary;
+its existing submission/checkpoint/recovery pipeline remains authoritative.
+
+`ClipGroupCaptionSelector` derives All and available owned-member choices.
+A full-length choice requires an owned source backup and measured source
+duration; matching the final part endpoint alone is insufficient after manual
+cuts. The backup itself is excluded. Platform labels come from each member's
+immutable planned set, with All showing the union, not a Cartesian product of
+clips and channels. Same-range members still share the planner's deduplicated
+media; affected-channel mode may mix full-length and split delivery members.
+
+Shared, per-clip and per-platform captions retain their distinct inheritance
+and override state. Map presence distinguishes an explicit blank platform
+override from fallback. Scope changes must preserve input and owner/context
+validation; accepted or unresolved receipt intents remain locked. The whole AI
+section starts collapsed and manual generation keeps its existing source,
+language, cost, preview and undo boundaries. No implicit provider operation is
+added by selecting a scope or opening the composer.
+
+Existing draft/journal formats and server contracts remain in use; no database,
+API, entitlement or environment migration is required. Final runtime `37b182ef`,
+from verified `main e4004355`, also derives the footer destination count from
+the real prepared-set targets. Full analysis is clean (18.2s); a fresh full
+Mobile run passes 5,607 tests / 13 opt-in skips, zero failures, in 12m23s.
+Exact-source APK 12118 is installed with unchanged UID/storage and all 171
+current private files byte-identical before/after update, including unchanged
+original 57 JSON manifests and 48 media files. Earlier `e7fa4a57` / APK 12117
+native split/save/reopen and override proof remains attached to that source;
+the fresh 12118 native acceptance boundary is recorded separately in the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+Earlier APK 12116 checks below remain historical evidence for the preceding
+group-owned caption route. No new main merge, push or API deploy occurred;
+live AI, store purchase and social publishing are outside this verification.
+
+## Prior group-owned caption route (2026-11-05, Staging APK 12116)
+
+`ClipGroupReviewScreen` remains the owner of group state, the shared controller,
+saving, navigation and submission. Familiar create-post chrome and a compact
+split summary wrap the existing `UploaderScreen` shared-caption editor; this
+does not turn a group into a standalone single-post form. Keep the same editor
+alive through the read-only range sheet and Next/Back, including its manual
+AI, style/language context and current input. Per-member caption/AI, cover,
+channel and inheritance actions remain reachable through the explicit manager
+and later review steps. Per-clip times still precede final confirmation.
+Owner/busy/receipt/context validation and the journal/publishing pipeline remain
+in place. The normal uploader order is unchanged. No API, schema, entitlement,
+environment or migration change. Mobile checks and emulator acceptance pass on
+Staging APK 12116; source remains local. Exact evidence is in the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## App-language delivery context (2026-11-05, local candidate)
 
 App language (`th`/`en`) is request context, separate from caption output choice

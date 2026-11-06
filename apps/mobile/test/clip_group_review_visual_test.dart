@@ -228,10 +228,7 @@ void main() {
       await tester.pumpWidget(
           _app(dark: mode.dark, english: mode.english, scale: mode.scale));
       await tester.pumpAndSettle();
-      expect(
-          find.text(mode.english
-              ? 'Write captions for this set'
-              : 'เขียนแคปชั่นทั้งชุด'),
+      expect(find.text(mode.english ? 'Create post' : 'สร้างโพสต์'),
           findsOneWidget);
       expect(find.byKey(const ValueKey('clip-group-shared-caption')),
           findsOneWidget);
@@ -249,6 +246,13 @@ void main() {
           .first;
       final customCaption =
           find.byKey(const ValueKey('clip-group-caption-yt2'));
+      final showParts = find.byKey(const ValueKey('clip-group-show-parts'));
+      await tester.ensureVisible(showParts);
+      await tester.tap(showParts);
+      await tester.pumpAndSettle();
+      await _capture(tester, 'clip-group-${mode.name}-parts-sheet');
+      await tester.tap(find.byKey(const ValueKey('clip-group-parts-manage')));
+      await tester.pumpAndSettle();
       // A long editable caption has its own scrollable; move the outer list
       // directly rather than dragging through the text field's hit area.
       final position = tester.state<ScrollableState>(captionScroll).position;

@@ -37,6 +37,45 @@ the linked work records. A source integration is not an app-store release.
   Broader publishing E2E, physical-device/iOS, country-specific stores and legal
   readiness retain their release gates. Production remains outside this delivery.
 
+## Existing-uploader caption scopes (2026-11-06, Staging APK 12118)
+
+- Use the actual parent uploader's Caption step, rather than another caption
+  page inside group review. Keep normal single-post navigation unchanged.
+- Select All, a real full-length delivery member or a numbered part. Derive
+  destination labels from that member's immutable planned channel set; never
+  turn the source backup into a post or assign every channel to every clip.
+- Keep shared text, per-clip and per-platform overrides, including deliberate
+  blanks. Start the entire AI section collapsed; generation remains explicit.
+- Keep the existing group journal, owner/context/receipt guards, per-clip times,
+  consent, recovery and final submission pipeline. Group review is the later
+  review/timing/confirmation stage, not the owner of the main caption page.
+- Final runtime `37b182ef` fixes the footer destination count and passes a fresh
+  complete Mobile suite: 5,607 passed / 13 opt-in skips, zero failures, 12m23s;
+  full analysis reports no issues (18.2s). Guarded APK 12118 is installed with
+  UID 10197/internal storage retained and all 171 current private files unchanged.
+- Current backup coverage and install comparison both confirm the original 57
+  JSON manifests and 48 media files unchanged. Verified APK 12117 native
+  split/save/reopen/override/clean checks remain historical exact-source evidence;
+  fresh native acceptance for 12118 is tracked separately in the
+  [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+- No API/schema/entitlement/provider/environment migration, new main merge,
+  push or hosted deploy; no real AI/store purchase/social publish is claimed.
+  Prior APK 12116 evidence verifies the preceding route.
+
+## Prior main-style group caption route (2026-11-05, Staging APK 12116)
+
+- Replace the prepared group's separate caption-page chrome with the familiar
+  create-post header/progress and a compact split summary. Reuse the actual
+  shared-caption editor and retain it through the range sheet and Next/Back.
+- Keep the read-only ranges sheet compact. Preserve explicit access to each
+  clip's caption/AI, cover, channel settings and shared-caption restoration,
+  followed by per-clip posting times and final confirmation.
+- Keep the existing group journal, owner/busy/receipt guards, quotas and
+  publishing pipeline. The normal uploader's step order is unchanged.
+- No API/schema/entitlement/environment/migration change. Mobile checks and
+  emulator acceptance pass on Staging APK 12116; source remains local. See the
+  [work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## Select source ranges per split part (2026-11-05)
 
 - Offer start/end editing and preview for every split part, including exact

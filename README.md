@@ -19,9 +19,53 @@ records exact hosted deployments and device evidence. Source integration does
 not itself update an installed app. Retired features are listed in
 [AGENTS.md](AGENTS.md).
 
-Latest Staging delivery (2026-11-05): source `66dd84d0` is on main and hosted
-Staging, with matching emulator APK 12113. Full CI and hosted regression passed;
-see [delivery evidence and limits](docs/STAGING.md). Production remains suspended.
+Latest hosted Staging API delivery (2026-11-05): source `66dd84d0` is on main
+and hosted Staging, originally verified with matching emulator APK 12113.
+Full CI and hosted regression passed; see [delivery evidence and limits](docs/STAGING.md).
+The newer local Mobile APK 12118 is recorded below. Production remains suspended.
+
+## Caption scopes in the existing uploader (2026-11-06, Staging APK 12118)
+
+The current local follow-up returns prepared and reopened sets to the existing
+parent `UploaderScreen`, on its real second step, Caption. It adds All, Full clip
+and numbered-part choices to that page. Full is a prepared delivery member,
+identified against the measured original; the retained source backup is never
+a selectable delivery. Each choice shows only its actual planned destinations.
+The immutable split plan remains authoritative for channels and source ranges.
+
+Shared text, per-clip overrides and per-platform overrides remain separate;
+an explicitly blank override stays blank. The whole AI section starts collapsed
+and opens only on request, retaining the existing manual-generation and credit
+rules. The later group review still handles individual posting times, consent,
+recovery and final confirmation through the existing per-member pipeline.
+No API, schema, entitlement, provider or environment change is introduced.
+
+Final runtime `37b182ef` also corrects the footer's destination count to use the
+real prepared-set targets. It passes a fresh full Mobile suite (5,607 passed /
+13 opt-in skips, zero failures, 12m23s) and full analysis. Matching guarded
+Staging APK 12118 is installed with UID/storage retained and all 171 current
+private files byte-identical before/after update, including the original 57
+JSON manifests and 48 media files. Native split/save/reopen proof for the prior
+`e7fa4a57` / APK 12117 remains separate historical evidence. The fresh native
+acceptance boundary for 12118 is tracked in the
+[current work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+The source remains local; no new main merge, push or hosted deployment occurred.
+No AI generation, store purchase or social publishing is claimed for this UI
+delivery. APK 12116 evidence below belongs to the preceding group-owned route.
+
+## Prior main-style group caption route (2026-11-05, Staging APK 12116)
+
+After a split set is prepared or reopened, the candidate uses familiar
+create-post caption chrome around the existing shared-caption editor. A compact
+summary opens a read-only source-range sheet; an explicit per-clip manager and
+the later review steps retain caption/AI, cover, channel and inheritance controls.
+The editor stays alive through the sheet and Next/Back. Per-clip posting times
+still precede final confirmation, using the same persisted group and pipeline.
+The normal uploader's Clip → Caption → Channels → Review order is unchanged.
+No API, schema, entitlement, environment or migration change is required.
+Mobile checks and emulator acceptance pass on Staging APK 12116. The source
+remains local, without a new main merge, push or hosted deployment; see the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
 
 ## App-language pushes and caption fallback (2026-11-05, local candidate)
 

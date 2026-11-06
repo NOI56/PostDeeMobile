@@ -55,6 +55,21 @@ class _Counts {
   int generations = 0;
 }
 
+Future<void> _openAiCardForTest(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await tester.scrollUntilVisible(toggle, 160, scrollable: uploaderMainScroll);
+  await Scrollable.ensureVisible(tester.element(toggle), alignment: .5);
+  await tester.pumpAndSettle();
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(content).offstage) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   late Directory directory;
 
@@ -328,6 +343,7 @@ void main() {
       final counts = await pump(tester,
           initialClip: clip(), plan: _plan(plan: 'BASIC'));
       await goToUploaderStep(tester, 1);
+      await _openAiCardForTest(tester);
       final action = find.byKey(const ValueKey('uploader-ai-generate-button'));
       await show(tester, action);
       expect(find.descendant(of: action, matching: find.text('ดูแพ็กเกจเพื่อใช้ AI')),
@@ -343,6 +359,7 @@ void main() {
     testWidgets('paid plans keep the generate action', (tester) async {
       await pump(tester, initialClip: clip());
       await goToUploaderStep(tester, 1);
+      await _openAiCardForTest(tester);
       final action = find.byKey(const ValueKey('uploader-ai-generate-button'));
       await show(tester, action);
       expect(
@@ -355,8 +372,8 @@ void main() {
         (tester) async {
       await pump(tester, initialClip: clip());
       await goToUploaderStep(tester, 1);
-      final summary =
-          find.byKey(const ValueKey('uploader-ai-style-summary'));
+      await _openAiCardForTest(tester);
+      final summary = find.byKey(const ValueKey('uploader-ai-style-summary'));
       await show(tester, summary);
       expect(tester.widget<Text>(summary).data, 'สไตล์: อัตโนมัติ');
       expect(find.textContaining('อัตโนมัติ · อัตโนมัติ'), findsNothing);

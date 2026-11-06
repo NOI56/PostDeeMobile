@@ -54,8 +54,21 @@ Widget _app(Widget body, {required bool dark, required double textScale}) =>
 
 Future<void> _show(WidgetTester tester, Finder target) async {
   await tester.scrollUntilVisible(target, 150, scrollable: uploaderMainScroll);
-  await tester.ensureVisible(target);
+  await Scrollable.ensureVisible(tester.element(target), alignment: .5);
   await tester.pumpAndSettle();
+}
+
+Future<void> _openAiCard(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await _show(tester, toggle);
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(content).offstage) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -160,6 +173,7 @@ void main() {
         await _show(tester, toggle);
         await tester.tap(toggle);
         await tester.pumpAndSettle();
+        await _openAiCard(tester);
         for (final platform in [
           'TIKTOK',
           'YOUTUBE_SHORTS',
@@ -171,6 +185,8 @@ void main() {
           await tester.tap(target);
           await tester.pumpAndSettle();
         }
+      } else {
+        await _openAiCard(tester);
       }
       final strip = find.byType(CaptionQuotaStrip);
       await _show(tester, strip);

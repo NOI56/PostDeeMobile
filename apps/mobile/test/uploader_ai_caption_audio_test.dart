@@ -58,6 +58,21 @@ AiEditVisualProxyArtifact _proxyFixture({int sizeBytes = 512}) {
   return AiEditVisualProxyArtifact(file: file, workingDirectory: directory);
 }
 
+Future<void> _openAiCardForTest(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await tester.scrollUntilVisible(toggle, 160, scrollable: uploaderMainScroll);
+  await Scrollable.ensureVisible(tester.element(toggle), alignment: .5);
+  await tester.pumpAndSettle();
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(content).offstage) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -137,6 +152,7 @@ void main() {
         ))));
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);
+    await _openAiCardForTest(tester);
     await tester.scrollUntilVisible(find.byKey(_action), 200,
         scrollable: uploaderMainScroll);
     await tester.ensureVisible(find.byKey(_action));

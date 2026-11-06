@@ -6,6 +6,48 @@ ISO-8601 (stored in UTC), preserve provider-neutral plan ids (`BASIC`, `STARTER`
 record their original scope; see "Current status snapshot" in `ROADMAP.md`
 and exact delivery evidence in `docs/STAGING.md`.
 
+## Mobile uploader caption scopes (2026-11-06, Staging APK 12118)
+
+The current local Mobile follow-up places prepared-set caption editing on the
+actual parent uploader's Caption step. All/Full/Part selection is local UI
+state. Full means a real prepared member, never the retained source backup;
+planned per-member destinations remain immutable. Shared text and existing
+per-clip/per-platform draft fields retain overrides, including explicit blank
+platform values rather than substituting fallback text.
+
+No new endpoint, request/response field, batch-post contract, provider setting,
+entitlement, quota or database migration is introduced. The whole AI section
+starts collapsed and generation still requires its existing explicit action.
+Local scope selection, planning and saves do not consume post units or trigger
+AI/upload/publishing. Later group review retains per-member schedules, consent,
+stable request identities, accepted checkpoints and unresolved-request recovery.
+
+Final runtime `37b182ef` adds a footer destination-count display correction;
+full Mobile analysis is clean and the fresh complete suite passes 5,607 tests /
+13 opt-in skips, zero failures, in 12m23s. Matching guarded Staging APK 12118
+retains Staging API/Firebase auth-on/mock-off and RevenueCat Test Store
+configuration; all 171 current private files are unchanged by installation.
+The exact APK 12117 native split/override/save/reopen checks remain historical
+evidence for `e7fa4a57`. Fresh 12118 native acceptance is tracked separately in the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+The API runtime and contracts are unchanged; no API deploy, database migration,
+main merge or push occurred for this revision. No live AI, real store purchase
+or social publishing is claimed. APK 12116 evidence below belongs to the earlier
+caption route.
+
+## Prior Mobile main-style group caption route (2026-11-05, Staging APK 12116)
+
+The Mobile follow-up changes prepared-group caption chrome and exposes a compact
+read-only ranges sheet. Shared/per-clip edits, individual posting times and
+final confirmation still use the existing group journal and per-item publishing
+pipeline. Keeping the actual shared editor alive across sheet/Next/Back does not
+change any route, request/response field, schema, entitlement, quota, environment
+variable or migration. AI generation remains explicit; opening this UI does not
+generate captions, upload or publish. Existing API contracts remain unchanged.
+Mobile verification passed on Staging APK 12116; this does not deploy any API
+change. Exact source, artifact and limits are recorded in the
+[work record](docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## App-language pushes and automatic captions (2026-11-05, local candidate)
 
 `POST /devices` accepts optional `language`. Both this field and optional

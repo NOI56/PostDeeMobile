@@ -18,6 +18,7 @@ import 'support/uploader_wizard_test_navigation.dart';
 
 Future<void> _openCaptionOptions(WidgetTester tester, String key) async {
   await goToUploaderStep(tester, 1);
+  if (key == 'uploader-ai-open-panel') await _openAiCardForTest(tester);
   final options = find.byKey(ValueKey(key));
   await tester.scrollUntilVisible(
     options,
@@ -183,6 +184,21 @@ Future<void> _completeYouTubeSettingsForTests(WidgetTester tester) async {
 /// been tapped by the caller, so wait without submitting a second time.
 Future<void> _settlePublishSubmission(WidgetTester tester) async {
   await tester.pumpAndSettle();
+}
+
+Future<void> _openAiCardForTest(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await tester.scrollUntilVisible(toggle, 160, scrollable: uploaderMainScroll);
+  await Scrollable.ensureVisible(tester.element(toggle), alignment: .5);
+  await tester.pumpAndSettle();
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(content).offstage) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -1140,7 +1156,8 @@ void main() {
     expect(
         find.text('เล่าเรื่องคลิปหรือสิ่งที่อยากบอกลูกค้า...'), findsOneWidget);
     expect(
-        find.byKey(const ValueKey('uploader-ai-open-panel')), findsOneWidget);
+        find.byKey(const ValueKey('uploader-ai-card-toggle')), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-ai-open-panel')), findsNothing);
     expect(find.byKey(const ValueKey('uploader-ai-caption-panel')),
         findsOneWidget);
     expect(

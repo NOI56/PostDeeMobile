@@ -186,6 +186,7 @@ Future<void> _show(WidgetTester tester, Finder finder,
 
 Future<void> _openAi(WidgetTester tester) async {
   await goToUploaderStep(tester, 1);
+  await _openAiCardForTest(tester);
   final panel = find.text('ปรับสไตล์และคำแนะนำ');
   await _show(tester, panel);
   await tester.tap(panel);
@@ -235,6 +236,21 @@ Future<void> _saveAndRestore(WidgetTester tester, _AiFixture fixture) async {
   await tester.pumpAndSettle();
   await goToUploaderStep(tester, 1);
   await _show(tester, find.byKey(_captionKey));
+}
+
+Future<void> _openAiCardForTest(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await tester.scrollUntilVisible(toggle, 160, scrollable: uploaderMainScroll);
+  await Scrollable.ensureVisible(tester.element(toggle), alignment: .5);
+  await tester.pumpAndSettle();
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(content).offstage) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {

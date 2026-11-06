@@ -154,7 +154,8 @@ class _Fixture extends CaptionEnglishFixture {
       ));
 
   @override
-  Future<void> mount(WidgetTester tester, {bool settle = true}) async {
+  Future<void> mount(WidgetTester tester,
+      {bool settle = true, bool expandAi = true}) async {
     await tester.binding.setSurfaceSize(const Size(430, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(app());
@@ -162,6 +163,10 @@ class _Fixture extends CaptionEnglishFixture {
       await tester.pumpAndSettle();
     } else {
       await tester.pump();
+    }
+    if (settle && expandAi &&
+        find.byKey(const ValueKey('uploader-ai-card-toggle')).evaluate().isNotEmpty) {
+      await _tap(tester, 'uploader-ai-card-toggle');
     }
   }
 

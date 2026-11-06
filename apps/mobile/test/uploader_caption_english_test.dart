@@ -189,9 +189,13 @@ class CaptionEnglishFixture extends VideoEnglishFixture {
       });
 
   @override
-  Future<void> mount(WidgetTester tester, {bool settle = true}) async {
+  Future<void> mount(WidgetTester tester,
+      {bool settle = true, bool expandAi = true}) async {
     await super.mount(tester, settle: settle);
     await tapVideoEnglishControl(tester, 'uploader-progress-1');
+    if (expandAi) {
+      await tapCaptionEnglishControl(tester, 'uploader-ai-card-toggle');
+    }
   }
 }
 
@@ -224,6 +228,10 @@ Future<void> tapCaptionEnglishControl(WidgetTester tester, String key) async {
   } else {
     final control = find.byKey(ValueKey(key));
     await revealCaptionEnglishControl(tester, control);
+    if (key == 'uploader-ai-card-toggle') {
+      await Scrollable.ensureVisible(tester.element(control), alignment: 0.5);
+      await tester.pumpAndSettle();
+    }
     await tester.tap(control);
     await tester.pumpAndSettle();
   }

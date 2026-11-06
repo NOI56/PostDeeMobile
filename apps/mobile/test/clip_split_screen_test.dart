@@ -125,6 +125,39 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<RangeValues> dragRangeThumb(WidgetTester tester,
+      {required bool start, required double dx}) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    final finder = find.byKey(const ValueKey('clip-split-range-slider'));
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+    final slider = tester.widget<RangeSlider>(finder);
+    final bounds = tester.getRect(finder);
+    final box = tester.renderObject<RenderBox>(finder);
+    final inheritedTheme = SliderTheme.of(tester.element(finder));
+    final sliderTheme = inheritedTheme.copyWith(
+      rangeThumbShape:
+          inheritedTheme.rangeThumbShape ?? const RoundRangeSliderThumbShape(),
+      overlayShape: inheritedTheme.overlayShape ??
+          const RoundSliderOverlayShape(overlayRadius: 24),
+      trackHeight: inheritedTheme.trackHeight ?? 4,
+    );
+    final track = (sliderTheme.rangeTrackShape ??
+            const RoundedRectRangeSliderTrackShape())
+        .getPreferredRect(parentBox: box, sliderTheme: sliderTheme);
+    final value = start ? slider.values.start : slider.values.end;
+    final thumb = Offset(
+        bounds.left +
+            track.left +
+            track.width * (value - slider.min) / (slider.max - slider.min),
+        bounds.top + track.center.dy);
+    await tester.dragFrom(thumb, Offset(dx, 0));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    return tester.widget<RangeSlider>(finder).values;
+  }
+
   testWidgets('reviews exact channel units then returns a plan without posting',
       (tester) async {
     ClipSplitPlan? confirmed;
@@ -303,8 +336,9 @@ void main() {
         platforms: const {SocialPlatform.youtubeShorts},
         preview: (segment) async => previews.add(segment));
     await tap(tester, 'clip-split-range-0');
-    expect(find.textContaining('4:30.125'), findsWidgets);
-    expect(find.text('Available source range 0:00–2:15.0625'), findsOneWidget);
+    expect(find.textContaining('4:30'), findsWidgets);
+    expect(find.textContaining('4:30.125'), findsNothing);
+    expect(find.text('Available source range 0:00–2:15'), findsOneWidget);
     expect(
         find.ancestor(
             of: find.byKey(const ValueKey('clip-split-range-start')),
@@ -320,14 +354,14 @@ void main() {
     await tap(tester, 'clip-split-range-save');
     await tap(tester, 'clip-split-review');
     expect(find.text('Full video'), findsNothing);
-    await tester.scrollUntilVisible(
-        find.textContaining('0:10.125–2:00.125'), 150,
+    await tester.scrollUntilVisible(find.textContaining('0:10–2:00'), 150,
         scrollable: find
             .descendant(
                 of: find.byKey(const ValueKey('clip-split-scroll')),
                 matching: find.byType(Scrollable))
             .first);
-    expect(find.textContaining('0:10.125–2:00.125'), findsOneWidget);
+    expect(find.textContaining('0:10–2:00'), findsOneWidget);
+    expect(find.textContaining('0:10.125–2:00.125'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -384,9 +418,11 @@ void main() {
         'opening and saving an untouched $duration range preserves canonical microseconds',
         (tester) async {
       ClipSplitPlan? confirmed;
+      final previews = <ClipSplitSegment>[];
       await mount(tester,
           duration: duration,
           platforms: const {SocialPlatform.youtubeShorts},
+          preview: (segment) async => previews.add(segment),
           onResult: (plan) => confirmed = plan);
       final automatic = ClipSplitPlan.create(
           sourceDurationSeconds: duration,
@@ -398,7 +434,15 @@ void main() {
                   find.byKey(const ValueKey('clip-split-range-end')))
               .controller!
               .text,
-          '3:00.000001');
+          '3:00');
+      await tap(tester, 'clip-split-range-preview');
+      expect((
+        previews.single.startSeconds,
+        previews.single.endSeconds
+      ), (
+        automatic.channelPlans.single.segments.last.startSeconds,
+        automatic.channelPlans.single.segments.last.endSeconds
+      ));
       await tap(tester, 'clip-split-range-save');
       await tap(tester, 'clip-split-review');
       await tap(tester, 'clip-split-confirm');
@@ -413,6 +457,180 @@ void main() {
               .map((part) => (part.startSeconds, part.endSeconds)));
     });
   }
+
+  testWidgets('editing one short clock preserves the other exact endpoint',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    ClipSplitPlan? confirmed;
+    await mount(tester,
+        duration: 270.125,
+        platforms: const {SocialPlatform.youtubeShorts},
+        preview: (segment) async => previews.add(segment),
+        onResult: (plan) => confirmed = plan);
+    await tap(tester, 'clip-split-range-0');
+    expect(
+        tester
+            .widget<TextField>(
+                find.byKey(const ValueKey('clip-split-range-end')))
+            .controller!
+            .text,
+        '2:15');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-start')), '0:10');
+    await tap(tester, 'clip-split-range-preview');
+    expect((previews.single.startSeconds, previews.single.endSeconds),
+        (10, 135.0625));
+    await tap(tester, 'clip-split-range-save');
+    await tap(tester, 'clip-split-review');
+    await tap(tester, 'clip-split-confirm');
+    expect(
+        confirmed!.channelPlans.single.segments
+            .map((part) => (part.startSeconds, part.endSeconds)),
+        [(10, 135.0625), (135.0625, 270.125)]);
+  });
+
+  testWidgets('dragging a fractional start snaps only the moved thumb',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    await mount(tester,
+        duration: 360,
+        platforms: const {SocialPlatform.youtubeShorts},
+        preview: (segment) async => previews.add(segment));
+    await tap(tester, 'clip-split-range-0');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-start')), '0:55.153966');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-end')), '2:35.067414');
+    final values = await dragRangeThumb(tester, start: true, dx: 24);
+    expect(values.start, greaterThan(55.153966));
+    expect(values.start, values.start.roundToDouble());
+    expect(values.end, 155.067414);
+    final startText = tester
+        .widget<TextField>(find.byKey(const ValueKey('clip-split-range-start')))
+        .controller!
+        .text;
+    final endText = tester
+        .widget<TextField>(find.byKey(const ValueKey('clip-split-range-end')))
+        .controller!
+        .text;
+    expect(startText, matches(RegExp(r'^\d+:[0-5]\d$')));
+    expect(endText, '2:35');
+    await tap(tester, 'clip-split-range-preview');
+    expect((previews.single.startSeconds, previews.single.endSeconds),
+        (values.start, 155.067414));
+    await tap(tester, 'clip-split-range-save');
+    await tap(tester, 'clip-split-preview-0');
+    expect((previews.last.startSeconds, previews.last.endSeconds),
+        (values.start, 155.067414));
+  });
+
+  testWidgets('dragging toward a fractional neighbor keeps a valid whole cut',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    ClipSplitPlan? confirmed;
+    await mount(tester,
+        duration: 270.125,
+        platforms: const {SocialPlatform.youtubeShorts},
+        preview: (segment) async => previews.add(segment),
+        onResult: (plan) => confirmed = plan);
+    await tap(tester, 'clip-split-range-1');
+    final values = await dragRangeThumb(tester, start: true, dx: -40);
+    expect(values.start, 136,
+        reason: '135 would overlap the previous part ending at 135.0625');
+    expect(values.end, 270.125);
+    await tap(tester, 'clip-split-range-preview');
+    expect((previews.single.startSeconds, previews.single.endSeconds),
+        (136, 270.125));
+    await tap(tester, 'clip-split-range-save');
+    expect(find.byKey(const ValueKey('clip-split-range-error')), findsNothing);
+    await tap(tester, 'clip-split-review');
+    await tap(tester, 'clip-split-confirm');
+    expect(
+        confirmed!.channelPlans.single.segments
+            .map((part) => (part.startSeconds, part.endSeconds)),
+        [(0, 135.0625), (136, 270.125)]);
+  });
+
+  testWidgets('a slider interval without a whole second retains its exact cut',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    ClipSplitPlan? confirmed;
+    await mount(tester,
+        duration: 180.375,
+        platforms: const {SocialPlatform.facebookReels},
+        preview: (segment) async => previews.add(segment),
+        onResult: (plan) => confirmed = plan);
+    await tap(tester, 'clip-split-range-1');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-end')), '1:03.625');
+    final values = await dragRangeThumb(tester, start: true, dx: -30);
+    expect(values.start, 60.125,
+        reason: 'The legal 60.125–60.625 interval contains no whole second');
+    expect(values.end, 63.625);
+    await tap(tester, 'clip-split-range-preview');
+    expect((previews.single.startSeconds, previews.single.endSeconds),
+        (60.125, 63.625));
+    await tap(tester, 'clip-split-range-save');
+    await tap(tester, 'clip-split-review');
+    await tap(tester, 'clip-split-confirm');
+    expect(
+        confirmed!.channelPlans.single.segments
+            .map((part) => (part.startSeconds, part.endSeconds)),
+        [(0, 60.125), (60.125, 63.625), (120.25, 180.375)]);
+  });
+
+  testWidgets('a slider cut respects the Reel minimum and keeps the exact end',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    await mount(tester,
+        duration: 180.375,
+        platforms: const {SocialPlatform.facebookReels},
+        preview: (segment) async => previews.add(segment));
+    await tap(tester, 'clip-split-range-1');
+    final values = await dragRangeThumb(tester, start: true, dx: 200);
+    expect(values.start, greaterThan(60.125));
+    expect(values.start, values.start.roundToDouble());
+    expect(values.end, 120.25);
+    expect(values.end - values.start, greaterThanOrEqualTo(3));
+    await tap(tester, 'clip-split-range-preview');
+    expect((previews.single.startSeconds, previews.single.endSeconds),
+        (values.start, 120.25));
+    await tap(tester, 'clip-split-range-save');
+    expect(find.byKey(const ValueKey('clip-split-range-dialog')), findsNothing);
+    await tap(tester, 'clip-split-preview-1');
+    expect((previews.last.startSeconds, previews.last.endSeconds),
+        (values.start, 120.25));
+  });
+
+  testWidgets(
+      'a slider cut clamps to the Reel maximum before a looser neighbor',
+      (tester) async {
+    final previews = <ClipSplitSegment>[];
+    await mount(tester,
+        duration: 180.375,
+        platforms: const {SocialPlatform.facebookReels},
+        preview: (segment) async => previews.add(segment));
+    await tap(tester, 'clip-split-range-0');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-end')), '0:30');
+    await tap(tester, 'clip-split-range-save');
+    await tap(tester, 'clip-split-range-1');
+    await tester.enterText(
+        find.byKey(const ValueKey('clip-split-range-start')), '0:35');
+    final values = await dragRangeThumb(tester, start: true, dx: -80);
+    expect(values.start, 31,
+        reason: '30 would be clear of its neighbor but exceed 90 seconds');
+    expect(values.end, 120.25);
+    expect(values.end - values.start, lessThanOrEqualTo(90));
+    await tap(tester, 'clip-split-range-preview');
+    expect((previews.single.startSeconds, previews.single.endSeconds),
+        (31, 120.25));
+    await tap(tester, 'clip-split-range-save');
+    expect(find.byKey(const ValueKey('clip-split-range-dialog')), findsNothing);
+    await tap(tester, 'clip-split-preview-1');
+    expect(
+        (previews.last.startSeconds, previews.last.endSeconds), (31, 120.25));
+  });
 
   testWidgets(
       'range preview locks saving and changed owners cannot apply edits',

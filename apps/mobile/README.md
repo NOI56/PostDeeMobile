@@ -1,5 +1,55 @@
 # PostDee Mobile
 
+## Existing Caption step for prepared clips (2026-11-06, Staging APK 12118)
+
+The current local follow-up returns prepared and reopened clip sets to the real
+Caption step of the parent `UploaderScreen`; it does not open another caption
+page inside group review. All / Full clip / numbered-part choices preserve
+separate shared, clip and platform overrides. Full is an actual member whose
+range matches the measured original; the retained source backup is excluded.
+Only each member's planned destinations are shown and those channel sets stay
+immutable. The selector uses compact choices or a dropdown for larger sets.
+
+The entire AI section starts collapsed. Opening it is explicit, as is generation;
+the existing source, style/language, credit, preview, undo and owner/context
+guards remain. Switching caption targets must retain manual input and explicit
+blank overrides. Group review is used later for per-member settings/times,
+consent, final confirmation and the existing submission/recovery pipeline.
+
+No API, schema, entitlement, provider or environment change is introduced.
+Final runtime `37b182ef` also fixes the footer destination count. It passes full
+analysis (18.2s) and a fresh complete Mobile run: 5,607 passed / 13 opt-in skips,
+zero failures, 12m23s. The guarded helper builds x86_64 debug APK 12118 in 34.9s;
+installed hash/signing certificate, UID 10197 and internal storage match, and
+all 171 current private files are byte-identical before/after installation.
+Both backup coverage and install comparison confirm the original 57 JSON
+manifests and 48 media files unchanged. Staging API/Firebase auth-on/mock-off
+and RevenueCat Test Store configuration remain validated. Earlier APK 12117
+native split/save/reopen/override checks remain exact historical evidence;
+fresh 12118 native acceptance is recorded separately with the artifact and
+storage-retry proof in the
+[work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
+No new main merge, push or hosted deploy occurred, and no live AI, real-store
+purchase or social publishing is claimed. The 12116 checks below remain evidence
+only for the earlier route.
+
+## Prior main-style group caption route (2026-11-05, Staging APK 12116)
+
+Prepared and reopened clip sets use familiar create-post caption chrome around
+the actual shared `UploaderScreen` editor, with a compact source/set summary and
+a read-only range sheet. The editor remains alive through the sheet and
+Next/Back. Caption/AI, cover, channel settings and shared-caption restoration
+remain available per member through an explicit manager and the later review
+steps. The group still selects each clip's posting time before final explicit
+confirmation; it retains the same journal, recovery and publishing pipeline.
+The normal Clip → Caption → Channels → Review wizard is unchanged. Existing
+AI/style/language, owner/busy/receipt guards and quota rules remain; no API,
+schema, entitlement, environment or migration change is required. The complete
+Mobile suite (5,578 pass / 13 optional skips), analysis, validated Staging build
+12116 and native split→caption→review→Back acceptance pass. The source remains
+local; see exact artifact and storage/archive evidence in the
+[work record](../../docs/superpowers/plans/2026-11-04-clip-splitting.md).
+
 ## App-language pushes and automatic captions (2026-11-05, local candidate)
 
 Device registration sends the current Thai/English app language. A language

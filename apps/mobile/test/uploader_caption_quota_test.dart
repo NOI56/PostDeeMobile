@@ -73,6 +73,15 @@ Future<void> _show(WidgetTester tester, Finder target) async {
   if (find.byKey(const ValueKey('uploader-step-caption')).evaluate().isEmpty) {
     await goToUploaderStep(tester, 1);
   }
+  final aiHeader = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await tester.scrollUntilVisible(aiHeader, 200, scrollable: uploaderMainScroll);
+  final aiContent = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(aiContent).offstage) {
+    await tester.ensureVisible(aiHeader);
+    await tester.tap(aiHeader);
+    await tester.pumpAndSettle();
+  }
   await tester.scrollUntilVisible(target, 200, scrollable: uploaderMainScroll);
   await tester.ensureVisible(target);
   await tester.pumpAndSettle();

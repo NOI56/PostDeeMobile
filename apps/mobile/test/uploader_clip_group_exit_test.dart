@@ -11,7 +11,7 @@ import 'uploader_video_english_test.dart';
 
 void main() {
   testWidgets(
-      'leaving a saved group returns the empty selector to its top '
+      'leaving a saved group exits the normal composer '
       'without changing the original draft or posting', (tester) async {
     SharedPreferences.setMockInitialValues({});
     PostDeeAuthSessionStore.instance.signIn(const AuthSession(
@@ -65,7 +65,7 @@ void main() {
         expectedRevision: null);
     final original = fixture.store.drafts['exit-source'];
     await fixture.mount(tester);
-    expect(find.byKey(const ValueKey('clip-group-review')), findsOneWidget);
+    expect(find.byKey(const ValueKey('uploader-step-caption')), findsOneWidget);
     final scroll = find
         .descendant(
             of: find.byKey(const ValueKey('uploader-scroll'),
@@ -77,28 +77,14 @@ void main() {
     expect(position.maxScrollExtent, greaterThan(0));
     position.jumpTo(position.maxScrollExtent);
     await tester.pump();
-    await tester.pageBack();
+    final close=find.byKey(const ValueKey('uploader-close'));
+    await tester.ensureVisible(close);
+    await tester.tap(close);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('clip-group-review')), findsNothing);
-    final heading = find.byKey(const ValueKey('uploader-step-video'));
-    final picker = find.text('Choose a 9:16 video');
-    expect(heading, findsOneWidget);
-    expect(picker, findsOneWidget);
-    final viewport =
-        tester.getRect(find.byKey(const ValueKey('uploader-scroll')));
-    expect(tester.getRect(heading).top, greaterThanOrEqualTo(viewport.top));
-    final pickerAction = find.ancestor(
-        of: picker,
-        matching: find.byWidgetPredicate(
-            (widget) => widget is InkWell || widget is GestureDetector)).first;
-    expect(tester.getRect(pickerAction).overlaps(viewport), isTrue);
-    expect(find.text('The clip set is saved. Continue from Drafts.'),
-        findsOneWidget);
-    await tester.ensureVisible(picker);
-    await tester.pumpAndSettle();
-    await tester.tap(picker);
-    await tester.pumpAndSettle();
-    expect(fixture.picks, 1);
+    expect(find.byKey(const ValueKey('uploader-step-caption')), findsNothing);
+    expect(find.text('Uploader test home'), findsOneWidget);
+    expect(fixture.picks, 0);
     expect(fixture.store.drafts['exit-source'], same(original));
     expect(fixture.apiWrites, 0);
     expect(tester.takeException(), isNull);

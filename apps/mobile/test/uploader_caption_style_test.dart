@@ -174,6 +174,10 @@ Future<void> _showAiPanel(WidgetTester tester, _Fixture fixture) async {
   await tester.pumpWidget(fixture.app());
   await tester.pumpAndSettle();
   await goToUploaderStep(tester, 1);
+  await _show(tester,
+      find.byKey(const ValueKey('uploader-ai-card-toggle')));
+  await tester.tap(find.byKey(const ValueKey('uploader-ai-card-toggle')));
+  await tester.pumpAndSettle();
   final panel = find.text('ปรับสไตล์และคำแนะนำ');
   await tester.scrollUntilVisible(panel, 250,
       scrollable: uploaderMainScroll);
@@ -209,6 +213,10 @@ Future<void> _openAdvancedStyle(WidgetTester tester, _Fixture fixture) async {
   await tester.pumpAndSettle();
   await goToUploaderStep(tester, 1);
   await _enableAdvancedCaptions(tester);
+  await _show(tester,
+      find.byKey(const ValueKey('uploader-ai-card-toggle')));
+  await tester.tap(find.byKey(const ValueKey('uploader-ai-card-toggle')));
+  await tester.pumpAndSettle();
   await _openStyle(tester);
 }
 

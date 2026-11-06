@@ -165,6 +165,10 @@ Future<void> _start(WidgetTester tester, _Fixture fixture) async {
   await tester.pumpWidget(fixture.app());
   await tester.pumpAndSettle();
   await goToUploaderStep(tester, 1);
+  final aiHeader = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await _show(tester, aiHeader);
+  await tester.tap(aiHeader);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _toggle(WidgetTester tester) async {
@@ -471,6 +475,10 @@ void main() {
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);
+    final aiHeader = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+    await _show(tester, aiHeader);
+    await tester.tap(aiHeader);
+    await tester.pumpAndSettle();
     for (final platform in _platforms) {
       expect(
           tester

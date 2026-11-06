@@ -40,7 +40,8 @@ extension _UploaderClipGroups on _UploaderScreenState {
     }
   }
 
-  Future<void> _openSavedClipGroup(String groupId) async {
+  Future<void> _openSavedClipGroup(String groupId, {bool reviewOnly=false}) async {
+    if (!reviewOnly) { await _adoptClipGroupComposer(groupId); return; }
     if (_isOpeningClipGroup || widget.clipGroupEditor) return;
     final session = PostDeeAuthSessionStore.instance.captureSession();
     final owner = session.userId;
@@ -229,6 +230,7 @@ extension _UploaderClipGroups on _UploaderScreenState {
 
       final reviewRoute = MaterialPageRoute<void>(
         builder: (_) => ClipGroupReviewScreen(
+          initialStage: 1,
           initialGroup: working!,
           draftsById: drafts,
           ownerSession: session,
@@ -335,8 +337,19 @@ extension _UploaderClipGroups on _UploaderScreenState {
           },
         ),
       );
+      // The existing per-member pipeline temporarily restores each delivery
+      // draft into this uploader. Never route its saves to the source composer.
+      final captionComposerAtReview = _clipCaptionComposer;
+      _clipCaptionComposer = null;
       await navigator.push<void>(reviewRoute);
       if (mounted && session.isCurrent) {
+        if (captionComposerAtReview?.group.id == groupId && !working!.isComplete) {
+          captionComposerAtReview?.dispose();
+          _isOpeningClipGroup=false;
+          await _adoptClipGroupComposer(groupId);
+          return;
+        }
+        captionComposerAtReview?.dispose();
         FocusManager.instance.primaryFocus?.unfocus();
         final cover = _clearActiveDraftFormState();
         if (cover != null) await cover.cleanupTemporaryFiles();

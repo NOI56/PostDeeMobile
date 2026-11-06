@@ -51,15 +51,10 @@ String clipSplitProblemText(
           'These channels cannot share the same cuts. Split only the channels that need it.'),
     };
 
-/// Exact measured ranges keep fractional boundaries visible when required.
+/// Keep displayed clocks compact; measured ranges retain their own precision.
 String formatClipSplitTime(double seconds) {
   final microseconds = (seconds * 1000000).round();
   final minutes = microseconds ~/ 60000000;
   final wholeSeconds = (microseconds ~/ 1000000) % 60;
-  final fraction = microseconds % 1000000;
-  final whole = '$minutes:${wholeSeconds.toString().padLeft(2, '0')}';
-  if (fraction == 0) return whole;
-  final suffix =
-      fraction.toString().padLeft(6, '0').replaceFirst(RegExp(r'0+$'), '');
-  return '$whole.$suffix';
+  return '$minutes:${wholeSeconds.toString().padLeft(2, '0')}';
 }

@@ -299,8 +299,17 @@ void main() {
     fixture.seed();
     final ids = fixture.group.items.map((item) => item.draftId).toList();
     await fixture.mount(tester);
+    final scroll = find
+        .descendant(
+            of: _key('clip-group-scroll'), matching: find.byType(Scrollable))
+        .first;
+    await tester.scrollUntilVisible(_key('clip-group-manage-parts'), 150,
+        scrollable: scroll);
+    await _tap(tester, 'clip-group-manage-parts');
+    expect(fixture.saves, 0);
+    expect(fixture.edits, isEmpty);
     await tester.scrollUntilVisible(_key('clip-group-ai-fb1'), 150,
-        scrollable: find.byType(Scrollable).first);
+        scrollable: scroll);
     await _tap(tester, 'clip-group-ai-fb1');
     expect(fixture.edits, [('fb1', ClipGroupEditSection.caption)]);
     expect(fixture.group.items.map((item) => item.draftId), ids);

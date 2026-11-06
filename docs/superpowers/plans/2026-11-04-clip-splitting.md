@@ -1,5 +1,437 @@
 # Local clip splitting from the clip step — 2026-11-04
 
+## Final parent-uploader candidate — 2026-11-06 (Staging APK 12118)
+
+Final runtime **`37b182ef845094d542ad74e628bd877e465e3314`** retains the actual
+parent Caption composer and corrects its footer destination count to use the
+prepared set's real planned targets. Two regression cases cover the display
+correction. Fresh fetch confirms `origin/main` is still **`e4004355`**; this
+source is **10 ahead / 0 behind**, with a clean tree before the guarded update.
+Later documentation commits do not change the runtime source of this artifact.
+
+### Final automated verification
+
+The fresh complete Mobile run passes **5,607 tests / 13 opt-in skips / zero
+failures** in **12m23s**. Full analysis reports **no issues in 18.2s**. Log:
+`E:/PostDeeTaskScratch/caption-composer-footer-final-full.log`.
+The 5,605-test / APK 12117 results below remain historical evidence for
+`e7fa4a57`, not a substitute for this final run.
+
+### Exact final APK and verified update
+
+The validated Staging helper builds x86_64 debug APK **12118** in **34.9s**,
+**175,988,234 bytes**, archived at
+`E:/PostDeeBuildArchive/clip-parent-caption-12118/app-x86_64-12118.apk`.
+SHA-256: `34d5fe9dcdb232f604181cfa53913d92502957d9887b7dc9630c17f743b03052`.
+The installed APK matches that hash and runtime source on `emulator-5554`,
+package `com.postdee.postdee_mobile.staging`; **UID 10197** and **internal
+storage** stay unchanged. Signing certificate SHA-256 remains
+`014e1d98cb4c6161015f33be988d9a9bc43575c3adcf9226f9f8ee6948380cdb`.
+Staging API/Firebase, auth-on/mock-off and RevenueCat Test Store configuration
+remain as validated for the preceding build; no configuration change is made.
+
+The first update attempt stops at **17:47:40 UTC** with
+`INSTALL_FAILED_INSUFFICIENT_STORAGE`. APK 12117, its installed hash and UID
+remain unchanged; this failed attempt is not counted as an installation.
+Before cleanup, cumulative backup covers 180 current files: 155 reused from
+the original archive and 25 delta files. That delta TAR is **158,408,192 bytes**,
+SHA-256 `c4d3e2781d67d3d625c45ba55c8025a16ce1bec05eea48f9c71c669e21beeb65`.
+
+Only the newly created, pinned QA group is deleted through the existing app UI
+after verified backup; no baseline group/draft identity is targeted. The newest
+own picker-cache copy (about 24.77 MB) is also archived and removed; older
+copies are retained. A corrected backup gate then covers **all 171 current
+files**, with **19 delta files**, **92,401 payload bytes** and a **114,176-byte
+TAR**, SHA-256
+`ef143b61b6506703787a5deedf6ff53069bbf9fd741b6f03ac0374872573b7de`.
+Both coverage and comparison verify the original **57 JSON manifests and 48
+media files** byte-identical, with none missing or changed.
+
+The corrected guarded update succeeds **12117 → 12118**. All **171 current
+private files** are byte-identical before/after installation: **zero missing,
+added, SDK-changed or unexpectedly changed files**. The strict receipt records
+success at **2026-11-05 18:02:39 UTC / 2026-11-06 01:02:39 Thai time**:
+`E:/PostDeeTaskScratch/caption-multiple-native/update-12118-after-qa-cleanup-receipt.json`.
+No uninstall, data clear, signing change or storage-volume move is used.
+
+### Fresh native acceptance — passed on APK 12118
+
+A fresh real three-minute, four-platform split completes native encoding
+**2/2** and persists **three members / five estimated post units**: Facebook **0–90s**
+and **90–180s**, plus one shared full-length **0–180s** TikTok/YouTube/Instagram
+member. It returns to the **actual parent Caption step 2** with **All / Full /
+Part 1 / Part 2**, and switching scopes works. The whole AI section opens via
+its shortcut, shows the language/quota controls with the existing Basic guard,
+and collapses again through its header without generation.
+
+Next opens normal Channels step 3, which shows the four planned apps and the
+correct footer **`เลือกแล้ว 4 ช่องทาง`**. Native screenshot:
+`E:/PostDeeTaskScratch/caption-multiple-native/final-four-channels-observed.png`.
+Back/Close → Home → normal Create → Drafts (**21 entries**) → newest set reopens
+the same actual Caption page with all four scopes and AI collapsed. The **20
+older entries** remain; the new QA set is retained for the owner to try.
+
+`verify-final-caption-group.py` passes with the new group/member identities
+pinned to creation after APK 12118 installation. Shared and member captions are
+blank, inheritance is true, platform maps are empty and platform-caption mode
+is off. There are **no upload receipts, schedules or accepted-post identities**.
+All original **57 JSON manifests and 48 media files** remain byte-identical.
+The first part plays natively with audio muted; the captured playback position
+is **0:54 / 1:30**. The preview is closed, leaving the shared Caption scope ready
+to use. The inspected process log contains **zero fatal, unhandled Flutter or
+layout-overflow errors**. Final screen:
+`E:/PostDeeTaskScratch/caption-multiple-native/native-delivered.png`.
+The separate APK 12117 split/save/reopen record below remains historical
+evidence for its own exact artifact.
+
+The API runtime, contracts, schema, provider, entitlements and environment remain
+unchanged. No migration, main merge, push or hosted deploy occurs. No live AI,
+real-store purchase or social publishing is claimed; physical phones and iOS
+remain outside these local Mobile checks.
+
+## Prior actual parent-uploader caption scopes — 2026-11-06 (Staging APK 12117)
+
+The owner rejected a separately owned group-caption page, including a version
+with familiar uploader chrome. The current follow-up starts from local runtime
+`730ecd6e` on the existing UI branch, with verified integration baseline
+`origin/main e4004355`. It moves caption ownership into the existing parent
+`UploaderScreen` State and its actual Caption step (index 1 / step 2), rather
+than wrapping or embedding another caption page in `ClipGroupReviewScreen`.
+The ordinary single-post wizard keeps its existing order and behavior.
+
+The parent composer offers All, actual Full clip and numbered-part scopes;
+full-length members do not consume part numbers. A full-length classification
+requires the owned retained backup plus measured original duration. The backup
+is never a delivery choice. Member labels and destinations come from committed
+membership, not inferred cross-products of all channels and all clips. The
+existing affected-channel mode already supports compatible platforms receiving
+a full-length member while other platforms receive parts; matching-part mode
+continues to use shared ranges. Planned source intervals and channel sets stay
+immutable after preparation.
+
+Shared captions, individual clip overrides and individual platform overrides
+remain distinct. An intentional blank is an override, not a request to restore
+fallback text. Scope changes must preserve the raw input and existing member
+settings. The entire AI section starts collapsed and expands only on request;
+fresh generation, preview Apply/Undo, source/context checks and credit rules
+remain explicit. The source backup, covers, schedules, submission identities,
+accepted receipts and unresolved requests must not be rewritten by scope
+selection or a shared edit.
+
+`ClipGroupReviewScreen` is retained for the later per-member review, timing,
+consent and final-confirmation flow. Submission continues through the existing
+per-member pipeline, with accepted results durably checkpointed before child
+cleanup and unknown outcomes recovered using their original identities.
+The actual parent caption page must not fall through to the ordinary single-post
+submit path with the retained source. No new server endpoint, database schema,
+local format migration, entitlement, provider or environment change is needed.
+
+### Frozen source and automated verification
+
+Runtime **`e7fa4a57d3a88d24c00f9a206310b724c102909b`** uses verified main
+baseline **`e4004355`**. A fresh complete Mobile suite passes **5,605 tests /
+13 opt-in skips, zero failures**, with two workers. Full Mobile analysis reports
+no issues. The complete-suite log is
+`E:/PostDeeTaskScratch/caption-composer-final-full.log`.
+The earlier 5,578-test result and APK 12116 below remain attached only to the
+preceding group-owned caption route.
+
+### Exact Staging build and preserved-data update
+
+The validated helper build completes in **164.5 seconds**, producing x86_64
+debug Staging APK **12117**, **175,990,258 bytes**, from that runtime source:
+
+- Artifact: `E:/PostDeeBuildArchive/clip-parent-caption-12117/app-x86_64-12117.apk`
+- APK SHA-256: `33fd047787acf2b5846d8dac61e98a76ceed1ac8a7c3a9f43549d1af7e7a2a20`
+- Installed package: `com.postdee.postdee_mobile.staging` on `emulator-5554`;
+  installed hash matches the artifact and the existing signing certificate.
+- Guarded update retains **UID 10197** and **internal storage**. All **171
+  private files** are byte-identical immediately before/after installation,
+  including zero SDK-file changes, before first launch.
+- The private-data backup contains 171 files; its TAR is **1,683,183,104 bytes**,
+  SHA-256 `96d1cab2a61cce89109f2fa611f44d9e079024402314944af455d20e1e811a94`.
+  This records backup integrity without exposing its contents.
+- Environment checks retain `https://postdee-api-staging.onrender.com`, Firebase
+  project `project-798caf7e-85b8-45e3-af7`, authentication enabled, mock auth
+  disabled and RevenueCat Test Store configuration.
+
+### Native acceptance of runtime `e7fa4a57` / APK 12117
+
+An existing saved group reopens on the **actual normal Caption step 2**, with
+All and two part scopes. The whole AI section starts collapsed and opens on
+request. The existing Basic account remains signed in with **550 post / 300 AI
+top-up credits**. No AI generation, upload or publishing was triggered. All
+**48 pre-existing draft JSON and 9 group JSON files (57 total)** remain
+byte-identical after reopening, through the fresh encoding check and at final QA.
+
+The fresh check uses a real three-minute vertical fixture and all four supported
+platforms in affected-channel mode. Its confirmed plan assigns **two Facebook
+parts** and **one shared full-length TikTok/YouTube/Instagram member**: three
+media members and five estimated post units. Native encoding and persistence
+complete, returning to the **same normal parent Caption step 2** with **All /
+Full / Part 1 / Part 2**. The safe JSON verifier confirms the actual planned
+membership and source ranges: full **0–180s** for TikTok/YouTube/Instagram,
+Facebook **0–90s** and **90–180s**. No member has an upload receipt, posting
+schedule or accepted-post identity.
+
+The native QA explicitly enters shared **`Caption smoke 12117`**, full-clip
+custom **`Full smoke 12117`**, and the full member's TikTok override
+**`TikTok smoke 12117`**. All three persist through Save, normal Channels
+step 3, the existing member review, Back and reopening; the safe JSON smoke check passes. This
+validates separate shared, per-clip and per-platform storage without submitting.
+
+The temporary QA text and overrides are then cleared using the app UI, shared
+inheritance is restored, and the set is explicitly saved. The safe clean check
+confirms all three member captions blank, platform maps empty, platform-caption
+mode off and `usesSharedCaption=true`. The check adds one retained QA group;
+Drafts shows **21 entries**. All original **57 JSON manifests** again match
+their pre-test hashes. The inspected current-process log contains **zero native
+or Flutter errors**. No AI generation, credit spend, upload or posting occurs.
+
+The API runtime, contracts, schema, provider, entitlements and environment are
+unchanged. No database migration, new main merge, push or hosted deploy occurred.
+Real AI generation, real social delivery, physical phones and iOS are outside
+these local Mobile checks.
+
+### Subsequent footer follow-up
+
+Native QA also found a destination-count display issue in the normal composer
+footer. A separate display fix and two regression cases are verified by the
+final source/full-suite/APK 12118 section above. The `e7fa4a57`, 5,605-test and
+APK 12117 results here remain evidence only for this preceding exact runtime.
+
+## Prior main-style group caption integration — 2026-11-05 (Staging APK 12116)
+
+The owner approved implementing the clickable design example. Work begins from
+clean `870db5b4` on the existing UI branch, with freshly fetched `origin/main`
+`e4004355` as merge base (ahead 6 / behind 0). The normal single-post wizard
+order is unchanged; this change concerns the prepared split-set route.
+
+The existing group review State/controller, source draft and journal remain
+authoritative. Its caption stage now uses familiar create-post header/progress
+and a compact summary from actual group membership. A read-only parts sheet
+shows exact M:SS ranges; its Manage action opens the existing member controls.
+Member caption/AI, cover, channel settings, inheritance, owner and receipt locks
+remain intact in an explicit expandable manager and in the following review
+stage. Per-clip posting times still precede final confirmation. Source caption
+editor State is retained across scrolling, sheet visits and Next/Back, with
+hidden focus/semantics/tickers excluded. Explicit Next/Back/Save retain their
+existing checkpoints. No automatic AI, upload, publish or quota use is added.
+
+Regression tests were red before implementation. Tests cover main chrome in
+Thai/English, read-only range-sheet behavior, stable editor State/controller,
+lazy manager access and an account change while the sheet is open. Existing
+caption, recovery, consent, owner, scheduling and real-editor route tests remain
+in force. Large-text platform labels wrap within narrow screens. Four real-font
+visual layouts pass after exercising the new sheet-to-manager path.
+
+Runtime source **`afe68e4f`** passes the full Mobile suite: **5,578 tests /
+13 optional skips**, exit 0, in 10m20.5s wall time (three workers, one run,
+without OOM/retry). The three additional skips are the opt-in design preview.
+Full analysis reports no issues (12.6s); real-font visual tests pass 4/4 in
+Thai/English, light/dark and narrow/large-text layouts. Targeted shared-editor,
+owner, recovery, scheduling, TikTok and actual Material-route checks pass.
+
+The validated Staging helper build takes 205.2s and produces x86_64 debug APK
+**12116** (175,949,050 bytes), archived at
+`E:/PostDeeBuildArchive/clip-main-caption-12116/app-x86_64-12116.apk`.
+SHA-256: `56192c6813e2caab7628a939507b3d4fd8436e9f40b142ec8fddcc3ffaaf9050`.
+It retains the prior signing certificate, Staging API/Firebase, mock-off and
+RevenueCat Test Store configuration. The guarded updater verifies the only
+device `emulator-5554`, package `com.postdee.postdee_mobile.staging`, UID 10197
+and internal volume, then updates 12115→12116. Installed APK hash matches.
+All **162 private files are byte-identical before/after installation**, with
+zero added/missing/changed files, before first launch.
+
+The first install stops for insufficient storage, preserving 12115. OS-managed
+cache trim/dex cleanup recovers only 2.4 MB. The owner explicitly authorizes
+archiving ten identified old QA videos after backup and SHA-256 verification.
+Their 383.1 MiB copies remain under
+`E:/PostDeeBuildArchive/emulator-qa-archive-20261105-2141/`, with manifest and
+archive receipt; only those ten public-gallery copies are removed. No app data,
+drafts, installed app or volume is deleted/moved. Free space rises to ~1.2 GB
+and the same-volume guarded update succeeds at 14:45:53 UTC. No uninstaller,
+data wipe, alternate-volume retry or signing change is used.
+
+Native acceptance restores the existing Basic account, 550 post / 300 AI top-up
+balances and 18 saved entries. It selects the existing 180s vertical fixture,
+Facebook only, and actually prepares two local clips. Preparation opens the new
+main-style caption page; the sheet displays `0:00–1:30` and `1:30–3:00`.
+An explicit manual test caption survives Next to member/time review and Back.
+The test text is cleared and the newly created QA set is explicitly saved
+empty for the owner to try. The 52 pre-existing draft/group JSON manifests
+remain byte-identical after native testing. The current process log contains
+zero fatal, Flutter, unhandled or layout-overflow errors. No AI generation,
+upload or publish is triggered by this acceptance test; no post/AI quota is
+spent. The new local QA set contains only the existing test source and its two
+parts; existing saved entries are retained.
+
+Evidence and screenshots are under `E:/PostDeeTaskScratch/clip-main-caption/`;
+the full-suite log is `E:/PostDeeTaskScratch/clip-main-caption-full.log`.
+The Android cold-launch wait initially times out, then the app is observed
+running normally with its restored account. Physical devices, iOS, native
+English/dark mode and a new real social publish are not retested. No
+API/schema/dependency/environment/entitlement/database migration is required.
+The source remains local: no new main merge, push, hosted deploy or Production
+change is made for this UI request.
+
+## Main-caption design example — 2026-11-05 (preview only)
+
+The owner requested a visual example of returning to the familiar main caption
+page after splitting an overlength video. Freshly fetched `origin/main` remains
+`e4004355`; the clean reused branch starts at `49a0783c`, ahead 5 / behind 0.
+No production Dart code or route is changed by this example.
+
+`test/support/split_caption_page_preview.dart` supplies familiar create-post
+chrome, the proposed Channels → Video → Caption → Review order, a compact
+split-set summary and a parts detail sheet. It embeds the **actual**
+`UploaderScreen` shared-caption editor, keeping its caption field, AI helper,
+templates, style/language controls and owner/source checks. The example uses
+the existing local 180-second fixture with Facebook Reels selected; the real
+planner derives two ranges, `0:00–1:30` and `1:30–3:00`. The caption starts empty.
+The fixture uses Basic access and no usable AI credits, not fabricated Pro
+balances or generated sample text. The Save/Back/Continue callbacks are local
+preview callbacks; media preparation, persistence and the production navigation
+remain unchanged. This is not a completed integration of the proposed flow.
+
+`test/split_caption_main_preview_test.dart` is opt-in with
+`POSTDEE_UI_CAPTURE_DIR` and `POSTDEE_PREVIEW_SOURCE`. It captures real-font
+Thai/English light screens and a 320dp Thai dark screen at 1.5x text size;
+checks the shared controller, parts sheet, Continue callback and zero upload,
+AI-generation, publish or extra draft writes. The three visual examples plus
+14 existing shared-caption editor tests pass **17/17**, exit 0. Analysis of
+the two preview files has no issues (4.4s). No full-suite or native/store build
+was run for these test-only files; the installed Staging 12115 is untouched.
+
+Screenshots are in `D:/PostDeeMobile/output/split-caption-main-preview/` and
+scratch logs in `E:/PostDeeTaskScratch/split-caption-main-preview*`.
+Runtime route integration, per-item override/scheduling continuation and device
+acceptance of this proposed flow remain future work. No API/schema/environment,
+entitlement, migration, main merge, push, deploy or account data change occurred.
+
+## Compact range clocks — 2026-11-05 (local candidate)
+
+The owner reported long fractional clocks after dragging a range, such as
+`0:55.153966` and `2:35.067414`. Starting from the clean, verified-main-based
+UI candidate `1c0f606c` (baseline `origin/main` `e4004355`, no missing main
+commits), runtime source `77bb42ab` changes only
+`clip_split_localizations.dart`, `clip_split_screen.dart` and their tests.
+Display clocks now use M:SS throughout the split/group UI. The dialog keeps
+canonical microsecond values separately, so opening/saving or editing one
+endpoint does not truncate an untouched measured endpoint. Manual fractional
+input remains compatible. A dragged thumb chooses a legal whole second within
+source/neighbor/minimum/maximum bounds; a narrow interval containing no whole
+second retains its exact original boundary. The existing final validator,
+preview, owner guards, channel choices, soft motion, planner, encoding,
+saved-group data, quota and caption behavior remain intact. No dependency,
+API, schema, migration, entitlement, provider or environment change is needed.
+
+Regression tests were red before the patch. Final focused formatter/screen
+tests pass 26/26, planner/motion coverage remains passing, and real-font visual
+tests pass 4/4 in Thai/English, light/dark and small/large-text layouts.
+Final analysis reports no issues (14.8s). The complete frozen-source Mobile
+suite passes **5,572 tests / 10 optional skips**, exit 0, in 8m00.6s wall time
+using four workers. The final diff contains no deleted files or unrelated changes.
+
+Validated Staging helper build (172.1s) produced x86_64 debug APK **12115**:
+`E:/PostDeeBuildArchive/clip-split-clock-12115/app-x86_64-12115.apk`, SHA-256
+`deb9af0191b4062e238b2a221f4e756b9bff6ec0425df5f0e78cc319d190487c`.
+It retains the prior signing certificate and Staging API/Firebase/mock-off/
+RevenueCat Test Store configuration. The guarded updater on the only connected
+device, `emulator-5554`, preserves package
+`com.postdee.postdee_mobile.staging`, UID 10197 and internal volume while
+updating 12114 to 12115. The installed APK hash matches the archive.
+
+The initial strict private-data check stopped because MainActivity started
+concurrently during post-install hashing. Audit confirmed all **153/153 paths**
+remain, with zero added/missing files; **148 non-SDK files are byte-identical**.
+The five changed stores are Firebase app-id, Crashlytics, measurement
+preferences, measurement DB and datatransport DB, consistent with SDK startup.
+Do not describe this as all 153 files being byte-identical. Preserved Firebase
+user/token keys, identical APK Firebase resources and matching device/host UTC
+were verified without printing credential values. An initial login gate cleared
+after one controlled restart following the full suite: the existing account,
+550 post / 300 AI top-up balances and all **17 drafts** returned. Existing
+one-shot session restoration has a five-second timeout; its exact initial
+failure cause is unproven and auth behavior is unchanged by this patch.
+
+Native QA selected the existing 180s fixture, dragged Facebook part 2's start
+toward the preceding part (it stayed at 1:30), then dragged its end to **2:35**.
+Both fields, duration and saved row use short clocks; Save produces
+`1:30–2:35`, length `1:05`, without overlap. This remains an in-memory test plan;
+no prepared group, AI generation, publish or quota consumption was triggered.
+The current native process log has no fatal/Flutter/unhandled/overflow errors.
+Evidence/logs are under `E:/PostDeeTaskScratch/clip-split-soft-motion/` with the
+`fraction-` prefix. Physical devices, iOS and a new real publish are unverified.
+The candidate remains local; no new main merge, push, API deploy or Production
+change was made for this follow-up.
+
+## Softer split-plan presentation — 2026-11-05 (local candidate)
+
+The owner found the split-planning screen stiff and requested small playful
+details. Start from freshly fetched `origin/main` `e4004355`, with a clean
+reused checkout and no omitted main capabilities. Runtime source `b354605d`
+on `codex/clip-split-soft-motion` adds soft selected channel/mode surfaces,
+existing platform logos, numbered part rows, an overview painted from the
+actual source intervals (including omissions), and the shared press feedback.
+Finite color/overview transitions respect reduced motion. Controls retain
+their keys, callback gates and native Material ink; inputs are not replaced
+by outgoing animated copies. The planner, ranges, quotas, ownership checks,
+draft persistence, encoder, API, dependencies and environment are unchanged.
+No new translated copy, API contract, migration or deployment is required.
+
+Changed runtime files: `clip_split_screen.dart`, `clip_split_timeline.dart`.
+New regression file: `clip_split_motion_test.dart`. Baseline RED was 3 passes
+and one missing-overview failure. Focused screen/planner/motion/real-font visual
+tests passed 43/43; analysis had no issues after replacing the deprecated
+ticker accessor. Coverage includes exact fractional ranges across rapid
+selection changes, preview locking, reduced motion, 64 parts, 320dp/dark/large
+text, and Thai/English light/dark captures. Fractional endpoint labels wrap
+instead of overflowing at 2x text size.
+
+Full Mobile on exact `b354605d68a6c467676a8affa1759e7a65972411` passed
+**5,565 tests / 10 optional skips**, with all four shards exiting 0 and no OOM:
+1,437/0 skips and 1,422/4 skips with two workers; 1,358/0 and 1,348/6 with four
+workers after available memory was verified. Logs are
+`E:/PostDeeTaskScratch/clip-split-soft-motion/full-final-shard-0.log` through
+`full-final-shard-3.log`. An earlier shard on `547da85a` was stopped for the
+ticker lint fix and is not included in the result.
+
+The Staging helper built x86_64 APK **12114** (base 8114) in 95.3 seconds,
+package `com.postdee.postdee_mobile.staging`, minSdk 24 / targetSdk 36,
+175,933,054 bytes. API/Firebase/mock-off/RevenueCat Test Store validation passed;
+the signing certificate matches the installed app. Archived artifact:
+`E:/PostDeeBuildArchive/clip-split-soft-motion-12114/app-x86_64-12114.apk`.
+SHA-256: `7c2163d04d375c7b246e006417bda0afcfc56f921be936f3f7eb8c428157acba`.
+
+The emulator initially contained an in-progress range plan, so installation
+was held. Later its prepared set was already on shared captions. The normal
+local Save completed; the visible AI section had no reusable-result action
+or open result/style sheet. No AI generation or post was requested. Guarded
+update **12113 -> 12114** on `emulator-5554` retained UID 10197 and internal
+volume. Before native launch, **153 files** under files/shared_prefs/databases
+had identical hashes, and the installed APK matched the archive. Receipt:
+`E:/PostDeeTaskScratch/clip-split-soft-motion/guarded-update-receipt.json`,
+checked 2026-11-05 12:54:05 UTC / 19:54:05 Thai time.
+
+Native Thai/light opened with the same signed-in Basic account, retained
+550/300 top-up balances, saved-set continuation and 17 local draft entries.
+The existing synthetic 180-second gallery video opened the new planner with
+two Facebook parts and five total units. A fresh accessibility-bounds tap
+changed YouTube off/on and verified **5 -> 4 -> 5** units. The range editor
+opened and cancelled without modifying ranges; the timeline/numbered rows
+rendered with the real channel logos. The planner remains open for review;
+no prepare/encode/AI/upload/post or purchase action was taken during this UI
+smoke. App-PID logcat checks found no fatal/unhandled/Flutter exception or
+overflow; startup and emulator checks are not performance acceptance.
+
+Native captures, XML, visual before/after images and logs are under
+`E:/PostDeeTaskScratch/clip-split-soft-motion/`. Physical devices, native
+English/dark mode, iOS, live AI and real-account publishing were not retested.
+This candidate is committed locally; no push, main merge, API deploy or
+Production change was made for this UI request. The source worktrees and
+pre-existing uncommitted changes remain intact.
+
 ## Pending-work integration — 2026-11-05
 
 The owner authorized integrating the current clip work into main, pushing and

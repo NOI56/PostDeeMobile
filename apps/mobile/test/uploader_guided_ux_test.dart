@@ -180,6 +180,7 @@ Future<void> _show(WidgetTester tester, Finder finder,
 }
 
 Future<void> _openOptions(WidgetTester tester) async {
+  await _openAiCardForTest(tester);
   final options = _key('uploader-ai-open-panel');
   final title =
       find.descendant(of: options, matching: find.text('ปรับสไตล์และคำแนะนำ'));
@@ -205,6 +206,21 @@ double _stepOpacity(WidgetTester tester, int index) => tester
         .first)
     .opacity;
 
+Future<void> _openAiCardForTest(WidgetTester tester) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('uploader-ai-card-toggle'));
+  await tester.scrollUntilVisible(toggle, 160, scrollable: uploaderMainScroll);
+  await Scrollable.ensureVisible(tester.element(toggle), alignment: .5);
+  await tester.pumpAndSettle();
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  if (tester.widget<Offstage>(content).offstage) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -217,13 +233,19 @@ void main() {
   });
 
   testWidgets(
-      'AI is ready on the caption step with optional controls collapsed',
+      'AI card starts collapsed and opens explicitly before its optional controls',
       (tester) async {
     final fixture = _Fixture();
     await tester.pumpWidget(fixture.app());
     await tester.pumpAndSettle();
     await goToUploaderStep(tester, 1);
     expect(_key('uploader-ai-caption-panel'), findsOneWidget);
+    expect(_key('uploader-ai-card-toggle'), findsOneWidget);
+    expect(_key('uploader-ai-generate-button'), findsNothing);
+    expect(_key('uploader-ai-style-summary'), findsNothing);
+    expect(fixture.requests, isEmpty);
+    fixture.expectNoSubmission();
+    await _openAiCardForTest(tester);
     expect(_key('uploader-ai-generate-button'), findsOneWidget);
     expect(_key('uploader-ai-style-summary'), findsOneWidget);
     expect(find.text('ปรับสไตล์และคำแนะนำ'), findsOneWidget);
@@ -547,6 +569,7 @@ void main() {
         await tester.enterText(_key('uploader-caption-field'),
             'แคปชันที่เจ้าของร้านเขียนเองและต้องการเก็บไว้');
         await tester.pumpAndSettle();
+        await _openAiCardForTest(tester);
         await _show(tester, _key('uploader-ai-generate-button'));
         expect(
             _key('uploader-ai-generate-button').hitTestable(), findsOneWidget,

@@ -289,7 +289,8 @@ class _Fixture extends VideoEnglishFixture {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await super.mount(tester, settle: settle);
     await _settle(tester);
-    expect(_key('clip-group-review'), findsOneWidget);
+    expect(_key('uploader-step-caption'), findsOneWidget);
+    expect(_key('clip-group-caption-scopes'), findsOneWidget);
   }
 }
 
@@ -306,6 +307,16 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 Future<void> _tap(WidgetTester tester, String key) async {
+  if (key == 'uploader-ai-open-panel' ||
+      key == 'uploader-ai-generate-button') {
+    final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+        skipOffstage: false);
+    if (tester.widget<Offstage>(content).offstage) {
+      await tester.ensureVisible(_key('uploader-ai-card-toggle'));
+      await tester.tap(_key('uploader-ai-card-toggle'));
+      await _settle(tester);
+    }
+  }
   await tester.ensureVisible(_key(key));
   await tester.pumpAndSettle();
   final widget = tester.widget(_key(key));
@@ -321,9 +332,24 @@ Future<void> _tap(WidgetTester tester, String key) async {
 }
 
 Future<void> _reviewToFinalConfirmation(WidgetTester tester) async {
-  await _tap(tester, 'clip-group-next');
+  await _tap(tester, 'uploader-wizard-next');
+  expect(_key('uploader-step-platforms'), findsOneWidget);
+  await _tap(tester, 'uploader-wizard-next');
+  expect(_key('clip-group-review'), findsOneWidget);
   await _tap(tester, 'clip-group-next');
   expect(_key('clip-group-confirm'), findsOneWidget);
+}
+
+void _expectSharedAiLocked(WidgetTester tester) {
+  final lock = find.ancestor(
+      of: _key('uploader-ai-caption-panel'),
+      matching: find.byType(AbsorbPointer)).first;
+  expect(lock, findsOneWidget);
+  expect(tester.widget<AbsorbPointer>(lock).absorbing, isTrue);
+  final content = find.byKey(const ValueKey('uploader-ai-card-content'),
+      skipOffstage: false);
+  expect(tester.widget<Offstage>(content).offstage, isTrue);
+  expect(_key('uploader-ai-generate-button'), findsNothing);
 }
 
 void main() {
@@ -388,7 +414,7 @@ void main() {
             .controller!
             .text,
         'Shared caption from the entire original');
-    await _tap(tester, 'clip-group-save');
+    await _tap(tester, 'uploader-save-draft-button');
     final saved = fixture.store.groups[_groupId]!;
     expect(saved.sharedCaption, 'Shared caption from the entire original');
     expect(saved.captionContext, isNotNull);
@@ -434,7 +460,7 @@ void main() {
     await fixture.seedUnknownReceipt(_partIds.first);
     final original = fixture.store.drafts['reviewed-source']!;
     await fixture.mount(tester);
-    expect(_key('uploader-ai-generate-button'), findsNothing);
+    _expectSharedAiLocked(tester);
     expect(fixture.aiRequests, isEmpty);
     expect(fixture.uploadRequests, isEmpty);
     expect(fixture.store.drafts['reviewed-source'], same(original));
@@ -455,7 +481,9 @@ void main() {
     await tester.enterText(
         _key('uploader-ai-guidance-input'), 'Keep guidance when going back');
     await tester.pumpAndSettle();
-    await tester.pageBack();
+    await _tap(tester, 'uploader-wizard-back');
+    expect(_key('uploader-exit-dialog'), findsOneWidget);
+    await tester.tap(find.text('Save and exit'));
     await _settle(tester);
     expect(fixture.store.groups[_groupId]!.captionContext!.aiGuidance,
         'Keep guidance when going back');
@@ -486,8 +514,8 @@ void main() {
     await fixture.mount(tester);
     expect(_key('uploader-ai-caption-panel'), findsOneWidget);
     final key = await fixture.seedUnknownReceipt(_partIds.first);
-    await _tap(tester, 'clip-group-save');
-    expect(_key('uploader-ai-generate-button'), findsNothing);
+    await _tap(tester, 'uploader-save-draft-button');
+    _expectSharedAiLocked(tester);
     expect(fixture.store.groups[_groupId]!.captionContext, isNull);
     await _reviewToFinalConfirmation(tester);
     expect(_key('clip-group-confirm'), findsOneWidget);

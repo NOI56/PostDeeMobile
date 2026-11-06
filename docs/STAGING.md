@@ -30,6 +30,15 @@
   ด้วย memory scheduler ไม่พบ error/warn log ช่วง 03:39:50–03:42:04 UTC
 - หลัง Live: `/health` 200, `/ready` 200 พร้อม database/queue `ok` และ `no-store`,
   unauthenticated `/posts` 401 และ `POST /devices` 401
+- Claude Code ได้รับคำสั่ง deploy เดียวกันจากเจ้าของและ trigger ห่างกัน 26 วินาที
+  จึงมี [deploy `dep-dbmko7vrkulc73ehr7c0`](https://dashboard.render.com/web/srv-d9bb72ojs32c739osa5g/deploys/dep-dbmko7vrkulc73ehr7c0)
+  ของ SHA `d69a04a4` เดียวกันเข้าคิวต่อ เริ่ม **10:41:28 น. ไทย / 03:41:28 UTC**
+  และ Live **10:42:54 น. ไทย / 03:42:54 UTC** แทน `dep-dbmko1gm7kps73bl574g`
+  (ตอนนี้ deactivated) โค้ดจึงเหมือนเดิม มีแค่รีสตาร์ทเพิ่มหนึ่งรอบ
+  Instance `pgs9n` พบ 31 migrations และ `No pending migrations to apply`;
+  error/warn app logs ช่วง 03:39:50–03:44:32 UTC ว่าง (`hasMore: false`);
+  ตรวจซ้ำหลัง Live: `/health` 200, `/ready` 200 (database/queue `ok`, `no-store`),
+  unauthenticated `/posts` 401 ถ้าต้อง rollback ให้อ้าง deploy ตัวนี้ว่าเป็นตัวที่ Live
 - ยังไม่ได้ทำ: ไม่สร้าง/ติดตั้ง APK จาก `d69a04a4` (APK 12118 ในเครื่องมาจาก
   `37b182ef` ก่อน merge จึงยังไม่มีงานฝั่ง Mobile ของ PR #65), ไม่ทดสอบ push
   ภาษาอังกฤษบนเครื่องจริง, live AI, real-store purchase หรือ real-account publishing
